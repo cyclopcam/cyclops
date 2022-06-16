@@ -27,8 +27,8 @@ type MPGTSEncoder struct {
 }
 
 // NewMPEGTSEncoder allocates a mpegtsEncoder.
-func NewMPEGTSEncoder(log log.Log, sps []byte, pps []byte) (*MPGTSEncoder, error) {
-	f, err := os.Create("mystream.ts")
+func NewMPEGTSEncoder(log log.Log, filename string, sps []byte, pps []byte) (*MPGTSEncoder, error) {
+	f, err := os.Create(filename)
 	if err != nil {
 		return nil, err
 	}

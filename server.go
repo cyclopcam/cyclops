@@ -19,7 +19,7 @@ func main() {
 	for _, ip := range ips {
 
 		base := "rtsp://admin:poortobydog123@" + ip + ":554"
-		cam, err := camera.NewCamera("cam "+ip, server.Log, camera.URLForHikVision(base, false), camera.URLForHikVision(base, true))
+		cam, err := camera.NewCamera("cam-"+ip, server.Log, camera.URLForHikVision(base, false), camera.URLForHikVision(base, true))
 		if err != nil {
 			panic(err)
 		}

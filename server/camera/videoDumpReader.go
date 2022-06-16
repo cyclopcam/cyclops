@@ -11,10 +11,11 @@ import (
 // VideoDumpReader is a ring buffer that accumulates the stream in a format that can be turned into a video file.
 // The video is not decoded.
 type VideoDumpReader struct {
-	Log     log.Log
-	TrackID int
-	Track   *gortsplib.TrackH264
-	Encoder *videox.MPGTSEncoder
+	Log      log.Log
+	TrackID  int
+	Track    *gortsplib.TrackH264
+	Encoder  *videox.MPGTSEncoder
+	Filename string
 }
 
 func (r *VideoDumpReader) Initialize(log log.Log, trackID int, track *gortsplib.TrackH264) error {
@@ -23,7 +24,7 @@ func (r *VideoDumpReader) Initialize(log log.Log, trackID int, track *gortsplib.
 	r.Track = track
 
 	// setup H264->MPEGTS encoder
-	encoder, err := videox.NewMPEGTSEncoder(log, track.SPS(), track.PPS())
+	encoder, err := videox.NewMPEGTSEncoder(log, r.Filename, track.SPS(), track.PPS())
 	if err != nil {
 		return fmt.Errorf("Failed to start MPEGTS encoder: %w", err)
 	}

@@ -15,7 +15,9 @@ type Camera struct {
 }
 
 func NewCamera(name string, log log.Log, lowResURL, highResURL string) (*Camera, error) {
-	highReader := &VideoDumpReader{}
+	highReader := &VideoDumpReader{
+		Filename: name + ".ts",
+	}
 	lowReader := &VideoDecodeReader{}
 	high := NewStream(log, highReader)
 	low := NewStream(log, lowReader)
