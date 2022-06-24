@@ -2,10 +2,15 @@ module github.com/bmharper/cyclops
 
 go 1.18
 
+//replace github.com/aler9/gortsplib => ../gortsplib
+
+//replace github.com/bmharper/ringbuffer => ../ringbuffer
+
 require (
 	cloud.google.com/go/logging v1.4.2
 	github.com/aler9/gortsplib v0.0.0-20220606105133-0101ad961ccd
 	github.com/asticode/go-astits v1.10.0
+	github.com/bmharper/ringbuffer v1.1.1
 )
 
 require (

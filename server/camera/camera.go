@@ -15,9 +15,10 @@ type Camera struct {
 }
 
 func NewCamera(name string, log log.Log, lowResURL, highResURL string) (*Camera, error) {
-	highReader := &VideoDumpReader{
-		Filename: name + ".ts",
-	}
+	//highReader := &VideoDumpReader{
+	//	Filename: name + ".ts",
+	//}
+	highReader := NewVideoDumpReader(32 * 1024 * 1024)
 	lowReader := &VideoDecodeReader{}
 	high := NewStream(log, highReader)
 	low := NewStream(log, lowReader)
@@ -45,8 +46,15 @@ func (c *Camera) Start() error {
 func (c *Camera) Close() {
 	if c.LowRes != nil {
 		c.LowRes.Close()
+		c.LowRes = nil
 	}
 	if c.HighRes != nil {
 		c.HighRes.Close()
+		c.HighRes = nil
 	}
+}
+
+func (c *Camera) ExtractHighRes(method ExtractMethod) *RawBuffer {
+	dumper := c.HighRes.Reader.(*VideoDumpReader)
+	return dumper.ExtractRawBuffer(method)
 }

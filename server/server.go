@@ -7,7 +7,7 @@ import (
 
 type Server struct {
 	Log     log.Log
-	cameras []*camera.Camera
+	Cameras []*camera.Camera
 }
 
 func NewServer() *Server {
@@ -21,12 +21,12 @@ func NewServer() *Server {
 }
 
 func (s *Server) AddCamera(cam *camera.Camera) {
-	s.cameras = append(s.cameras, cam)
+	s.Cameras = append(s.Cameras, cam)
 }
 
 func (s *Server) StartAll() error {
 	var firstErr error
-	for _, cam := range s.cameras {
+	for _, cam := range s.Cameras {
 		if err := cam.Start(); err != nil {
 			s.Log.Errorf("Error starting camera %v: %v", cam.Name, err)
 			firstErr = err

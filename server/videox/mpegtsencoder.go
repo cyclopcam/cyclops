@@ -3,10 +3,11 @@ package videox
 import (
 	"bufio"
 	"context"
-	"os"
+	"io"
 	"time"
 
 	"github.com/bmharper/cyclops/server/log"
+	"github.com/bmharper/cyclops/server/util"
 
 	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/asticode/go-astits"
@@ -17,8 +18,8 @@ type MPGTSEncoder struct {
 	sps []byte
 	pps []byte
 
-	log              log.Log
-	f                *os.File
+	log log.Log
+	//f                *os.File
 	b                *bufio.Writer
 	mux              *astits.Muxer
 	dtsExtractor     *h264.DTSExtractor
@@ -27,12 +28,12 @@ type MPGTSEncoder struct {
 }
 
 // NewMPEGTSEncoder allocates a mpegtsEncoder.
-func NewMPEGTSEncoder(log log.Log, filename string, sps []byte, pps []byte) (*MPGTSEncoder, error) {
-	f, err := os.Create(filename)
-	if err != nil {
-		return nil, err
-	}
-	b := bufio.NewWriter(f)
+func NewMPEGTSEncoder(log log.Log, output io.Writer, sps []byte, pps []byte) (*MPGTSEncoder, error) {
+	//f, err := os.Create(filename)
+	//if err != nil {
+	//	return nil, err
+	//}
+	b := bufio.NewWriter(output)
 
 	mux := astits.NewMuxer(context.Background(), b)
 	mux.AddElementaryStream(astits.PMTElementaryStream{
@@ -43,18 +44,18 @@ func NewMPEGTSEncoder(log log.Log, filename string, sps []byte, pps []byte) (*MP
 
 	return &MPGTSEncoder{
 		log: log,
-		sps: sps,
-		pps: pps,
-		f:   f,
+		sps: util.CopySlice(sps),
+		pps: util.CopySlice(pps),
+		//f:   f,
 		b:   b,
 		mux: mux,
 	}, nil
 }
 
 // close closes all the mpegtsEncoder resources.
-func (e *MPGTSEncoder) Close() {
-	e.b.Flush()
-	e.f.Close()
+func (e *MPGTSEncoder) Close() error {
+	return e.b.Flush()
+	//e.f.Close()
 }
 
 // encode encodes H264 NALUs into MPEG-TS.
@@ -64,6 +65,7 @@ func (e *MPGTSEncoder) Encode(nalus [][]byte, pts time.Duration) error {
 		{byte(h264.NALUTypeAccessUnitDelimiter), 240},
 	}
 
+	nonIDRPresent := false
 	idrPresent := false
 
 	for _, nalu := range nalus {
@@ -87,9 +89,16 @@ func (e *MPGTSEncoder) Encode(nalus [][]byte, pts time.Duration) error {
 			if e.sps != nil && e.pps != nil {
 				filteredNALUs = append(filteredNALUs, e.sps, e.pps)
 			}
+
+		case h264.NALUTypeNonIDR:
+			nonIDRPresent = true
 		}
 
 		filteredNALUs = append(filteredNALUs, nalu)
+	}
+
+	if !nonIDRPresent && !idrPresent {
+		return nil
 	}
 
 	var dts time.Duration
