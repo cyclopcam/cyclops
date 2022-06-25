@@ -6,6 +6,7 @@ import (
 	"github.com/aler9/gortsplib"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/util"
+	"github.com/bmharper/cyclops/server/videox"
 	"github.com/bmharper/ringbuffer"
 )
 
@@ -22,16 +23,14 @@ type VideoDumpReader struct {
 	Log     log.Log
 	TrackID int
 	Track   *gortsplib.TrackH264
-	//Encoder  *videox.MPGTSEncoder
-	//Filename string
 
 	BufferLock sync.Mutex // Guards all access to Buffer
-	Buffer     ringbuffer.WeightedRingT[DecodedPacket]
+	Buffer     ringbuffer.WeightedRingT[videox.DecodedPacket]
 }
 
 func NewVideoDumpReader(maxRingBufferBytes int) *VideoDumpReader {
 	return &VideoDumpReader{
-		Buffer: ringbuffer.NewWeightedRingT[DecodedPacket](maxRingBufferBytes),
+		Buffer: ringbuffer.NewWeightedRingT[videox.DecodedPacket](maxRingBufferBytes),
 	}
 }
 
@@ -40,18 +39,11 @@ func (r *VideoDumpReader) Initialize(log log.Log, trackID int, track *gortsplib.
 	r.TrackID = trackID
 	r.Track = track
 	r.initializeBuffer()
-
-	// setup H264->MPEGTS encoder
-	//encoder, err := videox.NewMPEGTSEncoder(log, r.Filename, track.SPS(), track.PPS())
-	//if err != nil {
-	//	return fmt.Errorf("Failed to start MPEGTS encoder: %w", err)
-	//}
-	//r.Encoder = encoder
 	return nil
 }
 
 func (r *VideoDumpReader) initializeBuffer() {
-	r.Buffer = ringbuffer.NewWeightedRingT[DecodedPacket](r.Buffer.MaxWeight)
+	r.Buffer = ringbuffer.NewWeightedRingT[videox.DecodedPacket](r.Buffer.MaxWeight)
 }
 
 func (r *VideoDumpReader) Close() {
@@ -69,34 +61,36 @@ func (r *VideoDumpReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {
 		return
 	}
 
-	// encode H264 NALUs into MPEG-TS
-	//err := r.Encoder.Encode(ctx.H264NALUs, ctx.H264PTS)
-	//if err != nil {
-	//	r.Log.Errorf("MPGTS Encode failed: %v", err)
-	//	return
-	//}
 	r.BufferLock.Lock()
 	defer r.BufferLock.Unlock()
 
 	nBytes := 0
-	nalus := [][]byte{}
+	nalus := []videox.NALU{}
 	for _, buf := range ctx.H264NALUs {
 		nBytes += len(buf)
-		nalus = append(nalus, util.CopySlice(buf)) // gortsplib re-uses buffers, so we need to make a copy here
+		// gortsplib re-uses buffers, so we need to make a copy here.
+		// while we're doing a memcpy, we might as well append the prefix bytes.
+		// This saves us one additional memcpy before we send the NALUs our for
+		// decoding to RGBA or saving to mp4.
+		nalus = append(nalus, videox.CloneNALUWithPrefix(buf))
 	}
-	r.Buffer.Add(nBytes, &DecodedPacket{nalus, ctx.H264PTS, ctx.PTSEqualsDTS})
+	r.Buffer.Add(nBytes, &videox.DecodedPacket{
+		H264NALUs:    nalus,
+		H264PTS:      ctx.H264PTS,
+		PTSEqualsDTS: ctx.PTSEqualsDTS,
+	})
 }
 
-func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod) *RawBuffer {
+func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod) *videox.RawBuffer {
 	r.BufferLock.Lock()
 	defer r.BufferLock.Unlock()
 
 	bufLen := r.Buffer.Len()
-	out := &RawBuffer{
+	out := &videox.RawBuffer{
 		// little race condition here if Track.SPS and Track.PPS don't agree
 		SPS:     util.CopySlice(r.Track.SPS()),
 		PPS:     util.CopySlice(r.Track.PPS()),
-		Packets: make([]*DecodedPacket, bufLen),
+		Packets: make([]*videox.DecodedPacket, bufLen),
 	}
 
 	switch method {

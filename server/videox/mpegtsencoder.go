@@ -59,7 +59,7 @@ func (e *MPGTSEncoder) Close() error {
 }
 
 // encode encodes H264 NALUs into MPEG-TS.
-func (e *MPGTSEncoder) Encode(nalus [][]byte, pts time.Duration) error {
+func (e *MPGTSEncoder) Encode(nalus []NALU, pts time.Duration) error {
 	// prepend an AUD. This is required by some players
 	filteredNALUs := [][]byte{
 		{byte(h264.NALUTypeAccessUnitDelimiter), 240},
@@ -69,14 +69,15 @@ func (e *MPGTSEncoder) Encode(nalus [][]byte, pts time.Duration) error {
 	idrPresent := false
 
 	for _, nalu := range nalus {
-		typ := h264.NALUType(nalu[0] & 0x1F)
+		payload := nalu.RawPayload()
+		typ := h264.NALUType(payload[0] & 0x1F)
 		switch typ {
 		case h264.NALUTypeSPS:
-			e.sps = append([]byte(nil), nalu...)
+			e.sps = append([]byte(nil), payload...)
 			continue
 
 		case h264.NALUTypePPS:
-			e.pps = append([]byte(nil), nalu...)
+			e.pps = append([]byte(nil), payload...)
 			continue
 
 		case h264.NALUTypeAccessUnitDelimiter:
@@ -94,7 +95,7 @@ func (e *MPGTSEncoder) Encode(nalus [][]byte, pts time.Duration) error {
 			nonIDRPresent = true
 		}
 
-		filteredNALUs = append(filteredNALUs, nalu)
+		filteredNALUs = append(filteredNALUs, payload)
 	}
 
 	if !nonIDRPresent && !idrPresent {

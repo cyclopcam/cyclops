@@ -1,19 +1,15 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"time"
 
 	"github.com/bmharper/cyclops/server"
 	"github.com/bmharper/cyclops/server/camera"
-	"github.com/bmharper/cyclops/server/videox"
 )
 
 func main() {
 	server := server.NewServer()
-
-	videox.NewVideoEncoder()
 
 	ips := []string{
 		//"192.168.10.27",
@@ -34,24 +30,25 @@ func main() {
 		panic(err)
 	}
 	for i := 0; i < 1; i++ {
-		time.Sleep(8 * time.Second)
+		time.Sleep(5 * time.Second)
 		for icam, cam := range server.Cameras {
 			server.Log.Infof("Dumping content %02d, camera %d", i, icam)
 			//go extractCamera(server.Log, icam, cam)
 			//extractCamera(server.Log, icam, cam)
 			raw := cam.ExtractHighRes(camera.ExtractMethodClone)
-			raw.DumpBin("raw")
+			//raw.DumpBin("raw")
 
 			os.Mkdir("dump", 0777)
-			filename := fmt.Sprintf("dump/%v-%02d.ts", cam.Name, i)
-			f, err := os.Create(filename)
-			if err != nil {
-				panic(err)
-			}
-			if err := raw.SaveToMPEGTS(server.Log, f); err != nil {
-				panic(err)
-			}
-			f.Close()
+			//filename := fmt.Sprintf("dump/%v-%02d.ts", cam.Name, i)
+			//f, err := os.Create(filename)
+			//if err != nil {
+			//	panic(err)
+			//}
+			//if err := raw.SaveToMPEGTS(server.Log, f); err != nil {
+			//	panic(err)
+			//}
+			//f.Close()
+			raw.SaveToMP4("dump/direct.mp4")
 		}
 	}
 	time.Sleep(time.Second)

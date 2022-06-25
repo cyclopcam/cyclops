@@ -2,6 +2,7 @@ package camera
 
 import (
 	"github.com/bmharper/cyclops/server/log"
+	"github.com/bmharper/cyclops/server/videox"
 )
 
 // Camera represents a single physical camera, with two streams (high and low res)
@@ -54,7 +55,7 @@ func (c *Camera) Close() {
 	}
 }
 
-func (c *Camera) ExtractHighRes(method ExtractMethod) *RawBuffer {
+func (c *Camera) ExtractHighRes(method ExtractMethod) *videox.RawBuffer {
 	dumper := c.HighRes.Reader.(*VideoDumpReader)
 	return dumper.ExtractRawBuffer(method)
 }

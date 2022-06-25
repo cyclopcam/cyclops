@@ -11,11 +11,13 @@ require (
 	github.com/aler9/gortsplib v0.0.0-20220606105133-0101ad961ccd
 	github.com/asticode/go-astits v1.10.0
 	github.com/bmharper/ringbuffer v1.1.1
+	github.com/stretchr/testify v1.7.2
 )
 
 require (
 	cloud.google.com/go v0.81.0 // indirect
 	github.com/asticode/go-astikit v0.20.0 // indirect
+	github.com/davecgh/go-spew v1.1.0 // indirect
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.5 // indirect
@@ -26,6 +28,7 @@ require (
 	github.com/pion/rtcp v1.2.9 // indirect
 	github.com/pion/rtp v1.7.13 // indirect
 	github.com/pion/sdp/v3 v3.0.5 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
 	golang.org/x/mod v0.4.1 // indirect
@@ -41,4 +44,5 @@ require (
 	google.golang.org/genproto v0.0.0-20210517163617-5e0236093d7a // indirect
 	google.golang.org/grpc v1.37.1 // indirect
 	google.golang.org/protobuf v1.26.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

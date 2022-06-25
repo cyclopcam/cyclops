@@ -1,0 +1,22 @@
+#!/bin/bash
+
+clang -g -o enc \
+ -L /home/ben/dev/ffmpeg/libavcodec \
+ -L /home/ben/dev/ffmpeg/libavdevice \
+ -L /home/ben/dev/ffmpeg/libavfilter \
+ -L /home/ben/dev/ffmpeg/libavformat \
+ -L /home/ben/dev/ffmpeg/libavutil \
+ -L /home/ben/dev/ffmpeg/libswscale \
+ -L /home/ben/dev/ffmpeg/libswresample \
+ -I. debug/encode.cpp server/videox/helper.cpp \
+ -std=c++17 \
+ -lavdevice \
+ -lavfilter \
+ -lavformat \
+ -lavcodec \
+ -lavutil \
+ -lswscale \
+ -lswresample \
+ -lm -llzma -lz \
+ -l x264 \
+ -lstdc++
