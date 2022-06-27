@@ -237,6 +237,15 @@ void Encoder_WritePacket(char** err, void* _encoder, int64_t dts, int64_t pts, i
 		const auto& sps = encoder->SPS;
 		const auto& pps = encoder->PPS;
 
+		// I don't yet know why, but this is the only way I can get ffmpeg to produce a valid
+		// mp4 file. The first packet we send it must be SPS + PPS + Keyframe.
+		// It is not sufficient to merely send SPS, then PPS, then Keyframe.
+		// I suspect this is something to do with the fact that MP4 stores this information not in the stream,
+		// but inside a once-off header in the file. However, I can't find an explicit ffmpeg
+		// API call to "write SPS + PPS". Perhaps this is just idomatic... or perhaps it's
+		// a hack that just works. But whatever the case, it's the first magic combination that
+		// I could find which just worked.
+
 		//uint8_t* side = av_packet_new_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA, sps.size() + pps.size());
 		//memcpy(side, sps.data(), sps.size());
 		//memcpy(side + sps.size(), pps.data(), pps.size());
@@ -308,5 +317,21 @@ void SetPacketDataPointer(void* _pkt, const void* buf, size_t bufLen) {
 	AVPacket* pkt = (AVPacket*) _pkt;
 	pkt->data     = (uint8_t*) buf;
 	pkt->size     = (int) bufLen;
+}
+
+// I can't figure out how to get AV_ERROR_MAX_STRING_SIZE into Go code.. so we need this extra malloc
+char* GetAvErrorStr(int averr) {
+	char msg[AV_ERROR_MAX_STRING_SIZE] = {0};
+	av_make_error_string(msg, AV_ERROR_MAX_STRING_SIZE, averr);
+	return strdup(msg);
+}
+
+int AvCodecSendPacket(AVCodecContext* ctx, const void* buf, size_t bufLen) {
+	auto pkt  = av_packet_alloc();
+	pkt->data = (uint8_t*) buf;
+	pkt->size = (int) bufLen;
+	int res   = avcodec_send_packet(ctx, pkt);
+	av_packet_free(&pkt);
+	return res;
 }
 }

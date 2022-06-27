@@ -1,9 +1,12 @@
 package videox
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"unsafe"
+
+	"github.com/aler9/gortsplib/pkg/h264"
 )
 
 // #cgo pkg-config: libavcodec libavutil libswscale
@@ -21,10 +24,26 @@ func frameLineSize(frame *C.AVFrame) *C.int {
 	return (*C.int)(unsafe.Pointer(&frame.linesize[0]))
 }
 
+func IsVisualPacket(t h264.NALUType) bool {
+	return int(t) >= 1 && int(t) <= 5
+}
+
+var ErrResourceTemporarilyUnavailable = errors.New("Resource temporarily unavailable") // common response from avcodec_receive_frame if a frame is not available
+
+func WrapAvErr(err C.int) error {
+	if err == -11 {
+		return ErrResourceTemporarilyUnavailable
+	}
+	//char msg[AV_ERROR_MAX_STRING_SIZE] = {0};
+	//av_make_error_string(msg, AV_ERROR_MAX_STRING_SIZE, e);
+	//return msg;
+	//C.av_make_error_string()
+	return errors.New(C.GoString(C.GetAvErrorStr(err)))
+}
+
 // H264Decoder is a wrapper around ffmpeg's H264 decoder.
 type H264Decoder struct {
 	codecCtx    *C.AVCodecContext
-	avPacket    C.AVPacket
 	srcFrame    *C.AVFrame
 	swsCtx      *C.struct_SwsContext
 	dstFrame    *C.AVFrame
@@ -55,13 +74,9 @@ func NewH264Decoder() (*H264Decoder, error) {
 		return nil, fmt.Errorf("av_frame_alloc() failed")
 	}
 
-	avPacket := C.AVPacket{}
-	C.av_init_packet(&avPacket)
-
 	return &H264Decoder{
 		codecCtx: codecCtx,
 		srcFrame: srcFrame,
-		avPacket: avPacket,
 	}, nil
 }
 
@@ -94,10 +109,24 @@ func (d *H264Decoder) Decode(nalu NALU) (image.Image, error) {
 		// But it occurs normally during start of a stream, before first IDR has been seen.
 	}
 
+	if !IsVisualPacket(nalu.Type()) {
+		// avcodec_receive_frame will return an error if we try to decode a frame when
+		// sending a non-visual NALU
+		return nil, nil
+	}
+
 	// receive frame if available
 	res := C.avcodec_receive_frame(d.codecCtx, d.srcFrame)
 	if res < 0 {
-		return nil, fmt.Errorf("avcodec_receive_frame error %v", res)
+		// This special code path should no longer be necessary. We were decoding before SPS+PPS,
+		// and we were trying to extract a frame when sending future SPS+PPS.. so both those paths
+		// are now removed, and any error should be a genuine error.
+		//err := WrapAvErr(res)
+		//if err == ErrResourceTemporarilyUnavailable {
+		//	// is this missing SPS + PPS prefixed to IDR?
+		//	return nil, nil
+		//}
+		return nil, fmt.Errorf("avcodec_receive_frame error %w", WrapAvErr(res))
 	}
 
 	// if frame size has changed, allocate needed objects
@@ -162,10 +191,6 @@ func (d *H264Decoder) sendPacket(nalu NALU) error {
 		nalu = nalu.CloneWithPrefix()
 	}
 
-	// send frame to decoder
-	d.avPacket.data = (*C.uint8_t)(C.CBytes(nalu.Payload))
-	defer C.free(unsafe.Pointer(d.avPacket.data))
-
 	//pkt := unsafe.Pointer(&d.avPacket)
 	//C.SetPacketDataPointer(pkt, unsafe.Pointer(&nalu.Payload[0]), C.ulong(len(nalu.Payload)))
 
@@ -179,8 +204,19 @@ func (d *H264Decoder) sendPacket(nalu NALU) error {
 	//d.avPacket.data = unsafe.Pointer(&clone[0])
 	//defer C.free(unsafe.Pointer(d.avPacket.data))
 
-	d.avPacket.size = C.int(len(nalu.Payload))
-	res := C.avcodec_send_packet(d.codecCtx, &d.avPacket)
+	// The following doesn't work, because we're storing a Go pointer inside a C struct,
+	// and then passing that C struct to a C function. So to fix this, we need to define
+	// a helper function in C
+	//d.avPacket.data = (*C.uint8_t)(unsafe.Pointer(&nalu.Payload[0]))
+
+	// This did work.. but it's a wasteful memcpy
+	//d.avPacket.data = (*C.uint8_t)(C.CBytes(nalu.Payload))
+	//defer C.free(unsafe.Pointer(d.avPacket.data))
+
+	//d.avPacket.size = C.int(len(nalu.Payload))
+	//res := C.avcodec_send_packet(d.codecCtx, &d.avPacket)
+
+	res := C.AvCodecSendPacket(d.codecCtx, unsafe.Pointer(&nalu.Payload[0]), C.ulong(len(nalu.Payload)))
 	if res < 0 {
 		return fmt.Errorf("avcodec_send_packet failed: %v", res)
 	}
