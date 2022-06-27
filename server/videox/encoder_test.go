@@ -18,6 +18,9 @@ func TestEncoder(t *testing.T) {
 	raw, err := LoadBinDir(root + "/raw")
 	require.Nil(t, err)
 
+	width, height, err := raw.DecodeHeader()
+	t.Logf("width: %v, height: %v, err: %v", width, height, err)
+
 	for ipacket, packet := range raw.Packets {
 		dts := packet.H264PTS
 		pts := dts + time.Nanosecond

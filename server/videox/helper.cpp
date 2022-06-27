@@ -1,8 +1,8 @@
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavformat/avio.h>
-}
+//extern "C" {
+//#include <libavcodec/avcodec.h>
+//#include <libavformat/avformat.h>
+//#include <libavformat/avio.h>
+//}
 
 #include <stdint.h>
 #include "helper.h"
@@ -268,10 +268,12 @@ void Encoder_WritePacket(char** err, void* _encoder, int64_t dts, int64_t pts, i
 			memcpy(&copy[3], _nalu, naluLen);
 			pkt->data = (uint8_t*) copy.data();
 			pkt->size = (int) copy.size();
+			//tsf::print("slow path\n");
 		} else {
 			// We want this to be our most common code path, where we don't need any memcpy
 			pkt->data = (uint8_t*) _nalu;
 			pkt->size = (int) naluLen;
+			//tsf::print("fast path\n");
 		}
 	}
 
@@ -299,5 +301,12 @@ void Encoder_WriteTrailer(char** err, void* _encoder) {
 	if (e < 0) {
 		*err = strdup(tsf::fmt("av_write_trailer failed: %v", AvErr(e)).c_str());
 	}
+}
+
+void SetPacketDataPointer(void* _pkt, const void* buf, size_t bufLen) {
+	tsf::print("SetPacketDataPointer %v %v %v\n", _pkt, buf, bufLen);
+	AVPacket* pkt = (AVPacket*) _pkt;
+	pkt->data     = (uint8_t*) buf;
+	pkt->size     = (int) bufLen;
 }
 }

@@ -10,6 +10,7 @@ import (
 // #include <libavcodec/avcodec.h>
 // #include <libavutil/imgutils.h>
 // #include <libswscale/swscale.h>
+// #include "helper.h"
 import "C"
 
 func frameData(frame *C.AVFrame) **C.uint8_t {
@@ -45,7 +46,7 @@ func NewH264Decoder() (*H264Decoder, error) {
 	res := C.avcodec_open2(codecCtx, codec, nil)
 	if res < 0 {
 		C.avcodec_close(codecCtx)
-		return nil, fmt.Errorf("avcodec_open2() failed")
+		return nil, fmt.Errorf("avcodec_open2() failed: %v", res)
 	}
 
 	srcFrame := C.av_frame_alloc()
@@ -78,22 +79,25 @@ func (d *H264Decoder) Close() {
 	C.avcodec_close(d.codecCtx)
 }
 
-func (d *H264Decoder) Decode(nalu []byte) (image.Image, error) {
-	nalu = append([]uint8{0x00, 0x00, 0x00, 0x01}, []uint8(nalu)...)
+// Send the packet to the decoder, but don't retrieve the next frame
+// This is of dubious value... I wanted to use it for decoding SPS only.. but turns out
+// you must decode the first frame before avcodec context will have the width/height.
+// So I ended up getting a dedicated SPS parser...
+func (d *H264Decoder) DecodeAndDiscard(nalu NALU) error {
+	return d.sendPacket(nalu)
+}
 
-	// send frame to decoder
-	d.avPacket.data = (*C.uint8_t)(C.CBytes(nalu))
-	defer C.free(unsafe.Pointer(d.avPacket.data))
-	d.avPacket.size = C.int(len(nalu))
-	res := C.avcodec_send_packet(d.codecCtx, &d.avPacket)
-	if res < 0 {
-		return nil, nil
+func (d *H264Decoder) Decode(nalu NALU) (image.Image, error) {
+	if err := d.sendPacket(nalu); err != nil {
+		// sendPacket failure is not fatal
+		// We should log it or something.
+		// But it occurs normally during start of a stream, before first IDR has been seen.
 	}
 
 	// receive frame if available
-	res = C.avcodec_receive_frame(d.codecCtx, d.srcFrame)
+	res := C.avcodec_receive_frame(d.codecCtx, d.srcFrame)
 	if res < 0 {
-		return nil, nil
+		return nil, fmt.Errorf("avcodec_receive_frame error %v", res)
 	}
 
 	// if frame size has changed, allocate needed objects
@@ -113,13 +117,13 @@ func (d *H264Decoder) Decode(nalu []byte) (image.Image, error) {
 		d.dstFrame.color_range = C.AVCOL_RANGE_JPEG
 		res = C.av_frame_get_buffer(d.dstFrame, 1)
 		if res < 0 {
-			return nil, fmt.Errorf("av_frame_get_buffer() err")
+			return nil, fmt.Errorf("av_frame_get_buffer() error %v", res)
 		}
 
 		d.swsCtx = C.sws_getContext(d.srcFrame.width, d.srcFrame.height, C.AV_PIX_FMT_YUV420P,
 			d.dstFrame.width, d.dstFrame.height, (int32)(d.dstFrame.format), C.SWS_BILINEAR, nil, nil, nil)
 		if d.swsCtx == nil {
-			return nil, fmt.Errorf("sws_getContext() err")
+			return nil, fmt.Errorf("sws_getContext() error")
 		}
 
 		dstFrameSize := C.av_image_get_buffer_size((int32)(d.dstFrame.format), d.dstFrame.width, d.dstFrame.height, 1)
@@ -130,8 +134,10 @@ func (d *H264Decoder) Decode(nalu []byte) (image.Image, error) {
 	res = C.sws_scale(d.swsCtx, frameData(d.srcFrame), frameLineSize(d.srcFrame),
 		0, d.srcFrame.height, frameData(d.dstFrame), frameLineSize(d.dstFrame))
 	if res < 0 {
-		return nil, fmt.Errorf("sws_scale() err")
+		return nil, fmt.Errorf("sws_scale() error %v", res)
 	}
+
+	//fmt.Printf("Got frame %v x %v\n", d.dstFrame.width, d.dstFrame.width)
 
 	// embed frame into an image.Image
 	return &image.RGBA{
@@ -141,4 +147,42 @@ func (d *H264Decoder) Decode(nalu []byte) (image.Image, error) {
 			Max: image.Point{(int)(d.dstFrame.width), (int)(d.dstFrame.height)},
 		},
 	}, nil
+}
+
+func (d *H264Decoder) Width() int {
+	return int(d.codecCtx.width)
+}
+
+func (d *H264Decoder) Height() int {
+	return int(d.codecCtx.height)
+}
+
+func (d *H264Decoder) sendPacket(nalu NALU) error {
+	if nalu.PrefixLen == 0 {
+		nalu = nalu.CloneWithPrefix()
+	}
+
+	// send frame to decoder
+	d.avPacket.data = (*C.uint8_t)(C.CBytes(nalu.Payload))
+	defer C.free(unsafe.Pointer(d.avPacket.data))
+
+	//pkt := unsafe.Pointer(&d.avPacket)
+	//C.SetPacketDataPointer(pkt, unsafe.Pointer(&nalu.Payload[0]), C.ulong(len(nalu.Payload)))
+
+	// why on earth doesn't this work?... it works inside helper.go!
+	//dataPtr := unsafe.Pointer(&nalu.Payload[0])
+	//dataPtrC := (*C.uchar)(dataPtr)
+	//d.avPacket.data = dataPtrC
+
+	//clone := make([]uint8, len(nalu.Payload))
+	//copy(clone, nalu.Payload)
+	//d.avPacket.data = unsafe.Pointer(&clone[0])
+	//defer C.free(unsafe.Pointer(d.avPacket.data))
+
+	d.avPacket.size = C.int(len(nalu.Payload))
+	res := C.avcodec_send_packet(d.codecCtx, &d.avPacket)
+	if res < 0 {
+		return fmt.Errorf("avcodec_send_packet failed: %v", res)
+	}
+	return nil
 }

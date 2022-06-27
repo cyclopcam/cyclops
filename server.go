@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -12,9 +13,9 @@ func main() {
 	server := server.NewServer()
 
 	ips := []string{
-		//"192.168.10.27",
+		"192.168.10.27",
 		"192.168.10.28",
-		//"192.168.10.29",
+		"192.168.10.29",
 	}
 
 	for _, ip := range ips {
@@ -30,7 +31,7 @@ func main() {
 		panic(err)
 	}
 	for i := 0; i < 1; i++ {
-		time.Sleep(5 * time.Second)
+		time.Sleep(10 * time.Second)
 		for icam, cam := range server.Cameras {
 			server.Log.Infof("Dumping content %02d, camera %d", i, icam)
 			//go extractCamera(server.Log, icam, cam)
@@ -48,7 +49,8 @@ func main() {
 			//	panic(err)
 			//}
 			//f.Close()
-			raw.SaveToMP4("dump/direct.mp4")
+			fn := fmt.Sprintf("dump/%v-%02d.mp4", cam.Name, i)
+			raw.SaveToMP4(fn)
 		}
 	}
 	time.Sleep(time.Second)

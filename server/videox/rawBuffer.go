@@ -9,10 +9,19 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
+	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/util"
 )
+
+// #include "h264ParseSPS.h"
+import "C"
+
+const NALUPrefixLen = 4
+
+var NALUPrefix = []byte{0x00, 0x00, 0x00, 0x01}
 
 type NALU struct {
 	PrefixLen int // If zero, then no prefix. If 3 or 4, then 00 00 01 or 00 00 00 01.
@@ -35,8 +44,19 @@ type RawBuffer struct {
 // Clone a raw NALU, but add prefix bytes to the clone
 func CloneNALUWithPrefix(raw []byte) NALU {
 	return NALU{
-		PrefixLen: 3,
-		Payload:   append([]byte{0x00, 0x00, 0x01}, raw...),
+		PrefixLen: NALUPrefixLen,
+		Payload:   append(NALUPrefix, raw...),
+	}
+}
+
+// Returns a clone with prefix bytes added
+func (n *NALU) CloneWithPrefix() NALU {
+	if n.PrefixLen != 0 {
+		return n.Clone()
+	}
+	return NALU{
+		PrefixLen: NALUPrefixLen,
+		Payload:   append(NALUPrefix, n.Payload...),
 	}
 }
 
@@ -59,6 +79,15 @@ func (n *NALU) Clone() NALU {
 		PrefixLen: n.PrefixLen,
 		Payload:   util.CopySlice(n.Payload),
 	}
+}
+
+// Return the NALU type
+func (n *NALU) Type() h264.NALUType {
+	i := n.PrefixLen
+	if i >= len(n.Payload) {
+		return h264.NALUType(0)
+	}
+	return h264.NALUType(n.Payload[i] & 31)
 }
 
 // Deep clone of packet buffer
@@ -105,8 +134,67 @@ func (r *RawBuffer) SaveToMPEGTS(log log.Log, output io.Writer) error {
 	return encoder.Close()
 }
 
+// Decode SPS and PPS to extract header information
+func (r *RawBuffer) DecodeHeader() (width, height int, err error) {
+	sps := r.FirstNALUOfType(h264.NALUTypeSPS)
+	if sps == nil {
+		return 0, 0, fmt.Errorf("Failed to find SPS NALU")
+	}
+	raw := sps.RawPayload()
+	var cwidth C.int
+	var cheight C.int
+	C.ParseSPS(unsafe.Pointer(&raw[0]), C.ulong(len(raw)), &cwidth, &cheight)
+	width = int(cwidth)
+	height = int(cheight)
+	return
+
+	/*
+		sps := r.FirstNALUOfType(h264.NALUTypeSPS)
+		pps := r.FirstNALUOfType(h264.NALUTypePPS)
+		if sps == nil || pps == nil {
+			return 0, 0, fmt.Errorf("Failed to find SPS and/or PPS")
+		}
+
+		decoder, err := NewH264Decoder()
+		if err != nil {
+			return
+		}
+		defer decoder.Close()
+
+		if err = decoder.DecodeAndDiscard(*sps); err != nil {
+			//return 0, 0, fmt.Errorf("Failed to decode SPS: %w", err)
+		}
+		if err = decoder.DecodeAndDiscard(*pps); err != nil {
+			//return 0, 0, fmt.Errorf("Failed to decode PPS: %w", err)
+		}
+		if err = decoder.DecodeAndDiscard(r.Packets[2].H264NALUs[0]); err != nil {
+			//return 0, 0, fmt.Errorf("Failed to decode PPS: %w", err)
+		}
+
+		return decoder.Width(), decoder.Height(), nil
+	*/
+}
+
+// Returns the first SPS NALU, or nil if none found
+func (r *RawBuffer) FirstNALUOfType(ofType h264.NALUType) *NALU {
+	for _, packet := range r.Packets {
+		for i := range packet.H264NALUs {
+			if packet.H264NALUs[i].Type() == ofType {
+				return &packet.H264NALUs[i]
+			}
+		}
+	}
+	return nil
+}
+
 func (r *RawBuffer) SaveToMP4(filename string) error {
-	enc, err := NewVideoEncoder("mp4", filename, 2048, 1536)
+	width, height, err := r.DecodeHeader()
+	if err != nil {
+		return err
+	}
+
+	//enc, err := NewVideoEncoder("mp4", filename, 2048, 1536)
+	enc, err := NewVideoEncoder("mp4", filename, width, height)
 	if err != nil {
 		return err
 	}

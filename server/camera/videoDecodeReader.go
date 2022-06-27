@@ -30,10 +30,10 @@ func (r *VideoDecodeReader) Initialize(log log.Log, trackID int, track *gortspli
 
 	// if present, send SPS and PPS from the SDP to the decoder
 	if track.SPS() != nil {
-		decoder.Decode(track.SPS())
+		decoder.Decode(videox.WrapRawNALU(track.SPS()))
 	}
 	if track.PPS() != nil {
-		decoder.Decode(track.PPS())
+		decoder.Decode(videox.WrapRawNALU(track.PPS()))
 	}
 
 	r.Decoder = decoder
@@ -59,7 +59,7 @@ func (r *VideoDecodeReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {
 
 	for _, nalu := range ctx.H264NALUs {
 		// convert H264 NALUs to RGBA frames
-		img, err := r.Decoder.Decode(nalu)
+		img, err := r.Decoder.Decode(videox.WrapRawNALU(nalu))
 		if err != nil {
 			r.Log.Errorf("Failed to decode H264 NALU: %v", err)
 			continue
