@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/bmharper/cyclops/server/camera"
+	"github.com/bmharper/cyclops/server/config"
 	"github.com/bmharper/cyclops/server/log"
 )
 
@@ -18,6 +19,25 @@ func NewServer() *Server {
 	return &Server{
 		Log: log,
 	}
+}
+
+func (s *Server) LoadConfig(cfg config.Config) error {
+	for _, cam := range cfg.Cameras {
+		lowRes, err := camera.URLForCamera(cam.Model, cam.URL, cam.LowResURLSuffix, cam.HighResURLSuffix, false)
+		if err != nil {
+			return err
+		}
+		highRes, err := camera.URLForCamera(cam.Model, cam.URL, cam.LowResURLSuffix, cam.HighResURLSuffix, true)
+		if err != nil {
+			return err
+		}
+		cam, err := camera.NewCamera(cam.Name, s.Log, lowRes, highRes)
+		if err != nil {
+			return err
+		}
+		s.AddCamera(cam)
+	}
+	return nil
 }
 
 func (s *Server) AddCamera(cam *camera.Camera) {

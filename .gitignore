@@ -2,3 +2,4 @@
 *.ts
 /dump
 /enc
+cyclops.json

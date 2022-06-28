@@ -7,31 +7,26 @@ import (
 
 	"github.com/bmharper/cyclops/server"
 	"github.com/bmharper/cyclops/server/camera"
+	"github.com/bmharper/cyclops/server/config"
 )
 
 func main() {
-	server := server.NewServer()
-
-	ips := []string{
-		"192.168.10.27",
-		"192.168.10.28",
-		"192.168.10.29",
-	}
-
-	for _, ip := range ips {
-		base := "rtsp://admin:poortobydog123@" + ip + ":554"
-		cam, err := camera.NewCamera("cam-"+ip, server.Log, camera.URLForHikVision(base, false), camera.URLForHikVision(base, true))
-		if err != nil {
-			panic(err)
-		}
-		server.AddCamera(cam)
-	}
-	err := server.StartAll()
+	cfg, err := config.LoadConfig("")
 	if err != nil {
 		panic(err)
 	}
-	for i := 0; i < 1; i++ {
-		time.Sleep(10 * time.Second)
+	server := server.NewServer()
+	err = server.LoadConfig(*cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	err = server.StartAll()
+	if err != nil {
+		panic(err)
+	}
+	for i := 0; i < 5; i++ {
+		time.Sleep(130 * time.Second)
 		for icam, cam := range server.Cameras {
 			server.Log.Infof("Dumping content %02d, camera %d", i, icam)
 			//go extractCamera(server.Log, icam, cam)
@@ -53,7 +48,7 @@ func main() {
 			raw.SaveToMP4(fn)
 		}
 	}
-	time.Sleep(time.Second)
+	//time.Sleep(time.Second)
 }
 
 /*
