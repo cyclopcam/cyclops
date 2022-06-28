@@ -10,15 +10,15 @@ require (
 	cloud.google.com/go/logging v1.4.2
 	github.com/aler9/gortsplib v0.0.0-20220606105133-0101ad961ccd
 	github.com/asticode/go-astits v1.10.0
+	github.com/bmharper/cimg/v2 v2.0.4
 	github.com/bmharper/ringbuffer v1.1.1
+	github.com/julienschmidt/httprouter v1.3.0
 	github.com/stretchr/testify v1.7.2
 )
 
 require (
 	cloud.google.com/go v0.81.0 // indirect
 	github.com/asticode/go-astikit v0.20.0 // indirect
-	github.com/bmharper/cimg v1.0.10 // indirect
-	github.com/bmharper/cimg/v2 v2.0.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsoprea/go-exif/v3 v3.0.0-20210625224831-a6301f85c82b // indirect
 	github.com/dsoprea/go-iptc v0.0.0-20200610044640-bc9ca208b413 // indirect
@@ -35,7 +35,6 @@ require (
 	github.com/googleapis/gax-go/v2 v2.0.5 // indirect
 	github.com/icza/bitio v1.1.0 // indirect
 	github.com/jstemmer/go-junit-report v0.9.1 // indirect
-	github.com/julienschmidt/httprouter v1.3.0 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.9 // indirect
 	github.com/pion/rtp v1.7.13 // indirect
