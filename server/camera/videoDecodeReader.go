@@ -2,6 +2,8 @@ package camera
 
 import (
 	"fmt"
+	"image"
+	"sync"
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
@@ -16,8 +18,10 @@ type VideoDecodeReader struct {
 	Track   *gortsplib.TrackH264
 	Decoder *videox.H264Decoder
 
-	nPackets int64
-	ready    bool
+	nPackets    int64
+	ready       bool
+	lastImgLock sync.Mutex
+	lastImg     image.Image
 	//sps      *videox.NALU
 	//pps      *videox.NALU
 }
@@ -50,6 +54,12 @@ func (r *VideoDecodeReader) Initialize(log log.Log, trackID int, track *gortspli
 
 	r.Decoder = decoder
 	return nil
+}
+
+func (r *VideoDecodeReader) LastImage() image.Image {
+	r.lastImgLock.Lock()
+	defer r.lastImgLock.Unlock()
+	return r.lastImg
 }
 
 func (r *VideoDecodeReader) Close() {
@@ -101,11 +111,13 @@ func (r *VideoDecodeReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {
 			continue
 		}
 
-		// wait for a frame
 		if img == nil {
 			continue
 		}
 
+		r.lastImgLock.Lock()
+		r.lastImg = img
+		r.lastImgLock.Unlock()
 		//r.Log.Infof("[Packet %v] Decoded frame with size %v", r.nPackets, img.Bounds().Max)
 	}
 }

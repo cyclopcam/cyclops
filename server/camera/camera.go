@@ -1,6 +1,7 @@
 package camera
 
 import (
+	"github.com/bmharper/cimg/v2"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/videox"
 )
@@ -53,6 +54,25 @@ func (c *Camera) Close() {
 		c.HighRes.Close()
 		c.HighRes = nil
 	}
+}
+
+func (c *Camera) LatestImage(contentType string) []byte {
+	decoder := c.LowRes.Reader.(*VideoDecodeReader)
+	img := decoder.LastImage()
+	if img == nil {
+		return nil
+	}
+	img2, err := cimg.FromImage(img, true)
+	if err != nil {
+		c.Log.Errorf("Failed to wrap decoded image into cimg: %v", err)
+		return nil
+	}
+	buf, err := cimg.Compress(img2, cimg.MakeCompressParams(cimg.Sampling(cimg.Sampling420), 80, cimg.Flags(0)))
+	if err != nil {
+		c.Log.Errorf("Failed to compress image: %v", err)
+		return nil
+	}
+	return buf
 }
 
 func (c *Camera) ExtractHighRes(method ExtractMethod) *videox.RawBuffer {
