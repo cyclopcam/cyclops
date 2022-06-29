@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 
+	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -10,8 +11,9 @@ import (
 func (s *Server) SetupHTTP(port string) {
 
 	router := httprouter.New()
-	router.GET("/", s.httpIndex)
-	router.GET("/camera/latest/:index", s.httpViewCam)
+	www.Handle(s.Log, router, "GET", "/", s.httpIndex)
+	www.Handle(s.Log, router, "GET", "/camera/latestImage/:index", s.httpCamGetLatestImage)
+	www.Handle(s.Log, router, "GET", "/camera/recentVideo/:index", s.httpCamGetRecentVideo)
 
 	s.Log.Infof("Listening on %v", port)
 	http.ListenAndServe(port, router)

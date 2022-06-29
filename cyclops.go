@@ -32,7 +32,7 @@ func dumpCameras(srv *server.Server) {
 		time.Sleep(130 * time.Second)
 		for icam, cam := range srv.Cameras {
 			srv.Log.Infof("Dumping content %02d, camera %d", i, icam)
-			raw := cam.ExtractHighRes(camera.ExtractMethodClone)
+			raw, _ := cam.ExtractHighRes(camera.ExtractMethodClone, 5*time.Second)
 			//raw.DumpBin("raw")
 
 			os.Mkdir("dump", 0777)

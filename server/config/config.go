@@ -15,7 +15,9 @@ type Camera struct {
 }
 
 type Config struct {
-	Cameras []Camera `json:"cameras"`
+	Cameras        []Camera `json:"cameras"`        // The cameras
+	StoragePath    string   `json:"storagePath"`    // Path to video footage storage
+	CameraBufferMB int      `json:"cameraBufferMB"` // Size in MB of each camera's high resolution ring buffer
 }
 
 func LoadConfig(filename string) (*Config, error) {

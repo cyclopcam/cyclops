@@ -1,6 +1,8 @@
 package camera
 
 import (
+	"time"
+
 	"github.com/bmharper/cimg/v2"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/videox"
@@ -16,11 +18,8 @@ type Camera struct {
 	highResURL string
 }
 
-func NewCamera(name string, log log.Log, lowResURL, highResURL string) (*Camera, error) {
-	//highReader := &VideoDumpReader{
-	//	Filename: name + ".ts",
-	//}
-	highReader := NewVideoDumpReader(32 * 1024 * 1024)
+func NewCamera(name string, log log.Log, lowResURL, highResURL string, ringBufferSizeBytes int) (*Camera, error) {
+	highReader := NewVideoDumpReader(ringBufferSizeBytes)
 	lowReader := &VideoDecodeReader{}
 	high := NewStream(log, highReader)
 	low := NewStream(log, lowReader)
@@ -67,7 +66,7 @@ func (c *Camera) LatestImage(contentType string) []byte {
 		c.Log.Errorf("Failed to wrap decoded image into cimg: %v", err)
 		return nil
 	}
-	buf, err := cimg.Compress(img2, cimg.MakeCompressParams(cimg.Sampling(cimg.Sampling420), 80, cimg.Flags(0)))
+	buf, err := cimg.Compress(img2, cimg.MakeCompressParams(cimg.Sampling(cimg.Sampling420), 85, cimg.Flags(0)))
 	if err != nil {
 		c.Log.Errorf("Failed to compress image: %v", err)
 		return nil
@@ -75,7 +74,9 @@ func (c *Camera) LatestImage(contentType string) []byte {
 	return buf
 }
 
-func (c *Camera) ExtractHighRes(method ExtractMethod) *videox.RawBuffer {
+// Extract from <now - duration> until <now>.
+// duration is a positive number.
+func (c *Camera) ExtractHighRes(method ExtractMethod, duration time.Duration) (*videox.RawBuffer, error) {
 	dumper := c.HighRes.Reader.(*VideoDumpReader)
-	return dumper.ExtractRawBuffer(method)
+	return dumper.ExtractRawBuffer(method, duration)
 }

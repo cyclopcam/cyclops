@@ -4,3 +4,4 @@ t2-output
 *.mp4
 *.raw
 .git
+cyclops.json

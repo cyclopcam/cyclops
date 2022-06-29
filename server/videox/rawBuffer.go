@@ -37,8 +37,8 @@ type DecodedPacket struct {
 
 type RawBuffer struct {
 	Packets []*DecodedPacket
-	SPS     []byte
-	PPS     []byte
+	//SPS     []byte
+	//PPS     []byte
 }
 
 // Clone a raw NALU, but add prefix bytes to the clone
@@ -103,9 +103,24 @@ func (p *DecodedPacket) Clone() *DecodedPacket {
 	return c
 }
 
+// Return true if this packet has a NALU of type t inside
+func (p *DecodedPacket) HasType(t h264.NALUType) bool {
+	for _, n := range p.H264NALUs {
+		if n.Type() == t {
+			return true
+		}
+	}
+	return false
+}
+
 // Extract saved buffer into an MPEGTS stream
 func (r *RawBuffer) SaveToMPEGTS(log log.Log, output io.Writer) error {
-	encoder, err := NewMPEGTSEncoder(log, output, r.SPS, r.PPS)
+	sps := r.FirstNALUOfType(h264.NALUTypeSPS)
+	pps := r.FirstNALUOfType(h264.NALUTypePPS)
+	if sps == nil || pps == nil {
+		return fmt.Errorf("Stream has no SPS or PPS")
+	}
+	encoder, err := NewMPEGTSEncoder(log, output, sps.RawPayload(), pps.RawPayload())
 	if err != nil {
 		return fmt.Errorf("Failed to start MPEGTS encoder: %w", err)
 	}
@@ -200,8 +215,10 @@ func (r *RawBuffer) SaveToMP4(filename string) error {
 	}
 	defer enc.Close()
 
+	baseTime := r.Packets[0].H264PTS
+
 	for _, packet := range r.Packets {
-		dts := packet.H264PTS
+		dts := packet.H264PTS - baseTime
 		pts := dts + time.Nanosecond*1000
 		for _, nalu := range packet.H264NALUs {
 			err := enc.WritePacket(dts, pts, nalu)
