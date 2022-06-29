@@ -17,6 +17,7 @@ type Camera struct {
 type Config struct {
 	Cameras        []Camera `json:"cameras"`        // The cameras
 	StoragePath    string   `json:"storagePath"`    // Path to video footage storage
+	TempPath       string   `json:"tempPath"`       // Path for temporary files
 	CameraBufferMB int      `json:"cameraBufferMB"` // Size in MB of each camera's high resolution ring buffer
 }
 

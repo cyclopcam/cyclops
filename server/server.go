@@ -31,20 +31,30 @@ func NewServer() *Server {
 }
 
 func (s *Server) LoadConfig(cfg config.Config) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("Failed to get home dir: %v", err)
+	}
+
 	if cfg.StoragePath != "" {
 		s.StorageRoot = cfg.StoragePath
 	} else {
-		if home, err := os.UserHomeDir(); err != nil {
-			return fmt.Errorf("Failed to get home dir for storage path: %v", err)
-		} else {
-			s.StorageRoot = home + "/cyclops-videos"
-		}
+		s.StorageRoot = filepath.Join(home, "cyclops", "videos")
 	}
 	if err := os.MkdirAll(s.StorageRoot, 0777); err != nil {
 		return fmt.Errorf("Failed to create video storage root '%v': %w", s.StorageRoot, err)
 	}
 
-	if tempFiles, err := util.NewTempFiles(filepath.Join(s.StorageRoot, "temp")); err != nil {
+	// We don't want temp files to be on the videos dir, because the videos are likely to be
+	// stored on a USB flash drive, and this could cause the temp file to get written to disk,
+	// when we don't actually want that. We just want it as swap space... i.e. only written to disk
+	// if we run out of RAM.
+	tempPath := filepath.Join(home, "cyclops", "temp")
+	if cfg.TempPath != "" {
+		tempPath = cfg.TempPath
+	}
+
+	if tempFiles, err := util.NewTempFiles(tempPath); err != nil {
 		return err
 	} else {
 		s.TempFiles = tempFiles

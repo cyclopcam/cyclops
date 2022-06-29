@@ -53,5 +53,5 @@ func (s *Server) httpCamGetRecentVideo(w http.ResponseWriter, r *http.Request, p
 	www.Check(err)
 	www.Check(raw.SaveToMP4(fn))
 
-	www.SendFile(w, fn, contentType)
+	www.SendTempFile(w, fn, contentType)
 }

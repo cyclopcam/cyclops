@@ -288,3 +288,9 @@ func SendFile(w http.ResponseWriter, filename, contentType string) {
 	defer f.Close()
 	io.Copy(w, f)
 }
+
+// SendTempFile calls SendFile, and then deletes the file when finished
+func SendTempFile(w http.ResponseWriter, filename, contentType string) {
+	SendFile(w, filename, contentType)
+	os.Remove(filename)
+}
