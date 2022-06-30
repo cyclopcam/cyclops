@@ -36,10 +36,10 @@ func NewVideoDumpReader(maxRingBufferBytes int) *VideoDumpReader {
 	}
 }
 
-func (r *VideoDumpReader) Initialize(log log.Log, trackID int, track *gortsplib.TrackH264) error {
-	r.Log = log
-	r.TrackID = trackID
-	r.Track = track
+func (r *VideoDumpReader) OnConnect(stream *Stream) error {
+	r.Log = stream.Log
+	r.TrackID = stream.H264TrackID
+	r.Track = stream.H264Track
 	r.initializeBuffer()
 	return nil
 }

@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
+	"github.com/bmharper/cyclops/server/gen"
 	"github.com/bmharper/cyclops/server/log"
-	"github.com/bmharper/cyclops/server/util"
 
 	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/asticode/go-astits"
@@ -44,8 +44,8 @@ func NewMPEGTSEncoder(log log.Log, output io.Writer, sps []byte, pps []byte) (*M
 
 	return &MPGTSEncoder{
 		log: log,
-		sps: util.CopySlice(sps),
-		pps: util.CopySlice(pps),
+		sps: gen.CopySlice(sps),
+		pps: gen.CopySlice(pps),
 		//f:   f,
 		b:   b,
 		mux: mux,

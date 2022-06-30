@@ -12,8 +12,8 @@ import (
 	"unsafe"
 
 	"github.com/aler9/gortsplib/pkg/h264"
+	"github.com/bmharper/cyclops/server/gen"
 	"github.com/bmharper/cyclops/server/log"
-	"github.com/bmharper/cyclops/server/util"
 )
 
 // #include "h264ParseSPS.h"
@@ -77,7 +77,7 @@ func (n *NALU) RawPayload() []byte {
 func (n *NALU) Clone() NALU {
 	return NALU{
 		PrefixLen: n.PrefixLen,
-		Payload:   util.CopySlice(n.Payload),
+		Payload:   gen.CopySlice(n.Payload),
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/bmharper/cyclops/server/config"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/util"
+	"github.com/gorilla/websocket"
 )
 
 type Server struct {
@@ -16,6 +17,8 @@ type Server struct {
 	Cameras     []*camera.Camera
 	StorageRoot string // Where we store our videos
 	TempFiles   *util.TempFiles
+
+	wsUpgrader websocket.Upgrader
 }
 
 // After calling NewServer, you must call LoadConfig() to setup additional things like
@@ -60,6 +63,13 @@ func (s *Server) LoadConfig(cfg config.Config) error {
 		s.TempFiles = tempFiles
 	}
 
+	cameraBufferMB := cfg.CameraBufferMB
+	if cameraBufferMB == 0 {
+		cameraBufferMB = 200
+	} else if cameraBufferMB <= 1 {
+		return fmt.Errorf("cameraBufferMB (%v) is too small. Recommended at least 100. Minimum 1", cameraBufferMB)
+	}
+
 	for _, cam := range cfg.Cameras {
 		lowRes, err := camera.URLForCamera(cam.Model, cam.URL, cam.LowResURLSuffix, cam.HighResURLSuffix, false)
 		if err != nil {
@@ -69,7 +79,7 @@ func (s *Server) LoadConfig(cfg config.Config) error {
 		if err != nil {
 			return err
 		}
-		cam, err := camera.NewCamera(cam.Name, s.Log, lowRes, highRes, cfg.CameraBufferMB*1024*1024)
+		cam, err := camera.NewCamera(cam.Name, s.Log, lowRes, highRes, cameraBufferMB*1024*1024)
 		if err != nil {
 			return err
 		}

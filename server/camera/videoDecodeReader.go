@@ -26,10 +26,10 @@ type VideoDecodeReader struct {
 	//pps      *videox.NALU
 }
 
-func (r *VideoDecodeReader) Initialize(log log.Log, trackID int, track *gortsplib.TrackH264) error {
-	r.Log = log
-	r.TrackID = trackID
-	r.Track = track
+func (r *VideoDecodeReader) OnConnect(stream *Stream) error {
+	r.Log = stream.Log
+	r.TrackID = stream.H264TrackID
+	r.Track = stream.H264Track
 
 	decoder, err := videox.NewH264Decoder()
 	if err != nil {
@@ -39,8 +39,8 @@ func (r *VideoDecodeReader) Initialize(log log.Log, trackID int, track *gortspli
 	// if present, send SPS and PPS from the SDP to the decoder
 	//var sps *videox.NALU
 	//var pps *videox.NALU
-	sps := track.SPS()
-	pps := track.PPS()
+	sps := r.Track.SPS()
+	pps := r.Track.PPS()
 	if sps != nil {
 		wrapped := videox.WrapRawNALU(sps)
 		//r.sps = &wrapped
@@ -64,7 +64,10 @@ func (r *VideoDecodeReader) LastImage() image.Image {
 
 func (r *VideoDecodeReader) Close() {
 	r.Log.Infof("VideoDecodeReader closed")
-	r.Decoder.Close()
+	if r.Decoder != nil {
+		r.Decoder.Close()
+		r.Decoder = nil
+	}
 }
 
 func (r *VideoDecodeReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {

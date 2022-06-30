@@ -14,6 +14,7 @@ func (s *Server) SetupHTTP(port string) {
 	www.Handle(s.Log, router, "GET", "/", s.httpIndex)
 	www.Handle(s.Log, router, "GET", "/camera/latestImage/:index", s.httpCamGetLatestImage)
 	www.Handle(s.Log, router, "GET", "/camera/recentVideo/:index", s.httpCamGetRecentVideo)
+	www.Handle(s.Log, router, "GET", "/camera/stream/:resolution/:index", s.httpCamStreamVideo)
 
 	s.Log.Infof("Listening on %v", port)
 	http.ListenAndServe(port, router)

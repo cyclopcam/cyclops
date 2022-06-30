@@ -10,6 +10,19 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+func parseResolutionOrPanic(res string) camera.Resolution {
+	switch res {
+	case "low":
+		return camera.ResolutionLow
+	case "high":
+		return camera.ResolutionHigh
+	}
+	www.PanicBadRequestf("Invalid resolution '%v'. Valid values are 'low' and 'high'", res)
+
+	// to satisfy the compiler
+	return camera.ResolutionHigh
+}
+
 func (s *Server) getCameraIndexOrPanic(idxStr string) int {
 	idx, _ := strconv.Atoi(idxStr)
 	if idx < 0 || idx >= len(s.Cameras) {
@@ -54,4 +67,10 @@ func (s *Server) httpCamGetRecentVideo(w http.ResponseWriter, r *http.Request, p
 	www.Check(raw.SaveToMP4(fn))
 
 	www.SendTempFile(w, fn, contentType)
+}
+
+func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	//idx := s.getCameraIndexOrPanic(params.ByName("index"))
+	//res := parseResolutionOrPanic(params.ByName("resolution"))
+	//stream := s.Cameras[idx].GetStream(res)
 }
