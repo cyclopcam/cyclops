@@ -18,22 +18,27 @@ type VideoDecodeReader struct {
 	Track   *gortsplib.TrackH264
 	Decoder *videox.H264Decoder
 
+	incoming    StreamSinkChan
 	nPackets    int64
 	ready       bool
 	lastImgLock sync.Mutex
 	lastImg     image.Image
-	//sps      *videox.NALU
-	//pps      *videox.NALU
 }
 
-func (r *VideoDecodeReader) OnConnect(stream *Stream) error {
+func NewVideoDecodeReader() *VideoDecodeReader {
+	return &VideoDecodeReader{
+		incoming: make(StreamSinkChan, StreamSinkChanDefaultBufferSize),
+	}
+}
+
+func (r *VideoDecodeReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	r.Log = stream.Log
 	r.TrackID = stream.H264TrackID
 	r.Track = stream.H264Track
 
 	decoder, err := videox.NewH264Decoder()
 	if err != nil {
-		return fmt.Errorf("Failed to start H264 decoder: %w", err)
+		return nil, fmt.Errorf("Failed to start H264 decoder: %w", err)
 	}
 
 	// if present, send SPS and PPS from the SDP to the decoder
@@ -53,7 +58,7 @@ func (r *VideoDecodeReader) OnConnect(stream *Stream) error {
 	}
 
 	r.Decoder = decoder
-	return nil
+	return r.incoming, nil
 }
 
 func (r *VideoDecodeReader) LastImage() image.Image {

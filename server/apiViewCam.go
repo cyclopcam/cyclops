@@ -70,7 +70,17 @@ func (s *Server) httpCamGetRecentVideo(w http.ResponseWriter, r *http.Request, p
 }
 
 func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	//idx := s.getCameraIndexOrPanic(params.ByName("index"))
-	//res := parseResolutionOrPanic(params.ByName("resolution"))
-	//stream := s.Cameras[idx].GetStream(res)
+	idx := s.getCameraIndexOrPanic(params.ByName("index"))
+	res := parseResolutionOrPanic(params.ByName("resolution"))
+	stream := s.Cameras[idx].GetStream(res)
+
+	c, err := s.wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		s.Log.Errorf("Websocket upgrade failed: %v", err)
+		return
+	}
+	defer c.Close()
+
+	streamer := camera.VideoWebSocketStreamer{}
+	streamer.Run(c, stream)
 }

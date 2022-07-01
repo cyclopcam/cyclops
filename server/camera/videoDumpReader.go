@@ -28,20 +28,23 @@ type VideoDumpReader struct {
 
 	BufferLock sync.Mutex // Guards all access to Buffer
 	Buffer     ringbuffer.WeightedRingT[videox.DecodedPacket]
+
+	incoming StreamSinkChan
 }
 
 func NewVideoDumpReader(maxRingBufferBytes int) *VideoDumpReader {
 	return &VideoDumpReader{
-		Buffer: ringbuffer.NewWeightedRingT[videox.DecodedPacket](maxRingBufferBytes),
+		Buffer:   ringbuffer.NewWeightedRingT[videox.DecodedPacket](maxRingBufferBytes),
+		incoming: make(StreamSinkChan, StreamSinkChanDefaultBufferSize),
 	}
 }
 
-func (r *VideoDumpReader) OnConnect(stream *Stream) error {
+func (r *VideoDumpReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	r.Log = stream.Log
 	r.TrackID = stream.H264TrackID
 	r.Track = stream.H264Track
 	r.initializeBuffer()
-	return nil
+	return r.incoming, nil
 }
 
 func (r *VideoDumpReader) initializeBuffer() {
@@ -50,7 +53,6 @@ func (r *VideoDumpReader) initializeBuffer() {
 
 func (r *VideoDumpReader) Close() {
 	r.Log.Infof("VideoDumpReader closed")
-	//r.Encoder.Close()
 }
 
 func (r *VideoDumpReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {

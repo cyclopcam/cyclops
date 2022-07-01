@@ -29,7 +29,7 @@ type Camera struct {
 
 func NewCamera(name string, log log.Log, lowResURL, highResURL string, ringBufferSizeBytes int) (*Camera, error) {
 	highDumper := NewVideoDumpReader(ringBufferSizeBytes)
-	lowDecoder := &VideoDecodeReader{}
+	lowDecoder := NewVideoDecodeReader()
 	high := NewStream(log)
 	low := NewStream(log)
 
@@ -52,10 +52,10 @@ func (c *Camera) Start() error {
 	if err := c.LowStream.Listen(c.lowResURL); err != nil {
 		return err
 	}
-	if err := c.HighStream.ConnectSink(c.HighDumper); err != nil {
+	if err := c.HighStream.ConnectSinkAndRun(c.HighDumper); err != nil {
 		return err
 	}
-	if err := c.LowStream.ConnectSink(c.LowDecoder); err != nil {
+	if err := c.LowStream.ConnectSinkAndRun(c.LowDecoder); err != nil {
 		return err
 	}
 	return nil
@@ -96,6 +96,7 @@ func (c *Camera) ExtractHighRes(method ExtractMethod, duration time.Duration) (*
 	return c.HighDumper.ExtractRawBuffer(method, duration)
 }
 
+// Get either the high or low resolution stream
 func (c *Camera) GetStream(resolution Resolution) *Stream {
 	switch resolution {
 	case ResolutionLow:

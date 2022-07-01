@@ -1,21 +1,52 @@
 package camera
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
+	"github.com/bmharper/cyclops/server/gen"
 	"github.com/bmharper/cyclops/server/log"
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/url"
 )
 
-// StreamSink receives packets from the stream
+// StreamSink receives packets from the stream on its channel
 // There can be multiple StreamSinks connected to a Stream
 type StreamSink interface {
-	OnConnect(stream *Stream) error // Called by Stream.ConnectSink()
+	OnConnect(stream *Stream) (StreamSinkChan, error) // Called by Stream.ConnectSink()
+}
+
+// StandardStreamSink allows you to run the stream with RunStandardStream()
+type StandardStreamSink interface {
+	StreamSink
 	OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx)
 	Close()
+}
+
+type StreamMsgType int
+
+const (
+	StreamMsgTypePacket StreamMsgType = iota
+	StreamMsgTypeClose
+)
+
+type StreamMsg struct {
+	Type   StreamMsgType
+	Stream *Stream
+	Packet *gortsplib.ClientOnPacketRTPCtx
+}
+
+type StreamSinkChan chan StreamMsg
+
+// There isn't much rhyme or reason behind this number
+const StreamSinkChanDefaultBufferSize = 2
+
+// Internal sink data structure of Stream
+type sinkObj struct {
+	sink StreamSink
+	ch   StreamSinkChan
 }
 
 type Stream struct {
@@ -28,7 +59,7 @@ type Stream struct {
 	H264Track   *gortsplib.TrackH264 // track object
 
 	sinksLock sync.Mutex
-	sinks     []StreamSink
+	sinks     []sinkObj
 }
 
 func NewStream(log log.Log) *Stream {
@@ -88,10 +119,14 @@ func (s *Stream) Listen(address string) error {
 		// Imagine an h264 decoder has already been destroyed by Close(),
 		// and then we call OnPacketRTP on that sink.
 		s.sinksLock.Lock()
-		for _, sink := range s.sinks {
-			sink.OnPacketRTP(ctx)
-		}
+		sinks := gen.CopySlice(s.sinks)
 		s.sinksLock.Unlock()
+
+		//s.Log.Infof("Packet %v", ctx.H264PTS)
+		for _, sink := range sinks {
+			//sink.OnPacketRTP(ctx)
+			s.sendSinkMsg(sink.ch, StreamMsgTypePacket, ctx)
+		}
 	}
 
 	// start reading tracks
@@ -111,41 +146,74 @@ func (s *Stream) Close() {
 	s.Log.Infof("Closing stream %v", s.Ident)
 
 	s.Client.Close()
-	//if s.Reader != nil {
-	//	s.Reader.Close()
-	//}
 
 	s.sinksLock.Lock()
-	for _, sink := range s.sinks {
-		sink.Close()
-	}
-	s.sinks = []StreamSink{}
+	sinks := gen.CopySlice(s.sinks)
+	s.sinks = []sinkObj{}
 	s.sinksLock.Unlock()
+
+	for _, sink := range sinks {
+		s.sendSinkMsg(sink.ch, StreamMsgTypeClose, nil)
+	}
 }
 
-func (s *Stream) ConnectSink(sink StreamSink) error {
-	s.sinksLock.Lock()
-	defer s.sinksLock.Unlock()
-	if err := sink.OnConnect(s); err != nil {
+// Connect a sink
+// If runStandardHandler is true, then we cast sink to StandardStreamSink, and
+// start a new goroutine that runs RunStandardStream() on this stream.
+// If runStandardHandler is false, then you must run a message loop like
+// RunStandardStream yourself.
+func (s *Stream) ConnectSink(sink StreamSink, runStandardHandler bool) error {
+	sinkChan, err := sink.OnConnect(s)
+	if err != nil {
 		return err
 	}
-	s.sinks = append(s.sinks, sink)
+
+	s.sinksLock.Lock()
+	s.sinks = append(s.sinks, sinkObj{
+		sink: sink,
+		ch:   sinkChan,
+	})
+	s.sinksLock.Unlock()
+
+	if runStandardHandler {
+		if standard, ok := sink.(StandardStreamSink); ok {
+			go RunStandardStream(sinkChan, standard)
+		} else {
+			return errors.New("sink does not implement StandardStreamSink, so you can't use runStandardHandler = true")
+		}
+	}
+
 	return nil
+}
+
+// This is just an explicitly typed wrapper around ConnectSink(sink, true)
+func (s *Stream) ConnectSinkAndRun(sink StandardStreamSink) error {
+	return s.ConnectSink(sink, true)
 }
 
 func (s *Stream) RemoveSink(sink StreamSink) {
 	s.sinksLock.Lock()
-	defer s.sinksLock.Unlock()
-	s.sinks = DeleteFirstStreamSink(s.sinks, sink)
-	//s.sinks = gen.DeleteFirst[StreamSink](s.sinks, sink) // see DeleteFirstStreamSink
+	idx := s.sinkIndex(sink)
+	if idx != -1 {
+		s.sinks = append(s.sinks[0:idx], s.sinks[idx+1:]...)
+	}
+	s.sinksLock.Unlock()
 }
 
-// This is copied from our generic DeleteFirst. I don't understand why StreamSink is not comparable
-func DeleteFirstStreamSink(slice []StreamSink, elem StreamSink) []StreamSink {
-	for i := 0; i < len(slice); i++ {
-		if slice[i] == elem {
-			return append(slice[0:i], slice[i+1:]...)
+func (s *Stream) sendSinkMsg(sink StreamSinkChan, msgType StreamMsgType, packet *gortsplib.ClientOnPacketRTPCtx) {
+	sink <- StreamMsg{
+		Type:   StreamMsgTypePacket,
+		Stream: s,
+		Packet: packet,
+	}
+}
+
+// NOTE: This function does not take sinksLock, but assumes you have already done so
+func (s *Stream) sinkIndex(sink StreamSink) int {
+	for i := 0; i < len(s.sinks); i++ {
+		if s.sinks[i].sink == sink {
+			return i
 		}
 	}
-	return slice
+	return -1
 }
