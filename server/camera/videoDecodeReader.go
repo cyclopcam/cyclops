@@ -79,11 +79,7 @@ func (r *VideoDecodeReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {
 	r.nPackets++
 	//r.Log.Infof("[Packet %v] VideoDecodeReader", r.nPackets)
 
-	if ctx.TrackID != r.TrackID {
-		return
-	}
-
-	if ctx.H264NALUs == nil {
+	if ctx.TrackID != r.TrackID || ctx.H264NALUs == nil {
 		return
 	}
 

@@ -57,32 +57,16 @@ func (r *VideoDumpReader) Close() {
 
 func (r *VideoDumpReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {
 	//r.Log.Infof("[Packet %v] VideoDumpReader", 0)
-	if ctx.TrackID != r.TrackID {
+	if ctx.TrackID != r.TrackID || ctx.H264NALUs == nil {
 		return
 	}
 
-	if ctx.H264NALUs == nil {
-		return
-	}
+	clone := videox.ClonePacket(ctx)
 
 	r.BufferLock.Lock()
 	defer r.BufferLock.Unlock()
 
-	nBytes := 0
-	nalus := []videox.NALU{}
-	for _, buf := range ctx.H264NALUs {
-		nBytes += len(buf)
-		// gortsplib re-uses buffers, so we need to make a copy here.
-		// while we're doing a memcpy, we might as well append the prefix bytes.
-		// This saves us one additional memcpy before we send the NALUs our for
-		// decoding to RGBA or saving to mp4.
-		nalus = append(nalus, videox.CloneNALUWithPrefix(buf))
-	}
-	r.Buffer.Add(nBytes, &videox.DecodedPacket{
-		H264NALUs:    nalus,
-		H264PTS:      ctx.H264PTS,
-		PTSEqualsDTS: ctx.PTSEqualsDTS,
-	})
+	r.Buffer.Add(clone.PayloadBytes(), clone)
 }
 
 // Extract from <now - duration> until <now>.

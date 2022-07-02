@@ -11,6 +11,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/bmharper/cyclops/server/gen"
 	"github.com/bmharper/cyclops/server/log"
@@ -23,12 +24,14 @@ const NALUPrefixLen = 4
 
 var NALUPrefix = []byte{0x00, 0x00, 0x00, 0x01}
 
+// A NALU, with optional annex-b prefix bytes
 type NALU struct {
 	PrefixLen int // If zero, then no prefix. If 3 or 4, then 00 00 01 or 00 00 00 01.
 	Payload   []byte
 }
 
 // DecodedPacket is what we store in our ring buffer
+// This thing probably wants a better name...
 type DecodedPacket struct {
 	H264NALUs    []NALU
 	H264PTS      time.Duration
@@ -111,6 +114,33 @@ func (p *DecodedPacket) HasType(t h264.NALUType) bool {
 		}
 	}
 	return false
+}
+
+// Returns the number of bytes of NALU data.
+// If the NALUs have annex-b prefixes, then this number of included in the size.
+func (p *DecodedPacket) PayloadBytes() int {
+	size := 0
+	for _, n := range p.H264NALUs {
+		size += len(n.Payload)
+	}
+	return size
+}
+
+// Clone a packet of NALUs and return the cloned packet
+func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx) *DecodedPacket {
+	nalus := []NALU{}
+	for _, buf := range ctx.H264NALUs {
+		// gortsplib re-uses buffers, so we need to make a copy here.
+		// while we're doing a memcpy, we might as well append the prefix bytes.
+		// This saves us one additional memcpy before we send the NALUs out for
+		// decoding to RGBA or saving to mp4.
+		nalus = append(nalus, CloneNALUWithPrefix(buf))
+	}
+	return &DecodedPacket{
+		H264NALUs:    nalus,
+		H264PTS:      ctx.H264PTS,
+		PTSEqualsDTS: ctx.PTSEqualsDTS,
+	}
 }
 
 // Extract saved buffer into an MPEGTS stream

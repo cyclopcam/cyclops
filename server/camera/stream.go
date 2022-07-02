@@ -28,16 +28,18 @@ type StandardStreamSink interface {
 type StreamMsgType int
 
 const (
-	StreamMsgTypePacket StreamMsgType = iota
-	StreamMsgTypeClose
+	StreamMsgTypePacket StreamMsgType = iota // New camera packet
+	StreamMsgTypeClose                       // Close yourself. There will be no further packets.
 )
 
+// StreamMsg is sent on a channel from the stream to a sink
 type StreamMsg struct {
 	Type   StreamMsgType
 	Stream *Stream
 	Packet *gortsplib.ClientOnPacketRTPCtx
 }
 
+// Once a sink is connected to a stream, all messages to the sink are sent via this channel
 type StreamSinkChan chan StreamMsg
 
 // There isn't much rhyme or reason behind this number
