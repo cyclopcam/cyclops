@@ -74,9 +74,9 @@ type Stream struct {
 	loggedFPS        bool
 }
 
-func NewStream(log log.Log, cameraName, streamName string) *Stream {
+func NewStream(logger log.Log, cameraName, streamName string) *Stream {
 	return &Stream{
-		Log:          log,
+		Log:          log.NewPrefixLogger(logger, "Stream "+cameraName+"."+streamName+" "),
 		recentFrames: ringbuffer.NewRingP[time.Duration](64),
 		CameraName:   cameraName,
 		StreamName:   streamName,
@@ -122,7 +122,7 @@ func (s *Stream) Listen(address string) error {
 	}
 	s.H264TrackID = h264TrackID
 	s.H264Track = h264track
-	s.Log.Infof("Connected to %v, %v, track %v", camHost, s.Ident, h264TrackID)
+	s.Log.Infof("Connected to %v, track %v", camHost, h264TrackID)
 
 	//if err := s.Reader.Initialize(s.Log, h264TrackID, h264track); err != nil {
 	//	return err
@@ -153,7 +153,7 @@ func (s *Stream) Listen(address string) error {
 		return fmt.Errorf("Stream SetupAndPlay failed: %w", err)
 	}
 
-	s.Log.Infof("Connection to %v success", s.Ident)
+	s.Log.Infof("Connection to %v success", camHost)
 
 	// wait until a fatal error
 	//panic(c.Wait())
@@ -161,7 +161,7 @@ func (s *Stream) Listen(address string) error {
 }
 
 func (s *Stream) Close() {
-	s.Log.Infof("Closing stream %v", s.Ident)
+	s.Log.Infof("Closing stream")
 
 	s.Client.Close()
 
@@ -270,6 +270,6 @@ func (s *Stream) countFrames(ctx *gortsplib.ClientOnPacketRTPCtx) {
 
 	if !s.loggedFPS && s.recentFrames.Len() >= s.recentFrames.Capacity() {
 		s.loggedFPS = true
-		s.Log.Infof("Stream %v FPS: %.3f", s.Ident, s.fpsNoMutexLock())
+		s.Log.Infof("FPS: %.3f", s.fpsNoMutexLock())
 	}
 }

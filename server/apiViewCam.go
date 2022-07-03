@@ -42,21 +42,21 @@ type camInfoJSON struct {
 	High streamInfoJSON `json:"high"`
 }
 
-func (s *Server) httpCamGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	idx := s.getCameraIndexOrPanic(params.ByName("index"))
-	cam := s.Cameras[idx]
-
-	j := camInfoJSON{
-		Name: cam.Name,
+func toCamInfoJSON(c *camera.Camera) *camInfoJSON {
+	return &camInfoJSON{
+		Name: c.Name,
 		Low: streamInfoJSON{
-			FPS: int(math.Round(cam.LowStream.FPS())),
+			FPS: int(math.Round(c.LowStream.FPS())),
 		},
 		High: streamInfoJSON{
-			FPS: int(math.Round(cam.HighStream.FPS())),
+			FPS: int(math.Round(c.HighStream.FPS())),
 		},
 	}
+}
 
-	www.SendJSON(w, &j)
+func (s *Server) httpCamGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	idx := s.getCameraIndexOrPanic(params.ByName("index"))
+	www.SendJSON(w, toCamInfoJSON(s.Cameras[idx]))
 }
 
 // Fetch a low res JPG of the camera's last image.

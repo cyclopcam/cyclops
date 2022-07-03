@@ -14,6 +14,7 @@ func (s *Server) SetupHTTP(port string) {
 
 	router := httprouter.New()
 	//www.Handle(s.Log, router, "GET", "/", s.httpIndex)
+	www.Handle(s.Log, router, "GET", "/system/info", s.httpSystemGetInfo)
 	www.Handle(s.Log, router, "GET", "/camera/info/:index", s.httpCamGetInfo)
 	www.Handle(s.Log, router, "GET", "/camera/latestImage/:index", s.httpCamGetLatestImage)
 	www.Handle(s.Log, router, "GET", "/camera/recentVideo/:index", s.httpCamGetRecentVideo)
