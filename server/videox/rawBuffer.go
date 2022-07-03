@@ -20,9 +20,7 @@ import (
 // #include "h264ParseSPS.h"
 import "C"
 
-const NALUPrefixLen = 4
-
-var NALUPrefix = []byte{0x00, 0x00, 0x00, 0x01}
+var NALUPrefix = []byte{0x00, 0x00, 0x01}
 
 // A NALU, with optional annex-b prefix bytes
 type NALU struct {
@@ -47,7 +45,7 @@ type RawBuffer struct {
 // Clone a raw NALU, but add prefix bytes to the clone
 func CloneNALUWithPrefix(raw []byte) NALU {
 	return NALU{
-		PrefixLen: NALUPrefixLen,
+		PrefixLen: len(NALUPrefix),
 		Payload:   append(NALUPrefix, raw...),
 	}
 }
@@ -58,7 +56,7 @@ func (n *NALU) CloneWithPrefix() NALU {
 		return n.Clone()
 	}
 	return NALU{
-		PrefixLen: NALUPrefixLen,
+		PrefixLen: len(NALUPrefix),
 		Payload:   append(NALUPrefix, n.Payload...),
 	}
 }
@@ -114,6 +112,11 @@ func (p *DecodedPacket) HasType(t h264.NALUType) bool {
 		}
 	}
 	return false
+}
+
+// Return true if this packet has one NALU which is an intermediate frame
+func (p *DecodedPacket) IsIFrame() bool {
+	return len(p.H264NALUs) == 1 && p.H264NALUs[0].Type() == h264.NALUTypeNonIDR
 }
 
 // Returns the number of bytes of NALU data.

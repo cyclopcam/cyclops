@@ -51,6 +51,8 @@ github.com/bmharper/cimg/v2 v2.0.4 h1:H+KorVgokoYrj1uLUhHCFrn6gXqq+U+OOeaSf3srF9
 github.com/bmharper/cimg/v2 v2.0.4/go.mod h1:n4aJGk0UObZj+F0RNobiP/NkV235ECJFAwqGXq8ygJw=
 github.com/bmharper/ringbuffer v1.1.1 h1:2XruHmgtDif6HMvwDFK+thifUDusgEyvvk0kpsal/ho=
 github.com/bmharper/ringbuffer v1.1.1/go.mod h1:Siq5AiKH4Hu6aPVKl2/24gl1mHB66hxr9JrACjqvHqc=
+github.com/bmharper/ringbuffer v1.1.2 h1:r2QRV4KnTXxljr41TbCZYS0f/NvyU7xEJ5aGo8uQlBY=
+github.com/bmharper/ringbuffer v1.1.2/go.mod h1:Siq5AiKH4Hu6aPVKl2/24gl1mHB66hxr9JrACjqvHqc=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
 github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=

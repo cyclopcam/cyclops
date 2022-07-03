@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<head> </head>
+<body>
+	<video
+		id="player"
+		controls
+		autoplay
+		style="border: 1px solid #333; min-width: 800px"
+	></video>
+</body>
+
+<script>
+	var chunks = [];
+	var video = document.getElementById("player");
+	var mse = new (MediaSource || WebKitMediaSource)();
+	var sourceBuffer;
+	video.src = URL.createObjectURL(mse);
+	mse.addEventListener("sourceopen", onMediaSourceOpen);
+	function onMediaSourceOpen() {
+		console.log("onMediaSourceOpen");
+		sourceBuffer = mse.addSourceBuffer('video/mp4; codecs="avc1.4d401f"');
+		sourceBuffer.addEventListener("updateend", addMoreBuffer);
+		//video.play();
+	}
+
+	function addMoreBuffer() {
+		console.log("addMoreBuffer");
+		if (sourceBuffer.updating || !chunks.length) {
+			return;
+		}
+		sourceBuffer.appendBuffer(chunks.shift());
+	}
+
+	window.onload = function () {
+		var socketURL = "ws://" + window.location.host + "/camera/stream/low/0";
+
+		var ws = new WebSocket(socketURL);
+		ws.binaryType = "arraybuffer";
+		ws.addEventListener("message", function (event) {
+			chunks.push(new Uint8Array(event.data));
+			addMoreBuffer();
+		});
+
+		ws.addEventListener("error", function (e) {
+			console.log("Socket Error");
+		});
+	};
+</script>

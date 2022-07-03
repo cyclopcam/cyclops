@@ -30,8 +30,8 @@ type Camera struct {
 func NewCamera(name string, log log.Log, lowResURL, highResURL string, ringBufferSizeBytes int) (*Camera, error) {
 	highDumper := NewVideoDumpReader(ringBufferSizeBytes)
 	lowDecoder := NewVideoDecodeReader()
-	high := NewStream(log)
-	low := NewStream(log)
+	high := NewStream(log, name, "high")
+	low := NewStream(log, name, "low")
 
 	return &Camera{
 		Name:       name,

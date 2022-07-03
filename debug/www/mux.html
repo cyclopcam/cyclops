@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<head>
+	<script src="jmuxer.js"></script>
+</head>
+<body>
+	<video
+		id="player"
+		controls
+		autoplay
+		style="border: 1px solid #333; min-width: 800px"
+	></video>
+</body>
+
+<script>
+	var ws;
+	var jmuxer;
+
+	function parse(data) {
+		var input = new Uint8Array(data);
+		var dv = new DataView(input.buffer);
+
+		//var ptsMicro = dv.getBigInt64(0, true);
+		video = input.subarray(0);
+
+		return {
+			video: video,
+			//duration: duration,
+		};
+	}
+
+	function play() {
+		var socketURL = "ws://" + window.location.host + "/camera/stream/low/0";
+		jmuxer = new JMuxer({
+			node: "player",
+			mode: "video",
+			debug: false,
+			fps: 10,
+			flushingTime: 100,
+			//flushingTime: 1000, // we need 1000 for the demo as server provides a chunk data of 1000ms at a time
+			onError: function (data) {
+				console.log("Buffer error encountered", data);
+			},
+		});
+
+		ws = new WebSocket(socketURL);
+		ws.binaryType = "arraybuffer";
+		ws.addEventListener("message", function (event) {
+			var data = parse(event.data);
+			jmuxer.feed(data);
+		});
+
+		ws.addEventListener("error", function (e) {
+			console.log("Socket Error");
+		});
+	}
+
+	function pause() {
+		if (ws) {
+			ws.close();
+			ws = null;
+		}
+		if (jmuxer) {
+			jmuxer.destroy();
+			jmuxer = null;
+		}
+	}
+
+	window.onload = function () {
+		var player = document.getElementById("player");
+		player.addEventListener("play", () => {
+			console.log("onPlay");
+			if (!jmuxer) {
+				play();
+			}
+		});
+		player.addEventListener("pause", () => {
+			console.log("onPause");
+			pause();
+		});
+	};
+
+	play();
+</script>

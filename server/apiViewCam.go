@@ -1,6 +1,7 @@
 package server
 
 import (
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -29,6 +30,33 @@ func (s *Server) getCameraIndexOrPanic(idxStr string) int {
 		www.PanicBadRequestf("Invalid camera index %v. Valid values are %v .. %v", idx, 0, len(s.Cameras)-1)
 	}
 	return idx
+}
+
+type streamInfoJSON struct {
+	FPS int `json:"fps"`
+}
+
+type camInfoJSON struct {
+	Name string         `json:"name"`
+	Low  streamInfoJSON `json:"low"`
+	High streamInfoJSON `json:"high"`
+}
+
+func (s *Server) httpCamGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	idx := s.getCameraIndexOrPanic(params.ByName("index"))
+	cam := s.Cameras[idx]
+
+	j := camInfoJSON{
+		Name: cam.Name,
+		Low: streamInfoJSON{
+			FPS: int(math.Round(cam.LowStream.FPS())),
+		},
+		High: streamInfoJSON{
+			FPS: int(math.Round(cam.HighStream.FPS())),
+		},
+	}
+
+	www.SendJSON(w, &j)
 }
 
 // Fetch a low res JPG of the camera's last image.
@@ -74,13 +102,17 @@ func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, para
 	res := parseResolutionOrPanic(params.ByName("resolution"))
 	stream := s.Cameras[idx].GetStream(res)
 
+	s.Log.Infof("httpCamStreamVideo websocket upgrading")
+
 	c, err := s.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		s.Log.Errorf("Websocket upgrade failed: %v", err)
+		s.Log.Errorf("httpCamStreamVideo websocket upgrade failed: %v", err)
 		return
 	}
 	defer c.Close()
 
-	streamer := camera.VideoWebSocketStreamer{}
+	s.Log.Infof("httpCamStreamVideo starting")
+
+	streamer := camera.NewVideoWebSocketStreamer(s.Log)
 	streamer.Run(c, stream)
 }

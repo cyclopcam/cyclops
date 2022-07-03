@@ -2,10 +2,10 @@ package camera
 
 import (
 	"bytes"
-	"encoding/binary"
 	"time"
 
 	"github.com/aler9/gortsplib"
+	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/videox"
 	"github.com/gorilla/websocket"
@@ -31,6 +31,8 @@ type VideoWebSocketStreamer struct {
 	lastDropMsg     time.Time
 	nPacketsDropped int64
 	nPacketsSent    int64
+	lastLogTime     time.Time
+	debug           bool
 }
 
 func NewVideoWebSocketStreamer(log log.Log) *VideoWebSocketStreamer {
@@ -38,11 +40,15 @@ func NewVideoWebSocketStreamer(log log.Log) *VideoWebSocketStreamer {
 		incoming:  make(StreamSinkChan, StreamSinkChanDefaultBufferSize),
 		log:       log,
 		sendQueue: make(chan *videox.DecodedPacket, WebSocketSendBufferSize),
+		debug:     false,
 	}
 }
 
 func (s *VideoWebSocketStreamer) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	s.trackID = stream.H264TrackID
+	if s.debug {
+		s.log.Infof("VideoWebSocketStreamer.OnConnect trackID:%v", s.trackID)
+	}
 	return s.incoming, nil
 }
 
@@ -51,20 +57,32 @@ func (s *VideoWebSocketStreamer) onPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx
 		return
 	}
 
+	if s.debug {
+		s.log.Infof("VideoWebSocketStreamer.onPacketRTP")
+	}
+
+	now := time.Now()
 	if len(s.sendQueue) >= WebSocketSendBufferSize {
 		s.nPacketsDropped++
-		now := time.Now()
 		if now.Sub(s.lastDropMsg) > 5*time.Second {
 			s.log.Infof("Dropped %v/%v packets to websocket connection", s.nPacketsDropped, s.nPacketsDropped+s.nPacketsSent)
 			s.lastDropMsg = now
 		}
 	} else {
 		s.nPacketsSent++
+		if now.Sub(s.lastLogTime) > 10*time.Second {
+			s.log.Infof("Sent %v/%v packets to websocket connection", s.nPacketsSent, s.nPacketsDropped+s.nPacketsSent)
+			s.lastLogTime = now
+		}
 		s.sendQueue <- videox.ClonePacket(ctx)
 	}
 }
 
 func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream) {
+	if s.debug {
+		s.log.Infof("VideoWebSocketStreamer.Run start")
+	}
+
 	stream.ConnectSink(s, false)
 	defer stream.RemoveSink(s)
 	defer conn.Close()
@@ -73,8 +91,9 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream) {
 	go s.webSocketReader(conn)
 	go s.webSocketWriter(conn)
 
-	// Or do we have two goroutines, one for receiving from WS, and one for receiving from Stream?
-	// The only reason we receive from WS is to be notified of websocket closure.
+	if s.debug {
+		s.log.Infof("VideoWebSocketStreamer.Run ready")
+	}
 
 	s.closed = false
 	webSocketClosed := false
@@ -83,6 +102,9 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream) {
 		case msg := <-s.incoming:
 			switch msg.Type {
 			case StreamMsgTypeClose:
+				if s.debug {
+					s.log.Infof("VideoWebSocketStreamer.Run StreamMsgTypeClose")
+				}
 				s.closed = true
 				break
 			case StreamMsgTypePacket:
@@ -91,6 +113,9 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream) {
 		case wsMsg := <-s.fromWebSocket:
 			switch wsMsg {
 			case webSocketMsgClosed:
+				if s.debug {
+					s.log.Infof("VideoWebSocketStreamer.Run webSocketMsgClosed")
+				}
 				webSocketClosed = true
 				s.closed = true
 				break
@@ -111,6 +136,9 @@ func (s *VideoWebSocketStreamer) webSocketReader(conn *websocket.Conn) {
 	for {
 		msgType, data, err := conn.ReadMessage()
 		if err != nil {
+			if s.debug {
+				s.log.Infof("VideoWebSocketStreamer.webSocketReader conn.ReadMessage error: %v", err)
+			}
 			break
 		}
 		s.log.Infof("VideoWebSocketStreamer received %v message from websocket (len %v) [%v]", msgType, len(data), data[:3])
@@ -123,21 +151,36 @@ func (s *VideoWebSocketStreamer) webSocketReader(conn *websocket.Conn) {
 // it doesn't end up blocking camera packets from being received,
 // and we can detect the blockage.
 func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
+	sentIDR := false
 	for {
 		pkt, more := <-s.sendQueue
 		if !more || s.closed {
+			if s.debug {
+				s.log.Infof("VideoWebSocketStreamer.webSocketWriter closing. more:%v, s.closed:%v", more, s.closed)
+			}
 			break
 		}
+
+		if !sentIDR && pkt.IsIFrame() {
+			// Don't send any IFrames until we've sent a keyframe
+			continue
+		}
+		if pkt.HasType(h264.NALUTypeIDR) {
+			sentIDR = true
+		}
+
 		buf := bytes.Buffer{}
-		pts := int64(pkt.H264PTS.Milliseconds())
-		binary.Write(&buf, binary.LittleEndian, pts)
+		//pts := int64(pkt.H264PTS.Microseconds())
+		//binary.Write(&buf, binary.LittleEndian, pts)
 		for _, n := range pkt.H264NALUs {
 			if n.PrefixLen == 0 {
 				buf.Write([]byte{0, 0, 1})
 			}
 			buf.Write(n.Payload)
 		}
-		if err := conn.WriteMessage(websocket.BinaryMessage, buf.Bytes()); err != nil {
+		final := buf.Bytes()
+		//s.log.Infof("Sending packet: %v", final[:5])
+		if err := conn.WriteMessage(websocket.BinaryMessage, final); err != nil {
 			s.log.Infof("Error writing to websocket %v: %v", err)
 		}
 	}

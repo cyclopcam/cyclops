@@ -11,7 +11,8 @@ require (
 	github.com/aler9/gortsplib v0.0.0-20220606105133-0101ad961ccd
 	github.com/asticode/go-astits v1.10.0
 	github.com/bmharper/cimg/v2 v2.0.4
-	github.com/bmharper/ringbuffer v1.1.1
+	github.com/bmharper/ringbuffer v1.1.2
+	github.com/gorilla/websocket v1.5.0
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/stretchr/testify v1.7.2
 )
@@ -33,7 +34,6 @@ require (
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.5 // indirect
 	github.com/googleapis/gax-go/v2 v2.0.5 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/icza/bitio v1.1.0 // indirect
 	github.com/jstemmer/go-junit-report v0.9.1 // indirect
 	github.com/pion/randutil v0.1.0 // indirect

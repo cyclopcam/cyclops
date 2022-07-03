@@ -4,11 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/bmharper/cyclops/server/gen"
 	"github.com/bmharper/cyclops/server/log"
+	"github.com/bmharper/cyclops/server/videox"
+	"github.com/bmharper/ringbuffer"
 
 	"github.com/aler9/gortsplib"
+	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/aler9/gortsplib/pkg/url"
 )
 
@@ -52,9 +56,11 @@ type sinkObj struct {
 }
 
 type Stream struct {
-	Log    log.Log
-	Client gortsplib.Client
-	Ident  string // Identity of stream, with username:password stripped out
+	Log        log.Log
+	Client     gortsplib.Client
+	Ident      string // Just for logs. Simply CameraName.StreamName.
+	CameraName string // Just for logs
+	StreamName string // Just for logs
 
 	// These are read at the start of Listen(), and will be populated before Listen() returns
 	H264TrackID int                  // 0-based track index
@@ -62,11 +68,19 @@ type Stream struct {
 
 	sinksLock sync.Mutex
 	sinks     []sinkObj
+
+	recentFramesLock sync.Mutex
+	recentFrames     ringbuffer.RingP[time.Duration]
+	loggedFPS        bool
 }
 
-func NewStream(log log.Log) *Stream {
+func NewStream(log log.Log, cameraName, streamName string) *Stream {
 	return &Stream{
-		Log: log,
+		Log:          log,
+		recentFrames: ringbuffer.NewRingP[time.Duration](64),
+		CameraName:   cameraName,
+		StreamName:   streamName,
+		Ident:        cameraName + "." + streamName,
 	}
 }
 
@@ -79,10 +93,10 @@ func (s *Stream) Listen(address string) error {
 	if err != nil {
 		return fmt.Errorf("Invalid stream URL: %w", err)
 	}
-	s.Ident = u.Host + u.Path
+	camHost := u.Host + u.Path
 
 	// connect to the server
-	s.Log.Infof("Connecting to %v", s.Ident)
+	s.Log.Infof("Connecting to %v", camHost)
 	err = client.Start(u.Scheme, u.Host)
 	if err != nil {
 		return fmt.Errorf("Failed to start stream: %w", err)
@@ -108,7 +122,7 @@ func (s *Stream) Listen(address string) error {
 	}
 	s.H264TrackID = h264TrackID
 	s.H264Track = h264track
-	s.Log.Infof("Connected to %v, track %v", s.Ident, h264TrackID)
+	s.Log.Infof("Connected to %v, %v, track %v", camHost, s.Ident, h264TrackID)
 
 	//if err := s.Reader.Initialize(s.Log, h264TrackID, h264track); err != nil {
 	//	return err
@@ -123,6 +137,8 @@ func (s *Stream) Listen(address string) error {
 		s.sinksLock.Lock()
 		sinks := gen.CopySlice(s.sinks)
 		s.sinksLock.Unlock()
+
+		s.countFrames(ctx)
 
 		//s.Log.Infof("Packet %v", ctx.H264PTS)
 		for _, sink := range sinks {
@@ -157,6 +173,25 @@ func (s *Stream) Close() {
 	for _, sink := range sinks {
 		s.sendSinkMsg(sink.ch, StreamMsgTypeClose, nil)
 	}
+}
+
+// Estimate the frame rate
+func (s *Stream) FPS() float64 {
+	s.recentFramesLock.Lock()
+	defer s.recentFramesLock.Unlock()
+
+	return s.fpsNoMutexLock()
+}
+
+func (s *Stream) fpsNoMutexLock() float64 {
+	if s.recentFrames.Len() < 2 {
+		return 10
+	}
+	count := s.recentFrames.Len()
+	oldest := s.recentFrames.Peek(0)
+	latest := s.recentFrames.Peek(count - 1)
+	elapsed := latest.Seconds() - oldest.Seconds()
+	return float64(count-1) / elapsed
 }
 
 // Connect a sink
@@ -218,4 +253,23 @@ func (s *Stream) sinkIndex(sink StreamSink) int {
 		}
 	}
 	return -1
+}
+
+func (s *Stream) countFrames(ctx *gortsplib.ClientOnPacketRTPCtx) {
+	s.recentFramesLock.Lock()
+	defer s.recentFramesLock.Unlock()
+
+	for _, nalu := range ctx.H264NALUs {
+		if len(nalu) > 0 {
+			t := h264.NALUType(nalu[0] & 31)
+			if videox.IsVisualPacket(t) {
+				s.recentFrames.Add(ctx.H264PTS)
+			}
+		}
+	}
+
+	if !s.loggedFPS && s.recentFrames.Len() >= s.recentFrames.Capacity() {
+		s.loggedFPS = true
+		s.Log.Infof("Stream %v FPS: %.3f", s.Ident, s.fpsNoMutexLock())
+	}
 }
