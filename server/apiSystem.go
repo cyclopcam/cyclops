@@ -12,7 +12,9 @@ type systemInfoJSON struct {
 }
 
 func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	j := systemInfoJSON{}
+	j := systemInfoJSON{
+		Cameras: make([]*camInfoJSON, 0),
+	}
 	for _, cam := range s.Cameras {
 		j.Cameras = append(j.Cameras, toCamInfoJSON(cam))
 	}

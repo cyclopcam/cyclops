@@ -14,11 +14,11 @@ func (s *Server) SetupHTTP(port string) {
 
 	router := httprouter.New()
 	//www.Handle(s.Log, router, "GET", "/", s.httpIndex)
-	www.Handle(s.Log, router, "GET", "/system/info", s.httpSystemGetInfo)
-	www.Handle(s.Log, router, "GET", "/camera/info/:index", s.httpCamGetInfo)
-	www.Handle(s.Log, router, "GET", "/camera/latestImage/:index", s.httpCamGetLatestImage)
-	www.Handle(s.Log, router, "GET", "/camera/recentVideo/:index", s.httpCamGetRecentVideo)
-	www.Handle(s.Log, router, "GET", "/camera/stream/:resolution/:index", s.httpCamStreamVideo)
+	www.Handle(s.Log, router, "GET", "/api/system/info", s.httpSystemGetInfo)
+	www.Handle(s.Log, router, "GET", "/api/camera/info/:index", s.httpCamGetInfo)
+	www.Handle(s.Log, router, "GET", "/api/camera/latestImage/:index", s.httpCamGetLatestImage)
+	www.Handle(s.Log, router, "GET", "/api/camera/recentVideo/:index", s.httpCamGetRecentVideo)
+	www.Handle(s.Log, router, "GET", "/api/ws/camera/stream/:resolution/:index", s.httpCamStreamVideo)
 
 	isImmutable := false
 	root, err := filepath.Abs("debug/www")

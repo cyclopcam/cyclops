@@ -4,6 +4,7 @@ import HelloWorld from '@/components/HelloWorld.vue'
 </script>
 
 <template>
+	<!--
   <header>
     <img alt="Vue logo" class="logo" src="@/assets/logo.svg" width="125" height="125" />
 
@@ -18,9 +19,16 @@ import HelloWorld from '@/components/HelloWorld.vue'
   </header>
 
   <RouterView />
+  -->
+	<RouterView />
 </template>
 
-<style>
+<style lang="scss">
+#app {
+	height: 100%;
+}
+
+/*
 @import '@/assets/base.css';
 
 #app {
@@ -116,4 +124,5 @@ nav a:first-of-type {
     margin-top: 1rem;
   }
 }
+*/
 </style>
