@@ -1,9 +1,11 @@
 package camera
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/bmharper/cimg/v2"
+	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/videox"
 )
@@ -17,6 +19,7 @@ const (
 
 // Camera represents a single physical camera, with two streams (high and low res)
 type Camera struct {
+	ID         int64 // Same as ID in database
 	Name       string
 	Log        log.Log
 	LowStream  *Stream
@@ -35,6 +38,40 @@ func NewCamera(name string, log log.Log, lowResURL, highResURL string, ringBuffe
 
 	return &Camera{
 		Name:       name,
+		Log:        log,
+		LowStream:  low,
+		HighStream: high,
+		HighDumper: highDumper,
+		LowDecoder: lowDecoder,
+		lowResURL:  lowResURL,
+		highResURL: highResURL,
+	}, nil
+}
+
+func NewCamera2(log log.Log, cam configdb.Camera, ringBufferSizeBytes int) (*Camera, error) {
+	baseURL := "rtsp://" + cam.Username + ":" + cam.Password + "@" + cam.Host
+	if cam.Port == 0 {
+		baseURL += ":554"
+	} else {
+		baseURL += fmt.Sprintf(":%v", cam.Port)
+	}
+
+	lowResURL, err := URLForCamera(cam.Model, baseURL, cam.LowResURLSuffix, cam.HighResURLSuffix, false)
+	if err != nil {
+		return nil, err
+	}
+	highResURL, err := URLForCamera(cam.Model, baseURL, cam.LowResURLSuffix, cam.HighResURLSuffix, true)
+	if err != nil {
+		return nil, err
+	}
+
+	highDumper := NewVideoDumpReader(ringBufferSizeBytes)
+	lowDecoder := NewVideoDecodeReader()
+	high := NewStream(log, cam.Name, "high")
+	low := NewStream(log, cam.Name, "low")
+
+	return &Camera{
+		Name:       cam.Name,
 		Log:        log,
 		LowStream:  low,
 		HighStream: high,

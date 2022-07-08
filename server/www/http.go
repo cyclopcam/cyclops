@@ -98,6 +98,12 @@ func ReadLimited(w http.ResponseWriter, r *http.Request, maxBodyBytes int64) []b
 	return body
 }
 
+// ReadString reads the body of the request, and returns it as a string
+func ReadString(w http.ResponseWriter, r *http.Request, maxBodyBytes int64) string {
+	b := ReadLimited(w, r, maxBodyBytes)
+	return string(b)
+}
+
 // ReadJSON reads the body of the request, and unmarshals it into 'obj'.
 func ReadJSON(w http.ResponseWriter, r *http.Request, obj interface{}, maxBodyBytes int64) {
 	if r.Body == nil {

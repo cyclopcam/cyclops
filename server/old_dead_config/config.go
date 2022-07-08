@@ -1,4 +1,4 @@
-package config
+package old_dead_config
 
 import (
 	"encoding/json"
@@ -15,10 +15,12 @@ type Camera struct {
 }
 
 type Config struct {
-	Cameras        []Camera `json:"cameras"`        // The cameras
-	StoragePath    string   `json:"storagePath"`    // Path to video footage storage
-	TempPath       string   `json:"tempPath"`       // Path for temporary files
-	CameraBufferMB int      `json:"cameraBufferMB"` // Size in MB of each camera's high resolution ring buffer
+	Cameras          []Camera `json:"cameras"`          // The cameras
+	VideoStoragePath string   `json:"videoStoragePath"` // Path to video footage storage
+	ConfigDBFilename string   `json:"configDBFilename"` // Path to configuration DB ......... this should be our only config parameter
+	//LongTermVideo string   `json:"configDBFilename"` // Path to configuration DB
+	TempPath       string `json:"tempPath"`       // Path for temporary files
+	CameraBufferMB int    `json:"cameraBufferMB"` // Size in MB of each camera's high resolution ring buffer
 }
 
 func LoadConfig(filename string) (*Config, error) {

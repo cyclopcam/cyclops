@@ -2,5 +2,6 @@
 *.ts
 /dump
 /enc
+/cyclops
 cyclops.json
 img.jpg

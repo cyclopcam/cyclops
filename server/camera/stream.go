@@ -3,6 +3,7 @@ package camera
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -124,16 +125,8 @@ func (s *Stream) Listen(address string) error {
 	s.H264Track = h264track
 	s.Log.Infof("Connected to %v, track %v", camHost, h264TrackID)
 
-	//if err := s.Reader.Initialize(s.Log, h264TrackID, h264track); err != nil {
-	//	return err
-	//}
-
 	client.OnPacketRTP = func(ctx *gortsplib.ClientOnPacketRTPCtx) {
-		//s.Reader.OnPacketRTP(ctx)
-		// We hold sinksLock for the entire duration of the packet here,
-		// to ensure that we don't have races when Close() is called.
-		// Imagine an h264 decoder has already been destroyed by Close(),
-		// and then we call OnPacketRTP on that sink.
+		// Copy the sinks out, to be safe during stream Close()
 		s.sinksLock.Lock()
 		sinks := gen.CopySlice(s.sinks)
 		s.sinksLock.Unlock()
@@ -170,17 +163,23 @@ func (s *Stream) Close() {
 	s.sinks = []sinkObj{}
 	s.sinksLock.Unlock()
 
+	//s.Log.Infof("Closing stream - sending StreamMsgTypeClose")
 	for _, sink := range sinks {
 		s.sendSinkMsg(sink.ch, StreamMsgTypeClose, nil)
 	}
 }
 
 // Estimate the frame rate
-func (s *Stream) FPS() float64 {
+func (s *Stream) FPSFloat() float64 {
 	s.recentFramesLock.Lock()
 	defer s.recentFramesLock.Unlock()
 
 	return s.fpsNoMutexLock()
+}
+
+// Estimate the frame rate
+func (s *Stream) FPS() int {
+	return int(math.Round(s.FPSFloat()))
 }
 
 func (s *Stream) fpsNoMutexLock() float64 {
@@ -239,7 +238,7 @@ func (s *Stream) RemoveSink(sink StreamSink) {
 
 func (s *Stream) sendSinkMsg(sink StreamSinkChan, msgType StreamMsgType, packet *gortsplib.ClientOnPacketRTPCtx) {
 	sink <- StreamMsg{
-		Type:   StreamMsgTypePacket,
+		Type:   msgType,
 		Stream: s,
 		Packet: packet,
 	}

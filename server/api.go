@@ -1,7 +1,6 @@
 package server
 
 import (
-	"net/http"
 	"path/filepath"
 
 	"github.com/bmharper/cyclops/server/staticfiles"
@@ -9,16 +8,18 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// port example: ":8080"
-func (s *Server) SetupHTTP(port string) {
-
+func (s *Server) SetupHTTP() {
 	router := httprouter.New()
+
 	//www.Handle(s.Log, router, "GET", "/", s.httpIndex)
 	www.Handle(s.Log, router, "GET", "/api/system/info", s.httpSystemGetInfo)
-	www.Handle(s.Log, router, "GET", "/api/camera/info/:index", s.httpCamGetInfo)
-	www.Handle(s.Log, router, "GET", "/api/camera/latestImage/:index", s.httpCamGetLatestImage)
-	www.Handle(s.Log, router, "GET", "/api/camera/recentVideo/:index", s.httpCamGetRecentVideo)
-	www.Handle(s.Log, router, "GET", "/api/ws/camera/stream/:resolution/:index", s.httpCamStreamVideo)
+	www.Handle(s.Log, router, "POST", "/api/system/restart", s.httpSystemRestart)
+	www.Handle(s.Log, router, "GET", "/api/camera/info/:id", s.httpCamGetInfo)
+	www.Handle(s.Log, router, "GET", "/api/camera/latestImage/:id", s.httpCamGetLatestImage)
+	www.Handle(s.Log, router, "GET", "/api/camera/recentVideo/:id", s.httpCamGetRecentVideo)
+	www.Handle(s.Log, router, "GET", "/api/ws/camera/stream/:resolution/:id", s.httpCamStreamVideo)
+	www.Handle(s.Log, router, "POST", "/api/config/addCamera", s.httpConfigAddCamera)
+	www.Handle(s.Log, router, "POST", "/api/config/setVariable/:key", s.httpConfigSetVariable)
 
 	isImmutable := false
 	root, err := filepath.Abs("debug/www")
@@ -28,6 +29,5 @@ func (s *Server) SetupHTTP(port string) {
 	static := staticfiles.NewCachedStaticFileServer(root, []string{}, s.Log, isImmutable, nil)
 	router.NotFound = static
 
-	s.Log.Infof("Listening on %v", port)
-	http.ListenAndServe(port, router)
+	s.httpRouter = router
 }

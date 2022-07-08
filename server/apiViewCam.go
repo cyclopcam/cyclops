@@ -1,7 +1,6 @@
 package server
 
 import (
-	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -24,19 +23,24 @@ func parseResolutionOrPanic(res string) camera.Resolution {
 	return camera.ResolutionHigh
 }
 
-func (s *Server) getCameraIndexOrPanic(idxStr string) int {
-	idx, _ := strconv.Atoi(idxStr)
-	if idx < 0 || idx >= len(s.Cameras) {
-		www.PanicBadRequestf("Invalid camera index %v. Valid values are %v .. %v", idx, 0, len(s.Cameras)-1)
+func (s *Server) getCameraFromIDOrPanic(idStr string) *camera.Camera {
+	id, _ := strconv.ParseInt(idStr, 10, 64)
+	cam := s.CameraFromID(id)
+	if cam == nil {
+		www.PanicBadRequestf("Invalid camera ID '%v'", idStr)
 	}
-	return idx
+	return cam
 }
 
 type streamInfoJSON struct {
 	FPS int `json:"fps"`
 }
 
+// See CameraInfo in www
+// camInfoJSON holds information about a running camera. This is distinct from
+// it's configuration, which is stored in model.Camera
 type camInfoJSON struct {
+	ID   int64          `json:"id"`
 	Name string         `json:"name"`
 	Low  streamInfoJSON `json:"low"`
 	High streamInfoJSON `json:"high"`
@@ -44,30 +48,31 @@ type camInfoJSON struct {
 
 func toCamInfoJSON(c *camera.Camera) *camInfoJSON {
 	return &camInfoJSON{
+		ID:   c.ID,
 		Name: c.Name,
 		Low: streamInfoJSON{
-			FPS: int(math.Round(c.LowStream.FPS())),
+			FPS: c.LowStream.FPS(),
 		},
 		High: streamInfoJSON{
-			FPS: int(math.Round(c.HighStream.FPS())),
+			FPS: c.HighStream.FPS(),
 		},
 	}
 }
 
 func (s *Server) httpCamGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	idx := s.getCameraIndexOrPanic(params.ByName("index"))
-	www.SendJSON(w, toCamInfoJSON(s.Cameras[idx]))
+	cam := s.getCameraFromIDOrPanic(params.ByName("id"))
+	www.SendJSON(w, toCamInfoJSON(cam))
 }
 
 // Fetch a low res JPG of the camera's last image.
 // Example: curl -o img.jpg localhost:8080/camera/latestImage/0
 func (s *Server) httpCamGetLatestImage(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	idx := s.getCameraIndexOrPanic(params.ByName("index"))
+	cam := s.getCameraFromIDOrPanic(params.ByName("id"))
 
 	www.CacheNever(w)
 
 	contentType := "image/jpeg"
-	img := s.Cameras[idx].LatestImage(contentType)
+	img := cam.LatestImage(contentType)
 	if img == nil {
 		www.PanicBadRequestf("No image available yet")
 	}
@@ -80,7 +85,7 @@ func (s *Server) httpCamGetLatestImage(w http.ResponseWriter, r *http.Request, p
 // default duration is 5 seconds
 // Example: curl -o recent.mp4 localhost:8080/camera/recentVideo/0?duration=15s
 func (s *Server) httpCamGetRecentVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	idx := s.getCameraIndexOrPanic(params.ByName("index"))
+	cam := s.getCameraFromIDOrPanic(params.ByName("id"))
 	duration, _ := time.ParseDuration(r.URL.Query().Get("duration"))
 	if duration <= 0 {
 		duration = 5 * time.Second
@@ -90,7 +95,7 @@ func (s *Server) httpCamGetRecentVideo(w http.ResponseWriter, r *http.Request, p
 
 	contentType := "video/mp4"
 	fn := s.TempFiles.Get()
-	raw, err := s.Cameras[idx].ExtractHighRes(camera.ExtractMethodClone, duration)
+	raw, err := cam.ExtractHighRes(camera.ExtractMethodClone, duration)
 	www.Check(err)
 	www.Check(raw.SaveToMP4(fn))
 
@@ -98,9 +103,9 @@ func (s *Server) httpCamGetRecentVideo(w http.ResponseWriter, r *http.Request, p
 }
 
 func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	idx := s.getCameraIndexOrPanic(params.ByName("index"))
+	cam := s.getCameraFromIDOrPanic(params.ByName("id"))
 	res := parseResolutionOrPanic(params.ByName("resolution"))
-	stream := s.Cameras[idx].GetStream(res)
+	stream := cam.GetStream(res)
 
 	s.Log.Infof("httpCamStreamVideo websocket upgrading")
 

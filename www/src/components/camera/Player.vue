@@ -24,10 +24,10 @@ function parse(data: ArrayBuffer) {
 }
 
 function play() {
-	var socketURL = "ws://" + window.location.host + "/api/ws/camera/stream/low/" + props.camera.index;
+	var socketURL = "ws://" + window.location.host + "/api/ws/camera/stream/low/" + props.camera.id;
 	console.log("Play " + socketURL);
 	muxer = new JMuxer({
-		node: 'camera' + props.camera.index,
+		node: 'camera' + props.camera.id,
 		mode: "video",
 		debug: false,
 		fps: 10,
@@ -54,8 +54,8 @@ onMounted(() => {
 
 <template>
 	<div>
-		<div> {{ camera.index }} {{ camera.name }} </div>
-		<video :id="'camera' + camera.index" controls autoplay />
+		<div> {{ camera.id }} {{ camera.name }} </div>
+		<video :id="'camera' + camera.id" controls autoplay />
 	</div>
 </template>
 

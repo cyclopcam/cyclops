@@ -19,6 +19,8 @@ require (
 
 require (
 	cloud.google.com/go v0.81.0 // indirect
+	github.com/BurntSushi/migration v0.0.0-20140125045755-c45b897f1335 // indirect
+	github.com/akamensky/argparse v1.3.1 // indirect
 	github.com/asticode/go-astikit v0.20.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsoprea/go-exif/v3 v3.0.0-20210625224831-a6301f85c82b // indirect
@@ -35,13 +37,25 @@ require (
 	github.com/google/go-cmp v0.5.5 // indirect
 	github.com/googleapis/gax-go/v2 v2.0.5 // indirect
 	github.com/icza/bitio v1.1.0 // indirect
+	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
+	github.com/jackc/pgconn v1.12.1 // indirect
+	github.com/jackc/pgio v1.0.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgproto3/v2 v2.3.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
+	github.com/jackc/pgtype v1.11.0 // indirect
+	github.com/jackc/pgx/v4 v4.16.1 // indirect
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/jstemmer/go-junit-report v0.9.1 // indirect
+	github.com/mattn/go-sqlite3 v1.14.14 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.9 // indirect
 	github.com/pion/rtp v1.7.13 // indirect
 	github.com/pion/sdp/v3 v3.0.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go.opencensus.io v0.23.0 // indirect
+	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
 	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
 	golang.org/x/mod v0.4.1 // indirect
 	golang.org/x/net v0.0.0-20220526153639-5463443f8c37 // indirect
@@ -58,4 +72,7 @@ require (
 	google.golang.org/protobuf v1.26.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gorm.io/driver/postgres v1.3.8 // indirect
+	gorm.io/driver/sqlite v1.3.5 // indirect
+	gorm.io/gorm v1.23.7 // indirect
 )
