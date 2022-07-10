@@ -102,9 +102,7 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream) {
 		case msg := <-s.incoming:
 			switch msg.Type {
 			case StreamMsgTypeClose:
-				if s.debug {
-					s.log.Infof("VideoWebSocketStreamer.Run StreamMsgTypeClose")
-				}
+				s.log.Infof("VideoWebSocketStreamer.Run StreamMsgTypeClose")
 				s.closed = true
 				break
 			case StreamMsgTypePacket:
@@ -113,9 +111,7 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream) {
 		case wsMsg := <-s.fromWebSocket:
 			switch wsMsg {
 			case webSocketMsgClosed:
-				if s.debug {
-					s.log.Infof("VideoWebSocketStreamer.Run webSocketMsgClosed")
-				}
+				s.log.Infof("VideoWebSocketStreamer.Run webSocketMsgClosed")
 				webSocketClosed = true
 				s.closed = true
 				break
@@ -147,7 +143,7 @@ func (s *VideoWebSocketStreamer) webSocketReader(conn *websocket.Conn) {
 }
 
 // Run a thread that is responsible for writing to the websocket.
-// We run this on a separate thread so that if a client is slow,
+// We run this on a separate thread so that if a client (aka browser) is slow,
 // it doesn't end up blocking camera packets from being received,
 // and we can detect the blockage.
 func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
