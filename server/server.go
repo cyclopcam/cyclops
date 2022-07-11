@@ -14,6 +14,7 @@ import (
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/dbh"
+	"github.com/bmharper/cyclops/server/eventdb"
 	"github.com/bmharper/cyclops/server/gen"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/util"
@@ -24,11 +25,10 @@ import (
 
 type Server struct {
 	Log              log.Log
-	ConfigDBFilename string
-	StorageRoot      string // Where we store our videos
+	ConfigDBFilename string // Path to sqlite config DB
 	TempFiles        *util.TempFiles
 	RingBufferSize   int
-	IsShutdown       int32 // 1 if we were shutdown with an explicit call to Shutdown
+	IsShutdownV      int32 // 1 if we were shutdown with an explicit call to Shutdown. Use IsShutdown() for a thread-safe check if IsShutdownV is true.
 	MustRestart      bool  // Value of the 'restart' parameter to Shutdown()
 	ShutdownComplete chan error
 
@@ -36,13 +36,16 @@ type Server struct {
 	cameras      []*camera.Camera
 	cameraFromID map[int64]*camera.Camera
 
-	signalIn         chan os.Signal
-	httpServer       *http.Server
-	httpRouter       *httprouter.Router
-	configDB         *gorm.DB
-	permanentEventDB *gorm.DB
-	eventDB          *gorm.DB
-	wsUpgrader       websocket.Upgrader
+	signalIn        chan os.Signal
+	httpServer      *http.Server
+	httpRouter      *httprouter.Router
+	configDB        *gorm.DB
+	permanentEvents *eventdb.EventDB // Where we store our permanent videos
+	recentEvents    *eventdb.EventDB // Where we store our recent event videos
+	wsUpgrader      websocket.Upgrader
+
+	recorderStartStopLock sync.Mutex
+	recorderStop          chan bool // Sent to recorder to tell it to step
 }
 
 // After calling NewServer, you must call LoadConfig() to setup additional things like
@@ -93,11 +96,23 @@ func (s *Server) ListenForInterruptSignal() {
 	}()
 }
 
+func (s *Server) IsShutdown() bool {
+	return atomic.LoadInt32(&s.IsShutdownV) != 0
+}
+
 func (s *Server) Shutdown(restart bool) {
 	s.Log.Infof("Shutdown (restart = %v)", restart)
-	atomic.StoreInt32(&s.IsShutdown, 1)
+	atomic.StoreInt32(&s.IsShutdownV, 1)
 	s.MustRestart = restart
+
+	// cancel signal handler (we'll re-enable it again if we restart)
 	signal.Stop(s.signalIn)
+
+	s.recorderStartStopLock.Lock()
+	if s.recorderStop != nil {
+		s.recorderStop <- true
+	}
+	s.recorderStartStopLock.Unlock()
 
 	// CloseAllCameras() should close all WebSockets, by virtue of the Streams closing, which sends
 	// a message to the websocket thread.
@@ -127,14 +142,16 @@ func (s *Server) openConfigDB() error {
 
 // Returns nil if the system is ready to start listening to cameras
 // Returns an error if some part of the system needs configuring
+// The idea is that the web client will continue to show the configuration page
+// until IsReady() returns true.
 func (s *Server) IsReady() error {
 	if s.TempFiles == nil {
 		return fmt.Errorf("Variable %v is not set (for temporary files location)", configdb.VarTempFilePath)
 	}
-	if s.permanentEventDB == nil {
+	if s.permanentEvents == nil {
 		return fmt.Errorf("Variable %v is not set (for permanent event storage)", configdb.VarPermanentStoragePath)
 	}
-	if s.eventDB == nil {
+	if s.recentEvents == nil {
 		return fmt.Errorf("Variable %v is not set (for recent event storage)", configdb.VarRecentEventStoragePath)
 	}
 	return nil
@@ -152,6 +169,7 @@ func (s *Server) Cameras() []*camera.Camera {
 	return gen.CopySlice(s.cameras)
 }
 
+// Add a newly configured, running camera
 func (s *Server) AddCamera(cam *camera.Camera) {
 	s.camerasLock.Lock()
 	defer s.camerasLock.Unlock()
@@ -202,7 +220,7 @@ func (s *Server) LoadCamerasFromConfig() error {
 		return err
 	}
 	for _, cam := range cams {
-		if camera, err := camera.NewCamera2(s.Log, cam, s.RingBufferSize); err != nil {
+		if camera, err := camera.NewCamera(s.Log, cam, s.RingBufferSize); err != nil {
 			return err
 		} else {
 			camera.ID = cam.ID

@@ -30,25 +30,7 @@ type Camera struct {
 	highResURL string
 }
 
-func NewCamera(name string, log log.Log, lowResURL, highResURL string, ringBufferSizeBytes int) (*Camera, error) {
-	highDumper := NewVideoDumpReader(ringBufferSizeBytes)
-	lowDecoder := NewVideoDecodeReader()
-	high := NewStream(log, name, "high")
-	low := NewStream(log, name, "low")
-
-	return &Camera{
-		Name:       name,
-		Log:        log,
-		LowStream:  low,
-		HighStream: high,
-		HighDumper: highDumper,
-		LowDecoder: lowDecoder,
-		lowResURL:  lowResURL,
-		highResURL: highResURL,
-	}, nil
-}
-
-func NewCamera2(log log.Log, cam configdb.Camera, ringBufferSizeBytes int) (*Camera, error) {
+func NewCamera(log log.Log, cam configdb.Camera, ringBufferSizeBytes int) (*Camera, error) {
 	baseURL := "rtsp://" + cam.Username + ":" + cam.Password + "@" + cam.Host
 	if cam.Port == 0 {
 		baseURL += ":554"

@@ -14,7 +14,7 @@ func (s *Server) httpConfigAddCamera(w http.ResponseWriter, r *http.Request, par
 	www.ReadJSON(w, r, &cam, 1024*1024)
 	cam.ID = 0
 
-	camera, err := camera.NewCamera2(s.Log, cam, s.RingBufferSize)
+	camera, err := camera.NewCamera(s.Log, cam, s.RingBufferSize)
 	www.Check(err)
 
 	// Make sure we can talk to the camera

@@ -60,14 +60,14 @@ func toCamInfoJSON(c *camera.Camera) *camInfoJSON {
 }
 
 func (s *Server) httpCamGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	cam := s.getCameraFromIDOrPanic(params.ByName("id"))
+	cam := s.getCameraFromIDOrPanic(params.ByName("cameraID"))
 	www.SendJSON(w, toCamInfoJSON(cam))
 }
 
 // Fetch a low res JPG of the camera's last image.
 // Example: curl -o img.jpg localhost:8080/camera/latestImage/0
 func (s *Server) httpCamGetLatestImage(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	cam := s.getCameraFromIDOrPanic(params.ByName("id"))
+	cam := s.getCameraFromIDOrPanic(params.ByName("cameraID"))
 
 	www.CacheNever(w)
 
@@ -85,7 +85,7 @@ func (s *Server) httpCamGetLatestImage(w http.ResponseWriter, r *http.Request, p
 // default duration is 5 seconds
 // Example: curl -o recent.mp4 localhost:8080/camera/recentVideo/0?duration=15s
 func (s *Server) httpCamGetRecentVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	cam := s.getCameraFromIDOrPanic(params.ByName("id"))
+	cam := s.getCameraFromIDOrPanic(params.ByName("cameraID"))
 	duration, _ := time.ParseDuration(r.URL.Query().Get("duration"))
 	if duration <= 0 {
 		duration = 5 * time.Second
@@ -103,7 +103,7 @@ func (s *Server) httpCamGetRecentVideo(w http.ResponseWriter, r *http.Request, p
 }
 
 func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	cam := s.getCameraFromIDOrPanic(params.ByName("id"))
+	cam := s.getCameraFromIDOrPanic(params.ByName("cameraID"))
 	res := parseResolutionOrPanic(params.ByName("resolution"))
 	stream := cam.GetStream(res)
 
