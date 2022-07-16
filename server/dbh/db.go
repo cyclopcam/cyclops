@@ -11,6 +11,7 @@ import (
 
 	"github.com/BurntSushi/migration"
 	"github.com/bmharper/cyclops/server/log"
+	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"

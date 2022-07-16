@@ -16,10 +16,25 @@ func Migrations(log log.Log) []migration.Migrator {
 			id INTEGER PRIMARY KEY,
 			random_id TEXT NOT NULL,
 			start_time INT NOT NULL,
-			format TEXT NOT NULL
+			bar_time INT,
+			format TEXT NOT NULL,
+			labels BLOB
 		);
 
 		`))
 
 	return migs
 }
+
+/*
+	CREATE TABLE recording(
+		id BIGSERIAL PRIMARY KEY,
+		random_id TEXT NOT NULL,
+		start_time BIGINT NOT NULL,
+		foo_time BIGINT,
+		bar_time BIGINT,
+		format TEXT NOT NULL,
+		labels JSONB,
+		labels2 JSONB
+	);
+*/

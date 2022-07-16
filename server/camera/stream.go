@@ -77,7 +77,7 @@ type Stream struct {
 
 func NewStream(logger log.Log, cameraName, streamName string) *Stream {
 	return &Stream{
-		Log:          log.NewPrefixLogger(logger, "Stream "+cameraName+"."+streamName+" "),
+		Log:          log.NewPrefixLogger(logger, "Stream "+cameraName+"."+streamName),
 		recentFrames: ringbuffer.NewRingP[time.Duration](64),
 		CameraName:   cameraName,
 		StreamName:   streamName,

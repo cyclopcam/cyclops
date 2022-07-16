@@ -8,6 +8,11 @@ type PrefixLogger struct {
 
 // Create a new PrefixLogger
 func NewPrefixLogger(log Log, prefix string) *PrefixLogger {
+	return NewPrefixLoggerNoSpace(log, prefix+" ")
+}
+
+// Create a new PrefixLogger, but don't add a space onto 'prefix'
+func NewPrefixLoggerNoSpace(log Log, prefix string) *PrefixLogger {
 	return &PrefixLogger{
 		Log:    log,
 		Prefix: prefix,

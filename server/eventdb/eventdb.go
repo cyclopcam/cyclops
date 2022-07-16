@@ -3,6 +3,7 @@ package eventdb
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,13 +34,74 @@ func Open(log log.Log, root string) (*EventDB, error) {
 
 	log.Infof("Opening DB at '%v'", root)
 	dbPath := filepath.Join(root, "events.sqlite")
+	os.Remove(dbPath)
 	eventDB, err := dbh.OpenDB(log, dbh.DriverSqlite, dbPath, Migrations(log), 0)
+	/*
+		xx := dbh.DBConfig{
+			Driver:   "postgres",
+			Host:     "localhost",
+			Port:     5432,
+			Database: "foo",
+			Username: "postgres",
+			Password: "password",
+		}
+		dbPath = xx.DSN()
+		eventDB, err := dbh.OpenDB(log, dbh.DriverPostgres, xx.DSN(), Migrations(log), dbh.DBConnectFlagWipeDB)
+	*/
 	if err == nil {
-		return &EventDB{
-			log:  log,
-			db:   eventDB,
-			root: root,
-		}, nil
+		log.Infof("create1")
+		labels := Labels{
+			Tags: []string{"foox", "barz"},
+		}
+		//jj, _ := json.Marshal(Labels{
+		//	Tags: []string{"foo", "bar"},
+		//})
+		rec := &Recording{
+			RandomID:  "123",
+			StartTime: dbh.MakeIntTime(time.Now()),
+			//FooTime:   dbh.Milli(time.Now()),
+			BarTime: dbh.MakeIntTime(time.Now()),
+			Format:  "mp4",
+			//Labels:    &jf,
+			Labels: MakeJSONField(labels),
+			//Labels2: MakeJSONField2(labels),
+		}
+		ee := eventDB.Create(rec).Error
+		log.Infof("create2: %v", ee)
+
+		rec = &Recording{
+			RandomID:  "555",
+			StartTime: dbh.MakeIntTime(time.Now()),
+			Format:    "mp4",
+		}
+		ee = eventDB.Create(rec).Error
+		log.Infof("create3: %v", ee)
+
+		rec2 := Recording{}
+		ee = eventDB.First(&rec2, "random_id = '123'").Error
+		log.Infof("fetch1: %v", ee)
+		log.Infof("fetch1: %v", rec2)
+		rec2J, _ := json.Marshal(&rec2)
+		log.Infof("fetch1J: %v", string(rec2J))
+
+		rec3 := Recording{}
+		ee = eventDB.First(&rec3, "random_id = '555'").Error
+		log.Infof("fetch2: %v", ee)
+		log.Infof("fetch2: %v", rec3)
+		//log.Infof("fetch2 isFooTimeZero: %v", rec3.FooTime.IsZero())
+		rec3J, _ := json.Marshal(&rec3)
+		log.Infof("fetch2J: %v", string(rec3J))
+
+		zeroTime := time.Time{}
+		log.Infof("zeroTime: %v", zeroTime)
+
+		return nil, fmt.Errorf("foo!")
+
+		//return &EventDB{
+		//	log:  log,
+		//	db:   eventDB,
+		//	root: root,
+		//}, nil
 	} else {
 		err = fmt.Errorf("Failed to open database %v: %w", dbPath, err)
 	}

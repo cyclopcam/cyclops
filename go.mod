@@ -8,19 +8,24 @@ go 1.18
 
 require (
 	cloud.google.com/go/logging v1.4.2
+	github.com/BurntSushi/migration v0.0.0-20140125045755-c45b897f1335
+	github.com/akamensky/argparse v1.3.1
 	github.com/aler9/gortsplib v0.0.0-20220606105133-0101ad961ccd
 	github.com/asticode/go-astits v1.10.0
 	github.com/bmharper/cimg/v2 v2.0.4
 	github.com/bmharper/ringbuffer v1.1.2
 	github.com/gorilla/websocket v1.5.0
 	github.com/julienschmidt/httprouter v1.3.0
+	github.com/lib/pq v1.10.2
+	github.com/mattn/go-sqlite3 v1.14.14
 	github.com/stretchr/testify v1.7.2
+	gorm.io/driver/postgres v1.3.8
+	gorm.io/driver/sqlite v1.3.5
+	gorm.io/gorm v1.23.7
 )
 
 require (
 	cloud.google.com/go v0.81.0 // indirect
-	github.com/BurntSushi/migration v0.0.0-20140125045755-c45b897f1335 // indirect
-	github.com/akamensky/argparse v1.3.1 // indirect
 	github.com/asticode/go-astikit v0.20.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsoprea/go-exif/v3 v3.0.0-20210625224831-a6301f85c82b // indirect
@@ -48,7 +53,6 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/jstemmer/go-junit-report v0.9.1 // indirect
-	github.com/mattn/go-sqlite3 v1.14.14 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.9 // indirect
 	github.com/pion/rtp v1.7.13 // indirect
@@ -72,7 +76,4 @@ require (
 	google.golang.org/protobuf v1.26.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	gorm.io/driver/postgres v1.3.8 // indirect
-	gorm.io/driver/sqlite v1.3.5 // indirect
-	gorm.io/gorm v1.23.7 // indirect
 )
