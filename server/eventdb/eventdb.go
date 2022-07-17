@@ -63,7 +63,7 @@ func Open(log log.Log, root string) (*EventDB, error) {
 			BarTime: dbh.MakeIntTime(time.Now()),
 			Format:  "mp4",
 			//Labels:    &jf,
-			Labels: MakeJSONField(labels),
+			Labels: dbh.MakeJSONField(labels),
 			//Labels2: MakeJSONField2(labels),
 		}
 		ee := eventDB.Create(rec).Error
