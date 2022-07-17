@@ -56,6 +56,11 @@ type sinkObj struct {
 	ch   StreamSinkChan
 }
 
+type StreamInfo struct {
+	Width  int
+	Height int
+}
+
 type Stream struct {
 	Log        log.Log
 	Client     gortsplib.Client
@@ -69,6 +74,9 @@ type Stream struct {
 
 	sinksLock sync.Mutex
 	sinks     []sinkObj
+
+	infoLock sync.Mutex
+	info     *StreamInfo // With Go 1.19 one could use atomic.Pointer[T] here
 
 	recentFramesLock sync.Mutex
 	recentFrames     ringbuffer.RingP[time.Duration]
@@ -131,6 +139,15 @@ func (s *Stream) Listen(address string) error {
 		sinks := gen.CopySlice(s.sinks)
 		s.sinksLock.Unlock()
 
+		// Populate width & height.
+		s.infoLock.Lock()
+		if s.info == nil {
+			if inf := s.extractSPSInfo(ctx.H264NALUs); inf != nil {
+				s.info = inf
+			}
+		}
+		s.infoLock.Unlock()
+
 		s.countFrames(ctx)
 
 		//s.Log.Infof("Packet %v", ctx.H264PTS)
@@ -167,6 +184,32 @@ func (s *Stream) Close() {
 	for _, sink := range sinks {
 		s.sendSinkMsg(sink.ch, StreamMsgTypeClose, nil)
 	}
+}
+
+func (s *Stream) extractSPSInfo(nalus [][]byte) *StreamInfo {
+	for _, nalu := range nalus {
+		if len(nalu) == 0 {
+			continue
+		}
+		if h264.NALUType(nalu[0]&31) == h264.NALUTypeSPS {
+			width, height, err := videox.ParseSPS(nalu)
+			if err != nil {
+				s.Log.Errorf("Failed to decode SPS: %v", err)
+			}
+			return &StreamInfo{
+				Width:  width,
+				Height: height,
+			}
+		}
+	}
+	return nil
+}
+
+// Return the stream info, or nil if we have not yet encountered the necessary NALUs
+func (s *Stream) Info() *StreamInfo {
+	s.infoLock.Lock()
+	defer s.infoLock.Unlock()
+	return s.info
 }
 
 // Estimate the frame rate

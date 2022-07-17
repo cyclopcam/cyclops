@@ -191,30 +191,14 @@ func (d *H264Decoder) sendPacket(nalu NALU) error {
 		nalu = nalu.CloneWithPrefix()
 	}
 
-	//pkt := unsafe.Pointer(&d.avPacket)
-	//C.SetPacketDataPointer(pkt, unsafe.Pointer(&nalu.Payload[0]), C.ulong(len(nalu.Payload)))
-
-	// why on earth doesn't this work?... it works inside helper.go!
-	//dataPtr := unsafe.Pointer(&nalu.Payload[0])
-	//dataPtrC := (*C.uchar)(dataPtr)
-	//d.avPacket.data = dataPtrC
-
-	//clone := make([]uint8, len(nalu.Payload))
-	//copy(clone, nalu.Payload)
-	//d.avPacket.data = unsafe.Pointer(&clone[0])
-	//defer C.free(unsafe.Pointer(d.avPacket.data))
-
 	// The following doesn't work, because we're storing a Go pointer inside a C struct,
 	// and then passing that C struct to a C function. So to fix this, we need to define
-	// a helper function in C
-	//d.avPacket.data = (*C.uint8_t)(unsafe.Pointer(&nalu.Payload[0]))
-
-	// This did work.. but it's a wasteful memcpy
-	//d.avPacket.data = (*C.uint8_t)(C.CBytes(nalu.Payload))
-	//defer C.free(unsafe.Pointer(d.avPacket.data))
-
-	//d.avPacket.size = C.int(len(nalu.Payload))
-	//res := C.avcodec_send_packet(d.codecCtx, &d.avPacket)
+	// a helper function in C.
+	// d.avPacket.data = (*C.uint8_t)(unsafe.Pointer(&nalu.Payload[0]))
+	// This is why I created AvCodecSendPacket.
+	// Using a Go struct for the C struct is anyway not future compatible, because the avcodec
+	// API is deprecating the fixed struct size, and rather moving to requiring the use of
+	// an alloc function to create a packet.
 
 	res := C.AvCodecSendPacket(d.codecCtx, unsafe.Pointer(&nalu.Payload[0]), C.ulong(len(nalu.Payload)))
 	if res < 0 {

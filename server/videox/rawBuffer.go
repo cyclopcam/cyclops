@@ -1,6 +1,7 @@
 package videox
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,16 +10,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/bmharper/cyclops/server/gen"
 	"github.com/bmharper/cyclops/server/log"
 )
-
-// #include "h264ParseSPS.h"
-import "C"
 
 var NALUPrefix = []byte{0x00, 0x00, 0x01}
 
@@ -188,51 +185,27 @@ func (r *RawBuffer) DecodeHeader() (width, height int, err error) {
 	if sps == nil {
 		return 0, 0, fmt.Errorf("Failed to find SPS NALU")
 	}
-	raw := sps.RawPayload()
-	var cwidth C.int
-	var cheight C.int
-	C.ParseSPS(unsafe.Pointer(&raw[0]), C.ulong(len(raw)), &cwidth, &cheight)
-	width = int(cwidth)
-	height = int(cheight)
-	return
-
-	/*
-		sps := r.FirstNALUOfType(h264.NALUTypeSPS)
-		pps := r.FirstNALUOfType(h264.NALUTypePPS)
-		if sps == nil || pps == nil {
-			return 0, 0, fmt.Errorf("Failed to find SPS and/or PPS")
-		}
-
-		decoder, err := NewH264Decoder()
-		if err != nil {
-			return
-		}
-		defer decoder.Close()
-
-		if err = decoder.DecodeAndDiscard(*sps); err != nil {
-			//return 0, 0, fmt.Errorf("Failed to decode SPS: %w", err)
-		}
-		if err = decoder.DecodeAndDiscard(*pps); err != nil {
-			//return 0, 0, fmt.Errorf("Failed to decode PPS: %w", err)
-		}
-		if err = decoder.DecodeAndDiscard(r.Packets[2].H264NALUs[0]); err != nil {
-			//return 0, 0, fmt.Errorf("Failed to decode PPS: %w", err)
-		}
-
-		return decoder.Width(), decoder.Height(), nil
-	*/
+	return ParseSPS(sps.RawPayload())
 }
 
-// Returns the first SPS NALU, or nil if none found
+// Returns the first NALU of the given type, or nil if none found
 func (r *RawBuffer) FirstNALUOfType(ofType h264.NALUType) *NALU {
-	for _, packet := range r.Packets {
-		for i := range packet.H264NALUs {
-			if packet.H264NALUs[i].Type() == ofType {
-				return &packet.H264NALUs[i]
+	i, j := r.IndexOfFirstNALUOfType(ofType)
+	if i == -1 {
+		return nil
+	}
+	return &r.Packets[i].H264NALUs[j]
+}
+
+func (r *RawBuffer) IndexOfFirstNALUOfType(ofType h264.NALUType) (packetIdx int, indexInPacket int) {
+	for i, packet := range r.Packets {
+		for j := range packet.H264NALUs {
+			if packet.H264NALUs[j].Type() == ofType {
+				return i, j
 			}
 		}
 	}
-	return nil
+	return -1, -1
 }
 
 func (r *RawBuffer) SaveToMP4(filename string) error {
@@ -241,6 +214,20 @@ func (r *RawBuffer) SaveToMP4(filename string) error {
 		return err
 	}
 
+	firstSPS := r.FirstNALUOfType(h264.NALUTypeSPS)
+	firstPPS := r.FirstNALUOfType(h264.NALUTypePPS)
+	firstIDR_i, _ := r.IndexOfFirstNALUOfType(h264.NALUTypeIDR)
+	if firstSPS == nil {
+		return errors.New("No SPS found")
+	}
+	if firstPPS == nil {
+		return errors.New("No PPS found")
+	}
+	if firstIDR_i == -1 {
+		return errors.New("No IDR found")
+	}
+	baseTime := r.Packets[firstIDR_i].H264PTS
+
 	//enc, err := NewVideoEncoder("mp4", filename, 2048, 1536)
 	enc, err := NewVideoEncoder("mp4", filename, width, height)
 	if err != nil {
@@ -248,18 +235,26 @@ func (r *RawBuffer) SaveToMP4(filename string) error {
 	}
 	defer enc.Close()
 
-	baseTime := r.Packets[0].H264PTS
+	err = enc.WritePacket(0, 0, *firstSPS)
+	if err != nil {
+		return err
+	}
+	err = enc.WritePacket(0, 0, *firstPPS)
+	if err != nil {
+		return err
+	}
 
-	for _, packet := range r.Packets {
+	for _, packet := range r.Packets[firstIDR_i:] {
 		dts := packet.H264PTS - baseTime
-		pts := dts + time.Nanosecond*1000
+		//pts := dts + time.Nanosecond*1000
+		pts := dts
 		for _, nalu := range packet.H264NALUs {
 			err := enc.WritePacket(dts, pts, nalu)
 			if err != nil {
 				return err
 			}
-			dts += 10000
-			pts += 10000
+			//dts += 10000
+			//pts += 10000
 		}
 	}
 
@@ -285,6 +280,17 @@ func (r *RawBuffer) DumpBin(dir string) error {
 		}
 	}
 	return nil
+}
+
+// Adjust all PTS values so that the first frame start at time 0
+func (r *RawBuffer) ResetPTS() {
+	if len(r.Packets) == 0 {
+		return
+	}
+	offset := r.Packets[0].H264PTS
+	for _, p := range r.Packets {
+		p.H264PTS -= offset
+	}
 }
 
 // This is just used for debugging and testing

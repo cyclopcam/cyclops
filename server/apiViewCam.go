@@ -33,7 +33,9 @@ func (s *Server) getCameraFromIDOrPanic(idStr string) *camera.Camera {
 }
 
 type streamInfoJSON struct {
-	FPS int `json:"fps"`
+	FPS    int `json:"fps"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
 // See CameraInfo in www
@@ -46,17 +48,26 @@ type camInfoJSON struct {
 	High streamInfoJSON `json:"high"`
 }
 
+func toStreamInfoJSON(s *camera.Stream) streamInfoJSON {
+	r := streamInfoJSON{
+		FPS: s.FPS(),
+	}
+	inf := s.Info()
+	if inf != nil {
+		r.Width = inf.Width
+		r.Height = inf.Height
+	}
+	return r
+}
+
 func toCamInfoJSON(c *camera.Camera) *camInfoJSON {
-	return &camInfoJSON{
+	r := &camInfoJSON{
 		ID:   c.ID,
 		Name: c.Name,
-		Low: streamInfoJSON{
-			FPS: c.LowStream.FPS(),
-		},
-		High: streamInfoJSON{
-			FPS: c.HighStream.FPS(),
-		},
+		Low:  toStreamInfoJSON(c.LowStream),
+		High: toStreamInfoJSON(c.HighStream),
 	}
+	return r
 }
 
 func (s *Server) httpCamGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
