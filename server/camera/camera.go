@@ -26,6 +26,7 @@ type Camera struct {
 	HighStream *Stream
 	HighDumper *VideoDumpReader
 	LowDecoder *VideoDecodeReader
+	LowDumper  *VideoDumpReader
 	lowResURL  string
 	highResURL string
 }
@@ -48,6 +49,7 @@ func NewCamera(log log.Log, cam configdb.Camera, ringBufferSizeBytes int) (*Came
 	}
 
 	highDumper := NewVideoDumpReader(ringBufferSizeBytes)
+	lowDumper := NewVideoDumpReader(1024 * 1024) // just enough so that we always have at least 1 IDR in memory
 	lowDecoder := NewVideoDecodeReader()
 	high := NewStream(log, cam.Name, "high")
 	low := NewStream(log, cam.Name, "low")
@@ -59,6 +61,7 @@ func NewCamera(log log.Log, cam configdb.Camera, ringBufferSizeBytes int) (*Came
 		HighStream: high,
 		HighDumper: highDumper,
 		LowDecoder: lowDecoder,
+		LowDumper:  lowDumper,
 		lowResURL:  lowResURL,
 		highResURL: highResURL,
 	}, nil
@@ -75,6 +78,9 @@ func (c *Camera) Start() error {
 		return err
 	}
 	if err := c.LowStream.ConnectSinkAndRun(c.LowDecoder); err != nil {
+		return err
+	}
+	if err := c.LowStream.ConnectSinkAndRun(c.LowDumper); err != nil {
 		return err
 	}
 	return nil

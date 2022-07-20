@@ -118,6 +118,13 @@ func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, para
 	res := parseResolutionOrPanic(params.ByName("resolution"))
 	stream := cam.GetStream(res)
 
+	// send backlog for small stream, so user can play immediately.
+	// could do the same for high stream too...
+	var backlog *camera.VideoDumpReader
+	if res == camera.ResolutionLow {
+		backlog = cam.LowDumper
+	}
+
 	s.Log.Infof("httpCamStreamVideo websocket upgrading")
 
 	c, err := s.wsUpgrader.Upgrade(w, r, nil)
@@ -130,5 +137,5 @@ func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, para
 	s.Log.Infof("httpCamStreamVideo starting")
 
 	streamer := camera.NewVideoWebSocketStreamer(s.Log)
-	streamer.Run(c, stream)
+	streamer.Run(c, stream, backlog)
 }

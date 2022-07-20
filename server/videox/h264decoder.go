@@ -102,6 +102,8 @@ func (d *H264Decoder) DecodeAndDiscard(nalu NALU) error {
 	return d.sendPacket(nalu)
 }
 
+// WARNING: The image returned is only valid while the decoder is still alive,
+// and it will be clobbered by the subsequent Decode()
 func (d *H264Decoder) Decode(nalu NALU) (image.Image, error) {
 	if err := d.sendPacket(nalu); err != nil {
 		// sendPacket failure is not fatal

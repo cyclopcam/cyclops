@@ -3,6 +3,7 @@ package videox
 import (
 	"errors"
 	"fmt"
+	"image"
 	"io"
 	"os"
 	"path/filepath"
@@ -31,6 +32,7 @@ type DecodedPacket struct {
 	H264NALUs    []NALU
 	H264PTS      time.Duration
 	PTSEqualsDTS bool
+	IsBacklog    bool // testing...
 }
 
 type RawBuffer struct {
@@ -93,6 +95,7 @@ func (p *DecodedPacket) Clone() *DecodedPacket {
 	c := &DecodedPacket{
 		H264PTS:      p.H264PTS,
 		PTSEqualsDTS: p.PTSEqualsDTS,
+		IsBacklog:    p.IsBacklog,
 	}
 	c.H264NALUs = make([]NALU, len(p.H264NALUs))
 	for i, n := range p.H264NALUs {
@@ -228,7 +231,6 @@ func (r *RawBuffer) SaveToMP4(filename string) error {
 	}
 	baseTime := r.Packets[firstIDR_i].H264PTS
 
-	//enc, err := NewVideoEncoder("mp4", filename, 2048, 1536)
 	enc, err := NewVideoEncoder("mp4", filename, width, height)
 	if err != nil {
 		return err
@@ -291,6 +293,36 @@ func (r *RawBuffer) ResetPTS() {
 	for _, p := range r.Packets {
 		p.H264PTS -= offset
 	}
+}
+
+// Pick the middle frame
+func (r *RawBuffer) ExtractThumbnail() (image.Image, error) {
+	decoder, err := NewH264Decoder()
+	if err != nil {
+		return nil, err
+	}
+	defer decoder.Close()
+	firstImgPacket := -1
+	midPacket := len(r.Packets) - 1
+	for i := 0; i < len(r.Packets); i++ {
+		for _, n := range r.Packets[i].H264NALUs {
+			img, _ := decoder.Decode(n)
+			if img != nil {
+				if firstImgPacket == -1 {
+					// return the frame halfway between the first keyframe and the end,
+					// because there will often be a chunk of unusable packets at the front,
+					// before our first keyframe.
+					// which begs the question: why do we ever record that junk before a keyframe?
+					firstImgPacket = i
+					midPacket = i + (len(r.Packets)-i)/2
+				}
+				if i >= midPacket {
+					return cloneImage(img), nil
+				}
+			}
+		}
+	}
+	return nil, errors.New("No thumbnail available")
 }
 
 // This is just used for debugging and testing

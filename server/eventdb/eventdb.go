@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bmharper/cimg/v2"
 	"github.com/bmharper/cyclops/server/dbh"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/videox"
@@ -57,11 +58,32 @@ func (e *EventDB) Save(buf *videox.RawBuffer) error {
 		StartTime: dbh.MakeIntTime(time.Now()),
 		Format:    "mp4",
 	}
-	fullPath := filepath.Join(e.root, recording.VideoFilename())
-	os.MkdirAll(filepath.Dir(fullPath), 0777)
-	e.log.Infof("Saving recording %v", fullPath)
-	if err := buf.SaveToMP4(fullPath); err != nil {
+	videoPath := filepath.Join(e.root, recording.VideoFilename())
+	thumbnailPath := filepath.Join(e.root, recording.ThumbnailFilename())
+	os.MkdirAll(filepath.Dir(videoPath), 0770)
+	e.log.Infof("Saving recording %v", videoPath)
+	if err := e.saveThumbnail(buf, thumbnailPath); err != nil {
+		return err
+	}
+	if err := buf.SaveToMP4(videoPath); err != nil {
 		return err
 	}
 	return e.db.Create(recording).Error
+}
+
+func (e *EventDB) saveThumbnail(buf *videox.RawBuffer, targetFilename string) error {
+	img, err := buf.ExtractThumbnail()
+	if err != nil {
+		// If thumbnail creation fails, it's a good sign that this video is useless
+		return fmt.Errorf("Failed to decode video while creating thumbnail: %w", err)
+	}
+	im, err := cimg.FromImage(img, false)
+	if err != nil {
+		return err
+	}
+	b, err := cimg.Compress(im, cimg.MakeCompressParams(cimg.Sampling420, 80, 0))
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(targetFilename, b, 0660)
 }

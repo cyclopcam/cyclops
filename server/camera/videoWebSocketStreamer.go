@@ -2,6 +2,7 @@ package camera
 
 import (
 	"bytes"
+	"encoding/binary"
 	"time"
 
 	"github.com/aler9/gortsplib"
@@ -19,7 +20,8 @@ const (
 
 // Number of packets (should be closely correlated with number of frames) that we will buffer
 // on the send side, before dropping packets to the sender.
-const WebSocketSendBufferSize = 15
+// NOTE: If a camera's IDR interval is greater than this number, then sendBacklog will often fail.
+const WebSocketSendBufferSize = 70
 
 type VideoWebSocketStreamer struct {
 	log             log.Log
@@ -78,7 +80,7 @@ func (s *VideoWebSocketStreamer) onPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx
 	}
 }
 
-func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream) {
+func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream, backlog *VideoDumpReader) {
 	if s.debug {
 		s.log.Infof("VideoWebSocketStreamer.Run start")
 	}
@@ -97,6 +99,11 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream) {
 
 	s.closed = false
 	webSocketClosed := false
+
+	if backlog != nil {
+		s.sendBacklog(backlog)
+	}
+
 	for !s.closed {
 		select {
 		case msg := <-s.incoming:
@@ -118,11 +125,44 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream) {
 			}
 		}
 	}
+	if s.debug {
+		s.log.Infof("VideoWebSocketStreamer.Run closing")
+	}
 	close(s.fromWebSocket)
 	close(s.sendQueue)
 	if !webSocketClosed {
 		// should perhaps use WriteControl(Close) instead of hard closing
 		conn.Close()
+	}
+}
+
+func (s *VideoWebSocketStreamer) sendBacklog(backlog *VideoDumpReader) {
+	s.log.Infof("Sending backlog of frames")
+	backlog.BufferLock.Lock()
+	defer backlog.BufferLock.Unlock()
+	packetIdx := backlog.FindLatestIDRPacketNoLock()
+	if packetIdx == -1 {
+		return
+	}
+	top := backlog.Buffer.Len()
+	// send all recent packets, starting at the IDR
+	for i := packetIdx; i < top; i++ {
+		if len(s.sendQueue) >= WebSocketSendBufferSize {
+			// just give up before blocking... haven't really thought what the best thing is to do in a case like this
+			s.log.Infof("VideoWebSocketStreamer.sendBacklog giving up, because sendQueue is full")
+			break
+		}
+		if s.debug {
+			s.log.Infof("VideoWebSocketStreamer.sendBacklog sending packet %v", i)
+		}
+		_, packet, _ := backlog.Buffer.Peek(i)
+		cloned := packet.Clone()
+		cloned.IsBacklog = true
+		s.sendQueue <- cloned
+	}
+
+	if s.debug {
+		s.log.Infof("VideoWebSocketStreamer.sendBacklog done")
 	}
 }
 
@@ -166,8 +206,18 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 		}
 
 		buf := bytes.Buffer{}
-		//pts := int64(pkt.H264PTS.Microseconds())
+		//pts := float64(pkt.H264PTS.Microseconds())
 		//binary.Write(&buf, binary.LittleEndian, pts)
+		//foo1 := uint32(123)
+		//foo2 := uint32(456)
+		//binary.Write(&buf, binary.LittleEndian, foo1)
+		//binary.Write(&buf, binary.LittleEndian, foo2)
+		flags := uint32(0)
+		if pkt.IsBacklog {
+			flags |= 1
+		}
+
+		binary.Write(&buf, binary.LittleEndian, flags)
 		for _, n := range pkt.H264NALUs {
 			if n.PrefixLen == 0 {
 				buf.Write([]byte{0, 0, 1})

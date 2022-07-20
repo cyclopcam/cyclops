@@ -144,6 +144,7 @@ func (s *Stream) Listen(address string) error {
 		if s.info == nil {
 			if inf := s.extractSPSInfo(ctx.H264NALUs); inf != nil {
 				s.info = inf
+				s.Log.Infof("Size: %v x %v", inf.Width, inf.Height)
 			}
 		}
 		s.infoLock.Unlock()

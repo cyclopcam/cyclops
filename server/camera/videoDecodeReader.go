@@ -12,15 +12,21 @@ import (
 )
 
 // VideoDecodeReader decodes the video stream and emits frames
+// NOTE: Our lastImg is a copy of the most recent frame.
+// This memcpy might be a substantial waste if you're decoding
+// a high res stream, and only need access to the latest frame
+// occasionally. Such a scenario might be better suited by
+// a blocking call which waits for a new frame to be decoded.
 type VideoDecodeReader struct {
 	Log     log.Log
 	TrackID int
 	Track   *gortsplib.TrackH264
 	Decoder *videox.H264Decoder
 
-	incoming    StreamSinkChan
-	nPackets    int64
-	ready       bool
+	incoming StreamSinkChan
+	nPackets int64
+	ready    bool
+
 	lastImgLock sync.Mutex
 	lastImg     image.Image
 }
@@ -119,9 +125,22 @@ func (r *VideoDecodeReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {
 			continue
 		}
 
-		r.lastImgLock.Lock()
-		r.lastImg = img
-		r.lastImgLock.Unlock()
+		// The 'img' returned by Decode is transient, so we need make a copy of it.
+		r.cloneIntoLastImg(img)
 		//r.Log.Infof("[Packet %v] Decoded frame with size %v", r.nPackets, img.Bounds().Max)
 	}
+}
+
+func (r *VideoDecodeReader) cloneIntoLastImg(latest image.Image) {
+	r.lastImgLock.Lock()
+	if r.lastImg == nil || !r.lastImg.Bounds().Eq(latest.Bounds()) {
+		r.lastImg = image.NewRGBA(latest.Bounds())
+	}
+	src := latest.(*image.RGBA)
+	dst := r.lastImg.(*image.RGBA)
+	h := src.Rect.Dy()
+	for i := 0; i < h; i++ {
+		copy(dst.Pix[i*dst.Stride:(i+1)*dst.Stride], src.Pix[i*src.Stride:(i+1)*src.Stride])
+	}
+	r.lastImgLock.Unlock()
 }

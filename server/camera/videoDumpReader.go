@@ -158,3 +158,17 @@ func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod, duration time.D
 	}
 	return out, nil
 }
+
+// Scan back in the ring buffer to find the first packet containing an IDR frame
+// Assumes that you are holding BufferLock
+// Returns the index in the buffer, or -1 if none found
+func (r *VideoDumpReader) FindLatestIDRPacketNoLock() int {
+	i := r.Buffer.Len() - 1
+	for ; i >= 0; i-- {
+		_, packet, _ := r.Buffer.Peek(i)
+		if packet.HasType(h264.NALUTypeIDR) {
+			return i
+		}
+	}
+	return -1
+}
