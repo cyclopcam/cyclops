@@ -3,6 +3,8 @@ package camera
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/aler9/gortsplib"
@@ -21,10 +23,13 @@ const (
 // Number of packets (should be closely correlated with number of frames) that we will buffer
 // on the send side, before dropping packets to the sender.
 // NOTE: If a camera's IDR interval is greater than this number, then sendBacklog will often fail.
-const WebSocketSendBufferSize = 70
+const WebSocketSendBufferSize = 50
+
+var nextWebSocketStreamerID int64
 
 type VideoWebSocketStreamer struct {
 	log             log.Log
+	streamerID      int64 // Intended to aid in logging/debugging
 	incoming        StreamSinkChan
 	trackID         int
 	closed          bool
@@ -37,19 +42,21 @@ type VideoWebSocketStreamer struct {
 	debug           bool
 }
 
-func NewVideoWebSocketStreamer(log log.Log) *VideoWebSocketStreamer {
+func NewVideoWebSocketStreamer(logger log.Log) *VideoWebSocketStreamer {
+	streamerID := atomic.AddInt64(&nextWebSocketStreamerID, 1)
 	return &VideoWebSocketStreamer{
-		incoming:  make(StreamSinkChan, StreamSinkChanDefaultBufferSize),
-		log:       log,
-		sendQueue: make(chan *videox.DecodedPacket, WebSocketSendBufferSize),
-		debug:     false,
+		incoming:   make(StreamSinkChan, StreamSinkChanDefaultBufferSize),
+		streamerID: streamerID,
+		log:        log.NewPrefixLogger(logger, fmt.Sprintf("WebSocket %v", streamerID)),
+		sendQueue:  make(chan *videox.DecodedPacket, WebSocketSendBufferSize),
+		debug:      false,
 	}
 }
 
 func (s *VideoWebSocketStreamer) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	s.trackID = stream.H264TrackID
 	if s.debug {
-		s.log.Infof("VideoWebSocketStreamer.OnConnect trackID:%v", s.trackID)
+		s.log.Infof("OnConnect trackID:%v", s.trackID)
 	}
 	return s.incoming, nil
 }
@@ -60,20 +67,20 @@ func (s *VideoWebSocketStreamer) onPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx
 	}
 
 	if s.debug {
-		s.log.Infof("VideoWebSocketStreamer.onPacketRTP")
+		s.log.Infof("onPacketRTP")
 	}
 
 	now := time.Now()
 	if len(s.sendQueue) >= WebSocketSendBufferSize {
 		s.nPacketsDropped++
 		if now.Sub(s.lastDropMsg) > 5*time.Second {
-			s.log.Infof("Dropped %v/%v packets to websocket connection", s.nPacketsDropped, s.nPacketsDropped+s.nPacketsSent)
+			s.log.Infof("Dropped %v/%v packets", s.nPacketsDropped, s.nPacketsDropped+s.nPacketsSent)
 			s.lastDropMsg = now
 		}
 	} else {
 		s.nPacketsSent++
-		if now.Sub(s.lastLogTime) > 10*time.Second {
-			s.log.Infof("Sent %v/%v packets to websocket connection", s.nPacketsSent, s.nPacketsDropped+s.nPacketsSent)
+		if now.Sub(s.lastLogTime) > 20*time.Second {
+			s.log.Infof("Sent %v/%v packets", s.nPacketsSent, s.nPacketsDropped+s.nPacketsSent)
 			s.lastLogTime = now
 		}
 		s.sendQueue <- videox.ClonePacket(ctx)
@@ -82,7 +89,7 @@ func (s *VideoWebSocketStreamer) onPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx
 
 func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream, backlog *VideoDumpReader) {
 	if s.debug {
-		s.log.Infof("VideoWebSocketStreamer.Run start")
+		s.log.Infof("Run start")
 	}
 
 	stream.ConnectSink(s, false)
@@ -94,7 +101,7 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream, backl
 	go s.webSocketWriter(conn)
 
 	if s.debug {
-		s.log.Infof("VideoWebSocketStreamer.Run ready")
+		s.log.Infof("Run ready")
 	}
 
 	s.closed = false
@@ -109,7 +116,7 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream, backl
 		case msg := <-s.incoming:
 			switch msg.Type {
 			case StreamMsgTypeClose:
-				s.log.Infof("VideoWebSocketStreamer.Run StreamMsgTypeClose")
+				s.log.Infof("Run StreamMsgTypeClose")
 				s.closed = true
 				break
 			case StreamMsgTypePacket:
@@ -118,7 +125,7 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream, backl
 		case wsMsg := <-s.fromWebSocket:
 			switch wsMsg {
 			case webSocketMsgClosed:
-				s.log.Infof("VideoWebSocketStreamer.Run webSocketMsgClosed")
+				s.log.Infof("Run webSocketMsgClosed")
 				webSocketClosed = true
 				s.closed = true
 				break
@@ -126,7 +133,7 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream, backl
 		}
 	}
 	if s.debug {
-		s.log.Infof("VideoWebSocketStreamer.Run closing")
+		s.log.Infof("Run closing")
 	}
 	close(s.fromWebSocket)
 	close(s.sendQueue)
@@ -149,11 +156,11 @@ func (s *VideoWebSocketStreamer) sendBacklog(backlog *VideoDumpReader) {
 	for i := packetIdx; i < top; i++ {
 		if len(s.sendQueue) >= WebSocketSendBufferSize {
 			// just give up before blocking... haven't really thought what the best thing is to do in a case like this
-			s.log.Infof("VideoWebSocketStreamer.sendBacklog giving up, because sendQueue is full")
+			s.log.Infof("sendBacklog giving up, because sendQueue is full")
 			break
 		}
 		if s.debug {
-			s.log.Infof("VideoWebSocketStreamer.sendBacklog sending packet %v", i)
+			s.log.Infof("sendBacklog sending packet %v", i)
 		}
 		_, packet, _ := backlog.Buffer.Peek(i)
 		cloned := packet.Clone()
@@ -162,7 +169,7 @@ func (s *VideoWebSocketStreamer) sendBacklog(backlog *VideoDumpReader) {
 	}
 
 	if s.debug {
-		s.log.Infof("VideoWebSocketStreamer.sendBacklog done")
+		s.log.Infof("sendBacklog done")
 	}
 }
 
@@ -173,11 +180,11 @@ func (s *VideoWebSocketStreamer) webSocketReader(conn *websocket.Conn) {
 		msgType, data, err := conn.ReadMessage()
 		if err != nil {
 			if s.debug {
-				s.log.Infof("VideoWebSocketStreamer.webSocketReader conn.ReadMessage error: %v", err)
+				s.log.Infof("webSocketReader conn.ReadMessage error: %v", err)
 			}
 			break
 		}
-		s.log.Infof("VideoWebSocketStreamer received %v message from websocket (len %v) [%v]", msgType, len(data), data[:3])
+		s.log.Infof("received %v message from websocket (len %v) [%v]", msgType, len(data), data[:3])
 	}
 	s.fromWebSocket <- webSocketMsgClosed
 }
@@ -192,7 +199,7 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 		pkt, more := <-s.sendQueue
 		if !more || s.closed {
 			if s.debug {
-				s.log.Infof("VideoWebSocketStreamer.webSocketWriter closing. more:%v, s.closed:%v", more, s.closed)
+				s.log.Infof("webSocketWriter closing. more:%v, s.closed:%v", more, s.closed)
 			}
 			break
 		}

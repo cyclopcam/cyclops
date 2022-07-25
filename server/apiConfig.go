@@ -25,7 +25,7 @@ func (s *Server) httpConfigAddCamera(w http.ResponseWriter, r *http.Request, par
 	}
 
 	// Add to DB
-	res := s.configDB.Create(&cam)
+	res := s.configDB.DB.Create(&cam)
 	//s.Log.Infof("cam.ID: %v", cam.ID)
 	if res.Error != nil {
 		camera.Close()
@@ -42,7 +42,7 @@ func (s *Server) httpConfigSetVariable(w http.ResponseWriter, r *http.Request, p
 	key := params.ByName("key")
 	value := www.ReadString(w, r, 1024*1024)
 
-	db, err := s.configDB.DB()
+	db, err := s.configDB.DB.DB()
 	www.Check(err)
 	_, err = db.Exec("INSERT INTO variable (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value", key, value)
 	www.Check(err)

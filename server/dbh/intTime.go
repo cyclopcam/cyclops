@@ -13,6 +13,10 @@ func MakeIntTime(v time.Time) IntTime {
 	return IntTime(v.UnixMilli())
 }
 
+func MakeIntTimeMilli(unixMilli int64) IntTime {
+	return IntTime(unixMilli)
+}
+
 func (t *IntTime) Set(v time.Time) {
 	*t = IntTime(v.UnixMilli())
 }

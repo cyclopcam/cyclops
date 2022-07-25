@@ -29,6 +29,21 @@ func Migrations(log log.Log) []migration.Migrator {
 			value TEXT
 		);
 
+		CREATE TABLE user(
+			id INTEGER PRIMARY KEY,
+			username TEXT NOT NULL,
+			permissions TEXT NOT NULL,
+			name TEXT,
+			password BLOB
+		);
+		CREATE UNIQUE INDEX idx_user_username ON user (username);
+
+		CREATE TABLE session(
+			key BLOB NOT NULL,
+			user_id INT NOT NULL,
+			expires_at INT
+		);
+
 		`))
 
 	return migs

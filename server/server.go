@@ -6,26 +6,22 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
-	"github.com/bmharper/cyclops/server/dbh"
 	"github.com/bmharper/cyclops/server/eventdb"
 	"github.com/bmharper/cyclops/server/gen"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/util"
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
-	"gorm.io/gorm"
 )
 
 type Server struct {
 	Log              log.Log
-	ConfigDBFilename string // Path to sqlite config DB
 	TempFiles        *util.TempFiles
 	RingBufferSize   int
 	IsShutdownV      int32 // 1 if we were shutdown with an explicit call to Shutdown. Use IsShutdown() for a thread-safe check if IsShutdownV is true.
@@ -39,7 +35,7 @@ type Server struct {
 	signalIn        chan os.Signal
 	httpServer      *http.Server
 	httpRouter      *httprouter.Router
-	configDB        *gorm.DB
+	configDB        *configdb.ConfigDB
 	permanentEvents *eventdb.EventDB // Where we store our permanent videos
 	recentEvents    *eventdb.EventDB // Where we store our recent event videos
 	wsUpgrader      websocket.Upgrader
@@ -57,19 +53,28 @@ func NewServer(configDBFilename string) (*Server, error) {
 	}
 	s := &Server{
 		Log:              log,
-		ConfigDBFilename: configDBFilename,
 		RingBufferSize:   200 * 1024 * 1024,
 		ShutdownComplete: make(chan error, 1),
 		cameraFromID:     map[int64]*camera.Camera{},
 	}
-	if err := s.openConfigDB(); err != nil {
+	if cfg, err := configdb.NewConfigDB(s.Log, configDBFilename); err != nil {
 		return nil, err
+	} else {
+		s.configDB = cfg
 	}
+	// If config variables fail to load, then we must still continue to boot ourselves up to the point
+	// where we can accept new config. Otherwise, the system is bricked if the user enters
+	// invalid config.
+	// Also, when the system first starts up, it won't be configured at all.
+	configOK := true
 	if err := s.LoadConfigVariables(); err != nil {
-		return nil, err
+		log.Errorf("%v", err)
+		configOK = false
 	}
-	if err := s.LoadCamerasFromConfig(); err != nil {
-		return nil, err
+	if configOK {
+		if err := s.LoadCamerasFromConfig(); err != nil {
+			return nil, err
+		}
 	}
 	s.SetupHTTP()
 	return s, nil
@@ -130,16 +135,6 @@ func (s *Server) Shutdown(restart bool) {
 	s.ShutdownComplete <- err
 }
 
-func (s *Server) openConfigDB() error {
-	os.MkdirAll(filepath.Dir(s.ConfigDBFilename), 0777)
-	configDB, err := dbh.OpenDB(s.Log, dbh.DriverSqlite, s.ConfigDBFilename, configdb.Migrations(s.Log), 0)
-	if err != nil {
-		return fmt.Errorf("Failed to open database %v: %w", s.ConfigDBFilename, err)
-	}
-	s.configDB = configDB
-	return nil
-}
-
 // Returns nil if the system is ready to start listening to cameras
 // Returns an error if some part of the system needs configuring
 // The idea is that the web client will continue to show the configuration page
@@ -190,7 +185,7 @@ func (s *Server) CloseAllCameras() {
 // Load state from 'variables'
 func (s *Server) LoadConfigVariables() error {
 	vars := []configdb.Variable{}
-	if err := s.configDB.Find(&vars).Error; err != nil {
+	if err := s.configDB.DB.Find(&vars).Error; err != nil {
 		return err
 	}
 	for _, v := range vars {
@@ -216,7 +211,7 @@ func (s *Server) LoadConfigVariables() error {
 func (s *Server) LoadCamerasFromConfig() error {
 	s.CloseAllCameras()
 	cams := []configdb.Camera{}
-	if err := s.configDB.Find(&cams).Error; err != nil {
+	if err := s.configDB.DB.Find(&cams).Error; err != nil {
 		return err
 	}
 	for _, cam := range cams {

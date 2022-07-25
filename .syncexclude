@@ -1,7 +1,8 @@
 t2-output
 **/.tundra2.*
-*.ts
 *.mp4
 *.raw
 .git
 cyclops.json
+node_modules
+/cyclops

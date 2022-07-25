@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 
 	"github.com/bmharper/cyclops/server/log"
 )
@@ -48,8 +47,17 @@ func BadRequestf(format string, args ...interface{}) HTTPError {
 }
 
 // PanicForbidden panics with a 403 Forbidden.
+func PanicUnauthorized() {
+	panic(Unauthorized())
+}
+
+// PanicForbidden panics with a 403 Forbidden.
 func PanicForbidden() {
 	panic(Forbidden())
+}
+
+func Unauthorized() HTTPError {
+	return HTTPError{http.StatusUnauthorized, "Unauthorized"}
 }
 
 func Forbidden() HTTPError {
@@ -107,41 +115,6 @@ func CheckLogged(l log.Log, err error) {
 		}
 		panic(err)
 	}
-}
-
-// Returns the named form value (typically query value), or panics if the item is empty or missing
-func RequiredFormValue(r *http.Request, key string) string {
-	v := r.FormValue(key)
-	if v == "" {
-		PanicBadRequestf("Must specify %v", key)
-	}
-	return v
-}
-
-// Returns the named form value (typically query value) as an int64, or panics if the item is empty, missing, or not parseable as an integer
-func RequiredFormInt64(r *http.Request, key string) int64 {
-	v := RequiredFormValue(r, key)
-	i, err := strconv.ParseInt(v, 10, 64)
-	if err != nil {
-		PanicBadRequestf("Must specify an integer for %v", key)
-	}
-	return i
-}
-
-// Returns the named form value (typically query value) as an int, or panics if the item is empty, missing, or not parseable as an integer
-func RequiredFormInt(r *http.Request, key string) int {
-	return int(RequiredFormInt64(r, key))
-}
-
-// Returns the named form value (typically query value) as an int64, or zero if the item is missing or not parseable as an integer
-func FormInt64(r *http.Request, key string) int64 {
-	i, _ := strconv.ParseInt(r.FormValue(key), 10, 64)
-	return i
-}
-
-// Returns the named form value (typically query value) as an int, or zero if the item is missing or not parseable as an integer
-func FormInt(r *http.Request, key string) int {
-	return int(FormInt64(r, key))
 }
 
 // FailedRequestSummary returns a string that you can emit into a log message, when an HTTP that you've made fails

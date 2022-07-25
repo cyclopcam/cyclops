@@ -23,10 +23,13 @@ import HelloWorld from '@/components/HelloWorld.vue'
 	<RouterView />
 </template>
 
+<!-- NOTE! These styles are not scoped, which is why we import 'base' -->
 <style lang="scss">
 #app {
 	height: 100%;
 }
+
+@import '@/assets/base.scss';
 
 /*
 @import '@/assets/base.css';

@@ -1,0 +1,190 @@
+body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+}
+
+.flex {
+	display: flex;
+}
+.flexColumn {
+	display: flex;
+	flex-direction: column;
+}
+.flexColumnCenter {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+.flexRowCenter {
+	display: flex;
+	align-items: center;
+}
+.flexRowBaseline {
+	display: flex;
+	align-items: baseline;
+}
+.flexCenter {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+////////////////////////////////////////////////////////////////////////////
+/// These are used to debug CSS boxes
+////////////////////////////////////////////////////////////////////////////
+
+.debug1 {
+	background-color: rgb(255, 197, 197);
+}
+.debug2 {
+	background-color: rgb(255, 237, 189);
+}
+.debug3 {
+	background-color: rgb(226, 255, 189);
+}
+
+////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+// Buttons
+////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+$button-h-margin: 3px;
+
+//$button-padding: 6px 9px 4px 9px; // this looks good on ubuntu, but terrible on windows
+//$button-padding: 5px 9px 5px 9px; // this is OK on ubuntu and windows (looked OK when I mistakenly used Arial, but too much top padding with Segoe UI semibold)
+// $button-padding: 4px 9px 5px 9px; // removing that one top pixel improves Segoe UI
+$button-padding: 4px 8px 4px 8px;
+
+@mixin button_background {
+	border-radius: 3px;
+	border: 1px solid #bbb;
+	@media (min-resolution: 192dpi) {
+		border-width: 0.5px;
+	}
+	background: linear-gradient(
+		180deg,
+		hsl(0, 0%, 100%) 0%,
+		hsl(0, 0%, 96%) 47%,
+		hsl(0, 0%, 93%) 100%
+	);
+}
+
+button {
+	@include button_background();
+	user-select: none;
+	cursor: pointer;
+	margin: 1px $button-h-margin;
+	padding: $button-padding;
+	//font-size: $small-text-size;
+	font-size: 15px;
+	color: #111;
+	outline: none;
+}
+
+@mixin button_enabled_hover {
+	border-color: #777;
+	background: linear-gradient(
+		180deg,
+		hsl(0, 0%, 98%) 0%,
+		hsl(0, 0%, 96%) 47%,
+		hsl(0, 0%, 93%) 100%
+	);
+}
+button:enabled:hover {
+	@include button_enabled_hover();
+}
+.button_enabled_hover {
+	@include button_enabled_hover();
+}
+
+@mixin button_enabled_active {
+	box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.3);
+}
+button:enabled:active {
+	@include button_enabled_active();
+}
+.button_enabled_active {
+	@include button_enabled_active();
+}
+
+button:disabled {
+	color: #777;
+	cursor: not-allowed;
+}
+
+$focalHue: 85;
+$focalBrightness: 55%;
+
+.focalButton {
+	background: linear-gradient(
+		180deg,
+		hsl($focalHue, 75%, $focalBrightness) 0%,
+		hsl($focalHue, 84%, $focalBrightness*0.8) 47%,
+		hsl($focalHue, 89%, $focalBrightness*0.7) 100%,
+	);
+	border: 1px solid hsl($focalHue, 61%, $focalBrightness*0.65);
+	color: #fff;
+}
+.focalButton:enabled:hover {
+	background: linear-gradient(
+		180deg,
+		hsl($focalHue, 75%, $focalBrightness*0.95) 0%,
+		hsl($focalHue, 84%, $focalBrightness*0.75) 47%,
+		hsl($focalHue, 89%, $focalBrightness*0.65) 100%,
+	);
+	border: 1px solid hsl($focalHue, 86%, $focalBrightness*0.65);
+}
+.focalButton:disabled {
+	background: linear-gradient(
+		180deg,
+		hsl($focalHue, 33%, 57%) 0%,
+		hsl($focalHue, 20%, 54%) 47%,
+		hsl($focalHue, 18%, 44%) 100%,
+	);
+	border: 1px solid hsl($focalHue, 24%, $focalBrightness*0.65);
+	color: #ddd;
+}
+
+.dangerButton {
+	color: hsl(0, 71%, 42%);
+	border: 1px solid hsl(0, 70%, 40%);
+}
+.dangerButton:enabled:hover {
+	background: linear-gradient(
+		180deg,
+		hsl(0, 70%, 70%) 0%,
+		hsl(0, 70%, 65%) 47%,
+		hsl(0, 70%, 55%) 100%
+	);
+	border: 1px solid hsl(0, 77%, 32%);
+	color: white;
+}
+.dangerButton:disabled {
+	border: 1px solid hsl(0, 15%, 65%);
+	color: hsl(0, 30%, 40%);
+}
+
+.pictureButton {
+	display: flex;
+	align-items: center;
+}
+
+.pictureButton img {
+	width: 12px;
+	margin-right: 6px;
+}
+
+// NOTE: buttonBusy must appear after dangerButton and focalButton in our CSS here,
+// so that it can override them.
+
+// See MsgBox for an example of using this. A key thing is that you must also
+// set disabled=true on your button, for correct behaviour (and to get the animation
+// to show while the cursor is hovered over the button).
+// Example:
+// <button :disabled='busy' :class='{buttonBusy: busy}'>OK</button>
+.buttonBusy {
+	background: url(/icons/loaders/moving-dots.svg);
+	background-size: 100% 100%;
+	background-repeat: no-repeat;
+	background-position-x: 0px;
+	background-position-y: 9.5px; // tweaky!
+}

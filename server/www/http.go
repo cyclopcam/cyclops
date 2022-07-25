@@ -59,7 +59,7 @@ func ParseID(s string) int64 {
 
 // Returns (value, true) if a query value exists (an empty string counts as existence).
 // Returns ("", false) if the query value does not exist
-func QueryValue(r *http.Request, s string) (string, bool) {
+func QueryValueEx(r *http.Request, s string) (string, bool) {
 	val, exists := r.URL.Query()[s]
 	if exists {
 		if len(val) > 0 {
@@ -70,6 +70,46 @@ func QueryValue(r *http.Request, s string) (string, bool) {
 	} else {
 		return "", false
 	}
+}
+
+// Returns the named query value (or an empty string)
+func QueryValue(r *http.Request, key string) string {
+	return r.URL.Query().Get(key)
+}
+
+// Returns the named form value (typically query value), or panics if the item is empty or missing
+func RequiredQueryValue(r *http.Request, key string) string {
+	v := QueryValue(r, key)
+	if v == "" {
+		PanicBadRequestf("Must specify %v", key)
+	}
+	return v
+}
+
+// Returns the named form value (typically query value) as an int64, or panics if the item is empty, missing, or not parseable as an integer
+func RequiredQueryInt64(r *http.Request, key string) int64 {
+	v := RequiredQueryValue(r, key)
+	i, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		PanicBadRequestf("Must specify an integer for %v", key)
+	}
+	return i
+}
+
+// Returns the named form value (typically query value) as an int, or panics if the item is empty, missing, or not parseable as an integer
+func RequiredQueryInt(r *http.Request, key string) int {
+	return int(RequiredQueryInt64(r, key))
+}
+
+// Returns the named form value (typically query value) as an int64, or zero if the item is missing or not parseable as an integer
+func QueryInt64(r *http.Request, key string) int64 {
+	i, _ := strconv.ParseInt(r.FormValue(key), 10, 64)
+	return i
+}
+
+// Returns the named form value (typically query value) as an int, or zero if the item is missing or not parseable as an integer
+func QueryInt(r *http.Request, key string) int {
+	return int(QueryInt64(r, key))
 }
 
 // EncodeQuery returns a key=value&key2=value2 string for a URL

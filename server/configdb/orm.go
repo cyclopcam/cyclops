@@ -1,5 +1,11 @@
 package configdb
 
+import (
+	"strings"
+
+	"github.com/bmharper/cyclops/server/dbh"
+)
+
 // BaseModel is our base class for a GORM model.
 // The default GORM Model uses int, but we prefer int64
 type BaseModel struct {
@@ -22,4 +28,30 @@ type Camera struct {
 type Variable struct {
 	Key   string `gorm:"primaryKey" json:"key"`
 	Value string `json:"value"`
+}
+
+// UserPermissions are single characters that are present in the user's Permissions field
+type UserPermissions string
+
+const (
+	UserPermissionAdmin  UserPermissions = "a"
+	UserPermissionViewer UserPermissions = "v"
+)
+
+type User struct {
+	BaseModel
+	Username    string `json:"username"`
+	Name        string `json:"name"`
+	Permissions string `json:"permissions"`
+	Password    []byte `json:"-"`
+}
+
+type Session struct {
+	Key       []byte
+	UserID    int64
+	ExpiresAt dbh.IntTime
+}
+
+func (u *User) HasPermission(p UserPermissions) bool {
+	return strings.Index(u.Permissions, string(p)) != -1
 }

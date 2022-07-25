@@ -1,0 +1,15 @@
+// Anything >= 500px is desktop
+$mobileCutoff: 500px;
+
+/*
+// mobileFullscreen is a container for a page that would fill the screen on mobile,
+// and must work well there. But if it's accessed on desktop, then we still want
+// it to look reasonable. So on desktop we center it, and give it a limited width.
+.mobileFullscreen {
+	@media only screen and (min-width: $mobileCutoff) {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+}
+*/

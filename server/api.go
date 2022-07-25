@@ -22,6 +22,10 @@ func (s *Server) SetupHTTP() {
 	www.Handle(s.Log, router, "POST", "/api/config/setVariable/:key", s.httpConfigSetVariable)
 	www.Handle(s.Log, router, "POST", "/api/record/start/:cameraID", s.httpRecordStart)
 	www.Handle(s.Log, router, "POST", "/api/record/stop", s.httpRecordStop)
+	www.Handle(s.Log, router, "GET", "/api/auth/hasAdmin", s.httpAuthHasAdmin)
+	www.Handle(s.Log, router, "GET", "/api/auth/whoami", s.httpAuthWhoAmi)
+	www.Handle(s.Log, router, "POST", "/api/auth/createUser", s.httpAuthCreateUser)
+	www.Handle(s.Log, router, "POST", "/api/auth/login", s.httpAuthLogin)
 
 	isImmutable := false
 	root, err := filepath.Abs("debug/www")

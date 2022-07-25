@@ -78,7 +78,7 @@ function play() {
 		// OK.. we want to leave FPS unspecified, so that we can control it per-frame, for backlog catchup
 		//fps: 60, // this becomes Max FPS, so.. the speedup during backlog catchup
 		maxDelay: 200,
-		flushingTime: 100, // jsmuxer basically runs with setInterval(flushFrames, flushingTime)
+		flushingTime: 100, // jsmuxer basically runs as setInterval(() => flushFrames(), flushingTime)
 	} as any);
 
 	ws = new WebSocket(socketURL);
