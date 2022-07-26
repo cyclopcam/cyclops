@@ -4,11 +4,11 @@ sudo apt install libavformat-dev libswscale-dev gcc pkg-config libturbojpeg0-dev
 
 ## dev env
 * Install Go
-* Install the apt packaged mentioned above
+* Install the apt packages mentioned above
 * Install nvm
 * Use `nvm install v18.2.0` (The version is possibly not important, but this is the exact version I used when creating this document)
 * In `www`, do `npm install`
-* First run of `go run cyclops.go` takes a few minutes, mostly due to build single-threaded build of `github.com/mattn/go-sqlite3`
+* First run of `go run cyclops.go` takes a few minutes, mostly due to single-threaded build of `github.com/mattn/go-sqlite3`
 
 Once setup, you should be able to run the server and the interface:
 * `go run cyclops.go`

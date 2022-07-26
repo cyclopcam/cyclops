@@ -52,6 +52,13 @@ type H264Decoder struct {
 
 // NewH264Decoder allocates a new H264Decoder.
 func NewH264Decoder() (*H264Decoder, error) {
+	// I tried this on Rpi4, to make sure I'm getting hardware decode.. but:
+	// This doesn't work.. I just get "avcodec_receive_frame error Resource temporarily unavailable"
+	// Perhaps it could work, I didn't try harder.
+	//codecName := C.CString("h264_v4l2m2m")
+	//defer C.free(unsafe.Pointer(codecName))
+	//codec := C.avcodec_find_decoder_by_name(codecName)
+
 	codec := C.avcodec_find_decoder(C.AV_CODEC_ID_H264)
 	if codec == nil {
 		return nil, fmt.Errorf("avcodec_find_decoder() failed")

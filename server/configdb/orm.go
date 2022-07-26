@@ -14,7 +14,7 @@ type BaseModel struct {
 
 type Camera struct {
 	BaseModel
-	Model            string `json:"model"`            // eg HikVision
+	Model            string `json:"model"`            // eg HikVision (actually CameraModels enum)
 	Name             string `json:"name"`             // Friendly name
 	Host             string `json:"host"`             // Hostname such as 192.168.1.33
 	Port             int    `json:"port"`             // if 0, then default is 554

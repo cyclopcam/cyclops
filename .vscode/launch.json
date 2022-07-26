@@ -34,6 +34,13 @@
 			"request": "launch",
 			"mode": "auto",
 			"program": "cyclops.go"
+		},
+		{
+			"name": "Current Go File",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+			"program": "${file}"
 		}
 	]
 }
