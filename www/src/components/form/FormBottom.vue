@@ -1,23 +1,25 @@
 <script setup lang="ts">
 import type * as forms from './forms';
+import Buttin from '@/components/core/Buttin.vue';
 
 let props = defineProps<{
-	missing?: boolean,
 	ctx: forms.Context,
+	submitTitle?: string,
 }>()
-let emit = defineEmits(['next']);
+let emit = defineEmits(['submit']);
 
-function onNext() {
-	props.ctx.nextClicked.value = true;
+function onSubmit() {
+	props.ctx.submitClicked.value = true;
 	if (props.ctx.validate())
-		emit('next');
+		emit('submit');
 }
 </script>
 
 <template>
 	<div class="flexRowBaseline formBottom" style="align-self: stretch; justify-content: flex-end">
 		<div v-if="ctx.showCompleteAllFields" class="required">Complete all required fields</div>
-		<button class="focalButton" @click="onNext">Next</button>
+		<div v-if="ctx.submitError" class="submitError">{{ ctx.submitError.value }}</div>
+		<buttin :focal="true" :busy="ctx.busy.value" @click="onSubmit">{{ submitTitle ? submitTitle : 'Next' }}</buttin>
 	</div>
 </template>
 
@@ -29,6 +31,13 @@ function onNext() {
 .required {
 	margin: 0 12px 0 0;
 	font-size: 14px;
+	color: #d00;
+}
+
+.submitError {
+	margin: 0 12px 0 0;
+	font-size: 14px;
+	max-width: 220px;
 	color: #d00;
 }
 </style>

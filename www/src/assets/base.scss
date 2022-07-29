@@ -1,5 +1,8 @@
+@import '@/assets/vars.scss';
+
 body {
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+	//font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+	font-family: -apple-system, system-ui, sans-serif;
 }
 
 .flex {
@@ -53,6 +56,7 @@ $button-h-margin: 3px;
 //$button-padding: 5px 9px 5px 9px; // this is OK on ubuntu and windows (looked OK when I mistakenly used Arial, but too much top padding with Segoe UI semibold)
 // $button-padding: 4px 9px 5px 9px; // removing that one top pixel improves Segoe UI
 $button-padding: 4px 8px 4px 8px;
+$button-padding-mobile: 6px 10px 6px 10px;
 
 @mixin button_background {
 	border-radius: 3px;
@@ -74,8 +78,12 @@ button {
 	cursor: pointer;
 	margin: 1px $button-h-margin;
 	padding: $button-padding;
-	//font-size: $small-text-size;
 	font-size: 15px;
+	@media (max-width: $mobileCutoff) {
+		// make buttons chunkier for fat fingers
+		font-size: 18px;
+		padding: $button-padding-mobile;
+	}
 	color: #111;
 	outline: none;
 }
@@ -112,7 +120,7 @@ button:disabled {
 }
 
 $focalHue: 85;
-$focalBrightness: 55%;
+$focalBrightness: 45%;
 
 .focalButton {
 	background: linear-gradient(
@@ -176,15 +184,27 @@ $focalBrightness: 55%;
 // NOTE: buttonBusy must appear after dangerButton and focalButton in our CSS here,
 // so that it can override them.
 
+// ERG..... this doesn't play well with focalButton...
+// OK.. so the solution here is to use own custom control <buttin> instead of <button>
+
 // See MsgBox for an example of using this. A key thing is that you must also
 // set disabled=true on your button, for correct behaviour (and to get the animation
 // to show while the cursor is hovered over the button).
 // Example:
 // <button :disabled='busy' :class='{buttonBusy: busy}'>OK</button>
 .buttonBusy {
-	background: url(/icons/loaders/moving-dots.svg);
+	background: url('@/icons/loaders/moving-dots.svg');
 	background-size: 100% 100%;
 	background-repeat: no-repeat;
 	background-position-x: 0px;
 	background-position-y: 9.5px; // tweaky!
 }
+
+
+////////////////////////////////////////////////////////////////////////////
+/// Visual elements
+////////////////////////////////////////////////////////////////////////////
+
+//.group {
+//	border: solid 1px #eee;
+//}

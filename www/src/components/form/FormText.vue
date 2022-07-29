@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { computed } from '@vue/reactivity';
-import * as forms from './forms';
+import type * as forms from './forms';
 
 let props = defineProps<{
 	ctx: forms.Context,
@@ -10,10 +10,12 @@ let props = defineProps<{
 	required?: boolean,
 	placeholder?: string,
 	password?: boolean,
+	focus?: boolean,
 }>()
 let emit = defineEmits(['update:modelValue']);
 
 let showPassword = ref(false);
+let input = ref(null);
 
 let isEmpty = computed(() => props.modelValue.trim() === '');
 
@@ -27,6 +29,11 @@ function onInput(event: any) {
 	emit('update:modelValue', event.target.value);
 }
 
+onMounted(() => {
+	if (props.focus)
+		(input.value! as any).focus();
+})
+
 </script>
 
 <template>
@@ -37,8 +44,9 @@ function onInput(event: any) {
 			</div>
 		</slot>
 		<div class="flexRowBaseline">
-			<div class="flexRowCenter" :style="{ display: 'flex', position: 'relative', width: forms.rightWidth }">
-				<input :value="modelValue" @input="onInput($event)" :placeholder="placeholder" :type="type"
+			<div class="flexRowCenter"
+				:style="{ display: 'flex', position: 'relative', width: props.ctx.inputWidth.value }">
+				<input ref="input" :value="modelValue" @input="onInput($event)" :placeholder="placeholder" :type="type"
 					style="width: 100%" />
 				<div v-if="password" class="flexCenter" style="position: absolute; right: 6px;"
 					@click="showPassword = !showPassword">
@@ -53,9 +61,11 @@ function onInput(event: any) {
 				<svg v-if="props.ctx.showRequiredDots && required && isEmpty" width="10" height="10">
 					<circle cx="5" cy="5" r="3" fill="#d00" />
 				</svg>
+				<!--
 				<svg v-else-if="props.ctx.showRequiredDots && required && !isEmpty" width="10" height="10">
 					<circle cx="5" cy="5" r="1.5" fill="#222" />
 				</svg>
+				-->
 			</div>
 		</div>
 	</div>
@@ -67,24 +77,23 @@ function onInput(event: any) {
 }
 
 .label {
-	margin: 2px 0px 6px 0px;
-	font-size: 14px;
+	margin: 2px 0px 3px 0px;
+	font-size: 13.5px;
 	color: #888;
 }
 
 input {
 	//border: solid 1px #ccc;
 	border: none;
-	border-bottom: solid 1px #ccc;
+	border-bottom: solid 1px #ddd;
 	//border-radius: 3px;
-	padding: 4px 2px;
+	padding: 1px 1px;
 	font-size: 16px;
 }
 
-// can't remove the dark black border
 input:focus {
 	outline: none;
-	border-bottom: solid 1px #000;
+	border-bottom: solid 1px #888;
 }
 
 //input:focus-visible {

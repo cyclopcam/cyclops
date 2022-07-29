@@ -41,7 +41,10 @@ type Server struct {
 	wsUpgrader      websocket.Upgrader
 
 	recorderStartStopLock sync.Mutex
-	recorderStop          chan bool // Sent to recorder to tell it to step
+	recorderStop          chan bool // Sent to recorder to tell it to stop
+
+	lastScannedCamerasLock sync.Mutex
+	lastScannedCameras     []*configdb.Camera
 }
 
 // After calling NewServer, you must call LoadConfig() to setup additional things like
@@ -106,7 +109,11 @@ func (s *Server) IsShutdown() bool {
 }
 
 func (s *Server) Shutdown(restart bool) {
-	s.Log.Infof("Shutdown (restart = %v)", restart)
+	if restart {
+		s.Log.Infof("Restart")
+	} else {
+		s.Log.Infof("Shutdown")
+	}
 	atomic.StoreInt32(&s.IsShutdownV, 1)
 	s.MustRestart = restart
 

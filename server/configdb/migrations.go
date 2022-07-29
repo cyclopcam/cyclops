@@ -32,11 +32,12 @@ func Migrations(log log.Log) []migration.Migrator {
 		CREATE TABLE user(
 			id INTEGER PRIMARY KEY,
 			username TEXT NOT NULL,
+			username_normalized TEXT NOT NULL,
 			permissions TEXT NOT NULL,
 			name TEXT,
 			password BLOB
 		);
-		CREATE UNIQUE INDEX idx_user_username ON user (username);
+		CREATE UNIQUE INDEX idx_user_username_normalized ON user (username_normalized);
 
 		CREATE TABLE session(
 			key BLOB NOT NULL,

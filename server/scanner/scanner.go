@@ -14,8 +14,7 @@ import (
 	"github.com/bmharper/cyclops/server/gen"
 )
 
-/* ScanForLocalCameras scans the local IPv4 network for cameras
-
+/*
 This is a dump from my Linux machine:
 
 up|loopback, , ip+net, 127.0.0.1/8
@@ -33,9 +32,17 @@ up|broadcast|multicast, 02:42:d7:2f:4a:b9, ip+net, 172.20.0.1/16
 
 Without better knowledge, I'm going with:
 * Find the first adapter with an IPv4 and IPv6 address, where the IPv4 is on 192.168.X.X
-
 */
-func ScanForLocalCameras() ([]*configdb.Camera, error) {
+
+// Any option, if left to the zero value, is ignored, and defaults are used instead.
+type ScanOptions struct {
+	Timeout time.Duration // Timeout on connecting to each host
+}
+
+/* ScanForLocalCameras scans the local IPv4 network for cameras
+options is optional.
+*/
+func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
 	ip, err := getLocalIPv4()
 	//fmt.Printf("getLocalIPv4: %v, %v\n", ip, err)
 	if err != nil {
@@ -64,7 +71,7 @@ func ScanForLocalCameras() ([]*configdb.Camera, error) {
 				select {
 				case camIP := <-workQueue:
 					//fmt.Printf("Trying %v\n", camIP)
-					model, err := tryToContactCamera(camIP)
+					model, err := tryToContactCamera(camIP, options)
 					if err == nil && model != camera.CameraModelUnknown {
 						cam := &configdb.Camera{
 							Model: string(model),
@@ -96,10 +103,15 @@ func ScanForLocalCameras() ([]*configdb.Camera, error) {
 	return cams, nil
 }
 
-func tryToContactCamera(ip net.IP) (camera.CameraModels, error) {
+func tryToContactCamera(ip net.IP, options *ScanOptions) (camera.CameraModels, error) {
 	//fmt.Printf("Contacting %v...", ip)
-	// 50ms has been sufficient on my home network with HikVision cameras and ethernet, but it might be too aggressive for some
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+
+	// 100ms has been sufficient on my home network with HikVision cameras and ethernet, but it might be too aggressive for some
+	timeout := 100 * time.Millisecond
+	if options != nil && options.Timeout != 0 {
+		timeout = options.Timeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	u := "http://" + ip.String()
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)

@@ -13,7 +13,7 @@
 </template>
 
 <style lang="scss" scoped>
-@import '@/assets/common.scss';
+@import '@/assets/vars.scss';
 
 .mobileFullscreenOuter {
 	@media only screen and (min-width: $mobileCutoff) {

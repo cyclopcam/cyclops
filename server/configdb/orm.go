@@ -12,6 +12,7 @@ type BaseModel struct {
 	ID int64 `gorm:"primaryKey" json:"id"`
 }
 
+// SYNC-RECORD-CAMERA
 type Camera struct {
 	BaseModel
 	Model            string `json:"model"`            // eg HikVision (actually CameraModels enum)
@@ -38,12 +39,14 @@ const (
 	UserPermissionViewer UserPermissions = "v"
 )
 
+// SYNC-RECORD-USER
 type User struct {
 	BaseModel
-	Username    string `json:"username"`
-	Name        string `json:"name"`
-	Permissions string `json:"permissions"`
-	Password    []byte `json:"-"`
+	Username           string `json:"username"`
+	UsernameNormalized string `json:"username_normalized"`
+	Name               string `json:"name"`
+	Permissions        string `json:"permissions"`
+	Password           []byte `json:"-"`
 }
 
 type Session struct {
@@ -52,6 +55,17 @@ type Session struct {
 	ExpiresAt dbh.IntTime
 }
 
+func IsValidPermission(p string) bool {
+	return p == string(UserPermissionAdmin) || p == string(UserPermissionViewer)
+}
+
 func (u *User) HasPermission(p UserPermissions) bool {
+	if strings.Contains(u.Permissions, string(UserPermissionAdmin)) {
+		return true
+	}
 	return strings.Index(u.Permissions, string(p)) != -1
+}
+
+func NormalizeUsername(username string) string {
+	return strings.ToLower(username)
 }

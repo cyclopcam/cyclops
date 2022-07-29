@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 
+	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
 )
@@ -12,7 +13,7 @@ type systemInfoJSON struct {
 	Cameras    []*camInfoJSON `json:"cameras"`
 }
 
-func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	j := systemInfoJSON{
 		Cameras: make([]*camInfoJSON, 0),
 	}
@@ -25,7 +26,7 @@ func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, param
 	www.SendJSON(w, &j)
 }
 
-func (s *Server) httpSystemRestart(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (s *Server) httpSystemRestart(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	www.SendText(w, "Restarting...")
 	// We run the shutdown from a new goroutine so that this HTTP handler can return,
 	// which tells the HTTP framework that this request is finished.

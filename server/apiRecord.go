@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/bmharper/cyclops/server/camera"
+	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
 )
@@ -78,13 +79,13 @@ func (s *Server) stopRecorder() {
 	}
 }
 
-func (s *Server) httpRecordStart(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (s *Server) httpRecordStart(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	cam := s.getCameraFromIDOrPanic(params.ByName("cameraID"))
 	s.startRecorder(cam)
 	www.SendOK(w)
 }
 
-func (s *Server) httpRecordStop(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (s *Server) httpRecordStop(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	s.stopRecorder()
 	www.SendOK(w)
 }

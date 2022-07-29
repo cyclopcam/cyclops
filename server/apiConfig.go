@@ -2,14 +2,16 @@ package server
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
+	"github.com/bmharper/cyclops/server/scanner"
 	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
 )
 
-func (s *Server) httpConfigAddCamera(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (s *Server) httpConfigAddCamera(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	cam := configdb.Camera{}
 	www.ReadJSON(w, r, &cam, 1024*1024)
 	cam.ID = 0
@@ -38,7 +40,7 @@ func (s *Server) httpConfigAddCamera(w http.ResponseWriter, r *http.Request, par
 	www.SendID(w, cam.ID)
 }
 
-func (s *Server) httpConfigSetVariable(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (s *Server) httpConfigSetVariable(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	key := params.ByName("key")
 	value := www.ReadString(w, r, 1024*1024)
 
@@ -56,4 +58,32 @@ func (s *Server) httpConfigSetVariable(w http.ResponseWriter, r *http.Request, p
 	www.SendJSON(w, &Response{
 		WantRestart: configdb.VariableSetNeedsRestart(configdb.VariableKey(key)),
 	})
+}
+
+func (s *Server) httpConfigScanNetworkForCameras(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	cache := www.QueryValue(r, "cache")
+	timeoutMS := www.QueryInt(r, "timeout") // timeout in milliseconds
+
+	s.lastScannedCamerasLock.Lock()
+	cacheSize := len(s.lastScannedCameras)
+	s.lastScannedCamerasLock.Unlock()
+
+	if cache == "nocache" || (cache == "" && cacheSize == 0) {
+		options := &scanner.ScanOptions{}
+		if timeoutMS != 0 {
+			options.Timeout = time.Millisecond * time.Duration(timeoutMS)
+		}
+		cameras, err := scanner.ScanForLocalCameras(options)
+		if err != nil {
+			www.PanicServerError(err.Error())
+		}
+		s.Log.Infof("Network scanner found %v cameras", len(cameras))
+		s.lastScannedCamerasLock.Lock()
+		s.lastScannedCameras = cameras
+		s.lastScannedCamerasLock.Unlock()
+	}
+
+	s.lastScannedCamerasLock.Lock()
+	defer s.lastScannedCamerasLock.Unlock()
+	www.SendJSON(w, s.lastScannedCameras)
 }

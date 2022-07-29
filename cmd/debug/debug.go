@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	cams, err := scanner.ScanForLocalCameras()
+	cams, err := scanner.ScanForLocalCameras(nil)
 	if err != nil {
 		panic(err)
 	}

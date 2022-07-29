@@ -2,19 +2,15 @@ package server
 
 import (
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
 )
 
-func (s *Server) httpAuthWhoAmi(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	userID := s.configDB.GetUserID(r)
-	if userID == 0 {
-		www.PanicForbidden()
-	}
-	user := configdb.User{}
-	www.Check(s.configDB.DB.First(&user, userID).Error)
+func (s *Server) httpAuthWhoAmi(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	www.SendJSON(w, &user)
 }
 
@@ -28,6 +24,8 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 	password := www.RequiredQueryValue(r, "password")
 	newUser := configdb.User{}
 	www.ReadJSON(w, r, &newUser, 1024*1024)
+	newUser.Username = strings.TrimSpace(newUser.Username)
+	newUser.UsernameNormalized = configdb.NormalizeUsername(newUser.Username)
 	if newUser.Username == "" {
 		www.PanicBadRequestf("Username may not be empty")
 	}
@@ -41,10 +39,18 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 			// There is already an admin user, so you can't create the initial user now
 			www.PanicForbidden()
 		}
+		s.Log.Infof("Creating initial user %v", newUser.Username)
+		if !newUser.HasPermission(configdb.UserPermissionAdmin) {
+			// We must force initial creation to be an admin user, otherwise you could somehow
+			// screw this up and create a bunch of non-admin users before creating your first
+			// admin user... which just doesn't make any sense.
+			newUser.Permissions += string(configdb.UserPermissionAdmin)
+		}
 	}
 
 	www.Check(s.configDB.DB.Create(&newUser).Error)
-	www.SendOK(w)
+	s.Log.Infof("Created new user %v, perms:%v", newUser.Username, newUser.Permissions)
+	s.configDB.LoginInternal(w, newUser.ID, time.Time{})
 }
 
 func (s *Server) httpAuthLogin(w http.ResponseWriter, r *http.Request, params httprouter.Params) {

@@ -1,31 +1,66 @@
 package server
 
 import (
+	"net/http"
 	"path/filepath"
 
+	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/staticfiles"
 	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
 )
 
+type ProtectedHandler func(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User)
+
 func (s *Server) SetupHTTP() {
 	router := httprouter.New()
 
+	// protected creates an HTTP handler that only accepts an authenticated user with
+	// the given set of permissions.
+	// The set of permissions are from configdb.UserPermissions
+	protected := func(requiredPerms string, method, route string, handle ProtectedHandler) {
+		for _, perm := range requiredPerms {
+			if !configdb.IsValidPermission(string(perm)) {
+				panic("Invalid permission " + string(perm))
+			}
+		}
+		www.Handle(s.Log, router, method, route, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+			user := s.configDB.GetUser(r)
+			if user == nil {
+				www.PanicForbidden()
+			}
+			for _, perm := range requiredPerms {
+				if !user.HasPermission(configdb.UserPermissions(perm)) {
+					www.PanicForbidden()
+				}
+			}
+			handle(w, r, params, user)
+		})
+	}
+
+	// unprotected creates an HTTP handler that is accessible without authentication
+	unprotected := func(method, route string, handle httprouter.Handle) {
+		www.Handle(s.Log, router, method, route, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+			handle(w, r, params)
+		})
+	}
+
 	//www.Handle(s.Log, router, "GET", "/", s.httpIndex)
-	www.Handle(s.Log, router, "GET", "/api/system/info", s.httpSystemGetInfo)
-	www.Handle(s.Log, router, "POST", "/api/system/restart", s.httpSystemRestart)
-	www.Handle(s.Log, router, "GET", "/api/camera/info/:cameraID", s.httpCamGetInfo)
-	www.Handle(s.Log, router, "GET", "/api/camera/latestImage/:cameraID", s.httpCamGetLatestImage)
-	www.Handle(s.Log, router, "GET", "/api/camera/recentVideo/:cameraID", s.httpCamGetRecentVideo)
-	www.Handle(s.Log, router, "GET", "/api/ws/camera/stream/:resolution/:cameraID", s.httpCamStreamVideo)
-	www.Handle(s.Log, router, "POST", "/api/config/addCamera", s.httpConfigAddCamera)
-	www.Handle(s.Log, router, "POST", "/api/config/setVariable/:key", s.httpConfigSetVariable)
-	www.Handle(s.Log, router, "POST", "/api/record/start/:cameraID", s.httpRecordStart)
-	www.Handle(s.Log, router, "POST", "/api/record/stop", s.httpRecordStop)
-	www.Handle(s.Log, router, "GET", "/api/auth/hasAdmin", s.httpAuthHasAdmin)
-	www.Handle(s.Log, router, "GET", "/api/auth/whoami", s.httpAuthWhoAmi)
-	www.Handle(s.Log, router, "POST", "/api/auth/createUser", s.httpAuthCreateUser)
-	www.Handle(s.Log, router, "POST", "/api/auth/login", s.httpAuthLogin)
+	protected("v", "GET", "/api/system/info", s.httpSystemGetInfo)
+	protected("a", "POST", "/api/system/restart", s.httpSystemRestart)
+	protected("v", "GET", "/api/camera/info/:cameraID", s.httpCamGetInfo)
+	protected("v", "GET", "/api/camera/latestImage/:cameraID", s.httpCamGetLatestImage)
+	protected("v", "GET", "/api/camera/recentVideo/:cameraID", s.httpCamGetRecentVideo)
+	protected("v", "GET", "/api/ws/camera/stream/:resolution/:cameraID", s.httpCamStreamVideo)
+	protected("a", "POST", "/api/config/addCamera", s.httpConfigAddCamera)
+	protected("a", "POST", "/api/config/setVariable/:key", s.httpConfigSetVariable)
+	unprotected("POST", "/api/config/scanNetworkForCameras", s.httpConfigScanNetworkForCameras)
+	protected("a", "POST", "/api/record/start/:cameraID", s.httpRecordStart)
+	protected("a", "POST", "/api/record/stop", s.httpRecordStop)
+	unprotected("GET", "/api/auth/hasAdmin", s.httpAuthHasAdmin)
+	protected("v", "GET", "/api/auth/whoami", s.httpAuthWhoAmi)
+	unprotected("POST", "/api/auth/createUser", s.httpAuthCreateUser)
+	unprotected("POST", "/api/auth/login", s.httpAuthLogin)
 
 	isImmutable := false
 	root, err := filepath.Abs("debug/www")

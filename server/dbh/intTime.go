@@ -10,11 +10,19 @@ import (
 type IntTime int64
 
 func MakeIntTime(v time.Time) IntTime {
+	if v.IsZero() {
+		return 0
+	}
 	return IntTime(v.UnixMilli())
 }
 
 func MakeIntTimeMilli(unixMilli int64) IntTime {
 	return IntTime(unixMilli)
+}
+
+// Yes, this seems silly. But it's nice to have it show up in your IDE after pressing '.'
+func (t *IntTime) IsZero() bool {
+	return *t == 0
 }
 
 func (t *IntTime) Set(v time.Time) {

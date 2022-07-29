@@ -1,6 +1,7 @@
 package configdb
 
 import (
+	"encoding/hex"
 	"net/http"
 	"time"
 
@@ -11,28 +12,36 @@ import (
 const SessionCookie = "session"
 
 func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
-	userID := c.MustGetUserID(w, r)
+	userID := c.GetUserID(r)
 	if userID == 0 {
+		http.Error(w, "Not authorized", http.StatusUnauthorized)
 		return
 	}
-	expiresAt := www.QueryInt64(r, "expiresAt") // 0 = no expiry
+	expiresAtUnixMilli := www.QueryInt64(r, "expiresAt") // 0 = no expiry
+	expiresAt := time.Time{}
+	if expiresAtUnixMilli != 0 {
+		expiresAt = time.UnixMilli(expiresAtUnixMilli)
+	}
+	c.LoginInternal(w, userID, expiresAt)
+}
+
+func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time) {
 	key := StrongRandomAlphaNumChars(30)
 	session := Session{
 		Key:       HashSessionCookie(key),
 		UserID:    userID,
-		ExpiresAt: dbh.MakeIntTimeMilli(expiresAt),
+		ExpiresAt: dbh.MakeIntTime(expiresAt),
 	}
 	if err := c.DB.Create(&session).Error; err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	c.Log.Infof("Logging %v in. key: %v. hashed key hex: %v", userID, key, hex.EncodeToString(HashSessionCookie(key)))
 	cookie := &http.Cookie{
 		Name:  SessionCookie,
 		Value: key,
 	}
-	if expiresAt != 0 {
-		cookie.Expires = time.UnixMilli(expiresAt)
-	}
+	cookie.Expires = expiresAt
 	http.SetCookie(w, cookie)
 	c.PurgeExpiredSessions()
 	www.SendOK(w)
@@ -76,13 +85,13 @@ func (c *ConfigDB) GetUserID(r *http.Request) int64 {
 	if cookie != nil {
 		session := Session{}
 		c.DB.Where("key = ?", HashSessionCookie(cookie.Value)).Find(&session)
-		if session.UserID != 0 && session.ExpiresAt.Get().After(time.Now()) {
+		if session.UserID != 0 && (session.ExpiresAt.IsZero() || session.ExpiresAt.Get().After(time.Now())) {
 			return session.UserID
 		}
 	}
 	if username, password, ok := r.BasicAuth(); ok {
 		user := User{}
-		c.DB.Where("username = ?", username).Find(&user)
+		c.DB.Where("username_normalized = ?", NormalizeUsername(username)).Find(&user)
 		if user.ID != 0 {
 			if VerifyHash(password, user.Password) {
 				return user.ID
