@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 
+	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
@@ -11,6 +12,11 @@ import (
 type systemInfoJSON struct {
 	ReadyError string         `json:"readyError,omitempty"` // If system is not yet ready to accept cameras, this will be populated
 	Cameras    []*camInfoJSON `json:"cameras"`
+}
+
+// If this gets too bloated, then we can split it up
+type constantsJSON struct {
+	CameraModels []string `json:"cameraModels"`
 }
 
 func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
@@ -35,4 +41,15 @@ func (s *Server) httpSystemRestart(w http.ResponseWriter, r *http.Request, param
 	go func() {
 		s.Shutdown(true)
 	}()
+}
+
+func (s *Server) httpSystemConstants(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	cams := []string{}
+	for _, m := range camera.AllCameraModels {
+		cams = append(cams, string(m))
+	}
+	c := &constantsJSON{
+		CameraModels: cams,
+	}
+	www.SendJSON(w, c)
 }

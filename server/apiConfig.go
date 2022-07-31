@@ -4,12 +4,20 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bmharper/cimg/v2"
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/scanner"
 	"github.com/bmharper/cyclops/server/www"
+	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
 )
+
+func (s *Server) httpConfigGetCameras(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	cams := []*configdb.Camera{}
+	www.Check(s.configDB.DB.Find(&cams).Error)
+	www.SendJSON(w, cams)
+}
 
 func (s *Server) httpConfigAddCamera(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	cam := configdb.Camera{}
@@ -86,4 +94,73 @@ func (s *Server) httpConfigScanNetworkForCameras(w http.ResponseWriter, r *http.
 	s.lastScannedCamerasLock.Lock()
 	defer s.lastScannedCamerasLock.Unlock()
 	www.SendJSON(w, s.lastScannedCameras)
+}
+
+// ConfigTestCamera is used by the front-end when adding a new camera
+// We use a websocket so that we can show progress while waiting for a keyframe.
+// The difference between doing this with a websocket and regular HTTP call
+// is maybe 1 or 2 seconds latency (depending on camera's keyframe interval),
+// but I want to spark joy.
+func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	//www.ReadJSON(w, r, &cfg, 1024*1024)
+	s.Log.Infof("httpConfigTestCamera starting")
+
+	c, err := s.wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		s.Log.Errorf("httpConfigTestCamera websocket upgrade failed: %v", err)
+		return
+	}
+	defer c.Close()
+
+	cfg := configdb.Camera{}
+	if err := c.ReadJSON(&cfg); err != nil {
+		s.Log.Errorf("Client sent invalid Camera to tester: %v", err)
+		return
+	}
+
+	type message struct {
+		Error  string `json:"error"`
+		Status string `json:"status"`
+		Image  string `json:"image"`
+	}
+
+	cam, err := camera.NewCamera(s.Log, cfg, 8*1024*1024)
+	if err != nil {
+		c.WriteJSON(message{Error: err.Error()})
+		return
+	}
+	defer cam.Close()
+	if err := cam.Start(); err != nil {
+		c.WriteJSON(message{Error: err.Error()})
+		return
+	}
+	if err := c.WriteJSON(message{Status: "Connected. Waiting for keyframe..."}); err != nil {
+		s.Log.Warnf("Tester failed to send Connected.. message to websocket: %v", err)
+	}
+
+	success := false
+	start := time.Now()
+	for {
+		img := cam.LowDecoder.LastImage()
+		if img != nil {
+			im, err := cimg.FromImage(img, true)
+			if err != nil {
+				c.WriteJSON(message{Error: "Failed to decode image: " + err.Error()})
+			} else {
+				jpg, err := cimg.Compress(im, cimg.MakeCompressParams(cimg.Sampling420, 85, 0))
+				if err != nil {
+					c.WriteJSON(message{Error: "Failed to compress image to JPEG: " + err.Error()})
+				}
+				c.WriteMessage(websocket.BinaryMessage, jpg)
+				success = true
+			}
+			break
+		} else if time.Now().Sub(start) > 7*time.Second {
+			c.WriteJSON(message{Error: "Timeout waiting for keyframe"})
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	s.Log.Infof("httpConfigTestCamera finished (success: %v)", success)
 }

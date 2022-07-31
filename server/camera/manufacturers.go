@@ -3,15 +3,21 @@ package camera
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 )
 
 type CameraModels string
 
 const (
-	CameraModelUnknown   CameraModels = ""
-	CameraModelHikVision CameraModels = "HikVision"
+	// SYNC-CAMERA-MODELS
+	CameraModelUnknown     CameraModels = ""
+	CameraModelHikVision   CameraModels = "HikVision"
+	CameraModelJustTesting CameraModels = "JustTesting"
 )
+
+// AllCameraModels is an array of all camera model names, excluding "Unknown"
+var AllCameraModels []CameraModels
 
 func URLForCamera(model, baseURL, lowResSuffix, highResSuffix string, highRes bool) (string, error) {
 	suffix := ""
@@ -51,4 +57,15 @@ func IdentifyCameraFromHTTP(headers http.Header, body string) CameraModels {
 		return CameraModelHikVision
 	}
 	return CameraModelUnknown
+}
+
+func init() {
+	// SYNC-CAMERA-MODELS
+	AllCameraModels = []CameraModels{
+		CameraModelHikVision,
+		CameraModelJustTesting,
+	}
+	sort.Slice(AllCameraModels, func(i, j int) bool {
+		return AllCameraModels[i] < AllCameraModels[j]
+	})
 }

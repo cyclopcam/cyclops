@@ -1,2 +1,52 @@
 // Anything >= 500px is desktop
 $mobileCutoff: 500px;
+
+@mixin shadow5 {
+	box-shadow: 1px 2px 5px rgba(0, 0, 0, 0.3);
+}
+@mixin shadow7 {
+	box-shadow: 1px 2px 7px rgba(0, 0, 0, 0.3);
+}
+@mixin shadow9 {
+	box-shadow: 2px 3px 9px rgba(0, 0, 0, 0.3);
+}
+@mixin shadow15 {
+	box-shadow: 3px 4px 15px rgba(0, 0, 0, 0.3);
+}
+@mixin shadow5L {
+	box-shadow: 1px 2px 5px rgba(0, 0, 0, 0.12);
+}
+@mixin shadow7L {
+	box-shadow: 1px 2px 7px rgba(0, 0, 0, 0.12);
+}
+@mixin shadow9L {
+	box-shadow: 2px 3px 9px rgba(0, 0, 0, 0.12);
+}
+@mixin shadow15L {
+	box-shadow: 3px 4px 15px rgba(0, 0, 0, 0.12);
+}
+
+@mixin shadow5Hover {
+	box-shadow: 2px 3px 7px rgba(0, 0, 0, 0.3);
+}
+@mixin shadow7Hover {
+	box-shadow: 2px 3px 9px rgba(0, 0, 0, 0.3);
+}
+@mixin shadow9Hover {
+	box-shadow: 3px 4px 11px rgba(0, 0, 0, 0.3);
+}
+@mixin shadow15Hover {
+	box-shadow: 4px 5px 17px rgba(0, 0, 0, 0.3);
+}
+@mixin shadow5LHover {
+	box-shadow: 2px 3px 7px rgba(0, 0, 0, 0.12);
+}
+@mixin shadow7LHover {
+	box-shadow: 2px 3px 9px rgba(0, 0, 0, 0.12);
+}
+@mixin shadow9LHover {
+	box-shadow: 3px 4px 11px rgba(0, 0, 0, 0.12);
+}
+@mixin shadow15LHover {
+	box-shadow: 4px 5px 17px rgba(0, 0, 0, 0.12);
+}

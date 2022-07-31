@@ -1,0 +1,248 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue';
+
+let props = defineProps({
+	// parent: relative to parent DOM element
+	// previous: relative to previous sibling DOM element
+	// center: center of screen
+	position: {
+		type: String,
+		default: 'center'
+	},
+
+	// When position is either previous or center:
+	// center: center of related DOM element
+	// under: underneath related DOM element
+	relative: {
+		type: String,
+		default: 'center',
+	},
+
+	// If  true, the make width the same as the width of the sizing 'position' element
+	sameWidth: Boolean,
+
+	// color that is applied to fullscreen screen-catcher
+	// In addition to an rgba color, you can use these predefined colors:
+	// extradark, dark, light
+	tint: {
+		type: String,
+		default: 'rgba(0,0,0,0)'
+	},
+
+	// Poll the browser for our size, and shift around if we go off-screen
+	pollSize: Boolean,
+
+	// Show an 'x' in the top right
+	showX: Boolean,
+
+	// It's useful to turn this on when your modal control's size might exceed the screen's resolution
+	scrollable: Boolean,
+})
+
+let emits = defineEmits(['close']);
+
+let domBreaker = 1;
+
+let ownWidth = 0;
+let ownHeight = 0;
+let numPolls = 0;
+let hide = true;
+let xLeft = 0;
+let xTop = 0;
+
+const fixed = ref(null);
+const container = ref(null);
+const xButton = ref(null);
+
+function fixedStyle(): any {
+	let t = props.tint;
+	if (t === 'extradark')
+		t = 'rgba(0,0,0,0.5)';
+	else if (t === 'dark')
+		t = 'rgba(0,0,0,0.3)';
+	else if (t === 'light')
+		t = 'rgba(0,0,0,0.1)';
+
+	return {
+		'background-color': t,
+	};
+}
+
+function containerStyle(): any {
+	let s: any = {};
+	if (domBreaker > 9e9) {
+		// provide an escape hatch to force recomputation of containerStyle once we get mounted
+		s['left'] = 0;
+	}
+	if (hide) {
+		s['visibility'] = 'hidden';
+	}
+	if (props.scrollable) {
+		s['overflow'] = 'auto';
+		s['max-width'] = '100vw';
+		s['max-height'] = '100vh';
+	}
+
+	let fixedEl = fixed.value! as HTMLDivElement;
+
+	if (fixedEl && (props.position === 'previous' || props.position === 'parent')) {
+		//console.log("got it");
+
+		let center = props.relative === 'center';
+		let under = !center;
+		let screenW = document.documentElement.clientWidth;
+		let screenH = document.documentElement.clientHeight;
+		let refr: DOMRect; // reference rectangle
+		if (props.position === 'previous') {
+			refr = fixedEl.previousElementSibling!.getBoundingClientRect();
+			//console.log("Previous", refr);
+		} else {
+			refr = fixedEl.parentElement!.getBoundingClientRect();
+		}
+		let myWidth = ownWidth;
+		let myHeight = ownHeight;
+		if (props.sameWidth) {
+			myWidth = refr.width;
+		}
+		let pad = 10;
+		let left = refr.x + refr.width / 2 - myWidth / 2;
+		let top = refr.y + refr.height / 2 - myHeight / 2;
+		if (under) {
+			top = refr.bottom;
+		}
+		if (left < pad)
+			left = pad;
+		if (top < pad)
+			top = pad;
+		if (left + myWidth + pad > screenW)
+			left = screenW - myWidth - pad;
+		if (top + myHeight + pad > screenH)
+			top = screenH - myHeight - pad;
+		s['position'] = 'absolute';
+		s['left'] = left + 'px';
+		s['top'] = top + 'px';
+		if (props.sameWidth) {
+			s['min-width'] = myWidth + 'px';
+		}
+	}
+	return s;
+}
+
+function xStyle(): any {
+	return {
+		"left": xLeft + "px",
+		"top": xTop + "px",
+	};
+}
+
+function refreshOwnSize() {
+	let self = container.value! as HTMLElement;
+	if (!self)
+		return;
+	let rect = self.getBoundingClientRect();
+	//if (rect.width !== this.ownWidth || rect.height !== this.ownHeight) {
+	//	console.log(`Modal detected altered size. numPolls = ${this.numPolls}`);
+	//}
+	ownWidth = rect.width;
+	ownHeight = rect.height;
+}
+
+function refreshXPosition() {
+	let x = xButton.value! as HTMLElement;
+	if (!x)
+		return;
+	let containerEl = container.value! as HTMLElement;
+	if (!containerEl)
+		return;
+	let slot = containerEl.firstElementChild;
+	if (!slot || slot === x)
+		return;
+	let slotRect = slot.getBoundingClientRect();
+	xLeft = slotRect.right - 33;
+	xTop = slotRect.top + 7;
+}
+
+function xPoller() {
+	refreshXPosition();
+	setTimeout(xPoller, 200);
+}
+
+function onRootClick(ev: MouseEvent) {
+	if (ev.target === fixed.value) {
+		// outside click
+		if (!props.showX) {
+			emits('close');
+		}
+	}
+}
+
+function onXClick() {
+	emits('close');
+}
+
+function sizePoller() {
+	numPolls++;
+	refreshOwnSize();
+	// Give the DOM one or two cycles to stabilize the layout. By not drawing ourselves for 5 cycles,
+	// we end up avoiding a visible flicker, should the menu need to move itself.
+	let showAfterN = 5;
+	if (numPolls === showAfterN) {
+		hide = false;
+	}
+	let timeout = numPolls <= showAfterN ? 1 : 100;
+	setTimeout(sizePoller, timeout);
+}
+
+onMounted(() => {
+	domBreaker++;
+	if (props.pollSize) {
+		sizePoller();
+	} else {
+		refreshOwnSize();
+		hide = false;
+	}
+	if (props.showX)
+		xPoller();
+})
+</script>
+
+<template>
+	<div ref="fixed" :class="{ modalRoot: true, centered: true }" :style="fixedStyle()" @mousedown="onRootClick">
+		<div ref="container" :style="containerStyle()">
+			<slot />
+			<div v-if="showX" ref="xButton" class="x" :style="xStyle()" @click="onXClick"></div>
+		</div>
+	</div>
+</template>
+
+<style lang="scss" scoped>
+.modalRoot {
+	position: fixed;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	z-index: 1;
+}
+
+.centered {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+}
+
+.x {
+	position: absolute;
+	width: 26px;
+	height: 26px;
+	background-position: center;
+	background-repeat: no-repeat;
+	background-size: 22px 22px;
+	background-image: url('@/icons/x.svg');
+	cursor: pointer;
+}
+
+.x:hover {
+	background-size: 25px 25px;
+}
+</style>

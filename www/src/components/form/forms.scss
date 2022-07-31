@@ -1,0 +1,22 @@
+$formBorderBottom: solid 1px #ddd;
+$formBorderBottomFocus: solid 1px #888;
+$formInputFontSize: 16px;
+
+.formItem {
+	margin: 14px 0px;
+}
+
+.label {
+	margin: 2px 0px 4px 0px;
+	font-size: 13px;
+
+	@media (max-width: $mobileCutoff) {
+		font-size: 14px;
+	}
+
+	color: #888;
+}
+
+::placeholder {
+	color: #ddd;
+}

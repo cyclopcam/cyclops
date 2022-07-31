@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ func RunProtected(log log.Log, w http.ResponseWriter, r *http.Request, handler f
 				SendError(w, hErr.Message, hErr.Code)
 			} else if err, ok := rec.(error); ok {
 				log.Errorf("Panic error %v: %v", r.URL.Path, err)
+				log.Errorf("Stack Trace: %v", string(debug.Stack()))
 				SendError(w, err.Error(), http.StatusInternalServerError)
 			} else if err, ok := rec.(string); ok {
 				log.Errorf("Panic string %v: %v", r.URL.Path, err)

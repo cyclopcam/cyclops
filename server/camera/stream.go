@@ -14,6 +14,7 @@ import (
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
+	"github.com/aler9/gortsplib/pkg/liberrors"
 	"github.com/aler9/gortsplib/pkg/url"
 )
 
@@ -63,7 +64,7 @@ type StreamInfo struct {
 
 type Stream struct {
 	Log        log.Log
-	Client     gortsplib.Client
+	Client     *gortsplib.Client
 	Ident      string // Just for logs. Simply CameraName.StreamName.
 	CameraName string // Just for logs
 	StreamName string // Just for logs
@@ -94,8 +95,11 @@ func NewStream(logger log.Log, cameraName, streamName string) *Stream {
 }
 
 func (s *Stream) Listen(address string) error {
-	s.Client = gortsplib.Client{}
-	client := &s.Client
+	if s.Client != nil {
+		s.Client.Close()
+		s.Client = nil
+	}
+	client := &gortsplib.Client{}
 
 	// parse URL
 	u, err := url.Parse(address)
@@ -110,11 +114,18 @@ func (s *Stream) Listen(address string) error {
 	if err != nil {
 		return fmt.Errorf("Failed to start stream: %w", err)
 	}
+	// From this point on, we're responsible for calling client.Close()
+	s.Client = client
 
 	// find published tracks
 	tracks, baseURL, _, err := client.Describe(u)
 	if err != nil {
-		panic(err)
+		if e, ok := err.(liberrors.ErrClientBadStatusCode); ok {
+			if e.Code == 401 {
+				return fmt.Errorf("Invalid username or password")
+			}
+		}
+		return err
 	}
 
 	// find the H264 track
@@ -166,15 +177,15 @@ func (s *Stream) Listen(address string) error {
 
 	s.Log.Infof("Connection to %v success", camHost)
 
-	// wait until a fatal error
-	//panic(c.Wait())
 	return nil
 }
 
 func (s *Stream) Close() {
 	s.Log.Infof("Closing stream")
 
-	s.Client.Close()
+	if s.Client != nil {
+		s.Client.Close()
+	}
 
 	s.sinksLock.Lock()
 	sinks := gen.CopySlice(s.sinks)

@@ -208,3 +208,97 @@ $focalBrightness: 45%;
 //.group {
 //	border: solid 1px #eee;
 //}
+
+.shadow5 {
+	@include shadow5;
+}
+.shadow7 {
+	@include shadow7;
+}
+.shadow9 {
+	@include shadow9;
+}
+.shadow15 {
+	@include shadow15;
+}
+.shadow5L {
+	@include shadow5L;
+}
+.shadow7L {
+	@include shadow7L;
+}
+.shadow9L {
+	@include shadow9L;
+}
+.shadow15L {
+	@include shadow15L;
+}
+
+.shadow5Hover {
+	@include shadow5;
+}
+.shadow7Hover {
+	@include shadow7;
+}
+.shadow9Hover {
+	@include shadow9;
+}
+.shadow15Hover {
+	@include shadow15;
+}
+.shadow5LHover {
+	@include shadow5L;
+}
+.shadow7LHover {
+	@include shadow7L;
+}
+.shadow9LHover {
+	@include shadow9L;
+}
+.shadow15LHover {
+	@include shadow15L;
+}
+
+@mixin shadowHoverTransition {
+	transition: box-shadow 150ms;
+}
+
+.shadow5Hover:hover {
+	@include shadowHoverTransition();
+	@include shadow5Hover;
+}
+.shadow7Hover:hover {
+	@include shadowHoverTransition();
+	@include shadow7Hover;
+}
+.shadow9Hover:hover {
+	@include shadowHoverTransition();
+	@include shadow9Hover;
+}
+.shadow15Hover:hover {
+	@include shadowHoverTransition();
+	@include shadow15Hover;
+}
+.shadow5LHover:hover {
+	@include shadowHoverTransition();
+	@include shadow5LHover;
+}
+.shadow7LHover:hover {
+	@include shadowHoverTransition();
+	@include shadow7LHover;
+}
+.shadow9LHover:hover {
+	@include shadowHoverTransition();
+	@include shadow9LHover;
+}
+.shadow15LHover:hover {
+	@include shadowHoverTransition();
+	@include shadow15LHover;
+}
+
+.smallDialog {
+	background: #fff;
+	border-radius: 5px;
+	padding: 20px;
+	@include shadow9;
+}

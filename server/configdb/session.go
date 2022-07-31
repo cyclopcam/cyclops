@@ -1,7 +1,6 @@
 package configdb
 
 import (
-	"encoding/hex"
 	"net/http"
 	"time"
 
@@ -36,10 +35,12 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	c.Log.Infof("Logging %v in. key: %v. hashed key hex: %v", userID, key, hex.EncodeToString(HashSessionCookie(key)))
+	c.Log.Infof("Logging %v in", userID)
+	//c.Log.Infof("Logging %v in. key: %v. hashed key hex: %v", userID, key, hex.EncodeToString(HashSessionCookie(key))) // only for debugging
 	cookie := &http.Cookie{
 		Name:  SessionCookie,
 		Value: key,
+		Path:  "/",
 	}
 	cookie.Expires = expiresAt
 	http.SetCookie(w, cookie)

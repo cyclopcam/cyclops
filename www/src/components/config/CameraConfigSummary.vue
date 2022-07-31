@@ -2,7 +2,8 @@
 import type { CameraRecord } from '@/db/config/configdb';
 
 let props = defineProps<{
-	camera: CameraRecord
+	camera: CameraRecord,
+	isConfigured: boolean,
 }>();
 defineEmits(['add']);
 
@@ -14,7 +15,8 @@ defineEmits(['add']);
 			<div style="margin: 0 10px">{{ camera.host }}</div>
 			<div style="margin: 0 10px">{{ camera.model }}</div>
 		</div>
-		<button @click="$emit('add')">Add</button>
+		<div v-if="isConfigured" style="color: #080">Configured</div>
+		<button v-else @click="$emit('add')">Add</button>
 	</div>
 </template>
 
