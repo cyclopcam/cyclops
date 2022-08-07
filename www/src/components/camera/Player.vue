@@ -7,12 +7,12 @@ let props = defineProps<{
 	camera: CameraInfo,
 	play: boolean,
 	round?: boolean,
+	size?: string,
 }>()
 let emits = defineEmits(['click']);
 
 let muxer: JMuxer | null = null;
 let ws: WebSocket | null = null;
-let isFirstPlay = true;
 let isRecording = ref(false);
 let backlogDone = false;
 let nPackets = 0;
@@ -101,13 +101,6 @@ function play() {
 function onClick() {
 	console.log("Player onClick");
 	emits('click');
-
-	//if (!isPlaying()) {
-	//	//isFirstPlay = false;
-	//	play();
-	//} else if (isPlaying()) {
-	//	stop();
-	//}
 }
 
 function onPlay() {
@@ -121,7 +114,7 @@ function onPause() {
 }
 
 function stop() {
-	console.log("stop");
+	console.log("Player.vue stop");
 	if (ws) {
 		ws.close();
 		ws = null;
@@ -150,9 +143,28 @@ function posterURL(): string {
 }
 
 function videoStyle(): any {
+	/*
+	let width = props.camera.low.width + "px";
+	let height = props.camera.low.height + "px";
+	if (props.size) {
+		switch (props.size) {
+			case "small":
+				width = "200px";
+				height = "140px";
+				break;
+			case "medium":
+				width = "320px";
+				height = "200px";
+				break;
+			default:
+				console.error(`Unknown camera size ${props.size}`);
+		}
+	}
+	*/
+
 	return {
-		width: props.camera.low.width + "px",
-		height: props.camera.low.height + "px",
+		//width: width,
+		//height: height,
 		"border-radius": props.round ? "5px" : "",
 	}
 }
@@ -169,25 +181,21 @@ onUnmounted(() => {
 	stop();
 })
 
-//onMounted(() => {
-//	play();
-//})
+onMounted(() => {
+	if (props.play)
+		play();
+})
 </script>
 
 <template>
-	<div>
-		<video class="video" :id="'camera' + camera.id" autoplay :poster="posterURL()" @play="onPlay" @pause="onPause"
-			@click="onClick" :style="videoStyle()" />
-		<!--
-		<button @click="onRecordStartStop">{{ isRecording ? "stop" : "record" }}</button>
-		-->
-	</div>
+	<video class="video" :id="'camera' + camera.id" autoplay :poster="posterURL()" @play="onPlay" @pause="onPause"
+		@click="onClick" :style="videoStyle()" />
 </template>
 
 <style lang="scss" scoped>
-// Can't figure out why video resizing in Chrome desktop.. this happens on linux only, so just gonna ignore it.
-// Curiously, the linux <video> seems like it has the correct aspect ratio.
-//.video {
-//	object-fit: fit;
-//}
+.video {
+	width: 100%;
+	height: 100%;
+	object-fit: fill; // This screws up the aspect ratio, but I feel like it's the right UI tradeoff for consistency of the video widgets
+}
 </style>

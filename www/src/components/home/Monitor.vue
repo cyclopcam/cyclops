@@ -30,7 +30,8 @@ function onStop() {
 		</toolbar>
 		-->
 		<div class="cameras">
-			<camera-item v-for="cam of cameras()" :camera="cam" :play="play" @play="onPlay" @stop="onStop" />
+			<camera-item v-for="cam of cameras()" :camera="cam" :play="play" @play="onPlay" @stop="onStop"
+				size="medium" />
 		</div>
 	</div>
 </template>

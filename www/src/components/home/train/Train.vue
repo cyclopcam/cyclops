@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import Buttin from "../core/Buttin.vue";
+import Buttin from "@/components/core/Buttin.vue";
 import RedDot from "@/icons/red-dot.svg";
+import PlusCircle from "@/icons/plus-circle.svg";
 import { fetchRecordings, Recording } from "@/recording/recording";
 import { onMounted, ref } from "vue";
 import RecordingItem from "./RecordingItem.vue";
+import Recorder from "./Recorder.vue";
 
 let networkError = ref('');
 let recordings = ref([] as Recording[]);
+let isRecording = ref(false);
 
 async function getRecordings() {
 	let r = await fetchRecordings();
@@ -19,7 +22,7 @@ async function getRecordings() {
 }
 
 function showHelp(): boolean {
-	return recordings.value.length === 0;
+	return !isRecording.value && recordings.value.length === 0;
 }
 
 onMounted(() => {
@@ -32,7 +35,9 @@ onMounted(() => {
 		<div v-if="networkError" class="error">{{ networkError }}</div>
 		<p v-if="showHelp()" class="helpTopic">Train your system by recording videos that simulate alarm conditions.</p>
 		<div style="height: 20px" />
-		<buttin :icon="RedDot" iconSize="16px">New Recording</buttin>
+		<buttin v-if="!isRecording" :icon="PlusCircle" iconSize="16px" @click="isRecording = true">New Recording
+		</buttin>
+		<recorder v-if="isRecording" />
 		<div class="recordings">
 			<recording-item v-for="rec of recordings" :recording="rec" />
 		</div>

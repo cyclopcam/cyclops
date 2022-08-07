@@ -312,8 +312,13 @@ $focalBrightness: 45%;
 	max-width: 320px;
 	font-size: 14px;
 	line-height: 1.4;
-	background-color: rgb(255, 254, 208);
+	background-color: rgb(255, 253, 223);
 	padding: 10px 15px;
 	border-radius: 5px;
-	border: solid 1px rgb(255, 232, 118);
+	border: solid 1px rgb(253, 238, 164);
+}
+
+.stepLabel {
+	font-size: 16px;
+	margin: 4px 4px;
 }

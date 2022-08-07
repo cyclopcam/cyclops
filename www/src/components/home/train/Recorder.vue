@@ -1,0 +1,112 @@
+<script setup lang="ts">
+import { CameraInfo } from '@/camera/camera.js';
+import { globals } from '@/globals.js';
+import CameraItem from '@/components/home/CameraItem.vue';
+import { ref } from 'vue';
+import RedDot from "@/icons/red-dot.svg";
+import Stop from "@/icons/stop.svg";
+import Buttin from "../../core/Buttin.vue";
+
+let maxRecordingSeconds = 45;
+let isPickCamera = ref(true);
+let camera = ref(new CameraInfo());
+let playLive = ref(false);
+let isRecording = ref(false);
+let startedAt = ref(new Date());
+let timeNow = ref(new Date());
+
+function cameras(): CameraInfo[] {
+	return globals.cameras;
+}
+
+function onPlay(cam: CameraInfo) {
+	isPickCamera.value = false;
+	camera.value = cam;
+	playLive.value = true;
+}
+
+function startRecording() {
+	isRecording.value = true;
+	startedAt.value = new Date();
+	timeTicker();
+}
+
+function stopRecording() {
+	isRecording.value = false;
+	playLive.value = false;
+}
+
+function timeTicker() {
+	if (!isRecording.value) {
+		return;
+	}
+	timeNow.value = new Date();
+	setTimeout(timeTicker, 200);
+}
+
+function seconds(): number {
+	return (timeNow.value.getTime() - startedAt.value.getTime()) / 1000;
+}
+
+function status(): string {
+	let elapsed = seconds();
+	return `${Math.round(elapsed)} seconds`;
+}
+
+</script>
+
+<template>
+	<div>
+		<div v-if="isPickCamera" class="flexColumnCenter">
+			<div class="stepLabel">Choose a camera for the recording:</div>
+			<div class="flex picker">
+				<camera-item v-for="cam of cameras()" :camera="cam" :play="false" size="220" @play="onPlay(cam)"
+					class="cameraItemPicker" />
+			</div>
+		</div>
+		<div v-else class="flexColumnCenter">
+			<camera-item :camera="camera" :play="playLive" size="280" />
+			<div style="height: 20px" />
+			<buttin v-if="!isRecording" :icon="RedDot" iconSize="16px" @click="startRecording()">Start Recording
+			</buttin>
+			<div v-if="isRecording" class="flexColumnCenter recordingBlock">
+				<div v-if="isRecording" class="status">{{ status() }}</div>
+				<progress :value="seconds()" :max="maxRecordingSeconds" class="progress" />
+				<buttin v-if="isRecording" :icon="Stop" iconSize="16px" @click="stopRecording()">Stop
+				</buttin>
+			</div>
+		</div>
+	</div>
+</template>
+
+<style lang="scss" scoped>
+.picker {
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-top: 16px;
+	margin: 16px 20px;
+}
+
+.cameraItemPicker {
+	border: solid 2px rgba(0, 0, 0, 0);
+	border-radius: 7px;
+}
+
+.cameraItemPicker:hover {
+	border: solid 2px rgb(72, 144, 232);
+}
+
+.recordingBlock {
+	margin: 5px 0 5px 0;
+}
+
+.status {
+	margin: 5px 0 0px 0;
+}
+
+.progress {
+	width: 240px;
+	height: 30px;
+	margin: 2px 0 20px 0;
+}
+</style>
