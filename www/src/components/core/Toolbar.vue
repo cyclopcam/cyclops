@@ -1,13 +1,15 @@
 <script setup lang="ts">
-let props = defineProps<{
-	msg: string
-}>()
 </script>
 
 <template>
-	<div>
+	<div class="toolbar">
+		<slot />
 	</div>
 </template>
 
 <style lang="scss" scoped>
+.toolbar {
+	display: flex;
+	gap: 10px;
+}
 </style>

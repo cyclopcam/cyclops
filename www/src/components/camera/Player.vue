@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import type { CameraInfo } from "@/camera/camera";
 import JMuxer from "jmuxer";
-import { onMounted, reactive, ref } from "vue";
+import { onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 
 let props = defineProps<{
-	camera: CameraInfo
+	camera: CameraInfo,
+	play: boolean,
 }>()
+let emits = defineEmits(['click']);
 
 let muxer: JMuxer | null = null;
 let ws: WebSocket | null = null;
@@ -96,13 +98,15 @@ function play() {
 }
 
 function onClick() {
-	console.log("onClick");
-	if (!isPlaying()) {
-		//isFirstPlay = false;
-		play();
-	} else if (isPlaying()) {
-		stop();
-	}
+	console.log("Player onClick");
+	emits('click');
+
+	//if (!isPlaying()) {
+	//	//isFirstPlay = false;
+	//	play();
+	//} else if (isPlaying()) {
+	//	stop();
+	//}
 }
 
 function onPlay() {
@@ -151,6 +155,18 @@ function videoStyle(): any {
 	}
 }
 
+watch(() => props.play, (newVal, oldVal) => {
+	if (newVal) {
+		play();
+	} else {
+		stop();
+	}
+})
+
+onUnmounted(() => {
+	stop();
+})
+
 //onMounted(() => {
 //	play();
 //})
@@ -158,10 +174,11 @@ function videoStyle(): any {
 
 <template>
 	<div>
-		<div> {{ camera.id }} {{ camera.name }} </div>
 		<video class="video" :id="'camera' + camera.id" autoplay :poster="posterURL()" @play="onPlay" @pause="onPause"
 			@click="onClick" :style="videoStyle()" />
+		<!--
 		<button @click="onRecordStartStop">{{ isRecording ? "stop" : "record" }}</button>
+		-->
 	</div>
 </template>
 

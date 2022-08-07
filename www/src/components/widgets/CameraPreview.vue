@@ -7,8 +7,13 @@ defineProps<{
 </script>
 
 <template>
-	<img :src="`/api/camera/latestImage/${camera.id}`" />
+	<div>
+		<img class="preview" :src="`/api/camera/latestImage/${camera.id}`" />
+	</div>
 </template>
 
 <style lang="scss" scoped>
+.preview {
+	border-radius: 5px;
+}
 </style>

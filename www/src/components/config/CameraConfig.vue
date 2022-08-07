@@ -17,7 +17,17 @@ let emits = defineEmits(['add']);
 
 let preview = ref(null);
 
-let ctx = new Context(() => true, { inputWidth: '170px', name: 'CameraConfig' });
+let ctx = new Context(() => {
+	if (host.value === '' || model.value === '') {
+		return false;
+	}
+	if (testGood.value) {
+		if (name.value === '') {
+			return false;
+		}
+	}
+	return true;
+}, { inputWidth: '170px', name: 'CameraConfig' });
 let testBusy = ref(false);
 let havePreview = ref(false);
 let testGood = ref(false);
@@ -26,6 +36,7 @@ let host = ref(props.camera.host);
 let username = ref(props.camera.username);
 let password = ref(props.camera.password);
 let model = ref(props.camera.model);
+let name = ref(props.camera.name);
 
 function ownConfig(): CameraRecord {
 	let c = props.camera.clone();
@@ -33,6 +44,7 @@ function ownConfig(): CameraRecord {
 	c.username = username.value;
 	c.password = password.value;
 	c.model = model.value;
+	c.name = name.value;
 	return c;
 }
 
@@ -84,15 +96,19 @@ onMounted(() => {
 	<div class="flexColumn">
 		<div class="flex">
 			<div class="flexColumn">
-				<form-text :ctx="ctx" label="IP Address / Hostname" v-model="host" placeholder="ip/hostname" />
+				<form-text :ctx="ctx" label="IP Address / Hostname" v-model="host" placeholder="ip/hostname"
+					:required="true" />
 				<div class="spacer" />
-				<form-dropdown :ctx="ctx" label="Model" v-model="model" placeholder="model"
+				<form-dropdown :ctx="ctx" label="Model" v-model="model" placeholder="model" :required="true"
 					:options="constants.cameraModels" />
 				<div class="spacer" />
 				<form-text :ctx="ctx" label="Username" v-model="username" placeholder="username"
 					autocomplete="username" />
 				<div class="spacer" />
 				<form-text :ctx="ctx" label="Password" v-model="password" placeholder="password" :password="true" />
+				<div class="spacer" />
+				<form-text :ctx="ctx" label="Camera Name" v-model="name" placeholder="camera name"
+					:required="testGood" />
 				<div class="spacer" />
 			</div>
 			<div style="width: 30px" />

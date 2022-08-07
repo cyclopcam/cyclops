@@ -1,21 +1,18 @@
 <script setup lang="ts">
-import type { CameraInfo } from '@/camera/camera.js';
-import { globals } from '@/globals.js';
-import CameraItem from '../components/home/CameraItem.vue';
-
-function cameras(): CameraInfo[] {
-	return globals.cameras;
-}
+import Topbar from '../components/home/Topbar.vue';
 </script>
 
 <template>
 	<div>
-		<div>topbar?</div>
-		<div class="flexColumn">
-			<camera-item v-for="cam of cameras()" :camera="cam" />
+		<topbar />
+		<div class="flexColumn view">
+			<router-view />
 		</div>
 	</div>
 </template>
 
 <style lang="scss" scoped>
+.view {
+	align-items: center;
+}
 </style>
