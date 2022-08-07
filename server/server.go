@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,8 +48,7 @@ type Server struct {
 	lastScannedCameras     []*configdb.Camera
 }
 
-// After calling NewServer, you must call LoadConfig() to setup additional things like
-// the TempFiles object.
+// Create a new server, load config, start cameras, and listen on HTTP
 func NewServer(configDBFilename string) (*Server, error) {
 	log, err := log.NewLog()
 	if err != nil {
@@ -64,6 +64,9 @@ func NewServer(configDBFilename string) (*Server, error) {
 		return nil, err
 	} else {
 		s.configDB = cfg
+	}
+	if err := s.configDB.GuessDefaultVariables(); err != nil {
+		log.Errorf("GuessDefaultVariables failed: %v", err)
 	}
 	// If config variables fail to load, then we must still continue to boot ourselves up to the point
 	// where we can accept new config. Otherwise, the system is bricked if the user enters
@@ -196,14 +199,19 @@ func (s *Server) LoadConfigVariables() error {
 		return err
 	}
 	for _, v := range vars {
+		trimmed := strings.TrimSpace(v.Value)
+		if trimmed == "" {
+			// I added this after building the UI, where it's just so hard to avoid empty strings
+			continue
+		}
 		var err error
 		switch configdb.VariableKey(v.Key) {
 		case configdb.VarPermanentStoragePath:
-			err = s.SetPermanentStoragePath(v.Value)
+			err = s.SetPermanentStoragePath(trimmed)
 		case configdb.VarRecentEventStoragePath:
-			err = s.SetRecentEventStoragePath(v.Value)
+			err = s.SetRecentEventStoragePath(trimmed)
 		case configdb.VarTempFilePath:
-			err = s.SetTempFilePath(v.Value)
+			err = s.SetTempFilePath(trimmed)
 		default:
 			s.Log.Errorf("Config variable '%v' not recognized", v.Key)
 		}

@@ -9,6 +9,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+// SYNC-SYSTEM-INFO-JSON
 type systemInfoJSON struct {
 	ReadyError string         `json:"readyError,omitempty"` // If system is not yet ready to accept cameras, this will be populated
 	Cameras    []*camInfoJSON `json:"cameras"`

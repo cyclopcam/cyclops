@@ -117,6 +117,13 @@ func CheckLogged(l log.Log, err error) {
 	}
 }
 
+// CheckClient causes a PanicBadRequest if err is not nil.
+func CheckClient(err error) {
+	if err != nil {
+		PanicBadRequestf("%v", err)
+	}
+}
+
 // FailedRequestSummary returns a string that you can emit into a log message, when an HTTP that you've made fails
 func FailedRequestSummary(resp *http.Response, err error) string {
 	return FailedRequestSummaryEx(resp, err, 100)

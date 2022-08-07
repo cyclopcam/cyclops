@@ -8,6 +8,8 @@ import Buttin from '../core/Buttin.vue';
 import CameraConfigSummary from './CameraConfigSummary.vue';
 import Separator from '../core/separator.vue';
 
+let emits = defineEmits(['finished']);
+
 let error = ref('');
 let configured = ref([] as CameraRecord[]); // cameras in the server DB
 let scanned = ref([] as CameraRecord[]); // scanned on the LAN, and NOT in the DB
@@ -15,7 +17,6 @@ let busyScanning = ref(false);
 let numExplicitScans = 0;
 let expanded = ref(null as CameraRecord | null);
 let sureContinue = ref("");
-let numCamerasAdded = 0;
 
 onMounted(async () => {
 	fetchExisting();
@@ -30,6 +31,7 @@ async function scan(isExplicit: boolean) {
 	if (isExplicit) {
 		numExplicitScans++;
 	}
+	// raise the timeout with each scan, in case there are slow cameras
 	let timeoutMS = 50 * Math.pow(2, Math.min(numExplicitScans, 3));
 	let options = {
 		"cache": isExplicit ? "nocache" : "",
@@ -56,13 +58,14 @@ async function fetchExisting() {
 function onAddCamera(cam: CameraRecord) {
 	configured.value.push(cam);
 	expanded.value = null;
-	numCamerasAdded++;
 }
 
 function onContinue() {
 	if (sureContinue.value === '' && configured.value.length === 0) {
 		sureContinue.value = "You haven't added any cameras yet. Are you sure you want to continue?"
+		return;
 	}
+	emits('finished');
 }
 
 function isConfigured(cam: CameraRecord): boolean {
@@ -73,17 +76,6 @@ function isConfigured(cam: CameraRecord): boolean {
 	}
 	return false;
 }
-
-// Return the list of scanned cameras, which have not been configured
-//let newScanned = computed((): CameraRecord[] => {
-//	let r = [];
-//	for (let s of scanned.value) {
-//		if (!isConfigured(s)) {
-//			r.push(s);
-//		}
-//	}
-//	return r;
-//});
 
 </script>
 

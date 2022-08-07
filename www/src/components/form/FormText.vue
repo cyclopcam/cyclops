@@ -1,22 +1,25 @@
 <script setup lang="ts">
-import { onMounted, ref, withCtx } from 'vue';
+import { onMounted, ref } from 'vue';
 import { computed } from '@vue/reactivity';
 import type * as forms from './forms';
 
 let props = defineProps<{
 	ctx: forms.Context,
-	modelValue: string,
+	modelValue: string | null,
+	id?: string,
+	bigLabel?: string,
 	label?: string,
 	required?: boolean,
 	placeholder?: string,
 	password?: boolean,
 	focus?: boolean,
+	autocomplete?: string,
 }>()
 let emit = defineEmits(['update:modelValue']);
 
 let input = ref(null);
 
-let isEmpty = computed(() => props.modelValue.trim() === '');
+let isEmpty = computed(() => props.modelValue === null || props.modelValue.trim() === '');
 
 let type = computed(() => {
 	if (props.password && !props.ctx.showPasswords.value)
@@ -28,6 +31,18 @@ function onInput(event: any) {
 	emit('update:modelValue', event.target.value);
 }
 
+function showRedDot(): boolean {
+	return props.ctx.showRequiredDots && !!props.required && isEmpty.value;
+}
+
+function showError(): boolean {
+	return !!props.id && !!props.ctx.idToError.value[props.id];
+}
+
+function errorMsg(): string {
+	return props.id ? (props.ctx.idToError.value[props.id] ?? '') : '';
+}
+
 onMounted(() => {
 	if (props.focus)
 		(input.value! as any).focus();
@@ -36,17 +51,21 @@ onMounted(() => {
 </script>
 
 <template>
-	<div class="flexColumn formItem">
+	<div class="flexColumn formItem" :style="{ width: props.ctx.inputWidth.value }">
 		<slot name="label">
-			<div v-if="label" class="label">
+			<div v-if="label" :class="{ label: true, boldLabel: !!bigLabel }">
 				{{ label }}
 			</div>
 		</slot>
+		<slot name="bigLabel">
+			<div v-if="bigLabel" class="bigLabel">
+				{{ bigLabel }}
+			</div>
+		</slot>
 		<div class="flexRowBaseline">
-			<div class="flexRowCenter"
-				:style="{ display: 'flex', position: 'relative', width: props.ctx.inputWidth.value }">
+			<div class="flexRowCenter" :style="{ display: 'flex', position: 'relative', width: '100%' }">
 				<input ref="input" :value="modelValue" @input="onInput($event)" :placeholder="placeholder" :type="type"
-					style="width: 100%" />
+					:autocomplete="autocomplete" style="width: 100%" />
 				<div v-if="password" class="flexCenter" style="position: absolute; right: 6px; cursor: pointer"
 					@click="ctx.showPasswords.value = !ctx.showPasswords.value">
 					<svg v-if="!ctx.showPasswords.value" width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -66,7 +85,7 @@ onMounted(() => {
 				</div>
 			</div>
 			<div style="width: 25px; text-align: center;">
-				<svg v-if="props.ctx.showRequiredDots && required && isEmpty" width="10" height="10">
+				<svg v-if="showRedDot()" width="10" height="10">
 					<circle cx="5" cy="5" r="3" fill="#d00" />
 				</svg>
 				<!--
@@ -75,6 +94,9 @@ onMounted(() => {
 				</svg>
 				-->
 			</div>
+		</div>
+		<div v-if="showError()" class="errorLabel">
+			{{ errorMsg() }}
 		</div>
 	</div>
 </template>
@@ -93,5 +115,12 @@ input {
 input:focus {
 	outline: none;
 	border-bottom: $formBorderBottomFocus;
+}
+
+.errorLabel {
+	margin: 12px 8px 0 8px;
+	font-size: 14px;
+	color: #d00;
+
 }
 </style>

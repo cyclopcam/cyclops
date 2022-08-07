@@ -19,6 +19,7 @@ function onSubmit() {
 	<div class="flexRowBaseline formBottom" style="align-self: stretch; justify-content: flex-end">
 		<div v-if="ctx.showCompleteAllFields" class="required">Complete all required fields</div>
 		<div v-if="ctx.submitError" class="submitError">{{ ctx.submitError.value }}</div>
+		<div v-if="ctx.submitBusyMsg" class="submitBusy">{{ ctx.submitBusyMsg.value }}</div>
 		<buttin :focal="true" :busy="ctx.busy.value" @click="onSubmit">{{ submitTitle ? submitTitle : 'Next' }}</buttin>
 	</div>
 </template>
@@ -37,7 +38,14 @@ function onSubmit() {
 .submitError {
 	margin: 0 12px 0 0;
 	font-size: 14px;
-	max-width: 220px;
+	max-width: 250px;
 	color: #d00;
+}
+
+.submitBusy {
+	margin: 0 12px 0 0;
+	font-size: 14px;
+	max-width: 250px;
+	color: #080;
 }
 </style>

@@ -36,35 +36,57 @@ func (s *Server) httpConfigAddCamera(w http.ResponseWriter, r *http.Request, par
 
 	// Add to DB
 	res := s.configDB.DB.Create(&cam)
-	//s.Log.Infof("cam.ID: %v", cam.ID)
 	if res.Error != nil {
 		camera.Close()
 		www.Check(res.Error)
 	}
+	s.Log.Infof("Added new camera to DB. Camera ID: %v", cam.ID)
 
 	// Add to live system
+	camera.ID = cam.ID
 	s.AddCamera(camera)
 
 	www.SendID(w, cam.ID)
 }
 
+func (s *Server) httpConfigGetVariableDefinitions(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	www.SendJSON(w, configdb.AllVariables)
+}
+
+func (s *Server) httpConfigGetVariableValues(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	values := []configdb.Variable{}
+	www.Check(s.configDB.DB.Find(&values).Error)
+	www.SendJSON(w, values)
+}
+
 func (s *Server) httpConfigSetVariable(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	key := params.ByName("key")
-	value := www.ReadString(w, r, 1024*1024)
+	keyStr := params.ByName("key")
+	value := ""
+	if r.URL.Query().Has("value") {
+		value = r.URL.Query().Get("value")
+	} else {
+		value = www.ReadString(w, r, 1024*1024)
+	}
+
+	key := configdb.VariableKey(keyStr)
+
+	www.CheckClient(configdb.ValidateVariable(key, value))
 
 	db, err := s.configDB.DB.DB()
 	www.Check(err)
 	_, err = db.Exec("INSERT INTO variable (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value", key, value)
 	www.Check(err)
 
-	// If you receive wantRestart:true, then you should call /api/system/restart when you're ready
+	s.Log.Infof("Set config variable %v: %v", key, value)
+
+	// If you receive wantRestart:true, then you should call /api/system/restart when you're ready to restart.
 	// You may want to batch a few setVariable calls before restarting.
 	type Response struct {
 		WantRestart bool `json:"wantRestart"`
 	}
 
 	www.SendJSON(w, &Response{
-		WantRestart: configdb.VariableSetNeedsRestart(configdb.VariableKey(key)),
+		WantRestart: configdb.VariableSetNeedsRestart(key),
 	})
 }
 

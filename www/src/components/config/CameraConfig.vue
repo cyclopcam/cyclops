@@ -89,7 +89,8 @@ onMounted(() => {
 				<form-dropdown :ctx="ctx" label="Model" v-model="model" placeholder="model"
 					:options="constants.cameraModels" />
 				<div class="spacer" />
-				<form-text :ctx="ctx" label="Username" v-model="username" placeholder="username" />
+				<form-text :ctx="ctx" label="Username" v-model="username" placeholder="username"
+					autocomplete="username" />
 				<div class="spacer" />
 				<form-text :ctx="ctx" label="Password" v-model="password" placeholder="password" :password="true" />
 				<div class="spacer" />

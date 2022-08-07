@@ -4,34 +4,52 @@ import NewUser from '@/components/config/NewUser.vue';
 import { onMounted, ref } from 'vue';
 import { computed } from '@vue/reactivity';
 import CamerasConfig from '../components/config/CamerasConfig.vue';
+import { globals } from '@/globals';
+import router from "@/router/routes";
+import SystemVariables from "../components/config/SystemVariables.vue";
 
 enum Stages {
 	CreateFirstUser = 0,
-	ConfigureCameras = 1,
+	ConfigureVariables = 1,
+	ConfigureCameras = 2,
 }
 
 let stage = ref(Stages.CreateFirstUser);
 let isCreateFirstUser = computed(() => stage.value === Stages.CreateFirstUser);
+let isConfigureVariables = computed(() => stage.value === Stages.ConfigureVariables);
 let isConfigureCameras = computed(() => stage.value === Stages.ConfigureCameras);
 
 function stageText() {
 	switch (stage.value) {
 		case Stages.CreateFirstUser:
 			return "Create a username and password for yourself";
+		case Stages.ConfigureVariables:
+			return "System configuration";
 		case Stages.ConfigureCameras:
 			return "Let's find your cameras";
 	}
 }
 
-function moveToNextStage() {
+async function moveToNextStage() {
 	//console.log("moveToNextStage");
+	if (stage.value === Stages.ConfigureCameras) {
+		// we're done
+		await globals.loadCameras();
+		router.replace({ name: "home" });
+	}
+
 	stage.value++;
 }
 
 onMounted(async () => {
 	let r = await fetch("/api/auth/whoami");
 	if (r.ok) {
-		stage.value = Stages.ConfigureCameras;
+		let info = await (await fetch("/api/system/info")).json();
+		if (info.readyError) {
+			stage.value = Stages.ConfigureVariables;
+		} else {
+			stage.value = Stages.ConfigureCameras;
+		}
 	}
 
 	// prime the network camera scanner
@@ -46,6 +64,7 @@ onMounted(async () => {
 			<h2 style="text-align: center; margin: 30px 10px">{{ stageText() }}</h2>
 		</div>
 		<new-user v-if="isCreateFirstUser" :is-first-user="true" @finished="moveToNextStage()" />
-		<cameras-config v-if="isConfigureCameras" />
+		<system-variables v-if="isConfigureVariables" @finished="moveToNextStage()" />
+		<cameras-config v-if="isConfigureCameras" @finished="moveToNextStage()" />
 	</mobile-fullscreen>
 </template>

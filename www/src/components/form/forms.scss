@@ -17,6 +17,22 @@ $formInputFontSize: 16px;
 	color: #888;
 }
 
+.bigLabel {
+	margin: 2px 0px 5px 0px;
+	font-size: 13px;
+
+	@media (max-width: $mobileCutoff) {
+		font-size: 14px;
+	}
+
+	color: #777;
+}
+
+.boldLabel {
+	font-weight: bold;
+	color: #444;
+}
+
 ::placeholder {
 	color: #ddd;
 }

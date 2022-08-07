@@ -23,7 +23,6 @@ type Camera struct {
 	Password         string `json:"password"`         // RTSP password
 	HighResURLSuffix string `json:"highResURLSuffix"` // eg Streaming/Channels/101 for HikVision. Can leave blank if Model is a known type.
 	LowResURLSuffix  string `json:"lowResURLSuffix"`  // eg Streaming/Channels/102 for HikVision. Can leave blank if Model is a known type.
-	//URL              string `json:"url"`              // RTSP url such as rtsp://user:password@192.168.1.33:554
 }
 
 type Variable struct {
