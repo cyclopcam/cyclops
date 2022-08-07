@@ -13,7 +13,7 @@ defineEmits(['play', 'stop']);
 <template>
 	<div class="flex cameraItem">
 		<!-- <camera-preview :camera="camera" /> -->
-		<player :camera="camera" :play="play" @click="$emit('stop')" />
+		<player :camera="camera" :play="play" @click="$emit('stop')" :round="true" />
 		<div v-if="!play" class="play" @click="$emit('play')"></div>
 	</div>
 </template>

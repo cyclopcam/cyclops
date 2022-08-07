@@ -7,6 +7,8 @@ import (
 
 // IntTime makes it easy to save Int64 milliseconds into SQLite database with gorm
 // In addition, it marshals nicely into JSON, and supports omitempty
+// By using milliseconds in JSON, you can write "new Date(X)" in Javascript, to deserialize,
+// and x.getTime() to serialize.
 type IntTime int64
 
 func MakeIntTime(v time.Time) IntTime {

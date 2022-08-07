@@ -6,6 +6,7 @@ import { onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from "v
 let props = defineProps<{
 	camera: CameraInfo,
 	play: boolean,
+	round?: boolean,
 }>()
 let emits = defineEmits(['click']);
 
@@ -152,6 +153,7 @@ function videoStyle(): any {
 	return {
 		width: props.camera.low.width + "px",
 		height: props.camera.low.height + "px",
+		"border-radius": props.round ? "5px" : "",
 	}
 }
 
@@ -184,7 +186,7 @@ onUnmounted(() => {
 
 <style lang="scss" scoped>
 // Can't figure out why video resizing in Chrome desktop.. this happens on linux only, so just gonna ignore it.
-// Curiously, the linux resized framebuffer seems like it has the correct aspect ratio.
+// Curiously, the linux <video> seems like it has the correct aspect ratio.
 //.video {
 //	object-fit: fit;
 //}

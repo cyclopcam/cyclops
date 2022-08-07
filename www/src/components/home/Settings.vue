@@ -2,7 +2,7 @@
 </script>
 
 <template>
-	<div>
+	<div style="margin: 30px">
 		SETTINGS
 	</div>
 </template>

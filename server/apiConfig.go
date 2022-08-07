@@ -81,6 +81,7 @@ func (s *Server) httpConfigSetVariable(w http.ResponseWriter, r *http.Request, p
 
 	// If you receive wantRestart:true, then you should call /api/system/restart when you're ready to restart.
 	// You may want to batch a few setVariable calls before restarting.
+	// SYNC-SET-VARIABLE-RESPONSE
 	type Response struct {
 		WantRestart bool `json:"wantRestart"`
 	}

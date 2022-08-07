@@ -38,6 +38,7 @@ function onStop() {
 <style lang="scss" scoped>
 .monitor {
 	align-items: center;
+	margin: 10px 0 0 0;
 }
 
 .cameras {

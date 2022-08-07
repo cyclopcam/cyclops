@@ -206,12 +206,8 @@ $focalBrightness: 45%;
 
 
 ////////////////////////////////////////////////////////////////////////////
-/// Visual elements
+/// Shadows
 ////////////////////////////////////////////////////////////////////////////
-
-//.group {
-//	border: solid 1px #eee;
-//}
 
 .shadow5 {
 	@include shadow5;
@@ -300,9 +296,24 @@ $focalBrightness: 45%;
 	@include shadow15LHover;
 }
 
+////////////////////////////////////////////////////////////////////////////
+/// Visual elements
+////////////////////////////////////////////////////////////////////////////
+
 .smallDialog {
 	background: #fff;
 	border-radius: 5px;
 	padding: 20px;
 	@include shadow9;
+}
+
+.helpTopic {
+	@include shadow15L;
+	max-width: 320px;
+	font-size: 14px;
+	line-height: 1.4;
+	background-color: rgb(255, 254, 208);
+	padding: 10px 15px;
+	border-radius: 5px;
+	border: solid 1px rgb(255, 232, 118);
 }

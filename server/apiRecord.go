@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/bmharper/cyclops/server/camera"
@@ -88,4 +89,23 @@ func (s *Server) httpRecordStart(w http.ResponseWriter, r *http.Request, params 
 func (s *Server) httpRecordStop(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	s.stopRecorder()
 	www.SendOK(w)
+}
+
+func (s *Server) httpRecordGetRecordings(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	err, recordings := s.permanentEvents.GetRecordings()
+	www.Check(err)
+	www.SendJSON(w, recordings)
+}
+
+func (s *Server) httpRecordGetOntologies(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	err, ontologies := s.permanentEvents.GetOntologies()
+	www.Check(err)
+	www.SendJSON(w, ontologies)
+}
+
+func (s *Server) httpRecordGetThumbnail(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	err, recording := s.permanentEvents.GetRecording(www.ParseID(params.ByName("id")))
+	www.Check(err)
+	fullpath := filepath.Join(s.permanentEvents.Root, recording.ThumbnailFilename())
+	www.SendFile(w, fullpath, "")
 }

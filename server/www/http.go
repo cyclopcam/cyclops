@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -253,6 +254,7 @@ func SendJSON(w http.ResponseWriter, obj interface{}) {
 }
 
 func SendJSONOpt(w http.ResponseWriter, obj interface{}, pretty bool) {
+	// TODO: compress
 	w.Header().Set("Content-Type", "application/json")
 	var b []byte
 	var err error
@@ -327,6 +329,14 @@ func SendFileDownload(w http.ResponseWriter, filename, contentType string, conte
 
 // SendFile sends a file (as direct content, not download)
 func SendFile(w http.ResponseWriter, filename, contentType string) {
+	if contentType == "" {
+		switch strings.ToLower(path.Ext(filename)) {
+		case ".jpg":
+			fallthrough
+		case ".jpeg":
+			contentType = "image/jpeg"
+		}
+	}
 	w.Header().Set("Content-Type", contentType)
 	f, err := os.Open(filename)
 	if err != nil {

@@ -20,9 +20,10 @@ import (
 // One for recent recordings, which may or may not be of interest.
 // One for permanent recordings, which form part of the training set (or a user wants to keep for whatever reason).
 type EventDB struct {
-	log  log.Log
-	db   *gorm.DB
-	root string // Where we store our videos (also directory where sqlite DB is stored)
+	Root string // Where we store our videos (also directory where sqlite DB is stored)
+
+	log log.Log
+	db  *gorm.DB
 }
 
 // Open or create an event DB
@@ -39,7 +40,7 @@ func Open(log log.Log, root string) (*EventDB, error) {
 		return &EventDB{
 			log:  log,
 			db:   eventDB,
-			root: root,
+			Root: root,
 		}, nil
 	} else {
 		err = fmt.Errorf("Failed to open database %v: %w", dbPath, err)
@@ -58,8 +59,8 @@ func (e *EventDB) Save(buf *videox.RawBuffer) error {
 		StartTime: dbh.MakeIntTime(time.Now()),
 		Format:    "mp4",
 	}
-	videoPath := filepath.Join(e.root, recording.VideoFilename())
-	thumbnailPath := filepath.Join(e.root, recording.ThumbnailFilename())
+	videoPath := filepath.Join(e.Root, recording.VideoFilename())
+	thumbnailPath := filepath.Join(e.Root, recording.ThumbnailFilename())
 	os.MkdirAll(filepath.Dir(videoPath), 0770)
 	e.log.Infof("Saving recording %v", videoPath)
 	if err := e.saveThumbnail(buf, thumbnailPath); err != nil {
@@ -69,6 +70,39 @@ func (e *EventDB) Save(buf *videox.RawBuffer) error {
 		return err
 	}
 	return e.db.Create(recording).Error
+}
+
+func (e *EventDB) GetRecording(id int64) (error, *Recording) {
+	rec := Recording{}
+	if err := e.db.First(&rec, id).Error; err != nil {
+		return err, nil
+	}
+	return nil, &rec
+}
+
+func (e *EventDB) GetRecordings() (error, []Recording) {
+	recordings := []Recording{}
+	if err := e.db.Find(&recordings).Error; err != nil {
+		return err, nil
+	}
+	return nil, recordings
+}
+
+func (e *EventDB) GetOntologies() (error, []Ontology) {
+	ontologies := []Ontology{}
+	if err := e.db.Find(&ontologies).Error; err != nil {
+		return err, nil
+	}
+	return nil, ontologies
+}
+
+// Return true if there are any recordings that reference the given ontology
+func (e *EventDB) IsOntologyUsed(id int64) (error, bool) {
+	n := int64(0)
+	if err := e.db.Model(&Recording{}).Where("ontology_id = ?", id).Count(&n).Error; err != nil {
+		return err, false
+	}
+	return nil, n != 0
 }
 
 func (e *EventDB) saveThumbnail(buf *videox.RawBuffer, targetFilename string) error {
