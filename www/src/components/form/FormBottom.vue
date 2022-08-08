@@ -1,12 +1,23 @@
 <script setup lang="ts">
 import type * as forms from './forms';
 import Buttin from '@/components/core/Buttin.vue';
+import { watch } from 'vue';
 
 let props = defineProps<{
 	ctx: forms.Context,
 	submitTitle?: string,
 }>()
 let emit = defineEmits(['submit']);
+
+watch(props.ctx.invokeSubmitOnEnter, (newVal) => {
+	if (newVal) {
+		// reset state
+		props.ctx.invokeSubmitOnEnter.value = false;
+
+		// simulate submit click
+		onSubmit();
+	}
+});
 
 function onSubmit() {
 	props.ctx.submitClicked.value = true;

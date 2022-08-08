@@ -48,11 +48,12 @@ func Open(log log.Log, root string) (*EventDB, error) {
 	return nil, err
 }
 
-// Save a new recording to disk
-func (e *EventDB) Save(buf *videox.RawBuffer) error {
+// Save a new recording to disk.
+// Returns the ID of the new recording.
+func (e *EventDB) Save(buf *videox.RawBuffer) (int64, error) {
 	rnd := [4]byte{}
 	if _, err := rand.Read(rnd[:]); err != nil {
-		return err
+		return 0, err
 	}
 	recording := &Recording{
 		RandomID:  hex.EncodeToString(rnd[:]),
@@ -64,12 +65,15 @@ func (e *EventDB) Save(buf *videox.RawBuffer) error {
 	os.MkdirAll(filepath.Dir(videoPath), 0770)
 	e.log.Infof("Saving recording %v", videoPath)
 	if err := e.saveThumbnail(buf, thumbnailPath); err != nil {
-		return err
+		return 0, err
 	}
 	if err := buf.SaveToMP4(videoPath); err != nil {
-		return err
+		return 0, err
 	}
-	return e.db.Create(recording).Error
+	if err := e.db.Create(recording).Error; err != nil {
+		return 0, err
+	}
+	return recording.ID, nil
 }
 
 func (e *EventDB) GetRecording(id int64) (error, *Recording) {

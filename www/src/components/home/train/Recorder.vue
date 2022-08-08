@@ -6,38 +6,72 @@ import { ref } from 'vue';
 import RedDot from "@/icons/red-dot.svg";
 import Stop from "@/icons/stop.svg";
 import Buttin from "../../core/Buttin.vue";
+import { fetchOrErr } from '@/util/util';
 
+let minRecordingSeconds = 5;
 let maxRecordingSeconds = 45;
-let isPickCamera = ref(true);
+
+enum States {
+	PickCamera,
+	PreRecord,
+	Recording,
+	PostRecord,
+}
+
+let nRecordings = ref(0);
+let state = ref(States.PickCamera);
 let camera = ref(new CameraInfo());
 let playLive = ref(false);
-let isRecording = ref(false);
 let startedAt = ref(new Date());
 let timeNow = ref(new Date());
+let startError = ref("");
+let recorderID = 0;
+let lastRecordingID = 0;
 
 function cameras(): CameraInfo[] {
 	return globals.cameras;
 }
 
 function onPlay(cam: CameraInfo) {
-	isPickCamera.value = false;
+	state.value = States.PreRecord;
 	camera.value = cam;
 	playLive.value = true;
 }
 
-function startRecording() {
-	isRecording.value = true;
+async function startRecording() {
+	let r = await fetchOrErr("/api/record/start/" + camera.value.id, { method: "POST" });
+	if (!r.ok) {
+		// TODO: show error
+		return;
+	}
+	recorderID = parseInt(await r.r.text());
+	state.value = States.Recording;
 	startedAt.value = new Date();
 	timeTicker();
 }
 
-function stopRecording() {
-	isRecording.value = false;
+async function stopRecording() {
+	let r = await fetchOrErr("/api/record/stop/" + recorderID, { method: "POST" });
+	if (!r.ok) {
+		// TODO: show error
+		return;
+	}
+	lastRecordingID = parseInt(await r.r.text());
+	state.value = States.PostRecord;
 	playLive.value = false;
 }
 
+function saveRecording() {
+	state.value = States.PreRecord;
+	nRecordings.value++;
+}
+
+function discardRecording() {
+	state.value = States.PreRecord;
+}
+
 function timeTicker() {
-	if (!isRecording.value) {
+	if (state.value !== States.Recording) {
 		return;
 	}
 	timeNow.value = new Date();
@@ -57,7 +91,7 @@ function status(): string {
 
 <template>
 	<div>
-		<div v-if="isPickCamera" class="flexColumnCenter">
+		<div v-if="state === States.PickCamera" class="flexColumnCenter">
 			<div class="stepLabel">Choose a camera for the recording:</div>
 			<div class="flex picker">
 				<camera-item v-for="cam of cameras()" :camera="cam" :play="false" size="220" @play="onPlay(cam)"
@@ -67,13 +101,29 @@ function status(): string {
 		<div v-else class="flexColumnCenter">
 			<camera-item :camera="camera" :play="playLive" size="280" />
 			<div style="height: 20px" />
-			<buttin v-if="!isRecording" :icon="RedDot" iconSize="16px" @click="startRecording()">Start Recording
-			</buttin>
-			<div v-if="isRecording" class="flexColumnCenter recordingBlock">
-				<div v-if="isRecording" class="status">{{ status() }}</div>
-				<progress :value="seconds()" :max="maxRecordingSeconds" class="progress" />
-				<buttin v-if="isRecording" :icon="Stop" iconSize="16px" @click="stopRecording()">Stop
+			<div v-if="state === States.PreRecord" class="flexColumnCenter recordingBlock">
+				<div class="stepHint" style="text-align:center">Recordings can be anywhere from {{ minRecordingSeconds
+				}}
+					to {{ maxRecordingSeconds }} seconds long.
+				</div>
+				<div style="height: 20px" />
+				<div v-if="startError" class="stepHint error" style="text-align:center">{{ startError }}</div>
+				<buttin :icon="RedDot" iconSize="16px" @click="startRecording()">
+					{{ nRecordings === 0 ? 'Start Recording' : 'Record Another' }}
 				</buttin>
+			</div>
+			<div v-else-if="state === States.Recording" class="flexColumnCenter recordingBlock">
+				<div class="status">{{ status() }}</div>
+				<progress :value="seconds()" :max="maxRecordingSeconds" class="progress" />
+				<buttin :icon="Stop" iconSize="16px" @click="stopRecording()">Stop
+				</buttin>
+			</div>
+			<div v-else-if="state === States.PostRecord" class="flexColumnCenter recordingBlock">
+				<div class="flex">
+					<buttin @click="discardRecording()" :danger="true">Discard</buttin>
+					<div class="dangerSpacer" />
+					<buttin @click="saveRecording()" :focal="true">Save</buttin>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -108,5 +158,9 @@ function status(): string {
 	width: 240px;
 	height: 30px;
 	margin: 2px 0 20px 0;
+}
+
+.error {
+	color: #d00;
 }
 </style>

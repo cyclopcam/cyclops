@@ -14,6 +14,7 @@ let props = defineProps<{
 	password?: boolean,
 	focus?: boolean,
 	autocomplete?: string,
+	submitOnEnter?: boolean,
 }>()
 let emit = defineEmits(['update:modelValue']);
 
@@ -29,6 +30,14 @@ let type = computed(() => {
 
 function onInput(event: any) {
 	emit('update:modelValue', event.target.value);
+}
+
+function onKeyPress(ev: KeyboardEvent) {
+	//console.log("keypress", ev);
+	if (props.submitOnEnter && ev.key === "Enter") {
+		props.ctx.invokeSubmitOnEnter.value = true;
+		//console.log("wait for it");
+	}
 }
 
 function showRedDot(): boolean {
@@ -65,7 +74,7 @@ onMounted(() => {
 		<div class="flexRowBaseline">
 			<div class="flexRowCenter" :style="{ display: 'flex', position: 'relative', width: '100%' }">
 				<input ref="input" :value="modelValue" @input="onInput($event)" :placeholder="placeholder" :type="type"
-					:autocomplete="autocomplete" style="width: 100%" />
+					:autocomplete="autocomplete" style="width: 100%" @keypress="onKeyPress" />
 				<div v-if="password" class="flexCenter" style="position: absolute; right: 6px; cursor: pointer"
 					@click="ctx.showPasswords.value = !ctx.showPasswords.value">
 					<svg v-if="!ctx.showPasswords.value" width="20" height="20" viewBox="0 0 24 24" fill="none"

@@ -3,6 +3,7 @@
 let props = defineProps<{
 	busy?: boolean, // show 'busy' animation. busy implies disabled.
 	disabled?: boolean, // No need to set disabled if you already set busy.
+	danger?: boolean, // Red
 	focal?: boolean, // One focal button per screen
 	icon?: string, // svg drawn on the left of the text
 	iconSize?: string, // override default
@@ -12,7 +13,8 @@ defineEmits(['click']);
 function cls() {
 	return {
 		buttin: true,
-		focalButton: props.focal
+		dangerButton: props.danger,
+		focalButton: props.focal,
 	}
 }
 

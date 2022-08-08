@@ -321,4 +321,22 @@ $focalBrightness: 45%;
 .stepLabel {
 	font-size: 16px;
 	margin: 4px 4px;
+	max-width: 300px;
 }
+
+.stepHint {
+	font-size: 14px;
+	margin: 4px 4px;
+	max-width: 300px;
+}
+
+// placed between two buttons, to avoid accidental clicking of two very different actions
+.dangerSpacer {
+	width: 15px;
+}
+
+//.stepHintBullets {
+//	font-size: 14px;
+//	margin: 4px 4px;
+//	max-width: 300px;
+//}

@@ -44,6 +44,10 @@ type Server struct {
 	recorderStartStopLock sync.Mutex
 	recorderStop          chan bool // Sent to recorder to tell it to stop
 
+	recordersLock  sync.Mutex          // Guards access to recorders map
+	recorders      map[int64]*recorder // key is from nextRecorderID
+	nextRecorderID int64
+
 	lastScannedCamerasLock sync.Mutex
 	lastScannedCameras     []*configdb.Camera
 }
@@ -59,6 +63,8 @@ func NewServer(configDBFilename string) (*Server, error) {
 		RingBufferSize:   200 * 1024 * 1024,
 		ShutdownComplete: make(chan error, 1),
 		cameraFromID:     map[int64]*camera.Camera{},
+		recorders:        map[int64]*recorder{},
+		nextRecorderID:   1,
 	}
 	if cfg, err := configdb.NewConfigDB(s.Log, configDBFilename); err != nil {
 		return nil, err

@@ -61,7 +61,7 @@ func (s *Server) SetupHTTP() {
 	protected("a", "POST", "/api/config/setVariable/:key", s.httpConfigSetVariable)
 	unprotected("POST", "/api/config/scanNetworkForCameras", s.httpConfigScanNetworkForCameras)
 	protected("a", "POST", "/api/record/start/:cameraID", s.httpRecordStart)
-	protected("a", "POST", "/api/record/stop", s.httpRecordStop)
+	protected("a", "POST", "/api/record/stop/:recorderID", s.httpRecordStop)
 	protected("v", "GET", "/api/record/getRecordings", s.httpRecordGetRecordings)
 	protected("v", "GET", "/api/record/getOntologies", s.httpRecordGetOntologies)
 	protected("v", "GET", "/api/record/thumbnail/:id", s.httpRecordGetThumbnail)

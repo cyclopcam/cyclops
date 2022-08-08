@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import MobileFullscreen from '@/components/responsive/MobileFullscreen.vue';
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import * as forms from '@/components/form/forms';
 import FormText from '@/components/form/FormText.vue';
 import FormBottom from '@/components/form/FormBottom.vue';
@@ -17,13 +17,19 @@ let ctx = new forms.Context(() =>
 async function onSubmit() {
 	ctx.submitError.value = '';
 	let basic = btoa(username.value + ":" + password.value);
+	ctx.busy.value = true;
 	let r = await fetchOrErr('/api/auth/login', { method: 'POST', headers: { "Authorization": "BASIC " + basic } });
+	ctx.busy.value = false;
 	if (!r.ok) {
 		ctx.submitError.value = r.error;
 		return;
 	}
-	globals.postLoginAutoRoute();
+	globals.postLoadAutoRoute();
 }
+
+//onMounted(() => {
+//	ctx.busy.value = true;
+//})
 
 </script>
 
@@ -34,7 +40,8 @@ async function onSubmit() {
 
 			<form-text :ctx="ctx" v-model="username" placeholder="username" :required="true" :focus="true"
 				autocomplete="username" />
-			<form-text :ctx="ctx" v-model="password" placeholder="password" :required="true" :password="true" />
+			<form-text :ctx="ctx" v-model="password" placeholder="password" :required="true" :password="true"
+				:submit-on-enter="true" />
 			<form-bottom :ctx="ctx" submit-title="Login" @submit="onSubmit" />
 		</div>
 	</mobile-fullscreen>
