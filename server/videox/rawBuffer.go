@@ -21,6 +21,7 @@ import (
 var NALUPrefix = []byte{0x00, 0x00, 0x01}
 
 // A NALU, with optional annex-b prefix bytes
+// NOTE: We do not add the 0x03 bytes, so this is going to bite us statistically.
 type NALU struct {
 	PrefixLen int // If zero, then no prefix. If 3 or 4, then 00 00 01 or 00 00 00 01.
 	Payload   []byte
@@ -28,7 +29,9 @@ type NALU struct {
 
 // DecodedPacket is what we store in our ring buffer
 // This thing probably wants a better name...
+// Maybe VideoPacket?
 type DecodedPacket struct {
+	RecvTime     time.Time // Wall time when the packet was received. This is obviously subject to network jitter etc, so not a substitute for PTS
 	H264NALUs    []NALU
 	H264PTS      time.Duration
 	PTSEqualsDTS bool
@@ -37,8 +40,6 @@ type DecodedPacket struct {
 
 type RawBuffer struct {
 	Packets []*DecodedPacket
-	//SPS     []byte
-	//PPS     []byte
 }
 
 // Clone a raw NALU, but add prefix bytes to the clone
@@ -93,6 +94,7 @@ func (n *NALU) Type() h264.NALUType {
 // Deep clone of packet buffer
 func (p *DecodedPacket) Clone() *DecodedPacket {
 	c := &DecodedPacket{
+		RecvTime:     p.RecvTime,
 		H264PTS:      p.H264PTS,
 		PTSEqualsDTS: p.PTSEqualsDTS,
 		IsBacklog:    p.IsBacklog,
@@ -129,8 +131,17 @@ func (p *DecodedPacket) PayloadBytes() int {
 	return size
 }
 
+func (p *DecodedPacket) Summary() string {
+	parts := []string{}
+	for _, n := range p.H264NALUs {
+		t := n.Type()
+		parts = append(parts, fmt.Sprintf("%v (%v bytes)", t, len(n.Payload)))
+	}
+	return fmt.Sprintf("%v packets: ", len(p.H264NALUs)) + strings.Join(parts, ", ")
+}
+
 // Clone a packet of NALUs and return the cloned packet
-func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx) *DecodedPacket {
+func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *DecodedPacket {
 	nalus := []NALU{}
 	for _, buf := range ctx.H264NALUs {
 		// gortsplib re-uses buffers, so we need to make a copy here.
@@ -140,10 +151,22 @@ func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx) *DecodedPacket {
 		nalus = append(nalus, CloneNALUWithPrefix(buf))
 	}
 	return &DecodedPacket{
+		RecvTime:     recvTime,
 		H264NALUs:    nalus,
 		H264PTS:      ctx.H264PTS,
 		PTSEqualsDTS: ctx.PTSEqualsDTS,
 	}
+}
+
+// Returns true if the packet has an IDR (with my Hikvisions this always implies IPS + PPS + IDR)
+func PacketHasIDR(ctx *gortsplib.ClientOnPacketRTPCtx) bool {
+	for _, p := range ctx.H264NALUs {
+		t := h264.NALUType(p[0] & 31)
+		if t == h264.NALUTypeIDR {
+			return true
+		}
+	}
+	return false
 }
 
 // Extract saved buffer into an MPEGTS stream
@@ -305,6 +328,7 @@ func (r *RawBuffer) ExtractThumbnail() (image.Image, error) {
 	firstImgPacket := -1
 	midPacket := len(r.Packets) - 1
 	for i := 0; i < len(r.Packets); i++ {
+		fmt.Printf("%v: %v\n", i, r.Packets[i].Summary())
 		for _, n := range r.Packets[i].H264NALUs {
 			img, _ := decoder.Decode(n)
 			if img != nil {
@@ -358,6 +382,7 @@ func LoadBinDir(dir string) (*RawBuffer, error) {
 			if cPacket != nil {
 				buf.Packets = append(buf.Packets, cPacket)
 			}
+			// NOTE: We don't populate RecvTime
 			cPacket = &DecodedPacket{
 				H264PTS: time.Duration(timeNS) * time.Nanosecond,
 			}

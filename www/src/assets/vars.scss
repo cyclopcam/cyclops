@@ -1,7 +1,22 @@
 // Anything >= 500px is desktop
 $mobileCutoff: 500px;
 
+/*
+@import '@/assets/vars.scss';
+
+@media (max-width: $mobileCutoff) {
+	// mobile styles
+}
+
+*/
+
 $toggleColor: hsl(240, 85%, 62%);
+
+@mixin flexCenter {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
 
 @mixin shadow5 {
 	box-shadow: 1px 2px 5px rgba(0, 0, 0, 0.3);

@@ -31,13 +31,13 @@ type recorder struct {
 // recorderFunc runs until recording stops
 func (s *Server) recorderFunc(cam *camera.Camera, self *recorder) {
 	startAt := time.Now()
-	maxTime := 3 * time.Minute
+
+	// SYNC-MAX-TRAIN-RECORD-TIME
+	// We add 15 seconds grace, on top of the UI limit of 45 seconds.
+	maxTime := (45 + 15) * time.Second
+
 	logger := log.NewPrefixLogger(s.Log, fmt.Sprintf("Recorder %v", self.id))
 
-	dumper := camera.NewVideoDumpReader(200 * 1024 * 1024)
-	stream := cam.LowStream
-	stream.ConnectSinkAndRun(dumper)
-	defer stream.RemoveSink(dumper)
 	defer close(self.finished)
 
 outer:
@@ -61,7 +61,7 @@ outer:
 	}
 
 	// save recording
-	raw, err := dumper.ExtractRawBuffer(camera.ExtractMethodDrain, 365*24*time.Hour)
+	raw, err := cam.LowDumper.ExtractRawBuffer(camera.ExtractMethodDrain, time.Now().Sub(startAt))
 	if err != nil {
 		msg := fmt.Errorf("Failed to extract raw buffer: %v", err)
 		logger.Errorf("%v", msg)
@@ -77,6 +77,10 @@ outer:
 		return
 	}
 
+	// Make sure we get removed *eventually*
+	// In the normal case, we'll be removed sooner, when somebody calls stopRecorder()
+	s.deleteRecorderAfterDelay(self.id, 15*time.Minute)
+
 	self.result.recordingID = recordingID
 }
 
@@ -85,9 +89,15 @@ func (s *Server) startRecorder(cam *camera.Camera) int64 {
 	id := s.nextRecorderID
 	s.nextRecorderID++
 	rec := &recorder{
-		id:       id,
-		stop:     make(chan bool, 10), // buffer size 10 in case we receive multiple requests to stop the recording (eg client needs to reconnect)
-		finished: make(chan bool),     // We never send on finished. We simply close the channel when done.
+		id: id,
+
+		// buffer size 10 in case we receive multiple requests to stop the recording (eg client needs to reconnect).
+		// If the buffer size was only 1, then the 2nd client who tried to send to stop would block forever, because
+		// the recorder has already stopped.
+		stop: make(chan bool, 10),
+
+		// We never send on finished. We simply close the channel when done.
+		finished: make(chan bool),
 	}
 	s.recorders[id] = rec
 	s.recordersLock.Unlock()
@@ -112,18 +122,20 @@ func (s *Server) stopRecorder(recorderID int64) *recorderOutMsg {
 	recorder.stop <- true
 	<-recorder.finished // wait for channel to close
 
-	// Give clients 15 seconds to read the results of the record operation
-	go func() {
-		time.Sleep(15 * time.Second)
-		if s.IsShutdown() {
-			return
-		}
-		s.recordersLock.Lock()
-		delete(s.recorders, recorderID)
-		s.recordersLock.Unlock()
-	}()
+	// Give clients 1 minute to read the results of the record operation.
+	s.deleteRecorderAfterDelay(recorderID, time.Minute)
 
 	return &recorder.result
+}
+
+func (s *Server) deleteRecorderAfterDelay(recorderID int64, delay time.Duration) {
+	time.Sleep(delay)
+	if s.IsShutdown() {
+		return
+	}
+	s.recordersLock.Lock()
+	delete(s.recorders, recorderID)
+	s.recordersLock.Unlock()
 }
 
 func (s *Server) httpRecordStart(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {

@@ -49,7 +49,11 @@ func NewCamera(log log.Log, cam configdb.Camera, ringBufferSizeBytes int) (*Came
 	}
 
 	highDumper := NewVideoDumpReader(ringBufferSizeBytes)
-	lowDumper := NewVideoDumpReader(1024 * 1024) // just enough so that we always have at least 1 IDR in memory
+
+	// See discussion in videoDumpReader.go about the amount of storage that we need here
+	// SYNC-MAX-TRAIN-RECORD-TIME
+	lowDumper := NewVideoDumpReader(3 * 1024 * 1024)
+
 	lowDecoder := NewVideoDecodeReader()
 	high := NewStream(log, cam.Name, "high")
 	low := NewStream(log, cam.Name, "low")

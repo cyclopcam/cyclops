@@ -9,7 +9,7 @@ import Buttin from "../../core/Buttin.vue";
 import { fetchOrErr } from '@/util/util';
 
 let minRecordingSeconds = 5;
-let maxRecordingSeconds = 45;
+let maxRecordingSeconds = 45; // SYNC-MAX-TRAIN-RECORD-TIME
 
 enum States {
 	PickCamera,
@@ -133,6 +133,7 @@ function status(): string {
 .picker {
 	gap: 10px;
 	flex-wrap: wrap;
+	justify-content: center;
 	margin-top: 16px;
 	margin: 16px 20px;
 }

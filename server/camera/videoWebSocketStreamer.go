@@ -83,7 +83,7 @@ func (s *VideoWebSocketStreamer) onPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx
 			s.log.Infof("Sent %v/%v packets", s.nPacketsSent, s.nPacketsDropped+s.nPacketsSent)
 			s.lastLogTime = now
 		}
-		s.sendQueue <- videox.ClonePacket(ctx)
+		s.sendQueue <- videox.ClonePacket(ctx, now)
 	}
 }
 

@@ -26,9 +26,7 @@ body {
 	align-items: baseline;
 }
 .flexCenter {
-	display: flex;
-	align-items: center;
-	justify-content: center;
+	@include flexCenter();
 }
 
 .bold {
@@ -316,6 +314,10 @@ $focalBrightness: 45%;
 	padding: 10px 15px;
 	border-radius: 5px;
 	border: solid 1px rgb(253, 238, 164);
+}
+
+.groupLabel {
+	margin: 20px 2px 2px 2px;
 }
 
 .stepLabel {

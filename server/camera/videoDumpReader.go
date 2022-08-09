@@ -19,12 +19,30 @@ const (
 	ExtractMethodDrain                      // Drain the buffer, leaving the camera's buffer empty
 )
 
+/*
+SYNC-MAX-TRAIN-RECORD-TIME
+
+On my hikvision cameras at 320 x 240, an IDR is about 20KB, and an ad-hoc sampling of non-IDR frames
+puts them at 100 bytes per frame (a high estimate)..
+So at 1 IDR/second, and 10 FPS, that's 20*1000 + 9 * 100 = 21000 bytes/second.
+Let's be conservative and double that to 40 KB / second.
+To record 60 seconds, we need 2400 KB.
+This is just so small, compared to the higher res streams, that we shouldn't
+think about it too much. If we want to re-use the low res dumper stream for the
+recording buffer, then this is fine, because 60 seconds seems like an excessive
+amount of recording time. And even if we wanted to raise it, it wouldn't cost
+much. I thought about dynamically raising the weighted ring buffer size while
+recording, but it doesn't seem worth the extra complexity. Even a two minute
+buffer would be only 4800 KB, and that would be an insanely long recording.
+*/
+
 // VideoDumpReader is a ring buffer that accumulates the stream in a format that can be turned into a video file.
 // The video is not decoded.
 type VideoDumpReader struct {
 	Log     log.Log
 	TrackID int
 	Track   *gortsplib.TrackH264
+	HaveIDR bool
 
 	BufferLock sync.Mutex // Guards all access to Buffer
 	Buffer     ringbuffer.WeightedRingT[videox.DecodedPacket]
@@ -43,6 +61,7 @@ func (r *VideoDumpReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	r.Log = stream.Log
 	r.TrackID = stream.H264TrackID
 	r.Track = stream.H264Track
+	r.HaveIDR = false
 	r.initializeBuffer()
 	return r.incoming, nil
 }
@@ -61,7 +80,7 @@ func (r *VideoDumpReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {
 		return
 	}
 
-	clone := videox.ClonePacket(ctx)
+	clone := videox.ClonePacket(ctx, time.Now())
 
 	r.BufferLock.Lock()
 	defer r.BufferLock.Unlock()
@@ -69,7 +88,8 @@ func (r *VideoDumpReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {
 	r.Buffer.Add(clone.PayloadBytes(), clone)
 }
 
-// Extract from <now - duration> until <now>.
+// Extract from <video_end - duration> until <video_end>.
+// video_end is the PTS of the most recently received packet.
 // duration is a positive number.
 func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod, duration time.Duration) (*videox.RawBuffer, error) {
 	r.BufferLock.Lock()
@@ -81,53 +101,65 @@ func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod, duration time.D
 	}
 
 	// Compute the starting packet for extraction
-	firstPacket := 0
+	firstPacket := -1
 	{
 		_, lastPacket, _ := r.Buffer.Peek(bufLen - 1)
-		presentTime := lastPacket.H264PTS
+		endPTS := lastPacket.H264PTS
 		// Keep going until all 3 are satisfied, with the extra condition that SPS and PPS must precede IDR.
 		// This just happens to work, because cameras will send SPS and PPS before every IDR, to allow a listener
 		// to join the stream at any time.
-		haveIDR := false
-		haveSPS := false
-		havePPS := false
+		//haveIDR := false
+		//haveSPS := false
+		//havePPS := false
+
+		// UPDATE: Just assume that all cameras always SPS + PPS + IDR in a single packet.
+		oldestIDR := -1
+		oldestIDRTimeDelta := time.Duration(0)
+		satisfied := false
 		for i := bufLen - 1; i >= 0; i-- {
 			_, packet, _ := r.Buffer.Peek(i)
-			timeDelta := presentTime - packet.H264PTS
+			timeDelta := endPTS - packet.H264PTS
 			//r.Log.Infof("%v < %v ?", timeDelta, duration)
-			if timeDelta < duration {
-				continue
+			if packet.HasType(h264.NALUTypeIDR) {
+				oldestIDR = i
+				oldestIDRTimeDelta = timeDelta
+				if timeDelta >= duration {
+					satisfied = true
+					break
+				}
 			}
-			if !haveIDR && packet.HasType(h264.NALUTypeIDR) {
-				haveIDR = true
-				//r.Log.Infof("haveIDR")
-			}
-			if haveIDR && !havePPS && packet.HasType(h264.NALUTypePPS) {
-				havePPS = true
-				//r.Log.Infof("havePPS")
-			}
-			if haveIDR && !haveSPS && packet.HasType(h264.NALUTypeSPS) {
-				haveSPS = true
-				//r.Log.Infof("haveSPS")
-			}
-			if haveIDR && haveSPS && havePPS {
-				firstPacket = i
-				break
-			}
+			//if timeDelta < duration {
+			//	continue
+			//}
+			//if !haveIDR && packet.HasType(h264.NALUTypeIDR) {
+			//	haveIDR = true
+			//	//r.Log.Infof("haveIDR")
+			//}
+			//if haveIDR && !havePPS && packet.HasType(h264.NALUTypePPS) {
+			//	havePPS = true
+			//	//r.Log.Infof("havePPS")
+			//}
+			//if haveIDR && !haveSPS && packet.HasType(h264.NALUTypeSPS) {
+			//	haveSPS = true
+			//	//r.Log.Infof("haveSPS")
+			//}
+			//if haveIDR && haveSPS && havePPS {
+			//	firstPacket = i
+			//	break
+			//}
 		}
-		//if firstPacket == 0 {
-		//	r.Log.Infof("Failed to find appropriate starting point for extraction")
-		//} else {
-		//	r.Log.Infof("Starting extraction at packet %v (len %v)", firstPacket, bufLen)
-		//}
-		// In the case where this loop ends without ever assigning firstPacket, we fall back
-		// to just emitting the entire buffer, regardless of how useful it is.
+		firstPacket = oldestIDR
+		if firstPacket == -1 {
+			r.Log.Warnf("Not enough video frames in buffer")
+			return nil, fmt.Errorf("Not enough video frames in buffer")
+		} else if !satisfied {
+			// We failed to find enough frames to satisfy the desired duration.
+			// In this case, we issue a warning, but return the best effort.
+			r.Log.Warnf("Unable to satisfy request for %.1f seconds. Resulting video has only %.1f seconds", duration.Seconds(), oldestIDRTimeDelta.Seconds())
+		}
 	}
 
 	out := &videox.RawBuffer{
-		// little race condition here if Track.SPS and Track.PPS don't agree.
-		//SPS:     util.CopySlice(r.Track.SPS()),
-		//PPS:     util.CopySlice(r.Track.PPS()),
 		Packets: make([]*videox.DecodedPacket, bufLen-firstPacket),
 	}
 
@@ -145,6 +177,11 @@ func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod, duration time.D
 		// we didn't have a detection event prior to this implies that all older footage is
 		// uninteresting, so discarding the old history is fine.
 		// Using Drain instead of Clone is nice because we don't need to copy the memory.
+		//
+		// Note that this chain of reasoning won't work while making a new recording,
+		// so we'll need to remember to disable the AI processing while recording
+		// new training data.
+
 		for i := 0; i < firstPacket; i++ {
 			r.Buffer.Next()
 		}
@@ -159,7 +196,7 @@ func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod, duration time.D
 	return out, nil
 }
 
-// Scan back in the ring buffer to find the first packet containing an IDR frame
+// Scan back in the ring buffer to find the most recent packet containing an IDR frame
 // Assumes that you are holding BufferLock
 // Returns the index in the buffer, or -1 if none found
 func (r *VideoDumpReader) FindLatestIDRPacketNoLock() int {

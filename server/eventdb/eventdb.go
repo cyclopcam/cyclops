@@ -63,10 +63,11 @@ func (e *EventDB) Save(buf *videox.RawBuffer) (int64, error) {
 	videoPath := filepath.Join(e.Root, recording.VideoFilename())
 	thumbnailPath := filepath.Join(e.Root, recording.ThumbnailFilename())
 	os.MkdirAll(filepath.Dir(videoPath), 0770)
-	e.log.Infof("Saving recording %v", videoPath)
+	e.log.Infof("Creating recording thumbnail %v", thumbnailPath)
 	if err := e.saveThumbnail(buf, thumbnailPath); err != nil {
 		return 0, err
 	}
+	e.log.Infof("Saving recording %v", videoPath)
 	if err := buf.SaveToMP4(videoPath); err != nil {
 		return 0, err
 	}
