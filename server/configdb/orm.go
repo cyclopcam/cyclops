@@ -15,14 +15,14 @@ type BaseModel struct {
 // SYNC-RECORD-CAMERA
 type Camera struct {
 	BaseModel
-	Model            string `json:"model"`            // eg HikVision (actually CameraModels enum)
-	Name             string `json:"name"`             // Friendly name
-	Host             string `json:"host"`             // Hostname such as 192.168.1.33
-	Port             int    `json:"port"`             // if 0, then default is 554
-	Username         string `json:"username"`         // RTSP username
-	Password         string `json:"password"`         // RTSP password
-	HighResURLSuffix string `json:"highResURLSuffix"` // eg Streaming/Channels/101 for HikVision. Can leave blank if Model is a known type.
-	LowResURLSuffix  string `json:"lowResURLSuffix"`  // eg Streaming/Channels/102 for HikVision. Can leave blank if Model is a known type.
+	Model            string `json:"model"`                                // eg HikVision (actually CameraModels enum)
+	Name             string `json:"name"`                                 // Friendly name
+	Host             string `json:"host"`                                 // Hostname such as 192.168.1.33
+	Port             int    `json:"port" gorm:"default:null"`             // if 0, then default is 554
+	Username         string `json:"username"`                             // RTSP username
+	Password         string `json:"password"`                             // RTSP password
+	HighResURLSuffix string `json:"highResURLSuffix" gorm:"default:null"` // eg Streaming/Channels/101 for HikVision. Can leave blank if Model is a known type.
+	LowResURLSuffix  string `json:"lowResURLSuffix" gorm:"default:null"`  // eg Streaming/Channels/102 for HikVision. Can leave blank if Model is a known type.
 }
 
 type Variable struct {
@@ -43,15 +43,15 @@ type User struct {
 	BaseModel
 	Username           string `json:"username"`
 	UsernameNormalized string `json:"username_normalized"`
-	Name               string `json:"name"`
 	Permissions        string `json:"permissions"`
-	Password           []byte `json:"-"`
+	Name               string `json:"name" gorm:"default:null"`
+	Password           []byte `json:"-" gorm:"default:null"`
 }
 
 type Session struct {
 	Key       []byte
 	UserID    int64
-	ExpiresAt dbh.IntTime
+	ExpiresAt dbh.IntTime `gorm:"default:null"`
 }
 
 func IsValidPermission(p string) bool {

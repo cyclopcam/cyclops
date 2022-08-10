@@ -10,6 +10,7 @@ import (
 
 	"github.com/bmharper/cimg/v2"
 	"github.com/bmharper/cyclops/server/dbh"
+	"github.com/bmharper/cyclops/server/defs"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/videox"
 	"gorm.io/gorm"
@@ -52,7 +53,7 @@ func Open(log log.Log, root string) (*EventDB, error) {
 
 // Save a new recording to disk.
 // Returns the ID of the new recording.
-func (e *EventDB) Save(res Resolution, buf *videox.RawBuffer) (int64, error) {
+func (e *EventDB) Save(res defs.Resolution, buf *videox.RawBuffer) (int64, error) {
 	rnd := [4]byte{}
 	if _, err := rand.Read(rnd[:]); err != nil {
 		return 0, err
@@ -65,10 +66,10 @@ func (e *EventDB) Save(res Resolution, buf *videox.RawBuffer) (int64, error) {
 		RandomID:  hex.EncodeToString(rnd[:]),
 		StartTime: dbh.MakeIntTime(time.Now()),
 	}
-	if res == ResHD {
+	if res == defs.ResHD {
 		recording.FormatHD = "mp4"
 		recording.DimensionsHD = fmt.Sprintf("%v,%v", width, height)
-	} else if res == ResLD {
+	} else if res == defs.ResLD {
 		recording.FormatLD = "mp4"
 		recording.DimensionsLD = fmt.Sprintf("%v,%v", width, height)
 	}

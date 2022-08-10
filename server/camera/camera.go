@@ -6,15 +6,9 @@ import (
 
 	"github.com/bmharper/cimg/v2"
 	"github.com/bmharper/cyclops/server/configdb"
+	"github.com/bmharper/cyclops/server/defs"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/videox"
-)
-
-type Resolution int
-
-const (
-	ResolutionHigh Resolution = iota
-	ResolutionLow
 )
 
 // Camera represents a single physical camera, with two streams (high and low res)
@@ -126,11 +120,11 @@ func (c *Camera) ExtractHighRes(method ExtractMethod, duration time.Duration) (*
 }
 
 // Get either the high or low resolution stream
-func (c *Camera) GetStream(resolution Resolution) *Stream {
-	switch resolution {
-	case ResolutionLow:
+func (c *Camera) GetStream(res defs.Resolution) *Stream {
+	switch res {
+	case defs.ResLD:
 		return c.LowStream
-	case ResolutionHigh:
+	case defs.ResHD:
 		return c.HighStream
 	}
 	return nil

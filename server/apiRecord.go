@@ -9,7 +9,7 @@ import (
 
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
-	"github.com/bmharper/cyclops/server/eventdb"
+	"github.com/bmharper/cyclops/server/defs"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
@@ -70,7 +70,7 @@ outer:
 		return
 	}
 
-	recordingID, err := s.permanentEvents.Save(eventdb.ResLD, raw)
+	recordingID, err := s.permanentEvents.Save(defs.ResLD, raw)
 	if err != nil {
 		msg := fmt.Errorf("Failed to save recording: %v", err)
 		logger.Errorf("%v", msg)
@@ -130,13 +130,15 @@ func (s *Server) stopRecorder(recorderID int64) *recorderOutMsg {
 }
 
 func (s *Server) deleteRecorderAfterDelay(recorderID int64, delay time.Duration) {
-	time.Sleep(delay)
-	if s.IsShutdown() {
-		return
-	}
-	s.recordersLock.Lock()
-	delete(s.recorders, recorderID)
-	s.recordersLock.Unlock()
+	go func() {
+		time.Sleep(delay)
+		if s.IsShutdown() {
+			return
+		}
+		s.recordersLock.Lock()
+		delete(s.recorders, recorderID)
+		s.recordersLock.Unlock()
+	}()
 }
 
 func (s *Server) httpRecordStart(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
@@ -172,9 +174,9 @@ func (s *Server) httpRecordGetThumbnail(w http.ResponseWriter, r *http.Request, 
 }
 
 func (s *Server) httpRecordGetVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	res := parseResolutionOrPanic(params.ByName("resolution"))
 	err, recording := s.permanentEvents.GetRecording(www.ParseID(params.ByName("id")))
 	www.Check(err)
-	res := eventdb.ResLD
 	fullpath := filepath.Join(s.permanentEvents.Root, recording.VideoFilename(res))
 	www.SendFile(w, fullpath, recording.VideoContentType(res))
 }

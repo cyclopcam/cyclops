@@ -7,21 +7,17 @@ import (
 
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
+	"github.com/bmharper/cyclops/server/defs"
 	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
 )
 
-func parseResolutionOrPanic(res string) camera.Resolution {
-	switch res {
-	case "low":
-		return camera.ResolutionLow
-	case "high":
-		return camera.ResolutionHigh
+func parseResolutionOrPanic(res string) defs.Resolution {
+	r, err := defs.ParseResolution(res)
+	if err != nil {
+		www.PanicBadRequestf("%v", err)
 	}
-	www.PanicBadRequestf("Invalid resolution '%v'. Valid values are 'low' and 'high'", res)
-
-	// to satisfy the compiler
-	return camera.ResolutionHigh
+	return r
 }
 
 func (s *Server) getCameraFromIDOrPanic(idStr string) *camera.Camera {
@@ -45,8 +41,8 @@ type streamInfoJSON struct {
 type camInfoJSON struct {
 	ID   int64          `json:"id"`
 	Name string         `json:"name"`
-	Low  streamInfoJSON `json:"low"`
-	High streamInfoJSON `json:"high"`
+	LD   streamInfoJSON `json:"ld"`
+	HD   streamInfoJSON `json:"hd"`
 }
 
 func toStreamInfoJSON(s *camera.Stream) streamInfoJSON {
@@ -65,8 +61,8 @@ func toCamInfoJSON(c *camera.Camera) *camInfoJSON {
 	r := &camInfoJSON{
 		ID:   c.ID,
 		Name: c.Name,
-		Low:  toStreamInfoJSON(c.LowStream),
-		High: toStreamInfoJSON(c.HighStream),
+		LD:   toStreamInfoJSON(c.LowStream),
+		HD:   toStreamInfoJSON(c.HighStream),
 	}
 	return r
 }
@@ -122,7 +118,7 @@ func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, para
 	// send backlog for small stream, so user can play immediately.
 	// could do the same for high stream too...
 	var backlog *camera.VideoDumpReader
-	if res == camera.ResolutionLow {
+	if res == defs.ResLD {
 		backlog = cam.LowDumper
 	}
 

@@ -51,7 +51,7 @@ function parse(data: ArrayBuffer) {
 
 	// It is better to inject a little bit of frame duration (as opposed to leaving it undefined),
 	// because it reduces the jerkiness of the video that we see, presumably due to network and/or camera jitter
-	let normalDuration = 1000 / props.camera.low.fps;
+	let normalDuration = 1000 / props.camera.ld.fps;
 
 	// This is a naive attempt at forcing the player to catch up to realtime, without introducing
 	// too much jitter. I'm not sure if it actually works.
@@ -78,7 +78,7 @@ function play() {
 	if (isPlaying())
 		return;
 
-	let socketURL = "ws://" + window.location.host + "/api/ws/camera/stream/low/" + props.camera.id;
+	let socketURL = "ws://" + window.location.host + "/api/ws/camera/stream/LD/" + props.camera.id;
 	console.log("Play " + socketURL);
 	muxer = new JMuxer({
 		node: 'camera' + props.camera.id,
@@ -137,8 +137,8 @@ function posterURL(): string {
 
 function videoStyle(): any {
 	/*
-	let width = props.camera.low.width + "px";
-	let height = props.camera.low.height + "px";
+	let width = props.camera.ld.width + "px";
+	let height = props.camera.ld.height + "px";
 	if (props.size) {
 		switch (props.size) {
 			case "small":

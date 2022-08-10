@@ -41,7 +41,7 @@ function onPlay(cam: CameraInfo) {
 async function startRecording() {
 	let r = await fetchOrErr("/api/record/start/" + camera.value.id, { method: "POST" });
 	if (!r.ok) {
-		// TODO: show error
+		globals.networkError = r.error;
 		return;
 	}
 	recorderID = parseInt(await r.r.text());
@@ -53,7 +53,7 @@ async function startRecording() {
 async function stopRecording() {
 	let r = await fetchOrErr("/api/record/stop/" + recorderID, { method: "POST" });
 	if (!r.ok) {
-		// TODO: show error
+		globals.networkError = r.error;
 		return;
 	}
 	lastRecordingID = parseInt(await r.r.text());

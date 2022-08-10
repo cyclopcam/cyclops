@@ -10,6 +10,7 @@ import RecordingItem from "./RecordingItem.vue";
 let emits = defineEmits(['recordNew']);
 
 let recordings = ref([] as Recording[]);
+let playerCookie = ref(''); // ensures that only one RecordingItem is playing at a time
 
 function showHelp(): boolean {
 	return recordings.value.length === 0;
@@ -23,6 +24,10 @@ async function getRecordings() {
 	}
 	globals.networkError = '';
 	recordings.value = r.value;
+}
+
+function onPlayInline(cookie: string) {
+	playerCookie.value = cookie;
 }
 
 onMounted(() => {
@@ -41,8 +46,9 @@ onMounted(() => {
 		<div class="groupLabel">Recordings</div>
 		-->
 		<div class="recordings">
-			<recording-item @click="$emit('recordNew')" />
-			<recording-item v-for="rec of recordings" :recording="rec" />
+			<recording-item :player-cookie="playerCookie" @click="$emit('recordNew')" />
+			<recording-item v-for="rec of recordings" :player-cookie="playerCookie" :recording="rec"
+				@play-inline="onPlayInline" />
 		</div>
 	</div>
 </template>

@@ -2,13 +2,7 @@ package eventdb
 
 import (
 	"github.com/bmharper/cyclops/server/dbh"
-)
-
-type Resolution string // Resolution
-
-const (
-	ResHD Resolution = "HD" // High Definition (exact resolution unspecified - whatever the camera's main stream is set to)
-	ResLD Resolution = "LD" // Low Definition (exact resolution unspecified - whatever the camera's sub stream is set to)
+	"github.com/bmharper/cyclops/server/defs"
 )
 
 // BaseModel is our base class for a GORM model.
@@ -31,16 +25,16 @@ type Recording struct {
 	FormatLD     string                 `json:"formatLD" gorm:"default:null"`             // Only valid value is "mp4"
 	Labels       *dbh.JSONField[Labels] `json:"labels,omitempty" gorm:"default:null"`     // If labels is defined, then OntologyID is also defined
 	OntologyID   int64                  `json:"ontologyID,omitempty" gorm:"default:null"` // Labels reference indices in Ontology, which is why we need to store a reference to the Ontology
-	Bytes        int64                  `json:"bytes" gorm:"default:null"`                // total storage of videos + thumbnails
+	Bytes        int64                  `json:"bytes"`                                    // total storage of videos + thumbnails
 	DimensionsHD string                 `json:"dimensionsHD" gorm:"default:null"`         // width,height of HD video
 	DimensionsLD string                 `json:"dimensionsLD" gorm:"default:null"`         // width,height of LD video
 }
 
-func (r *Recording) VideoFilename(res Resolution) string {
+func (r *Recording) VideoFilename(res defs.Resolution) string {
 	switch res {
-	case ResHD:
+	case defs.ResHD:
 		return r.VideoFilenameHD()
-	case ResLD:
+	case defs.ResLD:
 		return r.VideoFilenameLD()
 	}
 	panic("Invalid resolution '" + res + "'")
@@ -66,11 +60,11 @@ func videoContentType(format string) string {
 	panic("Unrecognized video type " + format)
 }
 
-func (r *Recording) VideoContentType(res Resolution) string {
+func (r *Recording) VideoContentType(res defs.Resolution) string {
 	switch res {
-	case ResHD:
+	case defs.ResHD:
 		return r.VideoContentTypeHD()
-	case ResLD:
+	case defs.ResLD:
 		return r.VideoContentTypeLD()
 	}
 	panic("Invalid resolution '" + res + "'")

@@ -37,18 +37,22 @@ let props = defineProps({
 
 	// It's useful to turn this on when your modal control's size might exceed the screen's resolution
 	scrollable: Boolean,
+
+	// Make this not a modal! This is useful when you want all the other features of this control, *except* for the modal nature
+	// hmmm.. I can't get this to work. If we use pointer-events:none, then we never receive the mouse event that tells us to close ourselves.
+	//clickThrough: Boolean,
 })
 
 let emits = defineEmits(['close']);
 
-let domBreaker = 1;
+let domBreaker = ref(1);
+let hide = ref(true);
 
-let ownWidth = 0;
-let ownHeight = 0;
+let ownWidth = ref(0);
+let ownHeight = ref(0);
 let numPolls = 0;
-let hide = true;
-let xLeft = 0;
-let xTop = 0;
+let xLeft = ref(0);
+let xTop = ref(0);
 
 const fixed = ref(null);
 const container = ref(null);
@@ -63,18 +67,22 @@ function fixedStyle(): any {
 	else if (t === 'light')
 		t = 'rgba(0,0,0,0.1)';
 
-	return {
+	let s: any = {
 		'background-color': t,
 	};
+	//if (props.clickThrough) {
+	//	s['pointer-events'] = "none";
+	//}
+	return s;
 }
 
 function containerStyle(): any {
 	let s: any = {};
-	if (domBreaker > 9e9) {
+	if (domBreaker.value > 9e9) {
 		// provide an escape hatch to force recomputation of containerStyle once we get mounted
 		s['left'] = 0;
 	}
-	if (hide) {
+	if (hide.value) {
 		s['visibility'] = 'hidden';
 	}
 	if (props.scrollable) {
@@ -99,8 +107,9 @@ function containerStyle(): any {
 		} else {
 			refr = fixedEl.parentElement!.getBoundingClientRect();
 		}
-		let myWidth = ownWidth;
-		let myHeight = ownHeight;
+		let myWidth = ownWidth.value;
+		let myHeight = ownHeight.value;
+		console.log(`myWidth: ${myWidth}, myHeight: ${myHeight}`);
 		if (props.sameWidth) {
 			myWidth = refr.width;
 		}
@@ -130,8 +139,8 @@ function containerStyle(): any {
 
 function xStyle(): any {
 	return {
-		"left": xLeft + "px",
-		"top": xTop + "px",
+		"left": xLeft.value + "px",
+		"top": xTop.value + "px",
 	};
 }
 
@@ -143,8 +152,8 @@ function refreshOwnSize() {
 	//if (rect.width !== this.ownWidth || rect.height !== this.ownHeight) {
 	//	console.log(`Modal detected altered size. numPolls = ${this.numPolls}`);
 	//}
-	ownWidth = rect.width;
-	ownHeight = rect.height;
+	ownWidth.value = rect.width;
+	ownHeight.value = rect.height;
 }
 
 function refreshXPosition() {
@@ -158,8 +167,8 @@ function refreshXPosition() {
 	if (!slot || slot === x)
 		return;
 	let slotRect = slot.getBoundingClientRect();
-	xLeft = slotRect.right - 33;
-	xTop = slotRect.top + 7;
+	xLeft.value = slotRect.right - 33;
+	xTop.value = slotRect.top + 7;
 }
 
 function xPoller() {
@@ -181,25 +190,26 @@ function onXClick() {
 }
 
 function sizePoller() {
+	//console.log(`sizePoller ${numPolls}`);
 	numPolls++;
 	refreshOwnSize();
 	// Give the DOM one or two cycles to stabilize the layout. By not drawing ourselves for 5 cycles,
 	// we end up avoiding a visible flicker, should the menu need to move itself.
 	let showAfterN = 5;
 	if (numPolls === showAfterN) {
-		hide = false;
+		hide.value = false;
 	}
-	let timeout = numPolls <= showAfterN ? 1 : 100;
-	setTimeout(sizePoller, timeout);
+	let timeout = numPolls <= showAfterN ? 5 : 100;
+	setTimeout(() => { sizePoller() }, timeout);
 }
 
 onMounted(() => {
-	domBreaker++;
+	domBreaker.value++;
 	if (props.pollSize) {
 		sizePoller();
 	} else {
 		refreshOwnSize();
-		hide = false;
+		hide.value = false;
 	}
 	if (props.showX)
 		xPoller();
