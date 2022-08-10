@@ -16,9 +16,13 @@ func Migrations(log log.Log) []migration.Migrator {
 			id INTEGER PRIMARY KEY,
 			random_id TEXT NOT NULL,
 			start_time INT NOT NULL,
-			format TEXT NOT NULL,
+			format_hd TEXT,
+			format_ld TEXT,
 			labels BLOB,
-			ontology_id INT
+			ontology_id INT,
+			bytes INT,
+			dimensions_hd TEXT,
+			dimensions_ld TEXT
 		);
 
 		CREATE TABLE ontology(

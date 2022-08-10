@@ -328,7 +328,7 @@ func (r *RawBuffer) ExtractThumbnail() (image.Image, error) {
 	firstImgPacket := -1
 	midPacket := len(r.Packets) - 1
 	for i := 0; i < len(r.Packets); i++ {
-		fmt.Printf("%v: %v\n", i, r.Packets[i].Summary())
+		//fmt.Printf("%v: %v\n", i, r.Packets[i].Summary())
 		for _, n := range r.Packets[i].H264NALUs {
 			img, _ := decoder.Decode(n)
 			if img != nil {

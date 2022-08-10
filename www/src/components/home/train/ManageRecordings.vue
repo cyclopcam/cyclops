@@ -33,7 +33,8 @@ onMounted(() => {
 
 <template>
 	<div class="flexColumnCenter">
-		<p v-if="showHelp()" class="helpTopic">Train your system by recording videos that simulate alarm conditions.</p>
+		<div v-if="showHelp()" class="helpTopic">Train your system by recording videos that simulate alarm conditions.
+		</div>
 		<!--
 		<buttin :icon="PlusCircle" iconSize="16px" @click="onRecordNew">New Recording
 		</buttin>

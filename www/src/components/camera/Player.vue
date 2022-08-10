@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import type { CameraInfo } from "@/camera/camera";
 import JMuxer from "jmuxer";
-import { onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { onMounted, onUnmounted, watch } from "vue";
+
+// Player is for playing a live camera stream.
+// A websocket feeds us h264 packets, and we use jmuxer to feed them into
+// a <video> object.
 
 let props = defineProps<{
 	camera: CameraInfo,
@@ -13,7 +17,6 @@ let emits = defineEmits(['click']);
 
 let muxer: JMuxer | null = null;
 let ws: WebSocket | null = null;
-let isRecording = ref(false);
 let backlogDone = false;
 let nPackets = 0;
 let nBytes = 0;
@@ -52,6 +55,9 @@ function parse(data: ArrayBuffer) {
 
 	// This is a naive attempt at forcing the player to catch up to realtime, without introducing
 	// too much jitter. I'm not sure if it actually works.
+	// OK.. interesting.. I left my system on play for a long time (eg 1 hour), and when I came back,
+	// the camera was playing daytime, although it was already night time outside. So *somewhere*, we are
+	// adding a gigantic buffer. I haven't figured out how to figure out where that is.
 	normalDuration *= 0.9;
 
 	// during backlog catchup, we leave duration undefined, which causes the player to catch up
@@ -125,19 +131,6 @@ function stop() {
 	}
 }
 
-async function onRecordStartStop() {
-	if (isRecording.value) {
-		await fetch("/api/record/stop", { method: "POST" });
-		isRecording.value = false;
-	} else {
-		if (!isPlaying()) {
-			play();
-		}
-		await fetch("/api/record/start/" + props.camera.id, { method: "POST" })
-		isRecording.value = true;
-	}
-}
-
 function posterURL(): string {
 	return "/api/camera/latestImage/" + props.camera.id;
 }
@@ -196,6 +189,10 @@ onMounted(() => {
 .video {
 	width: 100%;
 	height: 100%;
-	object-fit: fill; // This screws up the aspect ratio, but I feel like it's the right UI tradeoff for consistency of the video widgets
+	// This screws up the aspect ratio, but I feel like it's the right UI tradeoff for consistency of the video widgets.
+	// Without this, on Chrome on Linux, as soon as the player starts decoding frames, it adjusts itself to the actual
+	// aspect ratio of the decoded video stream, and this usually leaves a letter box in our UI. Normally I hate distorting
+	// aspect ratio, but in this case I actually think it's the best option.
+	object-fit: fill;
 }
 </style>

@@ -65,6 +65,7 @@ func (s *Server) SetupHTTP() {
 	protected("v", "GET", "/api/record/getRecordings", s.httpRecordGetRecordings)
 	protected("v", "GET", "/api/record/getOntologies", s.httpRecordGetOntologies)
 	protected("v", "GET", "/api/record/thumbnail/:id", s.httpRecordGetThumbnail)
+	protected("v", "GET", "/api/record/video/:id", s.httpRecordGetVideo)
 	unprotected("GET", "/api/auth/hasAdmin", s.httpAuthHasAdmin)
 	protected("v", "GET", "/api/auth/whoami", s.httpAuthWhoAmi)
 	unprotected("POST", "/api/auth/createUser", s.httpAuthCreateUser)

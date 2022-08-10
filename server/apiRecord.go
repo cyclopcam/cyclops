@@ -9,6 +9,7 @@ import (
 
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
+	"github.com/bmharper/cyclops/server/eventdb"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
@@ -69,7 +70,7 @@ outer:
 		return
 	}
 
-	recordingID, err := s.permanentEvents.Save(raw)
+	recordingID, err := s.permanentEvents.Save(eventdb.ResLD, raw)
 	if err != nil {
 		msg := fmt.Errorf("Failed to save recording: %v", err)
 		logger.Errorf("%v", msg)
@@ -168,4 +169,12 @@ func (s *Server) httpRecordGetThumbnail(w http.ResponseWriter, r *http.Request, 
 	www.Check(err)
 	fullpath := filepath.Join(s.permanentEvents.Root, recording.ThumbnailFilename())
 	www.SendFile(w, fullpath, "")
+}
+
+func (s *Server) httpRecordGetVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	err, recording := s.permanentEvents.GetRecording(www.ParseID(params.ByName("id")))
+	www.Check(err)
+	res := eventdb.ResLD
+	fullpath := filepath.Join(s.permanentEvents.Root, recording.VideoFilename(res))
+	www.SendFile(w, fullpath, recording.VideoContentType(res))
 }
