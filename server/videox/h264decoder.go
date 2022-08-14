@@ -105,24 +105,24 @@ func (d *H264Decoder) Close() {
 // This is of dubious value... I wanted to use it for decoding SPS only.. but turns out
 // you must decode the first frame before avcodec context will have the width/height.
 // So I ended up getting a dedicated SPS parser...
-func (d *H264Decoder) DecodeAndDiscard(nalu NALU) error {
-	return d.sendPacket(nalu)
-}
+//func (d *H264Decoder) DecodeAndDiscard(nalu NALU) error {
+//	return d.sendPacket(nalu)
+//}
 
 // WARNING: The image returned is only valid while the decoder is still alive,
 // and it will be clobbered by the subsequent Decode()
-func (d *H264Decoder) Decode(nalu NALU) (image.Image, error) {
-	if err := d.sendPacket(nalu); err != nil {
+func (d *H264Decoder) Decode(packet []byte) (image.Image, error) {
+	if err := d.sendPacket(packet); err != nil {
 		// sendPacket failure is not fatal
 		// We should log it or something.
 		// But it occurs normally during start of a stream, before first IDR has been seen.
 	}
 
-	if !IsVisualPacket(nalu.Type()) {
-		// avcodec_receive_frame will return an error if we try to decode a frame when
-		// sending a non-visual NALU
-		return nil, nil
-	}
+	//if !IsVisualPacket(nalu.Type()) {
+	//	// avcodec_receive_frame will return an error if we try to decode a frame when
+	//	// sending a non-visual NALU
+	//	return nil, nil
+	//}
 
 	// receive frame if available
 	res := C.avcodec_receive_frame(d.codecCtx, d.srcFrame)
@@ -195,10 +195,10 @@ func (d *H264Decoder) Height() int {
 	return int(d.codecCtx.height)
 }
 
-func (d *H264Decoder) sendPacket(nalu NALU) error {
-	if nalu.PrefixLen == 0 {
-		nalu = nalu.CloneWithPrefix()
-	}
+func (d *H264Decoder) sendPacket(packet []byte) error {
+	//if nalu.PrefixLen == 0 {
+	//	nalu = nalu.CloneWithPrefix()
+	//}
 
 	// The following doesn't work, because we're storing a Go pointer inside a C struct,
 	// and then passing that C struct to a C function. So to fix this, we need to define
@@ -209,7 +209,8 @@ func (d *H264Decoder) sendPacket(nalu NALU) error {
 	// API is deprecating the fixed struct size, and rather moving to requiring the use of
 	// an alloc function to create a packet.
 
-	res := C.AvCodecSendPacket(d.codecCtx, unsafe.Pointer(&nalu.Payload[0]), C.ulong(len(nalu.Payload)))
+	//res := C.AvCodecSendPacket(d.codecCtx, unsafe.Pointer(&nalu.Payload[0]), C.ulong(len(nalu.Payload)))
+	res := C.AvCodecSendPacket(d.codecCtx, unsafe.Pointer(&packet[0]), C.ulong(len(packet)))
 	if res < 0 {
 		return fmt.Errorf("avcodec_send_packet failed: %v", res)
 	}

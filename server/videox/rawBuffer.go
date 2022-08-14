@@ -18,12 +18,16 @@ import (
 	"github.com/bmharper/cyclops/server/log"
 )
 
+// This is the prefix that we add whenever we need to encode into AnnexB
 var NALUPrefix = []byte{0x00, 0x00, 0x01}
 
 // A NALU, with optional annex-b prefix bytes
-// NOTE: We do not add the 0x03 bytes, so this is going to bite us statistically.
+// NOTE: We do not add the 0x03 "Emulation Prevention" byte, so this is going to bite us every now and then. We SHOULD DO IT.
 type NALU struct {
-	PrefixLen int // If zero, then no prefix. If 3 or 4, then 00 00 01 or 00 00 00 01.
+	// If zero, then no prefix.
+	// If 3 or 4, then the first N bytes of Payload are 00 00 01 or 00 00 00 01 respectively.
+	// No values beside 0,3,4 are valid for PrefixLen.
+	PrefixLen int
 	Payload   []byte
 }
 
@@ -35,7 +39,7 @@ type DecodedPacket struct {
 	H264NALUs    []NALU
 	H264PTS      time.Duration
 	PTSEqualsDTS bool
-	IsBacklog    bool // testing...
+	IsBacklog    bool // a bit of a hack to inject this state here. maybe an integer counter would suffice? (eg nBacklongPackets)
 }
 
 type RawBuffer struct {
@@ -140,6 +144,31 @@ func (p *DecodedPacket) Summary() string {
 	return fmt.Sprintf("%v packets: ", len(p.H264NALUs)) + strings.Join(parts, ", ")
 }
 
+// Encode all NALUs in the packet into AnnexB format (i.e. with 00,00,01 prefix bytes)
+func (p *DecodedPacket) EncodeToAnnexBPacket() []byte {
+	if len(p.H264NALUs) == 1 && p.H264NALUs[0].PrefixLen != 0 {
+		return p.H264NALUs[0].Payload
+	}
+
+	// measure how much space we'll need
+	outLen := 0
+	for _, n := range p.H264NALUs {
+		outLen += len(n.Payload)
+		if n.PrefixLen == 0 {
+			outLen += len(NALUPrefix)
+		}
+	}
+	// build up a contiguous buffer
+	out := make([]byte, 0, outLen)
+	for _, n := range p.H264NALUs {
+		if n.PrefixLen == 0 {
+			out = append(out, NALUPrefix...)
+		}
+		out = append(out, n.Payload...)
+	}
+	return out
+}
+
 // Clone a packet of NALUs and return the cloned packet
 func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *DecodedPacket {
 	nalus := []NALU{}
@@ -149,6 +178,21 @@ func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *Decod
 		// This saves us one additional memcpy before we send the NALUs out for
 		// decoding to RGBA or saving to mp4.
 		nalus = append(nalus, CloneNALUWithPrefix(buf))
+	}
+	return &DecodedPacket{
+		RecvTime:     recvTime,
+		H264NALUs:    nalus,
+		H264PTS:      ctx.H264PTS,
+		PTSEqualsDTS: ctx.PTSEqualsDTS,
+	}
+}
+
+// Wrap a packet of NALUs into our own data structure.
+// WARNING: gortsplib re-uses buffers, so the memory buffers inside the NALUs here are only valid until your function returns.
+func WrapPacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *DecodedPacket {
+	nalus := make([]NALU, 0, len(ctx.H264NALUs))
+	for _, buf := range ctx.H264NALUs {
+		nalus = append(nalus, WrapRawNALU(buf))
 	}
 	return &DecodedPacket{
 		RecvTime:     recvTime,
@@ -329,22 +373,22 @@ func (r *RawBuffer) ExtractThumbnail() (image.Image, error) {
 	midPacket := len(r.Packets) - 1
 	for i := 0; i < len(r.Packets); i++ {
 		//fmt.Printf("%v: %v\n", i, r.Packets[i].Summary())
-		for _, n := range r.Packets[i].H264NALUs {
-			img, _ := decoder.Decode(n)
-			if img != nil {
-				if firstImgPacket == -1 {
-					// return the frame halfway between the first keyframe and the end,
-					// because there will often be a chunk of unusable packets at the front,
-					// before our first keyframe.
-					// which begs the question: why do we ever record that junk before a keyframe?
-					firstImgPacket = i
-					midPacket = i + (len(r.Packets)-i)/2
-				}
-				if i >= midPacket {
-					return cloneImage(img), nil
-				}
+		//for _, n := range r.Packets[i].H264NALUs {
+		img, _ := decoder.Decode(r.Packets[i].EncodeToAnnexBPacket())
+		if img != nil {
+			if firstImgPacket == -1 {
+				// return the frame halfway between the first keyframe and the end,
+				// because there will often be a chunk of unusable packets at the front,
+				// before our first keyframe.
+				// which begs the question: why do we ever record that junk before a keyframe?
+				firstImgPacket = i
+				midPacket = i + (len(r.Packets)-i)/2
+			}
+			if i >= midPacket {
+				return cloneImage(img), nil
 			}
 		}
+		//}
 	}
 	return nil, errors.New("No thumbnail available")
 }

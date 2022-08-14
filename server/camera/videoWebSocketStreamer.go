@@ -79,7 +79,7 @@ func (s *VideoWebSocketStreamer) onPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx
 		}
 	} else {
 		s.nPacketsSent++
-		if now.Sub(s.lastLogTime) > 20*time.Second {
+		if now.Sub(s.lastLogTime) > 30*time.Second {
 			s.log.Infof("Sent %v/%v packets", s.nPacketsSent, s.nPacketsDropped+s.nPacketsSent)
 			s.lastLogTime = now
 		}

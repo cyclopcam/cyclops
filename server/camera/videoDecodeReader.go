@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"sync"
+	"time"
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
@@ -47,21 +48,23 @@ func (r *VideoDecodeReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 		return nil, fmt.Errorf("Failed to start H264 decoder: %w", err)
 	}
 
-	// if present, send SPS and PPS from the SDP to the decoder
-	//var sps *videox.NALU
-	//var pps *videox.NALU
-	sps := r.Track.SPS()
-	pps := r.Track.PPS()
-	if sps != nil {
-		wrapped := videox.WrapRawNALU(sps)
-		//r.sps = &wrapped
-		decoder.Decode(wrapped)
-	}
-	if pps != nil {
-		wrapped := videox.WrapRawNALU(pps)
-		//r.pps = &wrapped
-		decoder.Decode(wrapped)
-	}
+	// UPDATE: Sending SPS and PPS now doesn't actually help. avcodec wants SPS+PPS+IDR to start decoding,
+	// and with my IP cameras, those always come in a packet together. In other words,
+	// the moment we see our first keyframe, we will also see SPS and PPS, so there's
+	// no use in trying to inject them now.
+	/*
+		// if present, send SPS and PPS from the SDP to the decoder
+		sps := r.Track.SPS()
+		pps := r.Track.PPS()
+		if sps != nil {
+			wrapped := videox.WrapRawNALU(sps)
+			decoder.Decode(wrapped)
+		}
+		if pps != nil {
+			wrapped := videox.WrapRawNALU(pps)
+			decoder.Decode(wrapped)
+		}
+	*/
 
 	r.Decoder = decoder
 	return r.incoming, nil
@@ -89,46 +92,39 @@ func (r *VideoDecodeReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {
 		return
 	}
 
-	for _, rawNalu := range ctx.H264NALUs {
-		nalu := videox.WrapRawNALU(rawNalu)
-		ntype := nalu.Type()
-		//switch ntype {
-		//case h264.NALUTypeSPS:
-		//	r.sps = &nalu
-		//case h264.NALUTypePPS:
-		//	r.pps = &nalu
-		//}
+	packet := videox.WrapPacket(ctx, time.Now())
 
-		if ntype == h264.NALUTypeIDR {
-			// we'll assume that we've seen SPS and PPS by now... but should perhaps wait for them too
-			r.ready = true
-		}
-
-		if !r.ready && videox.IsVisualPacket(ntype) {
-			//r.Log.Infof("NALU %v (discard)", ntype)
-			continue
-		}
-		//r.Log.Infof("NALU %v", ntype)
-
-		// NOTE: To avoid the "no frame!" warnings on stdout/stderr, which ffmpeg emits, we must not send SPS
-		// and PPS refresh NALUs to the decoder alone. Instead, we must join them into the next IDR, and
-		// send SPS+PPS+IDR as a single packet. I HAVE NOT TESTED THIS THEORY!
-
-		// convert H264 NALUs to RGBA frames
-		img, err := r.Decoder.Decode(nalu)
-		if err != nil {
-			r.Log.Errorf("Failed to decode H264 NALU: %v", err)
-			continue
-		}
-
-		if img == nil {
-			continue
-		}
-
-		// The 'img' returned by Decode is transient, so we need make a copy of it.
-		r.cloneIntoLastImg(img)
-		//r.Log.Infof("[Packet %v] Decoded frame with size %v", r.nPackets, img.Bounds().Max)
+	if packet.HasType(h264.NALUTypeIDR) {
+		// we'll assume that we've seen SPS and PPS by now... but should perhaps wait for them too
+		r.ready = true
 	}
+
+	if !r.ready && packet.IsIFrame() {
+		//r.Log.Infof("NALU %v (discard)", ntype)
+		return
+	}
+	//r.Log.Infof("NALU %v", ntype)
+
+	// NOTE: To avoid the "no frame!" warnings on stdout/stderr, which ffmpeg emits, we must not send SPS
+	// and PPS refresh NALUs to the decoder alone. Instead, we must join them into the next IDR, and
+	// send SPS+PPS+IDR as a single packet.
+	// That's why we join all NALUs into a single packet and send that to avcodec.
+
+	// convert H264 NALUs to RGBA frames
+	img, err := r.Decoder.Decode(packet.EncodeToAnnexBPacket())
+	if err != nil {
+		r.Log.Errorf("Failed to decode H264 NALU: %v", err)
+		return
+	}
+
+	if img == nil {
+		return
+	}
+
+	// The 'img' returned by Decode is transient, so we need make a copy of it.
+	// See comment about the potential wastefulness of this memcpy at the top of VideoDecodeReader
+	r.cloneIntoLastImg(img)
+	//r.Log.Infof("[Packet %v] Decoded frame with size %v", r.nPackets, img.Bounds().Max)
 }
 
 func (r *VideoDecodeReader) cloneIntoLastImg(latest image.Image) {
