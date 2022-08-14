@@ -1,7 +1,7 @@
 import { randomBytes } from 'crypto';
 <script setup lang="ts">
 import type { Recording } from '@/recording/recording.js';
-import { ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import Modal from '../../core/Modal.vue';
 import Buttin from '../../core/Buttin.vue';
 import Play from '@/icons/play-circle.svg';
@@ -11,6 +11,7 @@ import { randomString } from '@/util/util';
 let props = defineProps<{
 	playerCookie: string, // Used to ensure that there is only one RecordingItem playing a video at a time
 	recording?: Recording, // If null, then this is a "record new" pane
+	playAtStartup?: boolean,
 }>()
 let emits = defineEmits(['click', 'playInline']);
 
@@ -30,13 +31,19 @@ function showInlinePlayer() {
 	emits('playInline', myCookie.value);
 }
 
+onMounted(() => {
+	if (props.playAtStartup) {
+		showInlinePlayer();
+	}
+})
+
 </script>
 
 <template>
 	<div :class="{ recording: true, newOuter: !recording, shadow5Hover: !recording }" @click="$emit('click')">
 		<div v-if="recording" class="imgContainer">
 			<img v-if="!showPlayer" :src="'/api/record/thumbnail/' + recording.id" class="shadow5" loading="lazy" />
-			<svg-button v-if="!showPlayer" :icon="Play" icon-size="32px" class="playBtn" :invert="true" :shadow="true"
+			<svg-button v-if="!showPlayer" :icon="Play" icon-size="38px" class="playBtn" :invert="true" :shadow="true"
 				@click="showInlinePlayer" />
 			<video v-if="showPlayer" :src="'/api/record/video/LD/' + recording.id" class="inlineVideo" autoplay
 				controls />

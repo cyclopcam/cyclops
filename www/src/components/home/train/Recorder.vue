@@ -7,6 +7,8 @@ import RedDot from "@/icons/red-dot.svg";
 import Stop from "@/icons/stop.svg";
 import Buttin from "../../core/Buttin.vue";
 import { fetchOrErr } from '@/util/util';
+import RecordingItem from './RecordingItem.vue';
+import { Recording } from '@/recording/recording';
 
 let minRecordingSeconds = 5;
 let maxRecordingSeconds = 45; // SYNC-MAX-TRAIN-RECORD-TIME
@@ -26,7 +28,8 @@ let startedAt = ref(new Date());
 let timeNow = ref(new Date());
 let startError = ref("");
 let recorderID = 0;
-let lastRecordingID = 0;
+//let lastRecordingID = ref(0);
+let newRecording = ref(new Recording());
 
 function cameras(): CameraInfo[] {
 	return globals.cameras;
@@ -56,7 +59,8 @@ async function stopRecording() {
 		globals.networkError = r.error;
 		return;
 	}
-	lastRecordingID = parseInt(await r.r.text());
+	//lastRecordingID.value = parseInt(await r.r.text());
+	newRecording.value = Recording.fromJSON(await r.r.json(), null);
 	state.value = States.PostRecord;
 	playLive.value = false;
 }
@@ -99,7 +103,8 @@ function status(): string {
 			</div>
 		</div>
 		<div v-else class="flexColumnCenter">
-			<camera-item :camera="camera" :play="playLive" size="280" />
+			<camera-item v-if="state === States.PreRecord || state === States.Recording" :camera="camera"
+				:play="playLive" size="280" />
 			<div style="height: 20px" />
 			<div v-if="state === States.PreRecord" class="flexColumnCenter recordingBlock">
 				<div class="stepHint" style="text-align:center">Recordings can be anywhere from {{ minRecordingSeconds
@@ -119,6 +124,8 @@ function status(): string {
 				</buttin>
 			</div>
 			<div v-else-if="state === States.PostRecord" class="flexColumnCenter recordingBlock">
+				<recording-item v-if="newRecording.id !== 0" player-cookie="12345" :recording="newRecording"
+					:play-at-startup="true" />
 				<div class="flex">
 					<buttin @click="discardRecording()" :danger="true">Discard</buttin>
 					<div class="dangerSpacer" />

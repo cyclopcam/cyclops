@@ -10,6 +10,7 @@ import (
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/defs"
+	"github.com/bmharper/cyclops/server/eventdb"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
@@ -17,8 +18,8 @@ import (
 
 // recorderOutMsg is sent by a recorder after receiving the stop message
 type recorderOutMsg struct {
-	err         error // If not nil, there was an error
-	recordingID int64 // If successful, this is the recording ID in the permanent DB
+	err       error              // If not nil, there was an error
+	recording *eventdb.Recording // If successful, this is the recording in the permanent DB
 }
 
 // recorder is for facilitating communication with an active recorder
@@ -70,7 +71,7 @@ outer:
 		return
 	}
 
-	recordingID, err := s.permanentEvents.Save(defs.ResLD, raw)
+	recording, err := s.permanentEvents.Save(defs.ResLD, raw)
 	if err != nil {
 		msg := fmt.Errorf("Failed to save recording: %v", err)
 		logger.Errorf("%v", msg)
@@ -82,7 +83,7 @@ outer:
 	// In the normal case, we'll be removed sooner, when somebody calls stopRecorder()
 	s.deleteRecorderAfterDelay(self.id, 15*time.Minute)
 
-	self.result.recordingID = recordingID
+	self.result.recording = recording
 }
 
 func (s *Server) startRecorder(cam *camera.Camera) int64 {
@@ -151,7 +152,7 @@ func (s *Server) httpRecordStop(w http.ResponseWriter, r *http.Request, params h
 	recorderID := www.ParseID(params.ByName("recorderID"))
 	result := s.stopRecorder(recorderID)
 	www.Check(result.err)
-	www.SendID(w, result.recordingID)
+	www.SendJSON(w, result.recording)
 }
 
 func (s *Server) httpRecordGetRecordings(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
