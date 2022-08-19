@@ -3,6 +3,7 @@ package camera
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -18,11 +19,22 @@ type webSocketMsg int
 
 const (
 	webSocketMsgClosed webSocketMsg = iota // The websocket client has closed the channel
+	webSocketMsgPause                      // pause stream (eg browser tab deactivated)
+	webSocketMsgResume                     // resume stream (eg browser tab reactivated)
 )
+
+// Sent by client over websocket
+// SYNC-WEBSOCKET-JSON-MSG
+type webSocketJSON struct {
+	Command string `json:"command"`
+}
 
 // Number of packets (should be closely correlated with number of frames) that we will buffer
 // on the send side, before dropping packets to the sender.
-// NOTE: If a camera's IDR interval is greater than this number, then sendBacklog will often fail.
+// NOTE: If a camera's IDR interval is greater than this number, then sendBacklog will often fail,
+// because we'll run out of buffer space before we've sent an IDR. We should really make this
+// buffer size dynamic, and dependent on the IDR interval.
+// eg.. perhaps max(20, IDRInterval+1), or something like that.
 const WebSocketSendBufferSize = 50
 
 var nextWebSocketStreamerID int64
@@ -32,7 +44,8 @@ type VideoWebSocketStreamer struct {
 	streamerID      int64 // Intended to aid in logging/debugging
 	incoming        StreamSinkChan
 	trackID         int
-	closed          bool
+	closed          atomic.Bool
+	paused          atomic.Bool
 	fromWebSocket   chan webSocketMsg
 	sendQueue       chan *videox.DecodedPacket
 	lastDropMsg     time.Time
@@ -40,14 +53,15 @@ type VideoWebSocketStreamer struct {
 	nPacketsSent    int64
 	lastLogTime     time.Time
 	debug           bool
+	logPacketCount  bool // SYNC-LOG-PACKET-COUNT
 }
 
-func NewVideoWebSocketStreamer(logger log.Log) *VideoWebSocketStreamer {
+func NewVideoWebSocketStreamer(cameraName string, logger log.Log) *VideoWebSocketStreamer {
 	streamerID := atomic.AddInt64(&nextWebSocketStreamerID, 1)
 	return &VideoWebSocketStreamer{
 		incoming:   make(StreamSinkChan, StreamSinkChanDefaultBufferSize),
 		streamerID: streamerID,
-		log:        log.NewPrefixLogger(logger, fmt.Sprintf("WebSocket %v", streamerID)),
+		log:        log.NewPrefixLogger(logger, fmt.Sprintf("Camera %v WebSocket %v", cameraName, streamerID)),
 		sendQueue:  make(chan *videox.DecodedPacket, WebSocketSendBufferSize),
 		debug:      false,
 	}
@@ -79,7 +93,12 @@ func (s *VideoWebSocketStreamer) onPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx
 		}
 	} else {
 		s.nPacketsSent++
-		if now.Sub(s.lastLogTime) > 30*time.Second {
+		if s.logPacketCount && s.nPacketsSent%60 == 0 {
+			// This log is used in conjunction with a similar console.log in the web client, to debug stale frame/backlog issues.
+			// Search for SYNC-LOG-PACKET-COUNT
+			s.log.Infof("Sent %v", s.nPacketsSent)
+		}
+		if now.Sub(s.lastLogTime) > 60*time.Second {
 			s.log.Infof("Sent %v/%v packets", s.nPacketsSent, s.nPacketsDropped+s.nPacketsSent)
 			s.lastLogTime = now
 		}
@@ -104,31 +123,36 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream, backl
 		s.log.Infof("Run ready")
 	}
 
-	s.closed = false
+	s.closed.Store(false)
+	s.paused.Store(false)
 	webSocketClosed := false
 
 	if backlog != nil {
 		s.sendBacklog(backlog)
 	}
 
-	for !s.closed {
+	for !s.closed.Load() {
 		select {
 		case msg := <-s.incoming:
 			switch msg.Type {
 			case StreamMsgTypeClose:
 				s.log.Infof("Run StreamMsgTypeClose")
-				s.closed = true
-				break
+				s.closed.Store(true)
 			case StreamMsgTypePacket:
-				s.onPacketRTP(msg.Packet)
+				if !s.paused.Load() {
+					s.onPacketRTP(msg.Packet)
+				}
 			}
 		case wsMsg := <-s.fromWebSocket:
 			switch wsMsg {
 			case webSocketMsgClosed:
 				s.log.Infof("Run webSocketMsgClosed")
 				webSocketClosed = true
-				s.closed = true
-				break
+				s.closed.Store(true)
+			case webSocketMsgPause:
+				s.paused.Store(true)
+			case webSocketMsgResume:
+				s.paused.Store(false)
 			}
 		}
 	}
@@ -184,7 +208,24 @@ func (s *VideoWebSocketStreamer) webSocketReader(conn *websocket.Conn) {
 			}
 			break
 		}
-		s.log.Infof("received %v message from websocket (len %v) [%v]", msgType, len(data), data[:3])
+		//s.log.Infof("received %v message from websocket (len %v) [%v]", msgType, len(data), data[:3])
+		if msgType == websocket.TextMessage {
+			msg := webSocketJSON{}
+			if err := json.Unmarshal(data, &msg); err != nil {
+				s.log.Infof("webSocketReader failed to decode JSON: %v", err)
+			} else {
+				s.log.Infof("Received %v command from websocket", msg.Command)
+				// SYNC-WEBSOCKET-COMMANDS
+				switch msg.Command {
+				case "pause":
+					s.fromWebSocket <- webSocketMsgPause
+				case "resume":
+					s.fromWebSocket <- webSocketMsgResume
+				default:
+					s.log.Infof("Unknown websocket message from client: '%v'", msg.Command)
+				}
+			}
+		}
 	}
 	s.fromWebSocket <- webSocketMsgClosed
 }
@@ -197,13 +238,19 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 	sentIDR := false
 	for {
 		pkt, more := <-s.sendQueue
-		if !more || s.closed {
+		if !more || s.closed.Load() {
 			if s.debug {
-				s.log.Infof("webSocketWriter closing. more:%v, s.closed:%v", more, s.closed)
+				s.log.Infof("webSocketWriter closing. more:%v, s.closed:%v", more, s.closed.Load())
 			}
 			break
 		}
 
+		if s.paused.Load() {
+			// When paused, drop all queued frames.
+			// This will quickly drain the queue, whereafter we'll stop receiving packets,
+			// because the main loop will just drop RTSP packets when paused.
+			continue
+		}
 		if !sentIDR && pkt.IsIFrame() {
 			// Don't send any IFrames until we've sent a keyframe
 			continue

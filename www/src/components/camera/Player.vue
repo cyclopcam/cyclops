@@ -3,9 +3,31 @@ import type { CameraInfo } from "@/camera/camera";
 import JMuxer from "jmuxer";
 import { onMounted, onUnmounted, watch } from "vue";
 
-// Player is for playing a live camera stream.
-// A websocket feeds us h264 packets, and we use jmuxer to feed them into
-// a <video> object.
+/*
+
+Player is for playing a live camera stream.
+
+A websocket feeds us h264 packets, and we use jmuxer to feed them into
+a <video> object.
+
+If our browser tab is made inactive, then we receive a pause event from the <video> element.
+When our tab is re-activated, we get a play event.
+We need to take care of this in some ways:
+1. When paused, the server must stop sending us frames, because it's a waste of bandwidth.
+2. When reactivated, we must immediately start playing again.
+
+If we just do nothing, then two bad things happen:
+1. We waste bandwidth
+2. The browser seems to buffer up ALL of the frames that got sent while we
+   were in the pause state, and when we resume, it plays those frames first.
+   So basically, the video is no longer realtime. This makes sense if you're
+   playing a movie, but not for a live view.
+
+Why don't we just stop the video if we receive a pause event?
+Because if the user re-activates the tab, then she will want the video to resume
+playing, without having to click "play" again.
+
+*/
 
 let props = defineProps<{
 	camera: CameraInfo,
@@ -21,6 +43,13 @@ let backlogDone = false;
 let nPackets = 0;
 let nBytes = 0;
 let firstPacketTime = 0;
+let isPaused = false;
+
+// SYNC-WEBSOCKET-COMMANDS
+enum WSMessage {
+	Pause = "pause",
+	Resume = "resume",
+}
 
 function parse(data: ArrayBuffer) {
 	let input = new Uint8Array(data);
@@ -39,6 +68,7 @@ function parse(data: ArrayBuffer) {
 	let backlog = (flags & 1) !== 0;
 	//console.log("pts", pts);
 	let video = input.subarray(4);
+	let logPacketCount = false; // SYNC-LOG-PACKET-COUNT
 
 	nBytes += input.length;
 	nPackets++;
@@ -47,6 +77,10 @@ function parse(data: ArrayBuffer) {
 		let bytesPerSecond = 1000 * nBytes / (now - firstPacketTime);
 		console.log(`backlogDone in ${now - firstPacketTime} ms. ${nBytes} bytes over ${nPackets} packets which is ${bytesPerSecond} bytes/second`);
 		backlogDone = true;
+	}
+
+	if (logPacketCount && nPackets % 60 === 0) {
+		console.log(`${props.camera.name} received ${nPackets} packets`);
 	}
 
 	// It is better to inject a little bit of frame duration (as opposed to leaving it undefined),
@@ -69,14 +103,13 @@ function parse(data: ArrayBuffer) {
 	};
 }
 
-function isPlaying(): boolean {
-	return muxer !== null;
-}
-
 function play() {
-	console.log("play(). isPlaying: " + (isPlaying() ? "yes" : "no"));
-	if (isPlaying())
+	let isPlaying = muxer !== null;
+	console.log("play(). isPlaying: " + (isPlaying ? "yes" : "no"));
+	if (isPlaying)
 		return;
+
+	isPaused = false;
 
 	let socketURL = "ws://" + window.location.host + "/api/ws/camera/stream/LD/" + props.camera.id;
 	console.log("Play " + socketURL);
@@ -84,8 +117,9 @@ function play() {
 		node: 'camera' + props.camera.id,
 		mode: "video",
 		debug: false,
-		// OK.. we want to leave FPS unspecified, so that we can control it per-frame, for backlog catchup
-		//fps: 60, // this becomes Max FPS, so.. the speedup during backlog catchup
+		// OK.. we want to leave FPS unspecified, so that we can control it per-frame, for backlog catchup.
+		// If we do specify FPS here, then it becomes Max FPS, and consequently max speedup during backlog catchup.
+		//fps: 60, 
 		maxDelay: 200,
 		flushingTime: 100, // jsmuxer basically runs as setInterval(() => flushFrames(), flushingTime)
 	} as any);
@@ -93,6 +127,9 @@ function play() {
 	ws = new WebSocket(socketURL);
 	ws.binaryType = "arraybuffer";
 	ws.addEventListener("message", function (event) {
+		if (isPaused) {
+			return;
+		}
 		if (muxer) {
 			let data = parse(event.data);
 			muxer.feed(data);
@@ -112,15 +149,22 @@ function onClick() {
 function onPlay() {
 	console.log("onPlay");
 	//play();
+	if (isPaused) {
+		isPaused = false;
+		sendWSMessage(WSMessage.Resume);
+	}
 }
 
 function onPause() {
 	console.log("onPause");
 	//stop();
+	isPaused = true;
+	sendWSMessage(WSMessage.Pause);
 }
 
 function stop() {
 	console.log("Player.vue stop");
+	isPaused = false;
 	if (ws) {
 		ws.close();
 		ws = null;
@@ -129,6 +173,14 @@ function stop() {
 		muxer.destroy();
 		muxer = null;
 	}
+}
+
+function sendWSMessage(msg: WSMessage) {
+	// SYNC-WEBSOCKET-JSON-MSG	
+	if (!ws) {
+		return;
+	}
+	ws.send(JSON.stringify({ command: msg }));
 }
 
 function posterURL(): string {

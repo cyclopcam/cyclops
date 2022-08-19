@@ -133,6 +133,6 @@ func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, para
 
 	s.Log.Infof("httpCamStreamVideo starting")
 
-	streamer := camera.NewVideoWebSocketStreamer(s.Log)
+	streamer := camera.NewVideoWebSocketStreamer(cam.Name, s.Log)
 	streamer.Run(c, stream, backlog)
 }
