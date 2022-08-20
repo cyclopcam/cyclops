@@ -173,10 +173,9 @@ func (p *DecodedPacket) EncodeToAnnexBPacket() []byte {
 func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *DecodedPacket {
 	nalus := []NALU{}
 	for _, buf := range ctx.H264NALUs {
-		// gortsplib re-uses buffers, so we need to make a copy here.
-		// while we're doing a memcpy, we might as well append the prefix bytes.
+		// While we're doing a memcpy, we might as well append the prefix bytes.
 		// This saves us one additional memcpy before we send the NALUs out for
-		// decoding to RGBA or saving to mp4.
+		// decoding to RGBA, saving to mp4, or sending to the browser.
 		nalus = append(nalus, CloneNALUWithPrefix(buf))
 	}
 	return &DecodedPacket{

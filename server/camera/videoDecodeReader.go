@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"sync"
-	"time"
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
@@ -84,15 +83,9 @@ func (r *VideoDecodeReader) Close() {
 	}
 }
 
-func (r *VideoDecodeReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {
+func (r *VideoDecodeReader) OnPacketRTP(packet *videox.DecodedPacket) {
 	r.nPackets++
 	//r.Log.Infof("[Packet %v] VideoDecodeReader", r.nPackets)
-
-	if ctx.TrackID != r.TrackID || ctx.H264NALUs == nil {
-		return
-	}
-
-	packet := videox.WrapPacket(ctx, time.Now())
 
 	if packet.HasType(h264.NALUTypeIDR) {
 		// we'll assume that we've seen SPS and PPS by now... but should perhaps wait for them too

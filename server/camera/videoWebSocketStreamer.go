@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/videox"
@@ -75,11 +74,7 @@ func (s *VideoWebSocketStreamer) OnConnect(stream *Stream) (StreamSinkChan, erro
 	return s.incoming, nil
 }
 
-func (s *VideoWebSocketStreamer) onPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {
-	if ctx.TrackID != s.trackID || ctx.H264NALUs == nil {
-		return
-	}
-
+func (s *VideoWebSocketStreamer) onPacketRTP(packet *videox.DecodedPacket) {
 	if s.debug {
 		s.log.Infof("onPacketRTP")
 	}
@@ -102,7 +97,7 @@ func (s *VideoWebSocketStreamer) onPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx
 			s.log.Infof("Sent %v/%v packets", s.nPacketsSent, s.nPacketsDropped+s.nPacketsSent)
 			s.lastLogTime = now
 		}
-		s.sendQueue <- videox.ClonePacket(ctx, now)
+		s.sendQueue <- packet
 	}
 }
 

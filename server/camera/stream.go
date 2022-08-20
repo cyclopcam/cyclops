@@ -27,7 +27,7 @@ type StreamSink interface {
 // StandardStreamSink allows you to run the stream with RunStandardStream()
 type StandardStreamSink interface {
 	StreamSink
-	OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx)
+	OnPacketRTP(packet *videox.DecodedPacket)
 	Close()
 }
 
@@ -42,7 +42,7 @@ const (
 type StreamMsg struct {
 	Type   StreamMsgType
 	Stream *Stream
-	Packet *gortsplib.ClientOnPacketRTPCtx
+	Packet *videox.DecodedPacket
 }
 
 // Once a sink is connected to a stream, all messages to the sink are sent via this channel
@@ -145,6 +145,12 @@ func (s *Stream) Listen(address string) error {
 	s.Log.Infof("Connected to %v, track %v", camHost, h264TrackID)
 
 	client.OnPacketRTP = func(ctx *gortsplib.ClientOnPacketRTPCtx) {
+		if ctx.TrackID != h264TrackID || len(ctx.H264NALUs) == 0 {
+			return
+		}
+
+		now := time.Now()
+
 		// Copy the sinks out, to be safe during stream Close()
 		s.sinksLock.Lock()
 		sinks := gen.CopySlice(s.sinks)
@@ -162,10 +168,26 @@ func (s *Stream) Listen(address string) error {
 
 		s.countFrames(ctx)
 
+		// Before we return, we must clone the packet. This is because we send
+		// the packet via channels, to all of our stream sinks. These sinks
+		// are running on unspecified threads, so we have no idea how long
+		// it will take before this data gets processed. gortsplib re-uses
+		// the packet buffers, so if our sinks take too long to process this
+		// packet, then we've got a race condition.
+		// The only safe solution is to copy the packet entirely, before returning
+		// from this function.
+		// We have to ask the question: Is it possible to avoid this memory copy?
+		// And the answer is: only if gortsplib gave us control over that.
+		// The good news is that usually we're not recording the high resolution
+		// streams, so this penalty is not too severe.
+		// A typical iframe packet from a 320x240 camera is around 100 bytes!
+		// A keyframe is between 10 and 20 KB.
+		cloned := videox.ClonePacket(ctx, now)
+
 		//s.Log.Infof("Packet %v", ctx.H264PTS)
 		for _, sink := range sinks {
 			//sink.OnPacketRTP(ctx)
-			s.sendSinkMsg(sink.ch, StreamMsgTypePacket, ctx)
+			s.sendSinkMsg(sink.ch, StreamMsgTypePacket, cloned)
 		}
 	}
 
@@ -291,7 +313,7 @@ func (s *Stream) RemoveSink(sink StreamSink) {
 	s.sinksLock.Unlock()
 }
 
-func (s *Stream) sendSinkMsg(sink StreamSinkChan, msgType StreamMsgType, packet *gortsplib.ClientOnPacketRTPCtx) {
+func (s *Stream) sendSinkMsg(sink StreamSinkChan, msgType StreamMsgType, packet *videox.DecodedPacket) {
 	sink <- StreamMsg{
 		Type:   msgType,
 		Stream: s,

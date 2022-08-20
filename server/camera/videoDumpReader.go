@@ -74,18 +74,12 @@ func (r *VideoDumpReader) Close() {
 	r.Log.Infof("VideoDumpReader closed")
 }
 
-func (r *VideoDumpReader) OnPacketRTP(ctx *gortsplib.ClientOnPacketRTPCtx) {
+func (r *VideoDumpReader) OnPacketRTP(packet *videox.DecodedPacket) {
 	//r.Log.Infof("[Packet %v] VideoDumpReader", 0)
-	if ctx.TrackID != r.TrackID || ctx.H264NALUs == nil {
-		return
-	}
-
-	clone := videox.ClonePacket(ctx, time.Now())
-
 	r.BufferLock.Lock()
 	defer r.BufferLock.Unlock()
 
-	r.Buffer.Add(clone.PayloadBytes(), clone)
+	r.Buffer.Add(packet.PayloadBytes(), packet)
 }
 
 // Extract from <video_end - duration> until <video_end>.
@@ -105,14 +99,8 @@ func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod, duration time.D
 	{
 		_, lastPacket, _ := r.Buffer.Peek(bufLen - 1)
 		endPTS := lastPacket.H264PTS
-		// Keep going until all 3 are satisfied, with the extra condition that SPS and PPS must precede IDR.
-		// This just happens to work, because cameras will send SPS and PPS before every IDR, to allow a listener
-		// to join the stream at any time.
-		//haveIDR := false
-		//haveSPS := false
-		//havePPS := false
 
-		// UPDATE: Just assume that all cameras always SPS + PPS + IDR in a single packet.
+		// Assume that all cameras always send SPS + PPS + IDR in a single packet.
 		oldestIDR := -1
 		oldestIDRTimeDelta := time.Duration(0)
 		satisfied := false
@@ -128,25 +116,6 @@ func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod, duration time.D
 					break
 				}
 			}
-			//if timeDelta < duration {
-			//	continue
-			//}
-			//if !haveIDR && packet.HasType(h264.NALUTypeIDR) {
-			//	haveIDR = true
-			//	//r.Log.Infof("haveIDR")
-			//}
-			//if haveIDR && !havePPS && packet.HasType(h264.NALUTypePPS) {
-			//	havePPS = true
-			//	//r.Log.Infof("havePPS")
-			//}
-			//if haveIDR && !haveSPS && packet.HasType(h264.NALUTypeSPS) {
-			//	haveSPS = true
-			//	//r.Log.Infof("haveSPS")
-			//}
-			//if haveIDR && haveSPS && havePPS {
-			//	firstPacket = i
-			//	break
-			//}
 		}
 		firstPacket = oldestIDR
 		if firstPacket == -1 {
