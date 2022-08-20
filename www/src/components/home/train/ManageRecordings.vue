@@ -9,11 +9,12 @@ import RecordingItem from "./RecordingItem.vue";
 
 let emits = defineEmits(['recordNew']);
 
+let haveRecordings = ref(false);
 let recordings = ref([] as Recording[]);
 let playerCookie = ref(''); // ensures that only one RecordingItem is playing at a time
 
 function showHelp(): boolean {
-	return recordings.value.length === 0;
+	return haveRecordings.value && recordings.value.length === 0;
 }
 
 async function getRecordings() {
@@ -24,6 +25,7 @@ async function getRecordings() {
 	}
 	globals.networkError = '';
 	recordings.value = r.value;
+	haveRecordings.value = true;
 }
 
 function onPlayInline(cookie: string) {

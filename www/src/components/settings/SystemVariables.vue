@@ -2,11 +2,13 @@
 import * as forms from '@/components/form/forms';
 import FormText from '@/components/form/FormText.vue';
 import FormBottom from '@/components/form/FormBottom.vue';
-import { onMounted, reactive, ref } from 'vue';
-import { computed } from '@vue/reactivity';
+import { onMounted, ref } from 'vue';
 import { encodeQuery, fetchOrErr, sleep } from '@/util/util.js';
 import type { SystemInfoJSON } from '@/api/api.js';
 
+let props = defineProps<{
+	initialSetup?: boolean,
+}>()
 let emits = defineEmits(['finished']);
 
 interface VariableDefinition {
@@ -40,7 +42,13 @@ let ctx = new forms.Context(() => {
 		}
 	}
 	return true;
-}, { inputWidth: '340px' });
+},
+	{
+		inputWidth: '340px',
+		inputColor: '#00a',
+		submitTitle: props.initialSetup ? "Next" : "Save",
+	}
+);
 
 async function onSubmit() {
 	ctx.submitError.value = '';

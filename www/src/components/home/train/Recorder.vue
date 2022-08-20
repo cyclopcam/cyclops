@@ -105,13 +105,20 @@ function status(): string {
 		<div v-else class="flexColumnCenter">
 			<camera-item v-if="state === States.PreRecord || state === States.Recording" :camera="camera"
 				:play="playLive" size="280" />
-			<div style="height: 20px" />
+			<div style="height: 10px" />
 			<div v-if="state === States.PreRecord" class="flexColumnCenter recordingBlock">
-				<div class="stepHint" style="text-align:center">Recordings can be anywhere from {{ minRecordingSeconds
-				}}
-					to {{ maxRecordingSeconds }} seconds long.
+				<div class="stepHint hints">
+					<ul>
+						<li>
+							Create a video of yourself performing a suspicious activity, or anything else
+							that you want the system to learn.
+						</li>
+						<li>Recordings can be anywhere from {{ minRecordingSeconds
+						}}
+							to {{ maxRecordingSeconds }} seconds long.
+						</li>
+					</ul>
 				</div>
-				<div style="height: 20px" />
 				<div v-if="startError" class="stepHint error" style="text-align:center">{{ startError }}</div>
 				<buttin :icon="RedDot" iconSize="16px" @click="startRecording()">
 					{{ nRecordings === 0 ? 'Start Recording' : 'Record Another' }}
@@ -126,7 +133,7 @@ function status(): string {
 			<div v-else-if="state === States.PostRecord" class="flexColumnCenter recordingBlock">
 				<recording-item v-if="newRecording.id !== 0" player-cookie="12345" :recording="newRecording"
 					:play-at-startup="true" />
-				<div class="flex">
+				<div class="flex saveOrDiscard">
 					<buttin @click="discardRecording()" :danger="true">Discard</buttin>
 					<div class="dangerSpacer" />
 					<buttin @click="saveRecording()" :focal="true">Save</buttin>
@@ -166,6 +173,23 @@ function status(): string {
 	width: 240px;
 	height: 30px;
 	margin: 2px 0 20px 0;
+}
+
+.saveOrDiscard {
+	margin: 20px 0 0 0;
+}
+
+.hints {
+	margin: 0 0 10px 0;
+}
+
+ul {
+	padding-left: 20px;
+	padding-right: 5px;
+}
+
+li {
+	margin: 10px 0;
 }
 
 .error {

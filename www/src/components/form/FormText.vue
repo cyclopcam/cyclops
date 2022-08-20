@@ -52,6 +52,13 @@ function errorMsg(): string {
 	return props.id ? (props.ctx.idToError.value[props.id] ?? '') : '';
 }
 
+function inputStyle(): any {
+	return {
+		color: props.ctx.inputColor.value,
+		width: '100%',
+	};
+}
+
 onMounted(() => {
 	if (props.focus)
 		(input.value! as any).focus();
@@ -74,7 +81,7 @@ onMounted(() => {
 		<div class="flexRowBaseline">
 			<div class="flexRowCenter" :style="{ display: 'flex', position: 'relative', width: '100%' }">
 				<input ref="input" :value="modelValue" @input="onInput($event)" :placeholder="placeholder" :type="type"
-					:autocomplete="autocomplete" style="width: 100%" @keypress="onKeyPress" />
+					:autocomplete="autocomplete" :style="inputStyle()" @keypress="onKeyPress" />
 				<div v-if="password" class="flexCenter" style="position: absolute; right: 6px; cursor: pointer"
 					@click="ctx.showPasswords.value = !ctx.showPasswords.value">
 					<svg v-if="!ctx.showPasswords.value" width="20" height="20" viewBox="0 0 24 24" fill="none"

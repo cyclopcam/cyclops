@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { CameraRecord } from '@/db/config/configdb';
 import { onMounted, ref } from 'vue';
-import CameraConfig from '@/components/config/CameraConfig.vue';
+import CameraConfig from '@/components/settings/CameraConfig.vue';
 import { encodeQuery, fetchOrErr } from '@/util/util';
 import Error from '../core/Error.vue';
 import Buttin from '../core/Buttin.vue';

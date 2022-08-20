@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import MobileFullscreen from '@/components/responsive/MobileFullscreen.vue';
-import NewUser from '@/components/config/NewUser.vue';
+import NewUser from '@/components/settings/NewUser.vue';
 import { onMounted, ref } from 'vue';
 import { computed } from '@vue/reactivity';
-import CamerasConfig from '../components/config/CamerasConfig.vue';
+import SetupCameras from '../components/settings/SetupCameras.vue';
 import { globals } from '@/globals';
 import router from "@/router/routes";
-import SystemVariables from "../components/config/SystemVariables.vue";
+import SystemVariables from "../components/settings/SystemVariables.vue";
 
 enum Stages {
 	CreateFirstUser = 0,
@@ -64,7 +64,7 @@ onMounted(async () => {
 			<h2 style="text-align: center; margin: 30px 10px">{{ stageText() }}</h2>
 		</div>
 		<new-user v-if="isCreateFirstUser" :is-first-user="true" @finished="moveToNextStage()" />
-		<system-variables v-if="isConfigureVariables" @finished="moveToNextStage()" />
-		<cameras-config v-if="isConfigureCameras" @finished="moveToNextStage()" />
+		<system-variables v-if="isConfigureVariables" :initial-setup="true" @finished="moveToNextStage()" />
+		<setup-cameras v-if="isConfigureCameras" @finished="moveToNextStage()" />
 	</mobile-fullscreen>
 </template>

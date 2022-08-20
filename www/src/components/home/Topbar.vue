@@ -4,15 +4,37 @@ import { onMounted } from "vue";
 import settings from "@/icons/settings.svg";
 import monitor from "@/icons/monitor.svg";
 import bulb from "@/icons/bulb.svg";
+import back from "@/icons/back.svg";
 import { globals } from "@/globals";
 import { computed } from "@vue/reactivity";
+import SvgButton from "../core/SvgButton.vue";
+import router from "@/router/routes";
 
 let error = computed(() => {
 	return globals.networkError;
 })
 
+function onBack() {
+	router.back();
+}
+
+function showBack(): boolean {
+	// Don't count paths which are the default child.
+	// The default child paths are the same as their parent,
+	// so that's how we detect them.
+	let d = 0;
+	let previous = '';
+	for (let p of router.currentRoute.value.matched) {
+		if (p.path !== previous) {
+			d++;
+			previous = p.path;
+		}
+	}
+	return d >= 3;
+}
+
 onMounted(() => {
-	//console.log("Route", router.currentRoute.value.name);
+	//console.log("Route", router.currentRoute.value);
 })
 
 </script>
@@ -20,15 +42,15 @@ onMounted(() => {
 <template>
 	<div class="topbarOuter">
 		<div class="topbarInner">
-			<div class="flex">
-				<!-- maybe a back button or something -->
+			<div class="flex" style="width: 60px">
+				<svg-button v-if="showBack()" :icon="back" icon-size="28px" style="margin-left:10px" @click="onBack" />
 			</div>
 			<div class="centerGroup">
-				<toggle-button :icon="settings" title="Settings" route="rtSettings" />
+				<toggle-button :icon="settings" title="Settings" route="rtSettings" route-target="rtSettingsTop" />
 				<toggle-button :icon="monitor" title="Monitor" route="rtMonitor" />
 				<toggle-button :icon="bulb" title="Train" route="rtTrain" route-target="rtTrainManageRecordings" />
 			</div>
-			<div class="flex">
+			<div class="flex" style="width: 60px">
 				<!-- logout or something -->
 			</div>
 		</div>
@@ -58,7 +80,12 @@ onMounted(() => {
 .topbarInner {
 	display: flex;
 	justify-content: space-between;
-	max-width: 400px;
+
+	width: 360px;
+
+	@media (max-width: $mobileCutoff) {
+		width: 100vw;
+	}
 
 	@media (max-width: $mobileCutoff) {
 		padding: 4px 4px 4px 4px;
@@ -67,7 +94,7 @@ onMounted(() => {
 
 .centerGroup {
 	display: flex;
-	gap: 12px;
+	gap: 8px;
 }
 
 .error {

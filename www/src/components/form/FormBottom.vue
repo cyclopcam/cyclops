@@ -5,7 +5,6 @@ import { watch } from 'vue';
 
 let props = defineProps<{
 	ctx: forms.Context,
-	submitTitle?: string,
 }>()
 let emit = defineEmits(['submit']);
 
@@ -31,7 +30,7 @@ function onSubmit() {
 		<div v-if="ctx.showCompleteAllFields" class="required">Complete all required fields</div>
 		<div v-if="ctx.submitError" class="submitError">{{ ctx.submitError.value }}</div>
 		<div v-if="ctx.submitBusyMsg" class="submitBusy">{{ ctx.submitBusyMsg.value }}</div>
-		<buttin :focal="true" :busy="ctx.busy.value" @click="onSubmit">{{ submitTitle ? submitTitle : 'Next' }}</buttin>
+		<buttin :focal="true" :busy="ctx.busy.value" @click="onSubmit">{{ ctx.submitTitle.value }}</buttin>
 	</div>
 </template>
 

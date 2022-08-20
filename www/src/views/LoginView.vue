@@ -24,6 +24,7 @@ async function onSubmit() {
 		ctx.submitError.value = r.error;
 		return;
 	}
+	globals.networkError = '';
 	globals.postLoadAutoRoute();
 }
 

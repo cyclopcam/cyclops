@@ -13,8 +13,11 @@ onMounted(() => {
 
 <template>
 	<div class="train flexColumnCenter">
-		<!-- <div style="height: 10px" /> -->
-		<router-view @recordNew="onRecordNew" />
+		<router-view @recordNew="onRecordNew" v-slot="{ Component, route }">
+			<transition :name="route.meta.transitionName">
+				<component :is="Component" />
+			</transition>
+		</router-view>
 	</div>
 </template>
 
