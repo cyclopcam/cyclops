@@ -35,7 +35,8 @@ async function moveToNextStage() {
 	if (stage.value === Stages.ConfigureCameras) {
 		// we're done
 		await globals.loadCameras();
-		router.replace({ name: "home" });
+		router.replace({ name: "rtMonitor" });
+		return;
 	}
 
 	stage.value++;
