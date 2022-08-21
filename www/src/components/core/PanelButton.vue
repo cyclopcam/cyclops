@@ -33,10 +33,17 @@ function iconStyle(): any {
 </template>
 
 <style lang="scss" scoped>
+@import '@/assets/vars.scss';
+
 .panelButton {
 	//background-color: aquamarine;
 	border-bottom: solid 1px #ddd;
 	padding: 15px 10px 15px 5px;
+
+	@media (max-width: $mobileCutoff) {
+		padding-left: 15px;
+	}
+
 	cursor: pointer;
 	display: flex;
 	align-items: center;
