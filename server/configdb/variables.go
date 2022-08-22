@@ -120,7 +120,7 @@ func init() {
 		},
 		{
 			Key:   VarRecentEventStoragePath,
-			Title: "Recent Event Storage Path",
+			Title: "Recent Events Storage Path",
 			Explanation: "These are recent video clips which may be of interest. Old clips are automatically " +
 				"erased when we run out of space. This should be on removable storage (like a USB thumb drive), to avoid wearing out " +
 				"the flash memory on the boot device.",

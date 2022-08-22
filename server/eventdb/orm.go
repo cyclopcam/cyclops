@@ -1,6 +1,8 @@
 package eventdb
 
 import (
+	"fmt"
+
 	"github.com/bmharper/cyclops/server/dbh"
 	"github.com/bmharper/cyclops/server/defs"
 )
@@ -10,6 +12,41 @@ import (
 type BaseModel struct {
 	ID int64 `gorm:"primaryKey" json:"id"`
 }
+
+// RecordType categorizes the type of Recording record in the database.
+// The reason we have 3 different types, is because we want to be able to
+// group together a bunch of different video files into one logical entity.
+// There are two reasons for this:
+//  1. When recording for a long time, the video files can become large,
+//     and we want to be able to split them up into smaller files on disk.
+//  2. We will often record on all cameras at the same time, and we want
+//     them to be grouped together into one logical entity.
+type RecordType string
+
+const (
+	// A recording that is both logical and physical.
+	// Has a camera.
+	// Parent is null.
+	RecordTypeSimple RecordType = "s"
+
+	// A logical record that is the parent of Physical records.
+	// Doesn't have a camera.
+	// Doesn't have any directly owned files (but it does have files *indirectly*, through it's Physical children).
+	RecordTypeLogical RecordType = "l"
+
+	// A recording file, which belongs to a Logical recording.
+	// Has a camera
+	// Has a parent
+	RecordTypePhysical RecordType = "p"
+)
+
+type RecordingOrigin string
+
+const (
+	RecordingOriginBackground RecordingOrigin = "b" // A recording that was made in the background, to collect sample data
+	RecordingOriginAuto       RecordingOrigin = "a" // A recording that was made automatically by the system, because it thought it was interesting or suspicious
+	RecordingOriginExplicit   RecordingOrigin = "e" // A recording that was made by the user clicking the "record" button (for labelling)
+)
 
 // A recording refers to either a high resolution video, a low resolution video, or both.
 // When recording explicitly for training, we record just a low resolution video, because
@@ -21,13 +58,17 @@ type Recording struct {
 	BaseModel
 	RandomID     string                 `json:"randomID"`                                 // Used to ensure uniqueness when merging event databases
 	StartTime    dbh.IntTime            `json:"startTime"`                                // Wall time when recording started
+	RecordType   RecordType             `json:"recordType"`                               // Type of record
+	Origin       RecordingOrigin        `json:"origin"`                                   // Reason why recording exists
+	ParentID     int64                  `json:"parentID" gorm:"default:null"`             // ID of parent recording record, if this is a Physical record
 	FormatHD     string                 `json:"formatHD" gorm:"default:null"`             // Only valid value is "mp4"
 	FormatLD     string                 `json:"formatLD" gorm:"default:null"`             // Only valid value is "mp4"
 	Labels       *dbh.JSONField[Labels] `json:"labels,omitempty" gorm:"default:null"`     // If labels is defined, then OntologyID is also defined
 	OntologyID   int64                  `json:"ontologyID,omitempty" gorm:"default:null"` // Labels reference indices in Ontology, which is why we need to store a reference to the Ontology
-	Bytes        int64                  `json:"bytes"`                                    // total storage of videos + thumbnails
-	DimensionsHD string                 `json:"dimensionsHD" gorm:"default:null"`         // width,height of HD video
-	DimensionsLD string                 `json:"dimensionsLD" gorm:"default:null"`         // width,height of LD video
+	Bytes        int64                  `json:"bytes"`                                    // Total storage of videos + thumbnails
+	DimensionsHD string                 `json:"dimensionsHD" gorm:"default:null"`         // "Width,Height" of HD video
+	DimensionsLD string                 `json:"dimensionsLD" gorm:"default:null"`         // "Width,Height" of LD video
+	CameraID     int64                  `json:"cameraID" gorm:"default:null"`             // ID of camera in config DB
 }
 
 func (r *Recording) VideoFilename(res defs.Resolution) string {
@@ -50,6 +91,18 @@ func (r *Recording) VideoFilenameLD() string {
 
 func (r *Recording) ThumbnailFilename() string {
 	return r.baseFilename() + ".jpg"
+}
+
+func (r *Recording) SetFormatAndDimensions(res defs.Resolution, width, height int) {
+	if res == defs.ResHD {
+		r.FormatHD = "mp4"
+		r.DimensionsHD = fmt.Sprintf("%v,%v", width, height)
+	} else if res == defs.ResLD {
+		r.FormatLD = "mp4"
+		r.DimensionsLD = fmt.Sprintf("%v,%v", width, height)
+	} else {
+		panic("Unknown res")
+	}
 }
 
 func videoContentType(format string) string {
@@ -78,9 +131,13 @@ func (r *Recording) VideoContentTypeLD() string {
 	return videoContentType(r.FormatLD)
 }
 
+// Our filename system is based on time and a random seed, to make it easy to copy videos on the filesystem,
+// and in particular, to merge them. I'm not sure if this will ever be used.
+// Another benefit of this naming convention is that it makes the footage easy to scan through by just
+// looking at the file system. Perhaps for forensics, if a device is damaged or something.
 func (r *Recording) baseFilename() string {
 	t := r.StartTime.Get().UTC()
-	return t.Format("2006-01/02/15-04-05-") + r.RandomID
+	return t.Format("2006-01/02/15-04-05-") + fmt.Sprintf("%04d-", r.CameraID) + r.RandomID
 }
 
 // Labels associated with a recording

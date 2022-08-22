@@ -19,3 +19,26 @@ func DeleteFirst[T comparable](slice []T, elem T) []T {
 	}
 	return slice
 }
+
+// Deletes the i'th element of the slice, and returns a new slice.
+// Preserves order, but is much slower than DeleteFromSliceUnordered.
+func DeleteFromSliceOrdered[T any](src []T, i int) []T {
+	return append(src[:i], src[i+1:]...)
+}
+
+// Deletes the i'th element of the slice, and returns a new slice.
+// Does not preserve order, but is much faster than DeleteFromSliceOrdered.
+func DeleteFromSliceUnordered[T any](src []T, i int) []T {
+	src[i] = src[len(src)-1]
+	return src[:len(src)-1]
+}
+
+// Returns the index of the first 'v' in 'src', or -1 if not found
+func IndexOf[T comparable](src []T, v T) int {
+	for i := range src {
+		if src[i] == v {
+			return i
+		}
+	}
+	return -1
+}

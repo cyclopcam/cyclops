@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/bmharper/cyclops/server/camera"
@@ -25,9 +24,9 @@ type Server struct {
 	Log              log.Log
 	TempFiles        *util.TempFiles
 	RingBufferSize   int
-	IsShutdownV      int32 // 1 if we were shutdown with an explicit call to Shutdown. Use IsShutdown() for a thread-safe check if IsShutdownV is true.
-	MustRestart      bool  // Value of the 'restart' parameter to Shutdown()
-	ShutdownComplete chan error
+	MustRestart      bool       // Value of the 'restart' parameter to Shutdown()
+	ShutdownStarted  chan bool  // This channel is closed when shutdown starts. So you can select() on it, to wait for shutdown.
+	ShutdownComplete chan error // Used by main() to report any shutdown errors
 
 	camerasLock  sync.Mutex
 	cameras      []*camera.Camera
@@ -48,6 +47,8 @@ type Server struct {
 	recorders      map[int64]*recorder // key is from nextRecorderID
 	nextRecorderID int64
 
+	backgroundRecorders []*backgroundRecorder
+
 	lastScannedCamerasLock sync.Mutex
 	lastScannedCameras     []*configdb.Camera
 }
@@ -62,6 +63,7 @@ func NewServer(configDBFilename string) (*Server, error) {
 		Log:              log,
 		RingBufferSize:   200 * 1024 * 1024,
 		ShutdownComplete: make(chan error, 1),
+		ShutdownStarted:  make(chan bool),
 		cameraFromID:     map[int64]*camera.Camera{},
 		recorders:        map[int64]*recorder{},
 		nextRecorderID:   1,
@@ -113,17 +115,13 @@ func (s *Server) ListenForInterruptSignal() {
 	}()
 }
 
-func (s *Server) IsShutdown() bool {
-	return atomic.LoadInt32(&s.IsShutdownV) != 0
-}
-
 func (s *Server) Shutdown(restart bool) {
 	if restart {
 		s.Log.Infof("Restart")
 	} else {
 		s.Log.Infof("Shutdown")
 	}
-	atomic.StoreInt32(&s.IsShutdownV, 1)
+	close(s.ShutdownStarted)
 	s.MustRestart = restart
 
 	// cancel signal handler (we'll re-enable it again if we restart)

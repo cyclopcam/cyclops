@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <string>
 #include <algorithm>
-#include "server/videox/helper.h"
+#include "server/videox/encoder.h"
 #include "server/videox/tsf.hpp"
 #include "debug/glob.hpp"
 
@@ -92,11 +92,11 @@ int main(int argc, char** argv) {
 		int64_t dts = packet.PTS;
 		int64_t pts = packet.PTS + 1000;
 		for (auto nalu : packet.NALUs) {
-			Encoder_WritePacket(&err, encoder, dts, pts, 0, nalu.data(), nalu.length());
+			Encoder_WriteNALU(&err, encoder, dts, pts, 0, nalu.data(), nalu.length());
 			dts += 10000;
 			pts += 10000;
 			if (err != nullptr) {
-				tsf::print("WritePacket error: %v\n", err);
+				tsf::print("WriteNALU error: %v\n", err);
 				free(err);
 			}
 		}

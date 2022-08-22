@@ -1,7 +1,6 @@
 package camera
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -18,17 +17,17 @@ import (
 	"github.com/aler9/gortsplib/pkg/url"
 )
 
-// StreamSink receives packets from the stream on its channel
-// There can be multiple StreamSinks connected to a Stream
-type StreamSink interface {
-	OnConnect(stream *Stream) (StreamSinkChan, error) // Called by Stream.ConnectSink()
-}
+// A stream sink is fundamentally just a channel
+type StreamSinkChan chan StreamMsg
 
 // StandardStreamSink allows you to run the stream with RunStandardStream()
+// This is really just a convenience wrapper around StreamSinkChan.
 type StandardStreamSink interface {
-	StreamSink
-	OnPacketRTP(packet *videox.DecodedPacket)
-	Close()
+	// OnConnect is called by Stream.ConnectSinkAndRun().
+	// You must return a channel to which all stream messages will be sent.
+	OnConnect(stream *Stream) (StreamSinkChan, error)
+	OnPacketRTP(packet *videox.DecodedPacket) // Called by RunStandardStream(), when it receives a StreamMsgTypePacket
+	Close()                                   // Called by RunStandardStream(), when it receives a StreamMsgTypeClose
 }
 
 type StreamMsgType int
@@ -45,17 +44,8 @@ type StreamMsg struct {
 	Packet *videox.DecodedPacket
 }
 
-// Once a sink is connected to a stream, all messages to the sink are sent via this channel
-type StreamSinkChan chan StreamMsg
-
 // There isn't much rhyme or reason behind this number
 const StreamSinkChanDefaultBufferSize = 2
-
-// Internal sink data structure of Stream
-type sinkObj struct {
-	sink StreamSink
-	ch   StreamSinkChan
-}
 
 type StreamInfo struct {
 	Width  int
@@ -74,7 +64,7 @@ type Stream struct {
 	H264Track   *gortsplib.TrackH264 // track object
 
 	sinksLock sync.Mutex
-	sinks     []sinkObj
+	sinks     []StreamSinkChan
 
 	infoLock sync.Mutex
 	info     *StreamInfo // With Go 1.19 one could use atomic.Pointer[T] here
@@ -187,7 +177,7 @@ func (s *Stream) Listen(address string) error {
 		//s.Log.Infof("Packet %v", ctx.H264PTS)
 		for _, sink := range sinks {
 			//sink.OnPacketRTP(ctx)
-			s.sendSinkMsg(sink.ch, StreamMsgTypePacket, cloned)
+			s.sendSinkMsg(sink, StreamMsgTypePacket, cloned)
 		}
 	}
 
@@ -211,12 +201,12 @@ func (s *Stream) Close() {
 
 	s.sinksLock.Lock()
 	sinks := gen.CopySlice(s.sinks)
-	s.sinks = []sinkObj{}
+	s.sinks = []StreamSinkChan{}
 	s.sinksLock.Unlock()
 
 	//s.Log.Infof("Closing stream - sending StreamMsgTypeClose")
 	for _, sink := range sinks {
-		s.sendSinkMsg(sink.ch, StreamMsgTypeClose, nil)
+		s.sendSinkMsg(sink, StreamMsgTypeClose, nil)
 	}
 }
 
@@ -270,47 +260,39 @@ func (s *Stream) fpsNoMutexLock() float64 {
 	return float64(count-1) / elapsed
 }
 
-// Connect a sink
-// If runStandardHandler is true, then we cast sink to StandardStreamSink, and
-// start a new goroutine that runs RunStandardStream() on this stream.
-// If runStandardHandler is false, then you must run a message loop like
-// RunStandardStream yourself.
-func (s *Stream) ConnectSink(sink StreamSink, runStandardHandler bool) error {
+// Connect a sink.
+// This function will panic if you attempt to add the same sink twice.
+func (s *Stream) ConnectSink(sink StreamSinkChan) {
+	s.sinksLock.Lock()
+	if s.sinkIndexNoLock(sink) != -1 {
+		panic("sink has already been connected to stream")
+	}
+	s.sinks = append(s.sinks, sink)
+	s.sinksLock.Unlock()
+}
+
+// Connect a standard sink object and run it
+func (s *Stream) ConnectSinkAndRun(sink StandardStreamSink) error {
 	sinkChan, err := sink.OnConnect(s)
 	if err != nil {
 		return err
 	}
 
-	s.sinksLock.Lock()
-	s.sinks = append(s.sinks, sinkObj{
-		sink: sink,
-		ch:   sinkChan,
-	})
-	s.sinksLock.Unlock()
+	s.ConnectSink(sinkChan)
 
-	if runStandardHandler {
-		if standard, ok := sink.(StandardStreamSink); ok {
-			go RunStandardStream(sinkChan, standard)
-		} else {
-			return errors.New("sink does not implement StandardStreamSink, so you can't use runStandardHandler = true")
-		}
-	}
+	go RunStandardStream(sink, sinkChan)
 
 	return nil
 }
 
-// This is just an explicitly typed wrapper around ConnectSink(sink, true)
-func (s *Stream) ConnectSinkAndRun(sink StandardStreamSink) error {
-	return s.ConnectSink(sink, true)
-}
-
-func (s *Stream) RemoveSink(sink StreamSink) {
+// Remove a sink
+func (s *Stream) RemoveSink(sink StreamSinkChan) {
 	s.sinksLock.Lock()
-	idx := s.sinkIndex(sink)
+	defer s.sinksLock.Unlock()
+	idx := s.sinkIndexNoLock(sink)
 	if idx != -1 {
-		s.sinks = append(s.sinks[0:idx], s.sinks[idx+1:]...)
+		s.sinks = gen.DeleteFromSliceOrdered(s.sinks, idx)
 	}
-	s.sinksLock.Unlock()
 }
 
 func (s *Stream) sendSinkMsg(sink StreamSinkChan, msgType StreamMsgType, packet *videox.DecodedPacket) {
@@ -322,9 +304,9 @@ func (s *Stream) sendSinkMsg(sink StreamSinkChan, msgType StreamMsgType, packet 
 }
 
 // NOTE: This function does not take sinksLock, but assumes you have already done so
-func (s *Stream) sinkIndex(sink StreamSink) int {
+func (s *Stream) sinkIndexNoLock(sink StreamSinkChan) int {
 	for i := 0; i < len(s.sinks); i++ {
-		if s.sinks[i].sink == sink {
+		if s.sinks[i] == sink {
 			return i
 		}
 	}

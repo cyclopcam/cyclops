@@ -54,6 +54,12 @@ type Session struct {
 	ExpiresAt dbh.IntTime `gorm:"default:null"`
 }
 
+type RecordInstruction struct {
+	BaseModel
+	StartAt  dbh.IntTime `json:"startAt"`
+	FinishAt dbh.IntTime `json:"finishAt"`
+}
+
 func IsValidPermission(p string) bool {
 	return p == string(UserPermissionAdmin) || p == string(UserPermissionViewer)
 }

@@ -22,3 +22,6 @@ Once setup, you should be able to run the server and the interface:
 * Permanent Storage
 * Recent Event Storage
 * Where it's OK to panic()
+* Clarify startup order - eg when is it OK for the background recorder to assume that cameras are live.
+  If a camera is in Server, does that mean it's live? Or how do we check for liveness.. how do we schedule
+  an action that will start once the camera becomes live?

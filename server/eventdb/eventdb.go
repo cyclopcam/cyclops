@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"image"
 	"os"
 	"path/filepath"
 	"time"
@@ -53,9 +54,9 @@ func Open(log log.Log, root string) (*EventDB, error) {
 
 // Save a new recording to disk.
 // Returns the record of the new recording.
-func (e *EventDB) Save(res defs.Resolution, buf *videox.RawBuffer) (*Recording, error) {
-	rnd := [4]byte{}
-	if _, err := rand.Read(rnd[:]); err != nil {
+func (e *EventDB) Save(res defs.Resolution, origin RecordingOrigin, cameraID int64, startTime time.Time, buf *videox.RawBuffer) (*Recording, error) {
+	rnd, err := e.createRandomID()
+	if err != nil {
 		return nil, err
 	}
 	width, height, err := buf.DecodeHeader()
@@ -63,21 +64,18 @@ func (e *EventDB) Save(res defs.Resolution, buf *videox.RawBuffer) (*Recording, 
 		return nil, err
 	}
 	recording := &Recording{
-		RandomID:  hex.EncodeToString(rnd[:]),
-		StartTime: dbh.MakeIntTime(time.Now()),
+		RandomID:   rnd,
+		StartTime:  dbh.MakeIntTime(startTime),
+		RecordType: RecordTypeSimple,
+		Origin:     origin,
+		CameraID:   cameraID,
 	}
-	if res == defs.ResHD {
-		recording.FormatHD = "mp4"
-		recording.DimensionsHD = fmt.Sprintf("%v,%v", width, height)
-	} else if res == defs.ResLD {
-		recording.FormatLD = "mp4"
-		recording.DimensionsLD = fmt.Sprintf("%v,%v", width, height)
-	}
-	videoPath := filepath.Join(e.Root, recording.VideoFilename(res))
-	thumbnailPath := filepath.Join(e.Root, recording.ThumbnailFilename())
+	recording.SetFormatAndDimensions(res, width, height)
+	videoPath := e.FullPath(recording.VideoFilename(res))
+	thumbnailPath := e.FullPath(recording.ThumbnailFilename())
 	os.MkdirAll(filepath.Dir(videoPath), 0770)
 	e.log.Infof("Creating recording thumbnail %v", thumbnailPath)
-	if err := e.saveThumbnail(buf, thumbnailPath); err != nil {
+	if err := e.saveThumbnailFromVideo(buf, thumbnailPath); err != nil {
 		return nil, err
 	}
 	e.log.Infof("Saving recording %v", videoPath)
@@ -106,6 +104,33 @@ func (e *EventDB) Save(res defs.Resolution, buf *videox.RawBuffer) (*Recording, 
 		return nil, err
 	}
 	return recording, nil
+}
+
+// Create a new empty recording
+// The idea is that you'll be building this recording's mp4 file bit by bit.
+func (e *EventDB) CreateRecording(parentID int64, rtype RecordType, origin RecordingOrigin, startTime time.Time, cameraID int64, res defs.Resolution, width, height int) (*Recording, error) {
+	rnd, err := e.createRandomID()
+	if err != nil {
+		return nil, err
+	}
+	recording := &Recording{
+		RandomID:   rnd,
+		StartTime:  dbh.MakeIntTime(startTime),
+		RecordType: rtype,
+		Origin:     origin,
+		ParentID:   parentID,
+		CameraID:   cameraID,
+	}
+	recording.SetFormatAndDimensions(res, width, height)
+	if err := e.db.Create(recording).Error; err != nil {
+		return nil, err
+	}
+	return recording, nil
+}
+
+// Delete the _DB record only_ of the recording
+func (e *EventDB) DeleteRecordingDBRecord(id int64) error {
+	return e.db.Delete(&Recording{}, id).Error
 }
 
 func (e *EventDB) GetRecording(id int64) (error, *Recording) {
@@ -141,26 +166,35 @@ func (e *EventDB) IsOntologyUsed(id int64) (error, bool) {
 	return nil, n != 0
 }
 
-func (e *EventDB) saveThumbnail(buf *videox.RawBuffer, targetFilename string) error {
+// Return the complete path to the specified video or image file
+func (e *EventDB) FullPath(videoOrImagePath string) string {
+	return filepath.Join(e.Root, videoOrImagePath)
+}
+
+func (e *EventDB) createRandomID() (string, error) {
+	rnd := [4]byte{}
+	if _, err := rand.Read(rnd[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(rnd[:]), nil
+}
+
+func (e *EventDB) saveThumbnailFromVideo(buf *videox.RawBuffer, targetFilename string) error {
 	img, err := buf.ExtractThumbnail()
 	if err != nil {
 		// If thumbnail creation fails, it's a good sign that this video is useless
 		return fmt.Errorf("Failed to decode video while creating thumbnail: %w", err)
 	}
-	im, err := cimg.FromImage(img, false)
+	return e.SaveThumbnail(img, targetFilename)
+}
+
+func (e *EventDB) SaveThumbnail(img image.Image, targetFilename string) error {
+	im, err := cimg.FromImage(img, true)
 	if err != nil {
 		return err
 	}
 	if im.Width > MaxThumbnailWidth {
-		// Downsample by half until we're no more than twice the size of our desired resolution.
-		// If we skip these intermediate sizes, then we're resampling very sparsely when going from
-		// eg 1920 x 1080 to 320 x 180.
-		for im.Width > MaxThumbnailWidth*2 {
-			im = cimg.ResizeNew(im, im.Width/2, im.Height/2)
-		}
-		// Final downsample
-		newHeight := (MaxThumbnailWidth * im.Height) / im.Width
-		im = cimg.ResizeNew(im, MaxThumbnailWidth, newHeight)
+		im = cimg.ResizeNew(im, MaxThumbnailWidth, (MaxThumbnailWidth*im.Height)/im.Width)
 	}
 	b, err := cimg.Compress(im, cimg.MakeCompressParams(cimg.Sampling420, 80, 0))
 	if err != nil {

@@ -120,9 +120,24 @@ func (p *DecodedPacket) HasType(t h264.NALUType) bool {
 	return false
 }
 
+// Returns true if this packet has a keyframe
+func (p *DecodedPacket) HasIDR() bool {
+	return p.HasType(h264.NALUTypeIDR)
+}
+
 // Return true if this packet has one NALU which is an intermediate frame
 func (p *DecodedPacket) IsIFrame() bool {
 	return len(p.H264NALUs) == 1 && p.H264NALUs[0].Type() == h264.NALUTypeNonIDR
+}
+
+// Returns the first NALU of the given type, or nil if none exists
+func (p *DecodedPacket) FirstNALUOfType(t h264.NALUType) *NALU {
+	for i := 0; i < len(p.H264NALUs); i++ {
+		if p.H264NALUs[i].Type() == t {
+			return &p.H264NALUs[i]
+		}
+	}
+	return nil
 }
 
 // Returns the number of bytes of NALU data.
@@ -303,11 +318,11 @@ func (r *RawBuffer) SaveToMP4(filename string) error {
 	}
 	defer enc.Close()
 
-	err = enc.WritePacket(0, 0, *firstSPS)
+	err = enc.WriteNALU(0, 0, *firstSPS)
 	if err != nil {
 		return err
 	}
-	err = enc.WritePacket(0, 0, *firstPPS)
+	err = enc.WriteNALU(0, 0, *firstPPS)
 	if err != nil {
 		return err
 	}
@@ -317,7 +332,7 @@ func (r *RawBuffer) SaveToMP4(filename string) error {
 		//pts := dts + time.Nanosecond*1000
 		pts := dts
 		for _, nalu := range packet.H264NALUs {
-			err := enc.WritePacket(dts, pts, nalu)
+			err := enc.WriteNALU(dts, pts, nalu)
 			if err != nil {
 				return err
 			}
@@ -361,33 +376,32 @@ func (r *RawBuffer) ResetPTS() {
 	}
 }
 
-// Pick the middle frame
+// Decode the center-most keyframe
+// This is O(1), assuming no errors or funny business like no keyframes.
 func (r *RawBuffer) ExtractThumbnail() (image.Image, error) {
 	decoder, err := NewH264Decoder()
 	if err != nil {
 		return nil, err
 	}
 	defer decoder.Close()
-	firstImgPacket := -1
-	midPacket := len(r.Packets) - 1
-	for i := 0; i < len(r.Packets); i++ {
-		//fmt.Printf("%v: %v\n", i, r.Packets[i].Summary())
-		//for _, n := range r.Packets[i].H264NALUs {
-		img, _ := decoder.Decode(r.Packets[i].EncodeToAnnexBPacket())
-		if img != nil {
-			if firstImgPacket == -1 {
-				// return the frame halfway between the first keyframe and the end,
-				// because there will often be a chunk of unusable packets at the front,
-				// before our first keyframe.
-				// which begs the question: why do we ever record that junk before a keyframe?
-				firstImgPacket = i
-				midPacket = i + (len(r.Packets)-i)/2
-			}
-			if i >= midPacket {
-				return cloneImage(img), nil
-			}
+
+	// walk back from the middle until we find a keyframe
+	i := len(r.Packets) / 2
+	for ; i >= 0; i-- {
+		if r.Packets[i].HasType(h264.NALUTypeIDR) {
+			break
 		}
-		//}
+	}
+	// decode forwards until we have an image
+	if i == -1 {
+		i = 0
+	}
+	for ; i < len(r.Packets); i++ {
+		//fmt.Printf("%v: %v\n", i, r.Packets[i].Summary())
+		img, _ := decoder.Decode(r.Packets[i])
+		if img != nil {
+			return cloneImage(img), nil
+		}
 	}
 	return nil, errors.New("No thumbnail available")
 }

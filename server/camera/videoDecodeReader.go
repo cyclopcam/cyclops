@@ -104,7 +104,7 @@ func (r *VideoDecodeReader) OnPacketRTP(packet *videox.DecodedPacket) {
 	// That's why we join all NALUs into a single packet and send that to avcodec.
 
 	// convert H264 NALUs to RGBA frames
-	img, err := r.Decoder.Decode(packet.EncodeToAnnexBPacket())
+	img, err := r.Decoder.Decode(packet)
 	if err != nil {
 		r.Log.Errorf("Failed to decode H264 NALU: %v", err)
 		return

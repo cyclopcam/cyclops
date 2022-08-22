@@ -1,7 +1,7 @@
 package videox
 
 // #cgo pkg-config: libavcodec libavformat libavutil libswscale
-// #include "helper.h"
+// #include "encoder.h"
 // #include <stdio.h>
 // #include <stdlib.h>
 // #include <stdint.h>
@@ -56,11 +56,27 @@ func (v *VideoEncoder) Close() {
 	}
 }
 
-func (v *VideoEncoder) WritePacket(dts, pts time.Duration, nalu NALU) error {
+func (v *VideoEncoder) WriteNALU(dts, pts time.Duration, nalu NALU) error {
 	idts := C.int64_t(dts.Nanoseconds())
 	ipts := C.int64_t(pts.Nanoseconds())
 	var cerr *C.char
-	C.Encoder_WritePacket(&cerr, v.enc, idts, ipts, C.int(nalu.PrefixLen), unsafe.Pointer(&nalu.Payload[0]), C.ulong(len(nalu.Payload)))
+	C.Encoder_WriteNALU(&cerr, v.enc, idts, ipts, C.int(nalu.PrefixLen), unsafe.Pointer(&nalu.Payload[0]), C.ulong(len(nalu.Payload)))
+	if err := takeCErr(cerr); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *VideoEncoder) WritePacket(dts, pts time.Duration, packet *DecodedPacket) error {
+	idts := C.int64_t(dts.Nanoseconds())
+	ipts := C.int64_t(pts.Nanoseconds())
+	encoded := packet.EncodeToAnnexBPacket()
+	isKeyFrame := C.int(0)
+	if packet.HasIDR() {
+		isKeyFrame = 1
+	}
+	var cerr *C.char
+	C.Encoder_WritePacket(&cerr, v.enc, idts, ipts, isKeyFrame, unsafe.Pointer(&encoded[0]), C.ulong(len(encoded)))
 	if err := takeCErr(cerr); err != nil {
 		return err
 	}

@@ -1,6 +1,8 @@
 package videox
 
-import "image"
+import (
+	"image"
+)
 
 func cloneImage(srcImg image.Image) image.Image {
 	src, ok := srcImg.(*image.RGBA)

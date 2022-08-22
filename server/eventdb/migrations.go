@@ -16,13 +16,17 @@ func Migrations(log log.Log) []migration.Migrator {
 			id INTEGER PRIMARY KEY,
 			random_id TEXT NOT NULL,
 			start_time INT NOT NULL,
+			record_type TEXT NOT NULL,
+			origin TEXT NOT NULL,
+			parent_id INT,
 			format_hd TEXT,
 			format_ld TEXT,
 			labels BLOB,
 			ontology_id INT,
 			bytes INT,
 			dimensions_hd TEXT,
-			dimensions_ld TEXT
+			dimensions_ld TEXT,
+			camera_id INT
 		);
 
 		CREATE TABLE ontology(
@@ -35,16 +39,3 @@ func Migrations(log log.Log) []migration.Migrator {
 
 	return migs
 }
-
-/*
-	CREATE TABLE recording(
-		id BIGSERIAL PRIMARY KEY,
-		random_id TEXT NOT NULL,
-		start_time BIGINT NOT NULL,
-		foo_time BIGINT,
-		bar_time BIGINT,
-		format TEXT NOT NULL,
-		labels JSONB,
-		labels2 JSONB
-	);
-*/

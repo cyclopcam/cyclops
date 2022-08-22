@@ -53,13 +53,11 @@ outer:
 				logger.Infof("Timeout")
 				break outer
 			}
+		case <-s.ShutdownStarted:
+			logger.Infof("Aborting due to system shutdown")
+			self.result.err = errors.New("System shutdown")
+			return
 		}
-	}
-
-	if s.IsShutdown() {
-		logger.Infof("Aborting due to system shutdown")
-		self.result.err = errors.New("System shutdown")
-		return
 	}
 
 	// save recording
@@ -71,7 +69,7 @@ outer:
 		return
 	}
 
-	recording, err := s.permanentEvents.Save(defs.ResLD, raw)
+	recording, err := s.permanentEvents.Save(defs.ResLD, eventdb.RecordingOriginExplicit, cam.ID, startAt, raw)
 	if err != nil {
 		msg := fmt.Errorf("Failed to save recording: %v", err)
 		logger.Errorf("%v", msg)
@@ -132,8 +130,9 @@ func (s *Server) stopRecorder(recorderID int64) *recorderOutMsg {
 
 func (s *Server) deleteRecorderAfterDelay(recorderID int64, delay time.Duration) {
 	go func() {
-		time.Sleep(delay)
-		if s.IsShutdown() {
+		select {
+		case <-time.After(delay):
+		case <-s.ShutdownStarted:
 			return
 		}
 		s.recordersLock.Lock()
@@ -180,4 +179,20 @@ func (s *Server) httpRecordGetVideo(w http.ResponseWriter, r *http.Request, para
 	www.Check(err)
 	fullpath := filepath.Join(s.permanentEvents.Root, recording.VideoFilename(res))
 	www.SendFile(w, fullpath, recording.VideoContentType(res))
+}
+
+func (s *Server) httpRecordBackgroundCreate(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	ins := configdb.RecordInstruction{}
+	www.ReadJSON(w, r, &ins, 1024*1024)
+	if ins.StartAt.IsZero() || ins.FinishAt.IsZero() {
+		www.PanicBadRequestf("Both StartAt and FinishAt must be defined")
+	}
+	if ins.StartAt.Get().After(ins.FinishAt.Get()) {
+		www.PanicBadRequestf("Start time %v is after Finish time %v", ins.StartAt.Get(), ins.FinishAt.Get())
+	}
+	if ins.FinishAt.Get().Before(time.Now()) {
+		www.PanicBadRequestf("Finish time %v is in the past", ins.FinishAt.Get())
+	}
+	www.Check(s.configDB.DB.Create(&ins).Error)
+	www.SendOK(w)
 }

@@ -41,6 +41,8 @@ func main() {
 		srv.ListenForInterruptSignal()
 		check(srv.StartAllCameras())
 
+		srv.RunBackgroundRecorderLoop()
+
 		err = srv.ListenHTTP(":8080")
 		fmt.Printf("Server exited: %v\n", err)
 		err = <-srv.ShutdownComplete

@@ -1,7 +1,7 @@
 package camera
 
 // A generic message loop that should cater for most streams
-func RunStandardStream(ch StreamSinkChan, sink StandardStreamSink) {
+func RunStandardStream(sink StandardStreamSink, ch StreamSinkChan) {
 	closed := false
 	for !closed {
 	outerloop:

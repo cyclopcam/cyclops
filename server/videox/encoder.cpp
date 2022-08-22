@@ -5,8 +5,17 @@
 //}
 
 #include <stdint.h>
-#include "helper.h"
+#include "encoder.h"
 #include "tsf.hpp"
+
+// I don't yet know why, but this is the only way I can get ffmpeg to produce a valid
+// mp4 file. The first packet we send it must be SPS + PPS + Keyframe.
+// It is not sufficient to merely send SPS, then PPS, then Keyframe.
+// I suspect this is something to do with the fact that MP4 stores this information not in the stream,
+// but inside a once-off header in the file. However, I can't find an explicit ffmpeg
+// API call to "write SPS + PPS". Perhaps this is just idomatic... or perhaps it's
+// a hack that just works. But whatever the case, it's the first magic combination that
+// I could find which just worked.
 
 struct Encoder {
 	AVFormatContext* OutFormatCtx = nullptr;
@@ -67,7 +76,7 @@ std::string WithPrefix(const void* nalu, size_t size) {
 	return s;
 }
 
-enum class H264PacketTypes {
+enum class H264NALUTypes {
 	// From nalutype.go in gortsplib
 	Unknown                       = 0,
 	NonIDR                        = 1,
@@ -95,12 +104,12 @@ enum class H264PacketTypes {
 	Reserved23                    = 23,
 };
 
-bool IsVisualPacket(H264PacketTypes t) {
+bool IsVisualPacket(H264NALUTypes t) {
 	return (int) t >= 1 && (int) t <= 5;
 }
 
-H264PacketTypes GetH264PacketType(const uint8_t* buf) {
-	return (H264PacketTypes) (buf[0] & 31);
+H264NALUTypes GetH264NALUType(const uint8_t* buf) {
+	return (H264NALUTypes) (buf[0] & 31);
 }
 
 void AppendNalu(std::string& buf, const void* nalu, size_t size) {
@@ -186,28 +195,28 @@ void Encoder_Close(void* _encoder) {
 }
 
 // Iff naluPrefixLen == 0, then we prepend 00 00 01 to the nalu
-void Encoder_WritePacket(char** err, void* _encoder, int64_t dts, int64_t pts, int naluPrefixLen, const void* _nalu, size_t naluLen) {
+void Encoder_WriteNALU(char** err, void* _encoder, int64_t dts, int64_t pts, int naluPrefixLen, const void* _nalu, size_t naluLen) {
 	auto encoder    = (Encoder*) _encoder;
 	auto nalu       = (const uint8_t*) _nalu;
 	auto payload    = nalu + naluPrefixLen;
-	auto packetType = GetH264PacketType(payload);
-	//if (packetType == H264PacketTypes::SPS && encoder->SeenSPS)
+	auto packetType = GetH264NALUType(payload);
+	//if (packetType == H264NALUTypes::SPS && encoder->SeenSPS)
 	//	return;
-	//if (packetType == H264PacketTypes::PPS && encoder->SeenPPS)
+	//if (packetType == H264NALUTypes::PPS && encoder->SeenPPS)
 	//	return;
 	if (naluPrefixLen != 0 && naluPrefixLen != 3 && naluPrefixLen != 4) {
 		*err = strdup(tsf::fmt("Invalid naluPrefixLen %v. May only be one of: [0, 3, 4]", naluPrefixLen).c_str());
 		return;
 	}
 
-	if (packetType == H264PacketTypes::SPS) {
+	if (packetType == H264NALUTypes::SPS) {
 		if (naluPrefixLen)
 			encoder->SPS.assign((const char*) _nalu, naluLen);
 		else
 			encoder->SPS = WithPrefix(_nalu, naluLen);
 		return;
 	}
-	if (packetType == H264PacketTypes::PPS) {
+	if (packetType == H264NALUTypes::PPS) {
 		if (naluPrefixLen)
 			encoder->PPS.assign((const char*) _nalu, naluLen);
 		else
@@ -227,13 +236,13 @@ void Encoder_WritePacket(char** err, void* _encoder, int64_t dts, int64_t pts, i
 	//pkt->data         = nalu;
 	//pkt->size         = (int) naluLen + 3;
 	pkt->stream_index = encoder->OutStream->id;
-	if (packetType == H264PacketTypes::IDR)
+	if (packetType == H264NALUTypes::IDR)
 		pkt->flags |= AV_PKT_FLAG_KEY;
 
 	// copy is our temporary buffer, should we need it
 	std::string copy;
 
-	if (packetType == H264PacketTypes::IDR && !encoder->SentHeader) {
+	if (packetType == H264NALUTypes::IDR && !encoder->SentHeader) {
 		const auto& sps = encoder->SPS;
 		const auto& pps = encoder->PPS;
 
@@ -298,10 +307,40 @@ void Encoder_WritePacket(char** err, void* _encoder, int64_t dts, int64_t pts, i
 		*err     = strdup(tsf::fmt("Failed to write packet (%02x %02x %02x %02x ...) len: %v, error: %v", bytes[0], bytes[1], bytes[2], bytes[3], naluLen, AvErr(e)).c_str());
 	}
 	//free(buf);
-	//if (packetType == H264PacketTypes::SPS)
+	//if (packetType == H264NALUTypes::SPS)
 	//	encoder->SeenSPS = true;
-	//if (packetType == H264PacketTypes::PPS)
+	//if (packetType == H264NALUTypes::PPS)
 	//	encoder->SeenPPS = true;
+}
+
+void Encoder_WritePacket(char** err, void* _encoder, int64_t dts, int64_t pts, int isKeyFrame, const void* packetData, size_t packetLen) {
+	auto encoder = (Encoder*) _encoder;
+
+	AVRational timeBase = encoder->OutStream->time_base;
+	AVPacket*  pkt      = av_packet_alloc();
+	pkt->dts            = av_rescale_q(dts, AVRational{1, 1000000000}, timeBase);
+	pkt->pts            = av_rescale_q(pts, AVRational{1, 1000000000}, timeBase);
+	pkt->stream_index   = encoder->OutStream->id;
+	if (!!isKeyFrame)
+		pkt->flags |= AV_PKT_FLAG_KEY;
+
+	pkt->data = (uint8_t*) packetData;
+	pkt->size = (int) packetLen;
+
+	//int e = av_write_frame(encoder->OutFormatCtx, pkt);
+	int e = av_interleaved_write_frame(encoder->OutFormatCtx, pkt);
+	av_packet_free(&pkt);
+	if (e < 0) {
+		const uint8_t* data     = (const uint8_t*) packetData;
+		uint8_t        bytes[8] = {0};
+		for (int i = 0; i < sizeof(bytes) && i < packetLen; i++)
+			bytes[i] = data[i];
+		*err = strdup(
+		    tsf::fmt("Failed to write packet (%02x %02x %02x %02x %02x %02x %02x %02x ...) len: %v, error: %v",
+		             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+		             (int) packetLen, AvErr(e))
+		        .c_str());
+	}
 }
 
 void Encoder_WriteTrailer(char** err, void* _encoder) {

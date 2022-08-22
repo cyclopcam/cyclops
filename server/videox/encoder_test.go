@@ -26,7 +26,7 @@ func TestEncoder(t *testing.T) {
 		pts := dts + time.Nanosecond
 		t.Logf("Writing packet %v at dst:%v, pts:%v (size[0] %v)", ipacket, dts.Nanoseconds(), pts.Nanoseconds(), len(packet.H264NALUs[0].Payload))
 		for _, nalu := range packet.H264NALUs {
-			err := enc.WritePacket(dts, pts, nalu)
+			err := enc.WriteNALU(dts, pts, nalu)
 			require.Nil(t, err)
 			dts++
 			pts++

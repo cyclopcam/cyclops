@@ -102,12 +102,14 @@ func (s *VideoWebSocketStreamer) onPacketRTP(packet *videox.DecodedPacket) {
 }
 
 func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream, backlog *VideoDumpReader) {
+	s.trackID = stream.H264TrackID
+
 	if s.debug {
-		s.log.Infof("Run start")
+		s.log.Infof("Run start, trackID:%v", s.trackID)
 	}
 
-	stream.ConnectSink(s, false)
-	defer stream.RemoveSink(s)
+	stream.ConnectSink(s.incoming)
+	defer stream.RemoveSink(s.incoming)
 	defer conn.Close()
 
 	s.fromWebSocket = make(chan webSocketMsg, 1)

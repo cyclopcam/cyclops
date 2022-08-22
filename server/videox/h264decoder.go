@@ -13,7 +13,7 @@ import (
 // #include <libavcodec/avcodec.h>
 // #include <libavutil/imgutils.h>
 // #include <libswscale/swscale.h>
-// #include "helper.h"
+// #include "encoder.h"
 import "C"
 
 func frameData(frame *C.AVFrame) **C.uint8_t {
@@ -111,8 +111,8 @@ func (d *H264Decoder) Close() {
 
 // WARNING: The image returned is only valid while the decoder is still alive,
 // and it will be clobbered by the subsequent Decode()
-func (d *H264Decoder) Decode(packet []byte) (image.Image, error) {
-	if err := d.sendPacket(packet); err != nil {
+func (d *H264Decoder) Decode(packet *DecodedPacket) (image.Image, error) {
+	if err := d.sendPacket(packet.EncodeToAnnexBPacket()); err != nil {
 		// sendPacket failure is not fatal
 		// We should log it or something.
 		// But it occurs normally during start of a stream, before first IDR has been seen.
@@ -215,4 +215,21 @@ func (d *H264Decoder) sendPacket(packet []byte) error {
 		return fmt.Errorf("avcodec_send_packet failed: %v", res)
 	}
 	return nil
+}
+
+// Creates a decoder and attempts to decode a single IDR packet.
+// This was built for extracting a thumbnail during a long recording.
+// Obviously this is quite expensive, because you're creating a decoder
+// for just a single frame.
+func DecodeSinglePacketToImage(packet *DecodedPacket) (image.Image, error) {
+	decoder, err := NewH264Decoder()
+	if err != nil {
+		return nil, err
+	}
+	defer decoder.Close()
+	img, err := decoder.Decode(packet)
+	if err != nil {
+		return nil, err
+	}
+	return cloneImage(img), nil
 }

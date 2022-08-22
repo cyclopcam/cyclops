@@ -45,7 +45,17 @@ func Migrations(log log.Log) []migration.Migrator {
 			expires_at INT
 		);
 
-		`))
+	`))
+
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		CREATE TABLE record_instruction(
+			id INTEGER PRIMARY KEY,
+			start_at INT NOT NULL,
+			finish_at INT NOT NULL
+		);
+
+	`))
 
 	return migs
 }

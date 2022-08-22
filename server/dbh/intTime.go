@@ -5,12 +5,14 @@ import (
 	"time"
 )
 
-// IntTime makes it easy to save Int64 milliseconds into SQLite database with gorm
-// In addition, it marshals nicely into JSON, and supports omitempty
-// By using milliseconds in JSON, you can write "new Date(X)" in Javascript, to deserialize,
+// IntTime is time in milliseconds UTC (aka unix milliseconds).
+// IntTime makes it easy to save Int64 milliseconds into SQLite database with gorm.
+// In addition, it marshals nicely into JSON, and supports omitempty.
+// By using milliseconds in JSON, you can write "new Date(x)" in Javascript, to deserialize,
 // and x.getTime() to serialize.
 type IntTime int64
 
+// Return a new IntTime from a time.Time
 func MakeIntTime(v time.Time) IntTime {
 	if v.IsZero() {
 		return 0
@@ -18,6 +20,7 @@ func MakeIntTime(v time.Time) IntTime {
 	return IntTime(v.UnixMilli())
 }
 
+// Return a new IntTime from unix milliseconds
 func MakeIntTimeMilli(unixMilli int64) IntTime {
 	return IntTime(unixMilli)
 }
@@ -27,10 +30,12 @@ func (t *IntTime) IsZero() bool {
 	return *t == 0
 }
 
+// Set IntTime to time.Time
 func (t *IntTime) Set(v time.Time) {
 	*t = IntTime(v.UnixMilli())
 }
 
+// Get time.Time
 func (t *IntTime) Get() time.Time {
 	return time.UnixMilli(int64(*t)).UTC()
 }
