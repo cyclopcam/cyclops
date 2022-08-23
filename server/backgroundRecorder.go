@@ -22,6 +22,7 @@ import (
 // When doing long recordings, we split video files into chunks of approximately this size
 const MaxVideoFileSize = 1024 * 1024 * 1024
 const BackgroundRecorderTickInterval = time.Second
+const MaxVideoFileSizeCheckInterval = 20 * time.Second
 
 type backgroundRecorder struct {
 	instructionID int64 // ID of record_instruction record in config DB
@@ -235,7 +236,7 @@ func (bg *backgroundStream) OnPacketRTP(packet *videox.DecodedPacket) {
 
 	now := time.Now()
 
-	if now.Sub(bg.lastSizeCheck) > 20*time.Second {
+	if now.Sub(bg.lastSizeCheck) > MaxVideoFileSizeCheckInterval {
 		//bg.log.Debugf("Checking video file size...")
 		bg.lastSizeCheck = now
 		st, err := os.Stat(bg.videoFilename)
@@ -243,7 +244,7 @@ func (bg *backgroundStream) OnPacketRTP(packet *videox.DecodedPacket) {
 			if st.Size() >= MaxVideoFileSize {
 				bg.log.Infof("Finishing video file %v and starting another", bg.videoFilename)
 				// finish this video, and on the next keyframe, we'll start another
-				bg.finishVideo()
+				bg.finishVideoNoLock()
 				bg.recording = nil
 			}
 		}
@@ -255,11 +256,12 @@ func (bg *backgroundStream) Close() {
 	bg.encoderLock.Lock()
 	defer bg.encoderLock.Unlock()
 	if bg.encoder != nil {
-		bg.finishVideo()
+		bg.finishVideoNoLock()
 	}
 }
 
-func (bg *backgroundStream) finishVideo() {
+// You must already be holding encoderLock before calling this
+func (bg *backgroundStream) finishVideoNoLock() {
 	if err := bg.encoder.WriteTrailer(); err != nil {
 		bg.log.Errorf("WriteTrailer failed: %v", err)
 	}
