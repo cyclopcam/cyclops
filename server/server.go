@@ -40,9 +40,6 @@ type Server struct {
 	recentEvents    *eventdb.EventDB // Where we store our recent event videos
 	wsUpgrader      websocket.Upgrader
 
-	recorderStartStopLock sync.Mutex
-	recorderStop          chan bool // Sent to recorder to tell it to stop
-
 	recordersLock  sync.Mutex          // Guards access to recorders map
 	recorders      map[int64]*recorder // key is from nextRecorderID
 	nextRecorderID int64
@@ -124,25 +121,26 @@ func (s *Server) Shutdown(restart bool) {
 	close(s.ShutdownStarted)
 	s.MustRestart = restart
 
-	// cancel signal handler (we'll re-enable it again if we restart)
+	// Remove our signal handler (we'll re-enable it again if we restart)
 	signal.Stop(s.signalIn)
 
-	s.recorderStartStopLock.Lock()
-	if s.recorderStop != nil {
-		s.recorderStop <- true
-	}
-	s.recorderStartStopLock.Unlock()
+	waitCameras := &sync.WaitGroup{}
 
 	// CloseAllCameras() should close all WebSockets, by virtue of the Streams closing, which sends
 	// a message to the websocket thread.
 	// This is relevant because calling Shutdown() on our http server will not do anything to upgraded
 	// connections (this is explicit in the http server docs).
 	// NOTE: there is also RegisterOnShutdown.. which might be useful
-	s.CloseAllCameras()
+	s.Log.Infof("Closing cameras")
+	s.CloseAllCameras(waitCameras)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	s.Log.Infof("Closing HTTP server")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	err := s.httpServer.Shutdown(ctx)
 	defer cancel()
+
+	s.Log.Infof("Waiting for camera streams to close")
+	waitCameras.Wait()
 
 	s.Log.Infof("Shutdown complete (err: %v)", err)
 	s.Log.Close()
@@ -186,11 +184,11 @@ func (s *Server) AddCamera(cam *camera.Camera) {
 	s.cameraFromID[cam.ID] = cam
 }
 
-func (s *Server) CloseAllCameras() {
+func (s *Server) CloseAllCameras(wg *sync.WaitGroup) {
 	s.camerasLock.Lock()
 	defer s.camerasLock.Unlock()
 	for _, cam := range s.cameras {
-		cam.Close()
+		cam.Close(wg)
 	}
 	s.cameras = []*camera.Camera{}
 	s.cameraFromID = map[int64]*camera.Camera{}
@@ -228,7 +226,7 @@ func (s *Server) LoadConfigVariables() error {
 
 // Loads cameras from config, but does not start them yet
 func (s *Server) LoadCamerasFromConfig() error {
-	s.CloseAllCameras()
+	s.CloseAllCameras(nil)
 	cams := []configdb.Camera{}
 	if err := s.configDB.DB.Find(&cams).Error; err != nil {
 		return err

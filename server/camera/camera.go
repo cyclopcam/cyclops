@@ -2,6 +2,7 @@ package camera
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/bmharper/cimg/v2"
@@ -84,13 +85,15 @@ func (c *Camera) Start() error {
 	return nil
 }
 
-func (c *Camera) Close() {
+// Close the camera.
+// If wg is not nil, then you must use it to signal when all of your resources are closed.
+func (c *Camera) Close(wg *sync.WaitGroup) {
 	if c.LowStream != nil {
-		c.LowStream.Close()
+		c.LowStream.Close(wg)
 		c.LowStream = nil
 	}
 	if c.HighStream != nil {
-		c.HighStream.Close()
+		c.HighStream.Close(wg)
 		c.HighStream = nil
 	}
 }

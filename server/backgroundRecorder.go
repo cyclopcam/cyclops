@@ -20,7 +20,10 @@ import (
 )
 
 // When doing long recordings, we split video files into chunks of approximately this size
-const MaxVideoFileSize = 1024 * 1024 * 1024
+// While developing, it's nice to have smaller video files (so we can see them earlier),
+// but in production we'll probably want this to be chunkier (eg 1GB).
+const MaxVideoFileSize = 64 * 1024 * 1024
+
 const BackgroundRecorderTickInterval = time.Second
 const MaxVideoFileSizeCheckInterval = 20 * time.Second
 
@@ -252,18 +255,21 @@ func (bg *backgroundStream) OnPacketRTP(packet *videox.DecodedPacket) {
 }
 
 func (bg *backgroundStream) Close() {
-	bg.log.Infof("backgroundStream.Close()")
+	bg.log.Infof("backgroundStream.Close() start")
 	bg.encoderLock.Lock()
 	defer bg.encoderLock.Unlock()
 	if bg.encoder != nil {
 		bg.finishVideoNoLock()
 	}
+	bg.log.Infof("backgroundStream.Close() done")
 }
 
 // You must already be holding encoderLock before calling this
 func (bg *backgroundStream) finishVideoNoLock() {
 	if err := bg.encoder.WriteTrailer(); err != nil {
 		bg.log.Errorf("WriteTrailer failed: %v", err)
+	} else {
+		bg.log.Infof("WriteTrailer done")
 	}
 	bg.encoder.Close()
 	bg.encoder = nil

@@ -16,7 +16,7 @@ let ctx = new forms.Context(() =>
 
 async function onSubmit() {
 	ctx.submitError.value = '';
-	let basic = btoa(username.value + ":" + password.value);
+	let basic = btoa(username.value.trim() + ":" + password.value.trim());
 	ctx.busy.value = true;
 	let r = await fetchOrErr('/api/auth/login', { method: 'POST', headers: { "Authorization": "BASIC " + basic } });
 	ctx.busy.value = false;

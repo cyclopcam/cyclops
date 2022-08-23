@@ -30,14 +30,14 @@ func (s *Server) httpConfigAddCamera(w http.ResponseWriter, r *http.Request, par
 	// Make sure we can talk to the camera
 	err = camera.Start()
 	if err != nil {
-		camera.Close()
+		camera.Close(nil)
 		www.Check(err)
 	}
 
 	// Add to DB
 	res := s.configDB.DB.Create(&cam)
 	if res.Error != nil {
-		camera.Close()
+		camera.Close(nil)
 		www.Check(res.Error)
 	}
 	s.Log.Infof("Added new camera to DB. Camera ID: %v", cam.ID)
@@ -152,7 +152,7 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 		c.WriteJSON(message{Error: err.Error()})
 		return
 	}
-	defer cam.Close()
+	defer cam.Close(nil)
 	if err := cam.Start(); err != nil {
 		c.WriteJSON(message{Error: err.Error()})
 		return

@@ -65,6 +65,8 @@ type Stream struct {
 
 	sinksLock sync.Mutex
 	sinks     []StreamSinkChan
+	closeWG   *sync.WaitGroup
+	isClosed  bool
 
 	infoLock sync.Mutex
 	info     *StreamInfo // With Go 1.19 one could use atomic.Pointer[T] here
@@ -141,11 +143,6 @@ func (s *Stream) Listen(address string) error {
 
 		now := time.Now()
 
-		// Copy the sinks out, to be safe during stream Close()
-		s.sinksLock.Lock()
-		sinks := gen.CopySlice(s.sinks)
-		s.sinksLock.Unlock()
-
 		// Populate width & height.
 		s.infoLock.Lock()
 		if s.info == nil {
@@ -174,11 +171,14 @@ func (s *Stream) Listen(address string) error {
 		// A keyframe is between 10 and 20 KB.
 		cloned := videox.ClonePacket(ctx, now)
 
-		//s.Log.Infof("Packet %v", ctx.H264PTS)
-		for _, sink := range sinks {
-			//sink.OnPacketRTP(ctx)
-			s.sendSinkMsg(sink, StreamMsgTypePacket, cloned)
+		// Obtain the sinks lock, so that we can't send packets after a Close message has been sent.
+		s.sinksLock.Lock()
+		if !s.isClosed {
+			for _, sink := range s.sinks {
+				s.sendSinkMsg(sink, StreamMsgTypePacket, cloned)
+			}
 		}
+		s.sinksLock.Unlock()
 	}
 
 	// start reading tracks
@@ -192,22 +192,28 @@ func (s *Stream) Listen(address string) error {
 	return nil
 }
 
-func (s *Stream) Close() {
+// Close the stream.
+// If wg is not nil, then you must call wg.Done() once all of your sinks have closed themselves.
+func (s *Stream) Close(wg *sync.WaitGroup) {
 	s.Log.Infof("Closing stream")
 
 	if s.Client != nil {
 		s.Client.Close()
 	}
 
+	// Obtain the sinks lock, so that we can't send packets after a Close message has been sent.
 	s.sinksLock.Lock()
-	sinks := gen.CopySlice(s.sinks)
-	s.sinks = []StreamSinkChan{}
-	s.sinksLock.Unlock()
-
-	//s.Log.Infof("Closing stream - sending StreamMsgTypeClose")
-	for _, sink := range sinks {
+	s.isClosed = true
+	if wg != nil {
+		// Every time a sink removes itself, we'll remove it from the wait group
+		s.closeWG = wg
+		s.Log.Debugf("Adding %v to Stream waitgroup", len(s.sinks))
+		wg.Add(len(s.sinks))
+	}
+	for _, sink := range s.sinks {
 		s.sendSinkMsg(sink, StreamMsgTypeClose, nil)
 	}
+	s.sinksLock.Unlock()
 }
 
 func (s *Stream) extractSPSInfo(nalus [][]byte) *StreamInfo {
@@ -261,28 +267,48 @@ func (s *Stream) fpsNoMutexLock() float64 {
 }
 
 // Connect a sink.
+//
+// Every call to ConnectSink must be accompanies by a call to RemoveSink.
+// The usual time to do this is when receiving StreamMsgTypeClose.
+//
 // This function will panic if you attempt to add the same sink twice.
 func (s *Stream) ConnectSink(sink StreamSinkChan) {
 	s.sinksLock.Lock()
+	defer s.sinksLock.Unlock()
+	if s.isClosed {
+		return
+	}
+	s.connectSinkNoLock(sink)
+}
+
+func (s *Stream) connectSinkNoLock(sink StreamSinkChan) {
 	if s.sinkIndexNoLock(sink) != -1 {
 		panic("sink has already been connected to stream")
 	}
 	s.sinks = append(s.sinks, sink)
-	s.sinksLock.Unlock()
 }
 
-// Connect a standard sink object and run it
+// Connect a standard sink object and run it.
+//
+// You don't need to call RemoveSink when using ConnectSinkAndRun.
+// When RunStandardStream exits, it will call RemoveSink for you.
 func (s *Stream) ConnectSinkAndRun(sink StandardStreamSink) error {
-	sinkChan, err := sink.OnConnect(s)
-	if err != nil {
-		return err
+	s.sinksLock.Lock()
+	defer s.sinksLock.Unlock()
+	if s.isClosed {
+		return fmt.Errorf("Stream is already closed")
+	} else {
+		sinkChan, err := sink.OnConnect(s)
+		if err != nil {
+			return err
+		}
+
+		s.connectSinkNoLock(sinkChan)
+
+		go RunStandardStream(s, sink, sinkChan)
+
+		return nil
 	}
-
-	s.ConnectSink(sinkChan)
-
-	go RunStandardStream(sink, sinkChan)
-
-	return nil
 }
 
 // Remove a sink
@@ -292,6 +318,9 @@ func (s *Stream) RemoveSink(sink StreamSinkChan) {
 	idx := s.sinkIndexNoLock(sink)
 	if idx != -1 {
 		s.sinks = gen.DeleteFromSliceOrdered(s.sinks, idx)
+		if s.closeWG != nil {
+			s.closeWG.Done()
+		}
 	}
 }
 

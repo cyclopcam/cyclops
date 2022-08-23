@@ -17,8 +17,7 @@ import (
 type webSocketMsg int
 
 const (
-	webSocketMsgClosed webSocketMsg = iota // The websocket client has closed the channel
-	webSocketMsgPause                      // pause stream (eg browser tab deactivated)
+	webSocketMsgPause  webSocketMsg = iota // pause stream (eg browser tab deactivated)
 	webSocketMsgResume                     // resume stream (eg browser tab reactivated)
 )
 
@@ -140,12 +139,13 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream, backl
 					s.onPacketRTP(msg.Packet)
 				}
 			}
-		case wsMsg := <-s.fromWebSocket:
-			switch wsMsg {
-			case webSocketMsgClosed:
+		case wsMsg, ok := <-s.fromWebSocket:
+			if !ok {
 				s.log.Infof("Run webSocketMsgClosed")
 				webSocketClosed = true
 				s.closed.Store(true)
+			}
+			switch wsMsg {
 			case webSocketMsgPause:
 				s.paused.Store(true)
 			case webSocketMsgResume:
@@ -156,7 +156,7 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream, backl
 	if s.debug {
 		s.log.Infof("Run closing")
 	}
-	close(s.fromWebSocket)
+	//close(s.fromWebSocket)
 	close(s.sendQueue)
 	if !webSocketClosed {
 		// should perhaps use WriteControl(Close) instead of hard closing
@@ -224,7 +224,8 @@ func (s *VideoWebSocketStreamer) webSocketReader(conn *websocket.Conn) {
 			}
 		}
 	}
-	s.fromWebSocket <- webSocketMsgClosed
+	//s.fromWebSocket <- webSocketMsgClosed
+	close(s.fromWebSocket)
 }
 
 // Run a thread that is responsible for writing to the websocket.
