@@ -160,6 +160,18 @@ func (s *Server) httpRecordGetRecordings(w http.ResponseWriter, r *http.Request,
 	www.SendJSON(w, recordings)
 }
 
+func (s *Server) httpRecordCount(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	err, count := s.permanentEvents.Count()
+	www.Check(err)
+	www.SendInt64(w, count)
+}
+
+func (s *Server) httpRecordDeleteRecording(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	id := www.ParseID(params.ByName("id"))
+	www.Check(s.permanentEvents.DeleteRecordingComplete(id))
+	www.SendOK(w)
+}
+
 func (s *Server) httpRecordGetOntologies(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	err, ontologies := s.permanentEvents.GetOntologies()
 	www.Check(err)

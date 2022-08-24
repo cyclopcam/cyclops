@@ -175,7 +175,7 @@ func (d *H264Decoder) Decode(packet *DecodedPacket) (image.Image, error) {
 		return nil, fmt.Errorf("sws_scale() error %v", res)
 	}
 
-	//fmt.Printf("Got frame %v x %v\n", d.dstFrame.width, d.dstFrame.width)
+	//fmt.Printf("Got frame %v x %v -> %v x %v\n", d.srcFrame.width, d.srcFrame.height, d.dstFrame.width, d.dstFrame.height)
 
 	// embed frame into an image.Image
 	return &image.RGBA{

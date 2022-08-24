@@ -39,6 +39,8 @@ function onPlay(cam: CameraInfo) {
 	state.value = States.PreRecord;
 	camera.value = cam;
 	playLive.value = true;
+	// skip straight ahead to recording
+	startRecording();
 }
 
 async function startRecording() {
@@ -59,7 +61,6 @@ async function stopRecording() {
 		globals.networkError = r.error;
 		return;
 	}
-	//lastRecordingID.value = parseInt(await r.r.text());
 	newRecording.value = Recording.fromJSON(await r.r.json(), null);
 	state.value = States.PostRecord;
 	playLive.value = false;
@@ -70,7 +71,12 @@ function saveRecording() {
 	nRecordings.value++;
 }
 
-function discardRecording() {
+async function discardRecording() {
+	let r = await fetchOrErr("/api/record/delete/" + newRecording.value.id, { method: "POST" });
+	if (!r.ok) {
+		globals.networkError = r.error;
+		return;
+	}
 	state.value = States.PreRecord;
 }
 
@@ -94,12 +100,17 @@ function status(): string {
 </script>
 
 <template>
-	<div>
+	<div class="recorderRoot">
 		<div v-if="state === States.PickCamera" class="flexColumnCenter">
-			<div class="stepLabel">Choose a camera for the recording:</div>
+			<div class="stepLabel">Record</div>
 			<div class="flex picker">
-				<camera-item v-for="cam of cameras()" :camera="cam" :play="false" size="220" @play="onPlay(cam)"
-					class="cameraItemPicker" />
+				<camera-item v-for="cam of cameras()" :camera="cam" icon="record" :play="false" size="220"
+					@play="onPlay(cam)" class="cameraItemPicker" />
+			</div>
+			<div style="margin: 15px; font-size: 14px">
+				Recordings can be anywhere from {{ minRecordingSeconds
+				}}
+				to {{ maxRecordingSeconds }} seconds long.
 			</div>
 		</div>
 		<div v-else class="flexColumnCenter">
@@ -144,12 +155,15 @@ function status(): string {
 </template>
 
 <style lang="scss" scoped>
+.recorderRoot {
+	margin: 25px 10px 10px 10px;
+}
+
 .picker {
 	gap: 10px;
 	flex-wrap: wrap;
 	justify-content: center;
-	margin-top: 16px;
-	margin: 16px 20px;
+	margin: 20px 20px 16px 20px;
 }
 
 .cameraItemPicker {

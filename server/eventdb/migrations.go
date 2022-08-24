@@ -35,7 +35,18 @@ func Migrations(log log.Log) []migration.Migrator {
 			definition BLOB NOT NULL
 		);
 
-		`))
+	`))
+
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		CREATE INDEX idx_recording_parent_id ON recording(parent_id);
+		CREATE INDEX idx_recording_camera_id ON recording(camera_id);
+	`))
+
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		CREATE INDEX idx_recording_start_time ON recording(start_time);
+	`))
 
 	return migs
 }

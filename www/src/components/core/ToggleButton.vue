@@ -41,6 +41,7 @@ function onClick() {
 	border: solid 1px rgba(0, 0, 0, 0);
 	padding: 4px 6px;
 	border-radius: 5px;
+	user-select: none;
 }
 
 .toggleButton:hover {

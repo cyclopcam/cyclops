@@ -232,66 +232,41 @@ $focalBrightness: 45%;
 	@include shadow15L;
 }
 
-.shadow5Hover {
-	@include shadow5;
-}
-.shadow7Hover {
-	@include shadow7;
-}
-.shadow9Hover {
-	@include shadow9;
-}
-.shadow15Hover {
-	@include shadow15;
-}
-.shadow5LHover {
-	@include shadow5L;
-}
-.shadow7LHover {
-	@include shadow7L;
-}
-.shadow9LHover {
-	@include shadow9L;
-}
-.shadow15LHover {
-	@include shadow15L;
-}
-
 @mixin shadowHoverTransition {
 	transition: box-shadow 150ms;
 }
 
 .shadow5Hover:hover {
 	@include shadowHoverTransition();
-	@include shadow5Hover;
+	@include shadow5;
 }
 .shadow7Hover:hover {
 	@include shadowHoverTransition();
-	@include shadow7Hover;
+	@include shadow7;
 }
 .shadow9Hover:hover {
 	@include shadowHoverTransition();
-	@include shadow9Hover;
+	@include shadow9;
 }
 .shadow15Hover:hover {
 	@include shadowHoverTransition();
-	@include shadow15Hover;
+	@include shadow15;
 }
 .shadow5LHover:hover {
 	@include shadowHoverTransition();
-	@include shadow5LHover;
+	@include shadow5L;
 }
 .shadow7LHover:hover {
 	@include shadowHoverTransition();
-	@include shadow7LHover;
+	@include shadow7L;
 }
 .shadow9LHover:hover {
 	@include shadowHoverTransition();
-	@include shadow9LHover;
+	@include shadow9L;
 }
 .shadow15LHover:hover {
 	@include shadowHoverTransition();
-	@include shadow15LHover;
+	@include shadow15;
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -401,7 +376,8 @@ $slideAmount: 100vw;
 }
 
 .stepLabel {
-	font-size: 16px;
+	font-size: 20px;
+	font-weight: bold;
 	margin: 4px 4px;
 	max-width: 300px;
 }

@@ -5,18 +5,28 @@ import { onMounted, ref, watch } from 'vue';
 import Modal from '../../core/Modal.vue';
 import Buttin from '../../core/Buttin.vue';
 import Play from '@/icons/play-circle.svg';
+import Burger from '@/icons/more-vertical.svg';
 import SvgButton from '../../core/SvgButton.vue';
-import { randomString } from '@/util/util';
+import { fetchOrErr, randomString } from '@/util/util';
+import Menue from '../../core/Menue.vue';
+import { globals } from '@/globals';
 
 let props = defineProps<{
 	playerCookie: string, // Used to ensure that there is only one RecordingItem playing a video at a time
 	recording?: Recording, // If null, then this is a "record new" pane
 	playAtStartup?: boolean,
 }>()
-let emits = defineEmits(['click', 'playInline']);
+let emits = defineEmits(['click', 'playInline', 'delete']);
 
 let showPlayer = ref(false);
+let showBurgerMenu = ref(false);
 let myCookie = ref('');
+
+let burgerItems = [
+	{ action: "delete", title: "Delete" },
+	//{ action: "foobar", title: "Delete" },
+	//{ action: "zang", title: "Delete" },
+]
 
 watch(() => props.playerCookie, (newVal) => {
 	if (newVal !== myCookie.value) {
@@ -29,6 +39,17 @@ function showInlinePlayer() {
 	showPlayer.value = true;
 	myCookie.value = randomString(8);
 	emits('playInline', myCookie.value);
+}
+
+async function onBurgerSelect(item: typeof burgerItems[0]) {
+	if (item.action === 'delete') {
+		let r = await fetchOrErr("/api/record/delete/" + props.recording!.id, { method: "POST" });
+		if (!r.ok) {
+			globals.networkError = r.error;
+			return;
+		}
+		emits('delete');
+	}
 }
 
 onMounted(() => {
@@ -47,6 +68,10 @@ onMounted(() => {
 				@click="showInlinePlayer" />
 			<video v-if="showPlayer" :src="'/api/record/video/LD/' + recording.id" class="inlineVideo" autoplay
 				controls />
+			<svg-button :icon="Burger" icon-size="36px" class="burgerBtn" :invert="true" :shadow="true"
+				@click="showBurgerMenu = true" />
+			<menue v-if="showBurgerMenu" :items="burgerItems" @close="showBurgerMenu = false"
+				@select="onBurgerSelect" />
 		</div>
 		<!--
 		<modal v-if="recording && showPlayer" @close="showPlayer = false" position="previous" :poll-size="true"
@@ -93,6 +118,12 @@ img {
 	left: 0px;
 	top: 0px;
 	//padding: 4px;
+}
+
+.burgerBtn {
+	position: absolute;
+	right: 0px;
+	top: 0px;
 }
 
 .newOuter {

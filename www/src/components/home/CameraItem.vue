@@ -45,8 +45,10 @@ function iconIsRecord() { return (props.icon ?? "play") === "record"; }
 <template>
 	<div class="flex cameraItem" :style="style()">
 		<player :camera="camera" :play="play" @click="$emit('stop')" :round="true" />
-		<div v-if="!play" :class="{ icon: true, playIcon: iconIsPlay(), recordIcon: iconIsRecord(), }"
-			@click="$emit('play')"></div>
+		<div v-if="!play" class="iconContainer flexCenter" @click="$emit('play')">
+			<div :class="{ icon: true, playIcon: iconIsPlay(), recordIcon: iconIsRecord() }">
+			</div>
+		</div>
 		<div class="name">{{ camera.name }}</div>
 	</div>
 </template>
@@ -56,16 +58,19 @@ function iconIsRecord() { return (props.icon ?? "play") === "record"; }
 	position: relative;
 }
 
-.icon {
+.iconContainer {
 	position: absolute;
 	left: 0px;
 	top: 0px;
-	background-repeat: no-repeat;
-	background-size: 50px 50px;
-	background-position: center;
 	width: 100%;
 	height: 100%;
 	cursor: pointer;
+}
+
+.icon {
+	background-repeat: no-repeat;
+	background-size: 50px 50px;
+	background-position: center;
 }
 
 .playIcon {
@@ -78,9 +83,28 @@ function iconIsRecord() { return (props.icon ?? "play") === "record"; }
 }
 
 .recordIcon {
-	background-image: url("@/icons/red-dot.svg");
-	background-size: 30px 30px;
-	filter: drop-shadow(0px 0px 3px rgba(0, 0, 0, 0.5));
+	background-color: #e00;
+	width: 16px;
+	height: 16px;
+	border-radius: 100px;
+	border: solid 2px #fff;
+	animation-name: pulse;
+	animation-duration: 0.6s;
+	animation-iteration-count: infinite;
+	animation-direction: alternate;
+	animation-timing-function: cubic-bezier(0.1, 0, 0.9, 1); // https://cubic-bezier.com/#0,.2,1,.8
+}
+
+@keyframes pulse {
+	from {
+		transform: scale(1);
+		opacity: 1;
+	}
+
+	to {
+		transform: scale(1.15);
+		opacity: 0.5;
+	}
 }
 
 .name {

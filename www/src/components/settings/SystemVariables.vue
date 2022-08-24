@@ -100,6 +100,11 @@ async function restart(): Promise<boolean> {
 }
 
 async function isReady(): Promise<boolean> {
+	// Before we even start, wait for 500 milliseconds. This is here to try and
+	// make restarts work with the vite devserver, which freaks out when the Go server
+	// goes down, and doesn't seem to realize that it's back up again.
+	await sleep(500);
+
 	// Keep retrying, because isReady is intended to be run after restarting the server
 	let timeoutMS = 3000;
 	let start = new Date().getTime();
@@ -119,7 +124,7 @@ async function isReady(): Promise<boolean> {
 		} else {
 			console.log('isReady sleeping');
 			connectError = r.error;
-			await sleep(200);
+			await sleep(300);
 		}
 	}
 	console.log(`isReady timeout. Last error was ${connectError}`);

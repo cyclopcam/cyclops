@@ -15,6 +15,7 @@ let error = computed(() => {
 })
 
 function onBack() {
+	// We probably want to pop one up in the hierarchy, instead of going back.
 	router.back();
 }
 
@@ -48,7 +49,7 @@ onMounted(() => {
 			<div class="centerGroup">
 				<toggle-button :icon="settings" title="Settings" route="rtSettings" route-target="rtSettingsTop" />
 				<toggle-button :icon="monitor" title="Monitor" route="rtMonitor" />
-				<toggle-button :icon="bulb" title="Train" route="rtTrain" route-target="rtTrainManageRecordings" />
+				<toggle-button :icon="bulb" title="Train" route="rtTrain" route-target="rtTrainHome" />
 			</div>
 			<div class="flex" style="width: 60px">
 				<!-- logout or something -->

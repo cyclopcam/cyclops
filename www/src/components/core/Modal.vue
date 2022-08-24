@@ -109,7 +109,7 @@ function containerStyle(): any {
 		}
 		let myWidth = ownWidth.value;
 		let myHeight = ownHeight.value;
-		console.log(`myWidth: ${myWidth}, myHeight: ${myHeight}`);
+		//console.log(`myWidth: ${myWidth}, myHeight: ${myHeight}`);
 		if (props.sameWidth) {
 			myWidth = refr.width;
 		}

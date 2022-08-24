@@ -3,6 +3,7 @@ package eventdb
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"image"
 	"os"
@@ -18,6 +19,10 @@ import (
 )
 
 const MaxThumbnailWidth = 320
+
+var (
+	ErrNotALogicalRecord = errors.New("Not a logical record")
+)
 
 // EventDB manages recordings.
 // There are two EventDBs.
@@ -129,8 +134,69 @@ func (e *EventDB) CreateRecording(parentID int64, rtype RecordType, origin Recor
 }
 
 // Delete the _DB record only_ of the recording
+// If the record does not exist, return nil.
 func (e *EventDB) DeleteRecordingDBRecord(id int64) error {
-	return e.db.Delete(&Recording{}, id).Error
+	return e.db.Where("id = ? OR parent_id = ?", id, id).Delete(&Recording{}, id).Error
+}
+
+// Delete the DB record and the video files of a recording.
+// If the recording does not exist, the function returns success.
+func (e *EventDB) DeleteRecordingComplete(id int64) error {
+	rec := Recording{}
+	err := e.db.First(&rec, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	// Get all physical records before deleting from the DB
+	err, physical := e.GetPhysicalRecordsOf(&rec)
+	if err != nil {
+		return err
+	}
+
+	e.log.Infof("Deleting recording %v", id)
+
+	// Delete the DB record first, and then the video files.
+	// It would be worse to have a DB record sticking around, with missing files.
+	if err := e.DeleteRecordingDBRecord(id); err != nil {
+		return err
+	}
+
+	return e.DeleteFilesOf(physical)
+}
+
+// Get all physical records for the given logical or simple recording object
+func (e *EventDB) GetPhysicalRecordsOf(rec *Recording) (error, []*Recording) {
+	if rec.IsSimple() || rec.IsPhysical() {
+		return nil, []*Recording{rec}
+	}
+	physical := []*Recording{}
+	if err := e.db.Where("parent_id = ?", rec.ID).Find(&physical).Error; err != nil {
+		return err, nil
+	}
+	return nil, physical
+}
+
+// Delete the video files (but not the DB record) of the given recordings
+// The recording records should be Simple or Physical records
+func (e *EventDB) DeleteFilesOf(recordings []*Recording) error {
+	// keep on trucking if we fail to delete a file
+	var firstErr error
+	for _, rec := range recordings {
+		all := []string{
+			e.FullPath(rec.VideoFilenameHD()),
+			e.FullPath(rec.VideoFilenameLD()),
+			e.FullPath(rec.ThumbnailFilename()),
+		}
+		for _, fn := range all {
+			if err := deleteIfExists(fn); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
 }
 
 func (e *EventDB) GetRecording(id int64) (error, *Recording) {
@@ -143,10 +209,18 @@ func (e *EventDB) GetRecording(id int64) (error, *Recording) {
 
 func (e *EventDB) GetRecordings() (error, []Recording) {
 	recordings := []Recording{}
-	if err := e.db.Find(&recordings).Error; err != nil {
+	if err := e.db.Where("record_type IN (?,?)", RecordTypeLogical, RecordTypeSimple).Find(&recordings).Error; err != nil {
 		return err, nil
 	}
 	return nil, recordings
+}
+
+func (e *EventDB) Count() (error, int64) {
+	n := int64(0)
+	if err := e.db.Model(&Recording{}).Where("record_type IN (?,?)", RecordTypeLogical, RecordTypeSimple).Count(&n).Error; err != nil {
+		return err, 0
+	}
+	return nil, n
 }
 
 func (e *EventDB) GetOntologies() (error, []Ontology) {
@@ -201,4 +275,12 @@ func (e *EventDB) SaveThumbnail(img image.Image, targetFilename string) error {
 		return err
 	}
 	return os.WriteFile(targetFilename, b, 0660)
+}
+
+func deleteIfExists(filename string) error {
+	err := os.Remove(filename)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }

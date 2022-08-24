@@ -12,7 +12,7 @@ onMounted(() => {
 </script>
 
 <template>
-	<div class="train flexColumnCenter">
+	<div class="flexColumnCenter">
 		<router-view @recordNew="onRecordNew" v-slot="{ Component, route }">
 			<transition :name="route.meta.transitionName">
 				<component :is="Component" />
@@ -22,8 +22,8 @@ onMounted(() => {
 </template>
 
 <style lang="scss" scoped>
-.train {
-	//background-color: cornsilk;
-	margin: 25px 10px 10px 10px;
-}
+//.train {
+//	//background-color: cornsilk;
+//	//margin: 10px 10px 10px 10px;
+//}
 </style>

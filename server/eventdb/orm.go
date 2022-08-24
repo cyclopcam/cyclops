@@ -71,6 +71,18 @@ type Recording struct {
 	CameraID     int64                  `json:"cameraID" gorm:"default:null"`             // ID of camera in config DB
 }
 
+func (r *Recording) IsLogical() bool {
+	return r.RecordType == RecordTypeLogical
+}
+
+func (r *Recording) IsPhysical() bool {
+	return r.RecordType == RecordTypePhysical
+}
+
+func (r *Recording) IsSimple() bool {
+	return r.RecordType == RecordTypeSimple
+}
+
 func (r *Recording) VideoFilename(res defs.Resolution) string {
 	switch res {
 	case defs.ResHD:

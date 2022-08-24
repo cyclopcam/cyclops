@@ -4,9 +4,18 @@ import right from '@/icons/chevron-right.svg';
 
 let props = defineProps<{
 	routeTarget: string,
+	mode?: string, // list (default), solo. (list = column of buttons, solo = a single button on it's own)
 	icon?: string,
 	iconSize?: string,
 }>()
+
+function isList(): boolean {
+	return props.mode !== 'solo';
+}
+
+function isSolo(): boolean {
+	return props.mode === 'solo';
+}
 
 function onClick() {
 	router.push({ name: props.routeTarget });
@@ -22,7 +31,7 @@ function iconStyle(): any {
 </script>
 
 <template>
-	<div class="panelButton" @click="onClick">
+	<div :class="{ panelButton: true, list: isList(), solo: isSolo(), shadow5LHover: isSolo() }" @click="onClick">
 		<img v-if='icon' :src="icon" class="icon" :style="iconStyle()" />
 		<div v-else style='width:10px' />
 		<div class="inner">
@@ -36,8 +45,6 @@ function iconStyle(): any {
 @import '@/assets/vars.scss';
 
 .panelButton {
-	//background-color: aquamarine;
-	border-bottom: solid 1px #ddd;
 	padding: 15px 10px 15px 5px;
 
 	@media (max-width: $mobileCutoff) {
@@ -49,9 +56,13 @@ function iconStyle(): any {
 	align-items: center;
 }
 
-//.panelButton:first-child {
-//	border-top: solid 1px #ddd;
-//}
+.list {
+	border-bottom: solid 1px #ddd;
+}
+
+.solo {
+	border: solid 1px #ddd;
+}
 
 .inner {
 	display: flex;
@@ -61,6 +72,7 @@ function iconStyle(): any {
 }
 
 .icon {
+	margin-left: 5px;
 	margin-right: 15px;
 }
 </style>

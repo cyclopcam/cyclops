@@ -114,7 +114,7 @@ func (s *Server) ListenForInterruptSignal() {
 
 func (s *Server) Shutdown(restart bool) {
 	if restart {
-		s.Log.Infof("Restart")
+		s.Log.Infof("Shutdown and restart")
 	} else {
 		s.Log.Infof("Shutdown")
 	}
@@ -142,7 +142,11 @@ func (s *Server) Shutdown(restart bool) {
 	s.Log.Infof("Waiting for camera streams to close")
 	waitCameras.Wait()
 
-	s.Log.Infof("Shutdown complete (err: %v)", err)
+	if err != nil {
+		s.Log.Infof("Shutdown complete")
+	} else {
+		s.Log.Warnf("Shutdown complete, with error: %v", err)
+	}
 	s.Log.Close()
 	s.ShutdownComplete <- err
 }

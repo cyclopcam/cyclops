@@ -1,10 +1,7 @@
 <script setup lang="ts">
-import Buttin from "@/components/core/Buttin.vue";
 import { globals } from "@/globals";
 import { fetchRecordings, Recording } from "@/recording/recording";
 import { onMounted, ref } from "vue";
-import router from "@/router/routes";
-import PlusCircle from "@/icons/plus-circle.svg";
 import RecordingItem from "./RecordingItem.vue";
 
 let emits = defineEmits(['recordNew']);
@@ -13,10 +10,6 @@ let haveRecordings = ref(false);
 let recordings = ref([] as Recording[]);
 let playerCookie = ref(''); // ensures that only one RecordingItem is playing at a time
 
-function showHelp(): boolean {
-	return haveRecordings.value && recordings.value.length === 0;
-}
-
 async function getRecordings() {
 	let r = await fetchRecordings();
 	if (!r.ok) {
@@ -24,12 +17,20 @@ async function getRecordings() {
 		return;
 	}
 	globals.networkError = '';
+	r.value.sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
 	recordings.value = r.value;
 	haveRecordings.value = true;
 }
 
 function onPlayInline(cookie: string) {
 	playerCookie.value = cookie;
+}
+
+function onDelete(rec: Recording) {
+	let idx = recordings.value.indexOf(rec);
+	if (idx !== -1) {
+		recordings.value.splice(idx, 1);
+	}
 }
 
 onMounted(() => {
@@ -40,17 +41,17 @@ onMounted(() => {
 
 <template>
 	<div class="flexColumnCenter">
-		<div v-if="showHelp()" class="helpTopic">Train your system by recording videos that simulate alarm conditions.
-		</div>
 		<!--
 		<buttin :icon="PlusCircle" iconSize="16px" @click="onRecordNew">New Recording
 		</buttin>
 		<div class="groupLabel">Recordings</div>
 		-->
 		<div class="recordings">
+			<!--
 			<recording-item :player-cookie="playerCookie" @click="$emit('recordNew')" />
+			-->
 			<recording-item v-for="rec of recordings" :player-cookie="playerCookie" :recording="rec"
-				@play-inline="onPlayInline" />
+				@play-inline="onPlayInline" @delete="onDelete(rec)" />
 		</div>
 	</div>
 </template>

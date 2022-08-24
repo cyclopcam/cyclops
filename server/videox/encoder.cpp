@@ -180,8 +180,9 @@ void* MakeEncoder(char** err, const char* format, const char* filename, int widt
 	if (e < 0)
 		RETURN_STR(tsf::fmt("avio_open2(%v) failed: %v", filename, AvErr(e)));
 
-	if (avformat_write_header(encoder->OutFormatCtx, nullptr) < 0)
-		RETURN_ERROR("Error avformat_write_header");
+	e = avformat_write_header(encoder->OutFormatCtx, nullptr);
+	if (e < 0)
+		RETURN_STR(tsf::fmt("avformat_write_header failed: %v", AvErr(e)));
 
 	av_dump_format(encoder->OutFormatCtx, 0, filename, 1);
 
