@@ -46,7 +46,7 @@ function iconIsRecord() { return (props.icon ?? "play") === "record"; }
 	<div class="flex cameraItem" :style="style()">
 		<player :camera="camera" :play="play" @click="$emit('stop')" :round="true" />
 		<div v-if="!play" class="iconContainer flexCenter" @click="$emit('play')">
-			<div :class="{ icon: true, playIcon: iconIsPlay(), recordIcon: iconIsRecord() }">
+			<div :class="{ playIcon: iconIsPlay(), recordIcon: iconIsRecord() }">
 			</div>
 		</div>
 		<div class="name">{{ camera.name }}</div>
@@ -67,15 +67,14 @@ function iconIsRecord() { return (props.icon ?? "play") === "record"; }
 	cursor: pointer;
 }
 
-.icon {
-	background-repeat: no-repeat;
-	background-size: 50px 50px;
-	background-position: center;
-}
-
 .playIcon {
-	background-image: url("@/icons/play-circle.svg");
-	filter: invert(1) drop-shadow(1px 1px 3px rgba(0, 0, 0, 0.9));
+	background-repeat: no-repeat;
+	background-size: 30px 30px;
+	background-position: center;
+	width: 30px;
+	height: 30px;
+	background-image: url("@/icons/play-circle-outline.svg");
+	//filter: invert(1) drop-shadow(1px 1px 3px rgba(0, 0, 0, 0.9));
 }
 
 .playIcon:hover {

@@ -3,12 +3,10 @@ package www
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -328,27 +326,68 @@ func SendFileDownload(w http.ResponseWriter, filename, contentType string, conte
 }
 
 // SendFile sends a file (as direct content, not download)
-func SendFile(w http.ResponseWriter, filename, contentType string) {
-	if contentType == "" {
-		switch strings.ToLower(path.Ext(filename)) {
-		case ".jpg":
-			fallthrough
-		case ".jpeg":
-			contentType = "image/jpeg"
+func SendFile(w http.ResponseWriter, r *http.Request, filename, contentType string) {
+	http.ServeFile(w, r, filename)
+	/*
+		if contentType == "" {
+			switch strings.ToLower(path.Ext(filename)) {
+			case ".jpg":
+				fallthrough
+			case ".jpeg":
+				contentType = "image/jpeg"
+			}
 		}
-	}
-	w.Header().Set("Content-Type", contentType)
-	f, err := os.Open(filename)
-	if err != nil {
-		SendError(w, fmt.Sprintf("Failed to open file for sending: %v", err), http.StatusInternalServerError)
-		return
-	}
-	defer f.Close()
-	io.Copy(w, f)
+		f, err := os.Open(filename)
+		if err != nil {
+			SendError(w, fmt.Sprintf("Failed to open file for sending: %v", err), http.StatusInternalServerError)
+			return
+		}
+		defer f.Close()
+		ranges := r.Header.Get("Range")
+		if ranges == "" {
+			// whole file
+			w.Header().Set("Content-Type", contentType)
+			io.Copy(w, f)
+			return
+		}
+
+		// process ranges
+		fmt.Printf("Serving range: %v\n", ranges)
+		st, err := f.Stat()
+		if err != nil {
+			SendError(w, fmt.Sprintf("Failed to 'stat' file before sending: %v", err), http.StatusInternalServerError)
+			return
+		}
+		rawSections := strings.Split(ranges, ", ")
+		for i, rawSection := range rawSections {
+			unit := ""
+			section := ""
+			found := false
+			if i == 0 {
+				unit, section, found = strings.Cut(rawSection, "=")
+				if !found {
+					SendError(w, fmt.Sprintf("Invalid file range '%v': no '=' character", rawSection), http.StatusRequestedRangeNotSatisfiable)
+					return
+				}
+				if unit != "bytes" {
+					SendError(w, fmt.Sprintf("Invalid file range '%v': unit must be bytes", rawSection), http.StatusRequestedRangeNotSatisfiable)
+					return
+				}
+			}
+			rStart, rEnd, found := strings.Cut(section, "-")
+			if !found {
+				SendError(w, fmt.Sprintf("Invalid file range '%v': no '-' character", rawSection), http.StatusRequestedRangeNotSatisfiable)
+				return
+			}
+			if i == 0 {
+				w.WriteHeader(http.StatusPartialContent)
+			}
+		}
+	*/
 }
 
 // SendTempFile calls SendFile, and then deletes the file when finished
-func SendTempFile(w http.ResponseWriter, filename, contentType string) {
-	SendFile(w, filename, contentType)
+func SendTempFile(w http.ResponseWriter, r *http.Request, filename, contentType string) {
+	SendFile(w, r, filename, contentType)
 	os.Remove(filename)
 }

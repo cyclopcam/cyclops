@@ -107,7 +107,7 @@ func (s *Server) httpCamGetRecentVideo(w http.ResponseWriter, r *http.Request, p
 	www.Check(err)
 	www.Check(raw.SaveToMP4(fn))
 
-	www.SendTempFile(w, fn, contentType)
+	www.SendTempFile(w, r, fn, contentType)
 }
 
 func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {

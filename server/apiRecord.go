@@ -182,7 +182,7 @@ func (s *Server) httpRecordGetThumbnail(w http.ResponseWriter, r *http.Request, 
 	err, recording := s.permanentEvents.GetRecording(www.ParseID(params.ByName("id")))
 	www.Check(err)
 	fullpath := filepath.Join(s.permanentEvents.Root, recording.ThumbnailFilename())
-	www.SendFile(w, fullpath, "")
+	www.SendFile(w, r, fullpath, "")
 }
 
 func (s *Server) httpRecordGetVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
@@ -190,7 +190,7 @@ func (s *Server) httpRecordGetVideo(w http.ResponseWriter, r *http.Request, para
 	err, recording := s.permanentEvents.GetRecording(www.ParseID(params.ByName("id")))
 	www.Check(err)
 	fullpath := filepath.Join(s.permanentEvents.Root, recording.VideoFilename(res))
-	www.SendFile(w, fullpath, recording.VideoContentType(res))
+	www.SendFile(w, r, fullpath, recording.VideoContentType(res))
 }
 
 func (s *Server) httpRecordBackgroundCreate(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {

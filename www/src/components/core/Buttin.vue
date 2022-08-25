@@ -22,6 +22,7 @@ function iconStyle(): any {
 	return {
 		width: props.iconSize ?? "",
 		height: props.iconSize ?? "",
+		filter: props.disabled ? "contrast(0)" : "",
 	}
 }
 

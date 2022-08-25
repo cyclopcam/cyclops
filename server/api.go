@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/staticfiles"
@@ -18,13 +19,13 @@ func (s *Server) SetupHTTP() {
 	// protected creates an HTTP handler that only accepts an authenticated user with
 	// the given set of permissions.
 	// The set of permissions are from configdb.UserPermissions
-	protected := func(requiredPerms string, method, route string, handle ProtectedHandler) {
+	protected := func(requiredPerms string, methods, route string, handle ProtectedHandler) {
 		for _, perm := range requiredPerms {
 			if !configdb.IsValidPermission(string(perm)) {
 				panic("Invalid permission " + string(perm))
 			}
 		}
-		www.Handle(s.Log, router, method, route, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+		handleWrapper := func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 			user := s.configDB.GetUser(r)
 			if user == nil {
 				www.PanicForbidden()
@@ -35,7 +36,10 @@ func (s *Server) SetupHTTP() {
 				}
 			}
 			handle(w, r, params, user)
-		})
+		}
+		for _, method := range strings.Split(methods, "|") {
+			www.Handle(s.Log, router, method, route, handleWrapper)
+		}
 	}
 
 	// unprotected creates an HTTP handler that is accessible without authentication
@@ -67,7 +71,7 @@ func (s *Server) SetupHTTP() {
 	protected("v", "POST", "/api/record/delete/:id", s.httpRecordDeleteRecording)
 	protected("v", "GET", "/api/record/getOntologies", s.httpRecordGetOntologies)
 	protected("v", "GET", "/api/record/thumbnail/:id", s.httpRecordGetThumbnail)
-	protected("v", "GET", "/api/record/video/:resolution/:id", s.httpRecordGetVideo)
+	protected("v", "GET|HEAD", "/api/record/video/:resolution/:id", s.httpRecordGetVideo)
 	protected("v", "POST", "/api/record/video/:resolution/:id", s.httpRecordGetVideo)
 	protected("v", "POST", "/api/record/background/create", s.httpRecordBackgroundCreate)
 	unprotected("GET", "/api/auth/hasAdmin", s.httpAuthHasAdmin)

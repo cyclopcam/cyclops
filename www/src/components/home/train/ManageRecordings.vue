@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { globals } from "@/globals";
 import { fetchRecordings, Recording } from "@/recording/recording";
-import { onMounted, ref } from "vue";
+import { onMounted, reactive, ref } from "vue";
 import RecordingItem from "./RecordingItem.vue";
+import Buttin from "../../core/Buttin.vue";
+import Trash from '@/icons/trash-2.svg';
 
 let emits = defineEmits(['recordNew']);
 
 let haveRecordings = ref(false);
 let recordings = ref([] as Recording[]);
 let playerCookie = ref(''); // ensures that only one RecordingItem is playing at a time
+let selection = reactive(new Set<number>());
 
 async function getRecordings() {
 	let r = await fetchRecordings();
@@ -40,18 +43,18 @@ onMounted(() => {
 </script>
 
 <template>
-	<div class="flexColumnCenter">
-		<!--
-		<buttin :icon="PlusCircle" iconSize="16px" @click="onRecordNew">New Recording
-		</buttin>
-		<div class="groupLabel">Recordings</div>
-		-->
+	<div class="flexColumnCenter manageRoot">
+		<!-- <div class="stepLabel">Edit Recordings</div> -->
+		<div>
+			<buttin :icon="Trash" icon-size="14px" :disabled="selection.size === 0">Delete</buttin>
+		</div>
+
 		<div class="recordings">
 			<!--
 			<recording-item :player-cookie="playerCookie" @click="$emit('recordNew')" />
 			-->
 			<recording-item v-for="rec of recordings" :player-cookie="playerCookie" :recording="rec"
-				@play-inline="onPlayInline" @delete="onDelete(rec)" />
+				:selection="selection" @play-inline="onPlayInline" @delete="onDelete(rec)" />
 		</div>
 	</div>
 </template>
@@ -59,20 +62,24 @@ onMounted(() => {
 <style lang="scss" scoped>
 @import '@/assets/vars.scss';
 
+.manageRoot {
+	margin: 25px 10px 10px 10px;
+}
+
 .recordings {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 10px;
-	margin: 10px 20px 10px 20px;
+	gap: 30px;
+	margin: 20px 20px 10px 20px;
 	justify-content: center;
-	max-width: 90vw;
+	max-width: 1400px;
 	//background-color: antiquewhite;
 
 	@media (max-width: $mobileCutoff) {
 		// fit two thumbnails per row (more styles for this in RecordingItem.vue)
-		margin: 10px 5px 10px 5px;
+		//margin: 10px 5px 10px 5px;
 		max-width: 98vw;
-		gap: 8px;
+		gap: 12px;
 	}
 }
 </style>
