@@ -34,6 +34,7 @@ $size: 22px;
 
 .selected {
 	background-color: $toggleColor;
+	border-color: $toggleColor;
 }
 
 .inside {

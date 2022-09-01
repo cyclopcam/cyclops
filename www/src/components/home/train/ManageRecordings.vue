@@ -5,13 +5,16 @@ import { onMounted, reactive, ref } from "vue";
 import RecordingItem from "./RecordingItem.vue";
 import Buttin from "../../core/Buttin.vue";
 import Trash from '@/icons/trash-2.svg';
+import Labeler from './Labeler.vue';
+import LabelerDialog from './LabelerDialog.vue';
 
 let emits = defineEmits(['recordNew']);
 
 let haveRecordings = ref(false);
 let recordings = ref([] as Recording[]);
 let playerCookie = ref(''); // ensures that only one RecordingItem is playing at a time
-let selection = reactive(new Set<number>());
+let selection = reactive(new Set<number>()); // Every update will probably cause all RecordingItems to get re-rendered, so this might not scale well
+let labelRecording = ref(null as Recording | null);
 
 async function getRecordings() {
 	let r = await fetchRecordings();
@@ -36,6 +39,10 @@ function onDelete(rec: Recording) {
 	}
 }
 
+function onOpenLabeler(rec: Recording) {
+	labelRecording.value = rec;
+}
+
 onMounted(() => {
 	getRecordings();
 })
@@ -54,8 +61,11 @@ onMounted(() => {
 			<recording-item :player-cookie="playerCookie" @click="$emit('recordNew')" />
 			-->
 			<recording-item v-for="rec of recordings" :player-cookie="playerCookie" :recording="rec"
-				:selection="selection" @play-inline="onPlayInline" @delete="onDelete(rec)" />
+				:selection="selection" @play-inline="onPlayInline" @delete="onDelete(rec)"
+				@open-labeler="onOpenLabeler(rec)" />
 		</div>
+
+		<labeler-dialog v-if="labelRecording" :initial-recording="labelRecording" @close="labelRecording = null" />
 	</div>
 </template>
 

@@ -5,6 +5,7 @@ import settings from "@/icons/settings.svg";
 import monitor from "@/icons/monitor.svg";
 import bulb from "@/icons/bulb.svg";
 import back from "@/icons/back.svg";
+import wand from "@/icons/wand.svg";
 import { globals } from "@/globals";
 import { computed } from "@vue/reactivity";
 import SvgButton from "../core/SvgButton.vue";
@@ -50,6 +51,10 @@ onMounted(() => {
 				<toggle-button :icon="settings" title="Settings" route="rtSettings" route-target="rtSettingsTop" />
 				<toggle-button :icon="monitor" title="Monitor" route="rtMonitor" />
 				<toggle-button :icon="bulb" title="Train" route="rtTrain" route-target="rtTrainHome" />
+				<!-- I use the item below when debugging overflow issues on top bar -->
+				<!--
+				<toggle-button :icon="wand" title="Empty" route="rtEmpty" />
+				-->
 			</div>
 			<div class="flex" style="width: 60px">
 				<!-- logout or something -->
@@ -86,10 +91,8 @@ onMounted(() => {
 
 	@media (max-width: $mobileCutoff) {
 		width: 100vw;
-	}
-
-	@media (max-width: $mobileCutoff) {
 		padding: 4px 4px 4px 4px;
+		box-sizing: border-box;
 	}
 }
 

@@ -30,7 +30,7 @@ func (s *Server) SetRecentEventStoragePath(root string) error {
 // if we run out of RAM.
 func (s *Server) SetTempFilePath(tempFilePath string) error {
 	s.Log.Infof("Temp file path '%v'", tempFilePath)
-	if tempFiles, err := util.NewTempFiles(tempFilePath); err != nil {
+	if tempFiles, err := util.NewTempFiles(tempFilePath, s.Log); err != nil {
 		return err
 	} else {
 		s.TempFiles = tempFiles

@@ -8,6 +8,15 @@ func CopySlice[T any](src []T) []T {
 	return dst
 }
 
+// Return a copy of the map
+func CopyMap[K comparable, V any](src map[K]V) map[K]V {
+	dst := make(map[K]V, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
 // Finds an element in the slice and returns a copy with that element removed.
 // If the element does not exist, returns the original slice.
 // If the element exists more than once, removes only the first one.

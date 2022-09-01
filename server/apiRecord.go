@@ -12,6 +12,7 @@ import (
 	"github.com/bmharper/cyclops/server/defs"
 	"github.com/bmharper/cyclops/server/eventdb"
 	"github.com/bmharper/cyclops/server/log"
+	"github.com/bmharper/cyclops/server/videox"
 	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
 )
@@ -187,9 +188,19 @@ func (s *Server) httpRecordGetThumbnail(w http.ResponseWriter, r *http.Request, 
 
 func (s *Server) httpRecordGetVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	res := parseResolutionOrPanic(params.ByName("resolution"))
+	seekable := www.QueryValue(r, "seekable") == "1"
 	err, recording := s.permanentEvents.GetRecording(www.ParseID(params.ByName("id")))
 	www.Check(err)
 	fullpath := filepath.Join(s.permanentEvents.Root, recording.VideoFilename(res))
+	if seekable {
+		seekable, exists := s.TempFiles.GetNamed(fmt.Sprintf("seekable-perm-%v-%v.mp4", recording.ID, res))
+		if !exists {
+			s.Log.Infof("Transcoding %v into a seekable format", fullpath)
+			www.Check(videox.TranscodeSeekable(fullpath, seekable))
+			s.Log.Infof("Transcoding %v done", fullpath)
+		}
+		fullpath = seekable
+	}
 	www.SendFile(w, r, fullpath, recording.VideoContentType(res))
 }
 

@@ -27,9 +27,11 @@ func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
 func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time) {
 	key := StrongRandomAlphaNumChars(30)
 	session := Session{
-		Key:       HashSessionCookie(key),
-		UserID:    userID,
-		ExpiresAt: dbh.MakeIntTime(expiresAt),
+		Key:    HashSessionCookie(key),
+		UserID: userID,
+	}
+	if !expiresAt.IsZero() {
+		session.ExpiresAt = dbh.MakeIntTime(expiresAt)
 	}
 	if err := c.DB.Create(&session).Error; err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -42,7 +44,9 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 		Value: key,
 		Path:  "/",
 	}
-	cookie.Expires = expiresAt
+	if !expiresAt.IsZero() {
+		cookie.Expires = expiresAt
+	}
 	http.SetCookie(w, cookie)
 	c.PurgeExpiredSessions()
 	www.SendOK(w)

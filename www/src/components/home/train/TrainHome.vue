@@ -39,7 +39,7 @@ onMounted(async () => {
 			<panel-button :icon="RedDot" route-target="rtTrainRecord">New Recording</panel-button>
 			<panel-button :icon="Film" route-target="rtTrainManageRecordings">Edit Recordings <span
 					v-if="haveRecordingCount">({{
-							recordingCount
+					 recordingCount 
 					}})</span>
 			</panel-button>
 		</panel>
@@ -48,7 +48,8 @@ onMounted(async () => {
 
 <style lang="scss" scoped>
 .train {
-	margin: 20px 10px 10px 10px;
+	//margin: 20px 0px 0px 0px;
+	padding-top: 20px;
 }
 
 .help {

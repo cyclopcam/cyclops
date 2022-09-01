@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -27,9 +28,15 @@ func RunProtected(log log.Log, w http.ResponseWriter, r *http.Request, handler f
 			} else if hErr, ok := rec.(*HTTPError); ok {
 				log.Infof("Failed request %v: %v %v", r.URL.Path, hErr.Code, hErr.Message)
 				SendError(w, hErr.Message, hErr.Code)
-			} else if err, ok := rec.(error); ok {
-				log.Errorf("Panic error %v: %v", r.URL.Path, err)
+			} else if err, ok := rec.(runtime.Error); ok {
+				// Show stack trace on runtime error
+				log.Errorf("Runtime panic error %v: %v", r.URL.Path, err)
 				log.Errorf("Stack Trace: %v", string(debug.Stack()))
+				SendError(w, err.Error(), http.StatusInternalServerError)
+			} else if err, ok := rec.(error); ok {
+				// No stack trace on generic error
+				log.Errorf("Panic error %v: %v", r.URL.Path, err)
+				//log.Errorf("Stack Trace: %v", string(debug.Stack()))
 				SendError(w, err.Error(), http.StatusInternalServerError)
 			} else if err, ok := rec.(string); ok {
 				log.Errorf("Panic string %v: %v", r.URL.Path, err)

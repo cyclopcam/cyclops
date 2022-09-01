@@ -8,12 +8,6 @@ let props = defineProps<{
 }>()
 defineEmits(['click']);
 
-function cls() {
-	return {
-		svgButton: true,
-	}
-}
-
 function iconStyle(): any {
 	let filter = '';
 	if (props.invert) {
@@ -33,7 +27,7 @@ function iconStyle(): any {
 </script>
 
 <template>
-	<button :class="cls()" @click="$emit('click')">
+	<button class="svgButton" @click="$emit('click')">
 		<img :src="icon" class="icon" :style="iconStyle()" />
 	</button>
 </template>
@@ -53,6 +47,11 @@ function iconStyle(): any {
 	background: none;
 	border: none;
 	padding: 3px 5px 5px 3px; // use adjusted padding to simulate button raise
+}
+
+.svgButton:active {
+	box-shadow: none;
+	padding: 4px;
 }
 
 .icon {

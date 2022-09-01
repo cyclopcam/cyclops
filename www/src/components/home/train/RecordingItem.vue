@@ -4,7 +4,7 @@ import { onMounted, ref } from 'vue';
 import Play from '@/icons/play-circle.svg';
 import Burger from '@/icons/more-vertical.svg';
 import SvgButton from '../../core/SvgButton.vue';
-import { dateTime, fetchOrErr, randomString } from '@/util/util';
+import { dateTimeShort, fetchOrErr, randomString } from '@/util/util';
 import Menue from '../../core/Menue.vue';
 import { globals } from '@/globals';
 import SelectButton from '../../core/SelectButton.vue';
@@ -15,8 +15,9 @@ let props = defineProps<{
 	selection?: Set<number>,
 	playAtStartup?: boolean,
 }>()
-let emits = defineEmits(['click', 'playInline', 'delete']);
+let emits = defineEmits(['click', 'playInline', 'delete', 'openLabeler']);
 
+let enableBurgerMenu = ref(false);
 let showBurgerMenu = ref(false);
 let myCookie = ref(randomString(8));
 
@@ -28,6 +29,10 @@ let burgerItems = [
 
 function showPlayer(): boolean {
 	return myCookie.value === props.playerCookie;
+}
+
+function labelTxt(): string {
+	return 'unlabeled';
 }
 
 function showInlinePlayer() {
@@ -47,7 +52,7 @@ async function onBurgerSelect(item: typeof burgerItems[0]) {
 }
 
 function startDate(): string {
-	return dateTime(props.recording!.startTime);
+	return dateTimeShort(props.recording!.startTime);
 }
 
 function onSelect(v: boolean) {
@@ -74,18 +79,23 @@ onMounted(() => {
 	<div class="recording" @click="$emit('click')">
 		<div class="imgContainer">
 			<img v-if="!showPlayer()" :src="'/api/record/thumbnail/' + recording.id" class="shadow5L" loading="lazy" />
-			<svg-button v-if="!showPlayer()" :icon="Play" icon-size="38px" class="playBtn" :invert="true" :shadow="true"
-				@click="showInlinePlayer" />
 			<video v-if="showPlayer()" :src="'/api/record/video/LD/' + recording.id" class="inlineVideo" autoplay
 				controls />
-			<svg-button :icon="Burger" icon-size="36px" class="burgerBtn" :invert="true" :shadow="true"
-				@click="showBurgerMenu = true" />
-			<menue v-if="showBurgerMenu" :items="burgerItems" @close="showBurgerMenu = false"
-				@select="onBurgerSelect" />
+			<div v-if="!showPlayer()" class="overlayButtonContainer">
+				<svg-button v-if="!showPlayer()" :icon="Play" icon-size="38px" class="playBtn" :invert="true"
+					:shadow="true" @click="showInlinePlayer" />
+				<svg-button v-if="enableBurgerMenu" :icon="Burger" icon-size="36px" class="burgerBtn" :invert="true"
+					:shadow="true" @click="showBurgerMenu = true" />
+				<menue v-if="showBurgerMenu" :items="burgerItems" @close="showBurgerMenu = false"
+					@select="onBurgerSelect" />
+			</div>
 		</div>
-		<div class="bottomRow">
-			<div>
+		<div class="bottomSection">
+			<div style="font-size:12px">
 				{{ startDate() }}
+			</div>
+			<div class="labelTxt shadow5LHover" @click="$emit('openLabeler')">
+				{{ labelTxt() }}
 			</div>
 			<select-button v-if="selection" :model-value="selection.has(recording.id)" @update:model-value="onSelect" />
 		</div>
@@ -118,12 +128,24 @@ onMounted(() => {
 	position: relative;
 }
 
-.bottomRow {
+.bottomSection {
 	margin: 10px 0 0 0;
 	font-size: 14px;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
+}
+
+.labelTxt {
+	font-size: 12px;
+	border: solid 1px #ddd;
+	padding: 3px 5px;
+	border-radius: 3px;
+	background-color: rgba(200, 200, 200, 0.2);
+	max-width: 80px;
+	overflow-x: hidden;
+	text-overflow: ellipsis;
+	cursor: pointer;
 }
 
 img {
@@ -132,10 +154,19 @@ img {
 	border-radius: 3px;
 }
 
-.playBtn {
+.overlayButtonContainer {
 	position: absolute;
-	left: 0px;
-	top: 0px;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	@include flexCenter();
+}
+
+.playBtn {
+	//position: absolute;
+	//left: 0px;
+	//top: 0px;
 	//padding: 4px;
 }
 

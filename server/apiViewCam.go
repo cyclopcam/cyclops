@@ -102,7 +102,7 @@ func (s *Server) httpCamGetRecentVideo(w http.ResponseWriter, r *http.Request, p
 	www.CacheNever(w)
 
 	contentType := "video/mp4"
-	fn := s.TempFiles.Get()
+	fn := s.TempFiles.GetOnceOff()
 	raw, err := cam.ExtractHighRes(camera.ExtractMethodClone, duration)
 	www.Check(err)
 	www.Check(raw.SaveToMP4(fn))
