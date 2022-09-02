@@ -7,6 +7,8 @@ import Buttin from "../../core/Buttin.vue";
 import Trash from '@/icons/trash-2.svg';
 import Labeler from './Labeler.vue';
 import LabelerDialog from './LabelerDialog.vue';
+import path from "path";
+import router from "@/router/routes";
 
 let emits = defineEmits(['recordNew']);
 
@@ -41,6 +43,7 @@ function onDelete(rec: Recording) {
 
 function onOpenLabeler(rec: Recording) {
 	labelRecording.value = rec;
+	//router.push({ name: 'rtTrainLabelRecording', params: { recordingID: rec.id } });
 }
 
 onMounted(() => {

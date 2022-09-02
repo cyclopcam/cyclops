@@ -32,6 +32,14 @@ After that, I experimented with simply re-encoding the video using ffmpeg, but u
 the maximum keyframe interval. What seems to produce reasonable results is "-g 5 -crf 25". In my test video, this
 makes it about twice it's original size.
 
+Note that if WebCodecs became widely available (notably on common Android WebView releases, and Safari), then
+we'd be able to use that to decode all frames of a short clip into RAM, and seek trivially wherever we like.
+But until such time, we need to generate a keyframe-heavy clip.
+
+Ony my Xiaomi Note 9 Pro, I get annoying jitter when seeking backwards, even with a "-g 3" video. However, on
+a Xiaomi Note 10 Pro, that behaviour is already gone, so there's hope that eventually the mobile browsers will
+match the desktop browsers smooth random seeking, and we don't need to do anything else.
+
 # Architecture
 
 (These are a bench of self notes - reminders of topics to cover in comprehensive docs)

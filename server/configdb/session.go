@@ -25,13 +25,20 @@ func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time) {
+	// As of Chrome 104, make cookie duration is 400 days.
+	// https://stackoverflow.com/questions/16626875/google-chrome-maximum-cookie-expiry-date
+	// For a mobile app, we'll need some workaround to this, because you can't just have
+	// your security system ask you for a password at some random time.
+	maxExpireDate := time.Now().AddDate(0, 0, 399)
+
+	if expiresAt.IsZero() || expiresAt.After(maxExpireDate) {
+		expiresAt = maxExpireDate
+	}
 	key := StrongRandomAlphaNumChars(30)
 	session := Session{
-		Key:    HashSessionCookie(key),
-		UserID: userID,
-	}
-	if !expiresAt.IsZero() {
-		session.ExpiresAt = dbh.MakeIntTime(expiresAt)
+		Key:       HashSessionCookie(key),
+		UserID:    userID,
+		ExpiresAt: dbh.MakeIntTime(expiresAt),
 	}
 	if err := c.DB.Create(&session).Error; err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -40,12 +47,10 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 	c.Log.Infof("Logging %v in", userID)
 	//c.Log.Infof("Logging %v in. key: %v. hashed key hex: %v", userID, key, hex.EncodeToString(HashSessionCookie(key))) // only for debugging
 	cookie := &http.Cookie{
-		Name:  SessionCookie,
-		Value: key,
-		Path:  "/",
-	}
-	if !expiresAt.IsZero() {
-		cookie.Expires = expiresAt
+		Name:    SessionCookie,
+		Value:   key,
+		Path:    "/",
+		Expires: expiresAt,
 	}
 	http.SetCookie(w, cookie)
 	c.PurgeExpiredSessions()

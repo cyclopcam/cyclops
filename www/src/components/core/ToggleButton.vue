@@ -6,7 +6,7 @@ let props = defineProps<{
 	icon: string,
 	title: string,
 	route: string, // Name of high-level route, such as rtTrain
-	routeTarget?: string, // Name of deep route, such as rtTrainManageRecordings. If not specified, same as route
+	routeTarget?: string, // Name of deep route, such as rtTrainEditRecordings. If not specified, same as route
 }>()
 
 let isSelected = computed(() => {

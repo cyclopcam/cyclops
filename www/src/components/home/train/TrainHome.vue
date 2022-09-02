@@ -37,9 +37,9 @@ onMounted(async () => {
 		</div>
 		<panel>
 			<panel-button :icon="RedDot" route-target="rtTrainRecord">New Recording</panel-button>
-			<panel-button :icon="Film" route-target="rtTrainManageRecordings">Edit Recordings <span
+			<panel-button :icon="Film" route-target="rtTrainEditRecordings">Edit Recordings <span
 					v-if="haveRecordingCount">({{
-					 recordingCount 
+							recordingCount
 					}})</span>
 			</panel-button>
 		</panel>

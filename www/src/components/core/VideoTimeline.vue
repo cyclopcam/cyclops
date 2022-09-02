@@ -11,8 +11,6 @@ import { onMounted, ref } from 'vue';
 let props = defineProps<{
 	duration: number,
 	seekPosition: number,
-	cropStart: number,
-	cropEnd: number,
 }>()
 let emits = defineEmits(['seek']);
 
@@ -106,8 +104,6 @@ onMounted(() => {
 
 <template>
 	<div class="timelineRoot">
-		<div class="cropContainer">
-		</div>
 		<div ref="seekContainer" class="seekContainer" @pointerdown="onSeekDownFar">
 			<div class="line" />
 			<div ref="seekGrabber" class="grabber" :style="grabberStyle()" @pointerdown="onSeekDown"
@@ -127,35 +123,30 @@ onMounted(() => {
 	user-select: none;
 }
 
-.cropContainer {
-	width: 100%;
-	height: 40px;
-}
-
 $grabberSmallRadius: 3px;
 
 .seekContainer {
 	width: 100%;
-	height: 40px;
-	background-color: rgb(227, 227, 227);
+	height: 30px;
+	background-color: #e3e3e3;
 	position: relative;
 	display: flex;
 	align-items: center;
 	touch-action: none; // vital to prevent scrolling on mobile
-	border-radius: 7px;
+	border-radius: 5px;
 	box-shadow: inset 1px 1px 5px rgba(0, 0, 0, 0.1);
 }
 
 .line {
 	width: 100%;
 	height: 1px;
-	background-color: rgb(172, 172, 172);
+	background-color: #dddddd;
 	position: absolute;
 }
 
 .grabber {
 	height: 100%;
-	width: 30px;
+	width: 20px;
 	position: absolute;
 	cursor: pointer;
 	top: 0px;
@@ -166,7 +157,7 @@ $grabberSmallRadius: 3px;
 
 .grabberIcon {
 	width: $grabberSmallRadius * 2;
-	height: 30px;
+	height: 20px;
 	background-color: hsl(224, 90%, 45%);
 	border-radius: 5px;
 	border: solid 1px hsl(0, 0%, 100%);
