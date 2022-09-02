@@ -5,10 +5,7 @@ import { onMounted, reactive, ref } from "vue";
 import RecordingItem from "./RecordingItem.vue";
 import Buttin from "../../core/Buttin.vue";
 import Trash from '@/icons/trash-2.svg';
-import Labeler from './Labeler.vue';
 import LabelerDialog from './LabelerDialog.vue';
-import path from "path";
-import router from "@/router/routes";
 
 let emits = defineEmits(['recordNew']);
 
