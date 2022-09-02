@@ -45,7 +45,6 @@ function onCropEnd(v: number) {
 	onSeek(v);
 }
 
-
 function onLoadVideoData() {
 	console.log("onLoadVideoData", videoElement().duration);
 }
@@ -79,16 +78,15 @@ onMounted(async () => {
 
 <template>
 	<div class="labelerRoot" @contextmenu="onContextMenu">
-		<video v-if="recording.id !== 0" ref="video" :src="videoURL()" class="video"
+		<video v-if="recording.id !== 0" ref="video" :src="videoURL()" class="video" style="position: relative"
 			@loadedmetadata="onLoadVideoMetadata" @loadeddata="onLoadVideoData" />
+		<video-timeline class="timeline" :transparent="true" :duration="duration" :seek-position="seekPosition"
+			@seek="onSeek" />
 		<div style="height:20px" />
 		<div class="instruction">Crop the video to the precise moments when this is happening</div>
 		<cropper class="cropper" :duration="duration" :start="cropStart" :end="cropEnd" @seek-start="onCropStart"
 			@seek-end="onCropEnd" />
 		<div style="height:15px" />
-		<!--
-		<video-timeline class="timeline" :duration="duration" :seek-position="seekPosition" @seek="onSeek" />
-		-->
 	</div>
 </template>
 
@@ -99,6 +97,7 @@ onMounted(async () => {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
+	position: relative;
 
 	box-sizing: border-box;
 	background-color: #fff;
@@ -127,11 +126,13 @@ $videoHeight: 250px;
 	width: $videoWidth;
 }
 
+$timelineWidth: calc($videoWidth - 20px);
+
 .cropper {
-	width: $videoWidth;
+	width: $timelineWidth;
 }
 
 .timeline {
-	width: $videoWidth;
+	width: $timelineWidth;
 }
 </style>

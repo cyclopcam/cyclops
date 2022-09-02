@@ -4,24 +4,28 @@
 // 1. Seek
 // 2. Set start and end times of an event (to discard a chunk of frames from the start and end of the video))
 
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 
 // all units are seconds
 
 let props = defineProps<{
 	duration: number,
 	seekPosition: number,
+	transparent?: boolean, // If true, then we assume we are preceded by a <video> element, and place ourselve accordingly
 }>()
 let emits = defineEmits(['seek']);
 
 let seekContainer = ref(null);
 let seekDot = ref(null);
 let seekGrabber = ref(null);
+let mountedAt = ref(0);
 let isMounted = ref(false);
+let isDestroyed = ref(false);
 let isSeeking = ref(false);
 let seekDownPosition = ref(0);
 let seekDownScreenX = ref(0);
 let seekSecondsPerPixel = ref(0);
+let myTop = ref(0);
 
 //let canvas: HTMLCanvasElement | null = null;
 
@@ -93,23 +97,57 @@ function onSeekMove(ev: PointerEvent) {
 	}
 }
 
+// Place ourselves on top of the <video> element that precedes us.
+// Assumes our parent is position:relative, and we are position:absolute
+function adjustPosition() {
+	if (isDestroyed.value) {
+		return;
+	}
+	let sinceInceptionMS = new Date().getTime() - mountedAt.value;
+	let tickIntervalMS = sinceInceptionMS < 1000 ? 30 : 200;
+	setTimeout(adjustPosition, tickIntervalMS);
+
+	if (!props.transparent) {
+		return;
+	}
+	let self = seekContainer.value! as HTMLElement;
+	if (!self) {
+		return;
+	}
+	let parent = self.parentElement;
+	let previous = self.previousElementSibling;
+	if (parent && previous) {
+		let parentR = parent.getBoundingClientRect();
+		let previousR = previous.getBoundingClientRect();
+		myTop.value = previousR.bottom - parentR.top - 30;
+	}
+}
+
+function style(): any {
+	return {
+		"top": myTop.value !== 0 ? myTop.value + "px" : undefined,
+	}
+}
+
 onMounted(() => {
+	mountedAt.value = new Date().getTime();
 	isMounted.value = true;
-	//canvas = document.createElement("canvas");
-	//canvas.width = 320;
-	//canvas.height = 240;
+	adjustPosition();
+})
+
+onUnmounted(() => {
+	isDestroyed.value = true;
 })
 
 </script>
 
 <template>
-	<div class="timelineRoot">
-		<div ref="seekContainer" class="seekContainer" @pointerdown="onSeekDownFar">
-			<div class="line" />
-			<div ref="seekGrabber" class="grabber" :style="grabberStyle()" @pointerdown="onSeekDown"
-				@pointerup="onSeekUp" @pointermove="onSeekMove">
-				<div ref="seekDot" class="grabberIcon"></div>
-			</div>
+	<div ref="seekContainer" :class="{ seekContainer: true, opaque: !transparent, transparent: transparent }"
+		:style="style()" @pointerdown="onSeekDownFar">
+		<div class="line" />
+		<div ref="seekGrabber" class="grabber" :style="grabberStyle()" @pointerdown="onSeekDown" @pointerup="onSeekUp"
+			@pointermove="onSeekMove">
+			<div ref="seekDot" class="grabberIcon"></div>
 		</div>
 	</div>
 </template>
@@ -117,34 +155,43 @@ onMounted(() => {
 <style lang="scss" scoped>
 @import '@/assets/vars.scss';
 
-.timelineRoot {
-	display: flex;
-	flex-direction: column;
-	user-select: none;
-}
-
-$grabberSmallRadius: 3px;
+$grabberSmallRadius: 6px;
 
 .seekContainer {
+	touch-action: none; // vital to prevent scrolling on mobile
+	user-select: none;
+
 	width: 100%;
 	height: 30px;
-	background-color: #e3e3e3;
 	position: relative;
 	display: flex;
 	align-items: center;
-	touch-action: none; // vital to prevent scrolling on mobile
+}
+
+.opaque {
 	border-radius: 5px;
+	background-color: #e3e3e3;
 	box-shadow: inset 1px 1px 5px rgba(0, 0, 0, 0.1);
 }
 
+.transparent {
+	position: absolute;
+}
+
 .line {
+	touch-action: none; // vital to prevent scrolling on mobile
+	user-select: none;
+
 	width: 100%;
 	height: 1px;
-	background-color: #dddddd;
+	background-color: rgba(255, 255, 255, 0.2);
 	position: absolute;
 }
 
 .grabber {
+	touch-action: none; // vital to prevent scrolling on mobile
+	user-select: none;
+
 	height: 100%;
 	width: 20px;
 	position: absolute;
@@ -152,15 +199,17 @@ $grabberSmallRadius: 3px;
 	top: 0px;
 	//background-color: rgba(127, 255, 0, 0.5);
 	@include flexCenter();
-	touch-action: none; // vital to prevent scrolling on mobile
 }
 
 .grabberIcon {
+	touch-action: none; // vital to prevent scrolling on mobile
+	user-select: none;
+
 	width: $grabberSmallRadius * 2;
-	height: 20px;
-	background-color: hsl(224, 90%, 45%);
-	border-radius: 5px;
-	border: solid 1px hsl(0, 0%, 100%);
+	height: $grabberSmallRadius * 2;
+	background-color: rgb(255, 255, 255, 1);
+	border-radius: 15px;
+	border: solid 1px rgb(0, 0, 0, 0.7);
 	box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
 }
 </style>
