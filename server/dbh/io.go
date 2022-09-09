@@ -19,7 +19,9 @@ func StringToIDList(s string) []int64 {
 	return r
 }
 
-func IDListToString(ids []int64) string {
+// I once mistakenly used this function instead of IDListToSQLSet, so that's why I'm making it private to this package.
+// At the time of making that change, this function was never used outside of this package.
+func idListToString(ids []int64) string {
 	if len(ids) == 0 {
 		return ""
 	}
@@ -31,14 +33,19 @@ func IDListToString(ids []int64) string {
 	return s[:len(s)-1]
 }
 
+// Returns a set of IDs with parens, e.g. "(1,2,3)"
+// Note that the SQL drivers don't accept an SQL set as a positional argument (eg $1 or ?),
+// so you need to bake it into your query string.
+// See https://stackoverflow.com/questions/4788724/sqlite-bind-list-of-values-to-where-col-in-prm for an
+// explanation of why it's not possible with SQLite, but presumably similar principles apply to other SQL interfaces.
 func IDListToSQLSet(ids []int64) string {
 	// One might be tempted to return "(NULL)" here, for an empty set, but that seems
 	// dangerous to me, in case the user unexpectedly has NULL entries in the database,
 	// so we rather take the cautious route and allow an SQL error to occur.
 	// It's the callers responsibility to ensure that 'ids' is not empty
-	return "(" + IDListToString(ids) + ")"
+	return "(" + idListToString(ids) + ")"
 }
 
 func SanitizeIDList(s string) string {
-	return IDListToString(StringToIDList(s))
+	return idListToString(StringToIDList(s))
 }

@@ -240,6 +240,47 @@ func (e *EventDB) IsOntologyUsed(id int64) (error, bool) {
 	return nil, n != 0
 }
 
+// Find an existing ontology that matches the given spec, or create a new one if necessary
+func (e *EventDB) CreateOntology(spec OntologyDefinition) (error, int64) {
+	err, existing := e.GetOntologies()
+	if err != nil {
+		return err, 0
+	}
+	// Look for existing
+	specHash := spec.Hash()
+	for i := range existing {
+		if string(existing[i].Definition.Data.Hash()) == string(specHash) {
+			return nil, existing[i].ID
+		}
+	}
+	// Create new
+	now := time.Now()
+	ontology := &Ontology{
+		CreatedAt:  dbh.MakeIntTime(now),
+		ModifiedAt: dbh.MakeIntTime(now),
+		Definition: dbh.MakeJSONField(spec),
+	}
+	if err := e.db.Create(ontology).Error; err != nil {
+		return err, 0
+	}
+	return nil, ontology.ID
+}
+
+// Delete unused ontologies.
+// The optional array 'keep' will prevent ontologies with those IDs from being deleted.
+func (e *EventDB) PruneUnusedOntologies(keep []int64) error {
+	db, err := e.db.DB()
+	if err != nil {
+		return err
+	}
+	if len(keep) == 0 {
+		_, err = db.Exec("DELETE FROM ontology WHERE id NOT IN (SELECT distinct(ontology_id) FROM recording WHERE ontology_id IS NOT NULL)")
+	} else {
+		_, err = db.Exec("DELETE FROM ontology WHERE id NOT IN (SELECT distinct(ontology_id) FROM recording WHERE ontology_id IS NOT NULL) AND id NOT IN " + dbh.IDListToSQLSet(keep))
+	}
+	return err
+}
+
 // Return the complete path to the specified video or image file
 func (e *EventDB) FullPath(videoOrImagePath string) string {
 	return filepath.Join(e.Root, videoOrImagePath)

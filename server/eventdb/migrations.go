@@ -48,5 +48,11 @@ func Migrations(log log.Log) []migration.Migrator {
 		CREATE INDEX idx_recording_start_time ON recording(start_time);
 	`))
 
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		ALTER TABLE ontology ADD COLUMN modified_at INT NOT NULL;
+		CREATE INDEX idx_ontology_modified_at ON ontology(modified_at);
+	`))
+
 	return migs
 }

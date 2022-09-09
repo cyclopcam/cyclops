@@ -156,9 +156,15 @@ func (s *Server) httpRecordStop(w http.ResponseWriter, r *http.Request, params h
 }
 
 func (s *Server) httpRecordGetRecordings(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	err, recordings := s.permanentEvents.GetRecordings()
-	www.Check(err)
-	www.SendJSON(w, recordings)
+	if id := www.QueryInt64(r, "id"); id != 0 {
+		err, recording := s.permanentEvents.GetRecording(id)
+		www.Check(err)
+		www.SendJSON(w, []*eventdb.Recording{recording})
+	} else {
+		err, recordings := s.permanentEvents.GetRecordings()
+		www.Check(err)
+		www.SendJSON(w, recordings)
+	}
 }
 
 func (s *Server) httpRecordCount(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
@@ -177,6 +183,20 @@ func (s *Server) httpRecordGetOntologies(w http.ResponseWriter, r *http.Request,
 	err, ontologies := s.permanentEvents.GetOntologies()
 	www.Check(err)
 	www.SendJSON(w, ontologies)
+}
+
+func (s *Server) httpRecordSetOntology(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	spec := eventdb.OntologyDefinition{}
+	www.ReadJSON(w, r, &spec, 1024*1024)
+	// CreateOntology will create a new ontology, because we can't alter ontologies that are
+	// already referenced by recordings.
+	// One thing we might want to do is to modify an ontology in-place, if the following conditions are met:
+	// 1. The most recent ontology in the DB is a subset of the new ontology
+	err, id := s.permanentEvents.CreateOntology(spec)
+	www.Check(err)
+	// Prune unused ontologies, so that we don't end up with unnecessary records
+	www.Check(s.permanentEvents.PruneUnusedOntologies([]int64{id}))
+	www.SendOK(w)
 }
 
 func (s *Server) httpRecordGetThumbnail(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {

@@ -1,10 +1,14 @@
 package eventdb
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/bmharper/cyclops/server/dbh"
 	"github.com/bmharper/cyclops/server/defs"
+	"github.com/bmharper/cyclops/server/gen"
 )
 
 // BaseModel is our base class for a GORM model.
@@ -162,10 +166,41 @@ type Labels struct {
 type Ontology struct {
 	BaseModel
 	CreatedAt  dbh.IntTime                        `json:"createdAt"`
+	ModifiedAt dbh.IntTime                        `json:"modifiedAt"`
 	Definition *dbh.JSONField[OntologyDefinition] `json:"definition,omitempty"`
 }
 
-// Ontology spec
+// Ontology spec, which is saved as a JSON field in the DB
 type OntologyDefinition struct {
-	VideoTags []string `json:"videoTags"` // tags associated with the entire recording (eg ["person", "dog", "car"])
+	Tags []OntologyTag `json:"tags"`
+}
+
+type OntologyLevel string
+
+const (
+	// SYNC-ONTOLOGY-LEVEL
+	OntologyLevelAlarm  OntologyLevel = "alarm"  // If the system is armed, trigger an alarm
+	OntologyLevelRecord OntologyLevel = "record" // Record this incident, whether armed or not
+	OntologyLevelIgnore OntologyLevel = "ignore" // Do not record
+)
+
+// Ontology tag, which can be associated with a video clip
+type OntologyTag struct {
+	Name  string        `json:"name"` // eg "intruder", "dog", "car"
+	Level OntologyLevel `json:"level"`
+}
+
+// Compute a hash that can be used to check for equality with another ontology
+func (o *OntologyDefinition) Hash() []byte {
+	tags := gen.CopySlice(o.Tags)
+	sort.Slice(tags, func(i, j int) bool {
+		return tags[i].Name < tags[j].Name
+	})
+	hs := strings.Builder{}
+	for i := range tags {
+		hs.WriteString(tags[i].Name)
+		hs.WriteString(string(tags[i].Level))
+	}
+	hash := sha256.Sum256([]byte(hs.String()))
+	return hash[:]
 }

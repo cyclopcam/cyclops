@@ -2,9 +2,10 @@
 
 let props = defineProps<{
 	icon: string, // svg drawn on the left of the text
-	iconSize?: string, // override default
+	size?: string, // override default
 	invert?: boolean,
 	shadow?: boolean,
+	disabled?: boolean,
 }>()
 defineEmits(['click']);
 
@@ -16,10 +17,13 @@ function iconStyle(): any {
 	if (props.shadow) {
 		filter += " drop-shadow(0px 0px 2px rgba(0,0,0,0.9)) ";
 	}
+	if (props.disabled) {
+		filter += " contrast(0.05) brightness(1.2) ";
+	}
 
 	return {
-		width: props.iconSize ?? "",
-		height: props.iconSize ?? "",
+		width: props.size ?? "",
+		height: props.size ?? "",
 		filter: filter,
 	}
 }

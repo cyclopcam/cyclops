@@ -38,6 +38,9 @@ let props = defineProps({
 	// It's useful to turn this on when your modal control's size might exceed the screen's resolution
 	scrollable: Boolean,
 
+	// Make the parent object fill the screen, so that you can use width:100% and height:100% on your control
+	fullscreen: Boolean,
+
 	// Make this not a modal! This is useful when you want all the other features of this control, *except* for the modal nature
 	// hmmm.. I can't get this to work. If we use pointer-events:none, then we never receive the mouse event that tells us to close ourselves.
 	//clickThrough: Boolean,
@@ -64,8 +67,10 @@ function fixedStyle(): any {
 		t = 'rgba(0,0,0,0.5)';
 	else if (t === 'dark')
 		t = 'rgba(0,0,0,0.3)';
-	else if (t === 'light')
+	else if (t === 'mild')
 		t = 'rgba(0,0,0,0.1)';
+	else if (t === 'light')
+		t = 'rgba(255,255,255,0.3)';
 
 	let s: any = {
 		'background-color': t,
@@ -87,8 +92,17 @@ function containerStyle(): any {
 	}
 	if (props.scrollable) {
 		s['overflow'] = 'auto';
-		s['max-width'] = '100vw';
-		s['max-height'] = '100vh';
+		s['max-width'] = '100%';
+		s['max-height'] = '100%';
+	}
+	if (props.fullscreen) {
+		s['width'] = '100%';
+		s['height'] = '100%';
+		if (props.position === 'center') {
+			s['display'] = "flex";
+			s['align-items'] = "center";
+			s['justify-content'] = "center";
+		}
 	}
 
 	let fixedEl = fixed.value! as HTMLDivElement;

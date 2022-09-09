@@ -33,6 +33,10 @@ body {
 	font-weight: bold;
 }
 
+.background {
+	@include background();
+}
+
 ////////////////////////////////////////////////////////////////////////////
 /// These are used to debug CSS boxes
 ////////////////////////////////////////////////////////////////////////////
@@ -219,6 +223,10 @@ $focalBrightness: 45%;
 .shadow15 {
 	@include shadow15;
 }
+.shadowHeavy {
+	@include shadowHeavy;
+}
+
 .shadow5L {
 	@include shadow5L;
 }
@@ -267,6 +275,21 @@ $focalBrightness: 45%;
 .shadow15LHover:hover {
 	@include shadowHoverTransition();
 	@include shadow15;
+}
+
+////////////////////////////////////////////////////////////////////////////
+/// Overlays
+////////////////////////////////////////////////////////////////////////////
+
+.available {
+	opacity: 1.0;
+	transition: opacity 0.5s;
+}
+
+.unavailable {
+	opacity: 0.15;
+	transition: opacity 0.5s;
+	pointer-events: none;
 }
 
 ////////////////////////////////////////////////////////////////////////////

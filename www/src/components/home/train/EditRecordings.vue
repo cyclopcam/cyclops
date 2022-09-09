@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { globals } from "@/globals";
-import { fetchRecordings, Recording } from "@/recording/recording";
-import { onMounted, reactive, ref } from "vue";
+import { Ontology, Recording } from "@/recording/recording";
+import { onMounted, reactive, ref, watch } from "vue";
 import RecordingItem from "./RecordingItem.vue";
 import Buttin from "../../core/Buttin.vue";
 import Trash from '@/icons/trash-2.svg';
 import LabelerDialog from './LabelerDialog.vue';
+import router from "@/router/routes";
+
+let props = defineProps<{
+	id?: string, // ID of video to edit (comes in via route)
+}>()
 
 let emits = defineEmits(['recordNew']);
 
@@ -13,10 +18,13 @@ let haveRecordings = ref(false);
 let recordings = ref([] as Recording[]);
 let playerCookie = ref(''); // ensures that only one RecordingItem is playing at a time
 let selection = reactive(new Set<number>()); // Every update will probably cause all RecordingItems to get re-rendered, so this might not scale well
-let labelRecording = ref(null as Recording | null);
+let labelRecording = ref(null as Recording | null); // Recording that we are busy labelling
+let latestOntology = ref(new Ontology());
+
+let ontologies: Ontology[] = [];
 
 async function getRecordings() {
-	let r = await fetchRecordings();
+	let r = await Recording.fetch();
 	if (!r.ok) {
 		globals.networkError = r.err;
 		return;
@@ -25,6 +33,33 @@ async function getRecordings() {
 	r.value.sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
 	recordings.value = r.value;
 	haveRecordings.value = true;
+}
+
+async function getRecording(id: number): Promise<Recording | null> {
+	let r = await Recording.fetch(ontologies, id);
+	if (!r.ok) {
+		globals.networkError = r.err;
+		return null;
+	}
+	globals.networkError = '';
+	if (r.value.length !== 1) {
+		return null;
+	}
+	return r.value[0];
+}
+
+async function getOntologies() {
+	let r = await Ontology.fetch();
+	if (!r.ok) {
+		globals.networkError = r.err;
+		return;
+	}
+	ontologies = r.value;
+	// We expect the server to ensure that there's always at least one ontology record
+	let latest = Ontology.latest(ontologies);
+	if (latest) {
+		latestOntology.value = latest;
+	}
 }
 
 function onPlayInline(cookie: string) {
@@ -39,12 +74,43 @@ function onDelete(rec: Recording) {
 }
 
 function onOpenLabeler(rec: Recording) {
-	labelRecording.value = rec;
-	//router.push({ name: 'rtTrainLabelRecording', params: { recordingID: rec.id } });
+	router.push({ name: 'rtTrainLabelRecording', params: { id: rec.id } });
 }
 
-onMounted(() => {
-	getRecordings();
+async function onLabelIDChanged(id: number) {
+	if (id) {
+		let rec = await getRecording(id);
+		if (rec) {
+			labelRecording.value = rec;
+		} else {
+			// just navigate to manage page, to avoid useless paths in our history
+			router.push({ name: 'rtTrainEditRecordings' });
+		}
+	} else {
+		console.log("labelRecording.value = null");
+		labelRecording.value = null;
+	}
+}
+
+watch(() => props.id, (newVal) => {
+	console.log("watch changed", newVal);
+	let id = parseInt(newVal ?? '');
+	onLabelIDChanged(id);
+	if (!haveRecordings.value) {
+		// this path is when you navigate to an invalid item, eg http://mars:3000/train/edit/999999
+		globals.networkError = '';
+		getRecordings();
+	}
+})
+
+onMounted(async () => {
+	await getOntologies();
+
+	if (props.id) {
+		await onLabelIDChanged(parseInt(props.id));
+	} else {
+		await getRecordings();
+	}
 })
 
 </script>
@@ -65,7 +131,8 @@ onMounted(() => {
 				@open-labeler="onOpenLabeler(rec)" />
 		</div>
 
-		<labeler-dialog v-if="labelRecording" :initial-recording="labelRecording" @close="labelRecording = null" />
+		<labeler-dialog v-if="labelRecording" :initial-recording="labelRecording" :latest-ontology="latestOntology"
+			@close="labelRecording = null" />
 	</div>
 </template>
 

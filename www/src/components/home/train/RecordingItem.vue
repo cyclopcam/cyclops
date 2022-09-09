@@ -82,9 +82,9 @@ onMounted(() => {
 			<video v-if="showPlayer()" :src="'/api/record/video/LD/' + recording.id" class="inlineVideo" autoplay
 				controls />
 			<div v-if="!showPlayer()" class="overlayButtonContainer">
-				<svg-button v-if="!showPlayer()" :icon="Play" icon-size="38px" class="playBtn" :invert="true"
-					:shadow="true" @click="showInlinePlayer" />
-				<svg-button v-if="enableBurgerMenu" :icon="Burger" icon-size="36px" class="burgerBtn" :invert="true"
+				<svg-button v-if="!showPlayer()" :icon="Play" size="38px" class="playBtn" :invert="true" :shadow="true"
+					@click="showInlinePlayer" />
+				<svg-button v-if="enableBurgerMenu" :icon="Burger" size="36px" class="burgerBtn" :invert="true"
 					:shadow="true" @click="showBurgerMenu = true" />
 				<menue v-if="showBurgerMenu" :items="burgerItems" @close="showBurgerMenu = false"
 					@select="onBurgerSelect" />
@@ -137,6 +137,7 @@ onMounted(() => {
 }
 
 .labelTxt {
+	user-select: none;
 	font-size: 12px;
 	border: solid 1px #ddd;
 	padding: 3px 5px;

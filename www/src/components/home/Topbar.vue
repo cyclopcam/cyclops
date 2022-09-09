@@ -45,7 +45,7 @@ onMounted(() => {
 	<div class="topbarOuter">
 		<div class="topbarInner">
 			<div class="flex" style="width: 60px">
-				<svg-button v-if="showBack()" :icon="back" icon-size="28px" style="margin-left:10px" @click="onBack" />
+				<svg-button v-if="showBack()" :icon="back" size="28px" style="margin-left:10px" @click="onBack" />
 			</div>
 			<div class="centerGroup">
 				<toggle-button :icon="settings" title="Settings" route="rtSettings" route-target="rtSettingsTop" />
