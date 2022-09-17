@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bmharper/cyclops/pkg/gen"
+	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/eventdb"
-	"github.com/bmharper/cyclops/server/gen"
-	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/util"
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"

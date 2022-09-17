@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bmharper/cyclops/server/dbh"
-	"github.com/bmharper/cyclops/server/www"
+	"github.com/bmharper/cyclops/pkg/dbh"
+	"github.com/bmharper/cyclops/pkg/www"
 )
 
 const SessionCookie = "session"

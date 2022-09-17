@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bmharper/cyclops/server/log"
+	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/julienschmidt/httprouter"
 )
 

@@ -3,7 +3,7 @@ package configdb
 import (
 	"strings"
 
-	"github.com/bmharper/cyclops/server/dbh"
+	"github.com/bmharper/cyclops/pkg/dbh"
 )
 
 // BaseModel is our base class for a GORM model.

@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bmharper/cyclops/pkg/staticfiles"
+	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/server/configdb"
-	"github.com/bmharper/cyclops/server/staticfiles"
-	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
 )
 

@@ -14,8 +14,8 @@ import (
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
-	"github.com/bmharper/cyclops/server/gen"
-	"github.com/bmharper/cyclops/server/log"
+	"github.com/bmharper/cyclops/pkg/gen"
+	"github.com/bmharper/cyclops/pkg/log"
 )
 
 // This is the prefix that we add whenever we need to encode into AnnexB

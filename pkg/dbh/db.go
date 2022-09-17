@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/migration"
-	"github.com/bmharper/cyclops/server/log"
+	"github.com/bmharper/cyclops/pkg/log"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 	"gorm.io/driver/postgres"

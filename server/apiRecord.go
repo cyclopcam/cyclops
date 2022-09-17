@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bmharper/cyclops/pkg/log"
+	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/defs"
 	"github.com/bmharper/cyclops/server/eventdb"
-	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/videox"
-	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
 )
 

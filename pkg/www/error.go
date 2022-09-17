@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/bmharper/cyclops/server/log"
+	"github.com/bmharper/cyclops/pkg/log"
 )
 
 // HTTPError is an object that can be panic'ed, and the outer HTTP handler function.

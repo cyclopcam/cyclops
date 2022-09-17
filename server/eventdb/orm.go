@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bmharper/cyclops/server/dbh"
+	"github.com/bmharper/cyclops/pkg/dbh"
+	"github.com/bmharper/cyclops/pkg/gen"
 	"github.com/bmharper/cyclops/server/defs"
-	"github.com/bmharper/cyclops/server/gen"
 )
 
 // BaseModel is our base class for a GORM model.

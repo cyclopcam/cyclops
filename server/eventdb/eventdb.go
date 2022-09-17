@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/bmharper/cimg/v2"
-	"github.com/bmharper/cyclops/server/dbh"
+	"github.com/bmharper/cyclops/pkg/dbh"
+	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/bmharper/cyclops/server/defs"
-	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/videox"
 	"gorm.io/gorm"
 )

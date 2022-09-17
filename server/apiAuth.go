@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/server/configdb"
-	"github.com/bmharper/cyclops/server/www"
 	"github.com/julienschmidt/httprouter"
 )
 

@@ -1,8 +1,8 @@
 package server
 
 import (
+	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/bmharper/cyclops/server/eventdb"
-	"github.com/bmharper/cyclops/server/log"
 	"github.com/bmharper/cyclops/server/util"
 )
 

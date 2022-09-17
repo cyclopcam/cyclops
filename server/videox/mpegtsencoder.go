@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/bmharper/cyclops/server/gen"
-	"github.com/bmharper/cyclops/server/log"
+	"github.com/bmharper/cyclops/pkg/gen"
+	"github.com/bmharper/cyclops/pkg/log"
 
 	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/asticode/go-astits"

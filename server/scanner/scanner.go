@@ -9,9 +9,9 @@ import (
 	"sort"
 	"time"
 
+	"github.com/bmharper/cyclops/pkg/gen"
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
-	"github.com/bmharper/cyclops/server/gen"
 )
 
 /*
@@ -39,7 +39,9 @@ type ScanOptions struct {
 	Timeout time.Duration // Timeout on connecting to each host
 }
 
-/* ScanForLocalCameras scans the local IPv4 network for cameras
+/*
+	ScanForLocalCameras scans the local IPv4 network for cameras
+
 options is optional.
 */
 func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
