@@ -38,7 +38,9 @@ But until such time, we need to generate a keyframe-heavy clip.
 
 Ony my Xiaomi Note 9 Pro, I get annoying jitter when seeking backwards, even with a "-g 3" video. However, on
 a Xiaomi Note 10 Pro, that behaviour is already gone, so there's hope that eventually the mobile browsers will
-match the desktop browsers smooth random seeking, and we don't need to do anything else.
+match the desktop browsers smooth random seeking, and we don't need to do anything else. This may not be a Chrome
+logic thing, but a performance thing (e.g. is the phone's CPU capable of decoding fast enough to make the experience
+interactive).
 
 # Architecture
 
