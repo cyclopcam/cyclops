@@ -178,7 +178,7 @@ onMounted(async () => {
 
 			<div style="height:15px" />
 			<label
-				:class="{checkboxLabel: true, instruction: true, unavailable: step() < Steps.UseVideo, available: step() >= Steps.UseVideo, nextStep: step() === Steps.UseVideo}">
+				:class="{checkboxLabel: true, unavailable: step() < Steps.UseVideo, available: step() >= Steps.UseVideo, nextStep: step() === Steps.UseVideo}">
 				<input type="checkbox" v-model="useVideo" />Use this video to train my system
 			</label>
 
@@ -234,7 +234,7 @@ $videoHeight: 250px;
 }
 
 .instruction {
-	font-weight: bold;
+	//font-weight: 500;
 
 	font-size: 16px;
 	margin-bottom: 12px;
@@ -244,15 +244,13 @@ $videoHeight: 250px;
 		margin-bottom: 14px;
 	}
 
-	//width: $videoWidth;
 	color: #000;
-	//font-size: 14px;
 	transition: color 0.5s;
 }
 
 .nextStep {
 	color: #00a;
-	//font-size: 15px;
+	font-weight: 600;
 }
 
 .tagListContainer {

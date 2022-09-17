@@ -3,5 +3,6 @@
 /dump
 /enc
 /cyclops
+/wasm
 cyclops.json
 img.jpg
