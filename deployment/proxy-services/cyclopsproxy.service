@@ -1,0 +1,15 @@
+[Unit]
+Description=Cyclops proxy
+After=network.target network-online.target
+Requires=network-online.target
+ 
+[Service]
+User=cyclopsproxy
+Group=cyclopsproxy
+Environment="CYCLOPS_POSTGRES_PASSWORD=...."
+ExecStart=/deploy/proxy
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

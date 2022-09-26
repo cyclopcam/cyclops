@@ -29,12 +29,33 @@ You should now be able to hit the proxy, eg
 ## Server Setup
 
 1. Install Docker
-2. Copy 
+2. Run Postgres with Docker `docker run -d -v /deploy/proxydb:/var/lib/postgresql/data -p 127.0.0.1:5432:5432 -e POSTGRES_PASSWORD=....... postgres:14.5-alpine -c 'listen_addresses=*'`
+3. Install caddy. I use caddy instead of nginx, because nginx needs dedicated routes in order to forward websockets. [caddyserver.com/docs/install](https://caddyserver.com/docs/install#debian-ubuntu-raspbian)
+4. Grant caddy ability to listen on low ports: `sudo setcap cap_net_bind_service=+ep $(which caddy)`
+
+Create a "cyclopsproxy" user for the proxy service
+```
+sudo groupadd --system cyclopsproxy
+
+sudo useradd --system \
+    --gid cyclopsproxy \
+    --create-home \
+    --home-dir /var/lib/cyclopsproxy \
+    --shell /usr/sbin/nologin \
+    --comment "Cyclops proxy server" \
+    cyclopsproxy
+```
+
+```
+caddy reverse-proxy --from proxy-cpt.cyclopcam.org --to localhost:8082
+```
 
 ```
 go build -o bin/proxy cmd/proxy/proxy.go
 go build -o bin/kernelwg cmd/kernelwg/kernelwg.go
-scp bin/proxy ubuntu@13.246.23.60:~/
-scp bin/kernelwg ubuntu@13.246.23.60:~/
-ssh ubuntu@13.246.23.60 "sudo cp /home/ubuntu/proxy /deploy && sudo cp /home/ubuntu/kernelwg /deploy"
+scp bin/proxy ubuntu@proxy-cpt.cyclopcam.org:~/
+scp bin/kernelwg ubuntu@proxy-cpt.cyclopcam.org:~/
+ssh ubuntu@proxy-cpt.cyclopcam.org "sudo cp /home/ubuntu/proxy /deploy && sudo cp /home/ubuntu/kernelwg /deploy"
 ```
+
+Use deployment/proxy-services to create systemd services for caddy, cyclopskernelwg, and cyclopsproxy.

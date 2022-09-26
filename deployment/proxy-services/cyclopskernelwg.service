@@ -1,0 +1,10 @@
+[Unit]
+Description=Cyclops Wireguard interface
+After=network.target network-online.target
+Requires=network-online.target
+ 
+[Service]
+ExecStart=/deploy/kernelwg
+
+[Install]
+WantedBy=multi-user.target
