@@ -13,8 +13,8 @@ import (
 	"gorm.io/gorm"
 )
 
-const ProxyHttpPort = ":8082"  // In production we run on 443, but we use Docker there, and still run on 8082 inside Docker
-const ServerHttpPort = ":8080" // Servers always run on 8080, but we could make this configurable
+const ProxyHttpPort = "127.0.0.1:8082" // In production we run on 443, but we use Docker there, and still run on 8082 inside Docker
+const ServerHttpPort = ":8080"         // Servers always run on 8080, but we could make this configurable
 
 type Proxy struct {
 	log          log.Log
@@ -22,6 +22,7 @@ type Proxy struct {
 	wg           *wireGuard
 	httpServer   *http.Server
 	reverseProxy *httputil.ReverseProxy
+	kernelwgHost string
 
 	addPeerLock     sync.Mutex
 	lastPeerAddedAt time.Time
@@ -33,8 +34,9 @@ type Proxy struct {
 }
 
 type ProxyConfig struct {
-	Log log.Log
-	DB  dbh.DBConfig
+	Log          log.Log
+	DB           dbh.DBConfig
+	KernelWGHost string
 }
 
 func NewProxy() *Proxy {
@@ -46,6 +48,7 @@ func NewProxy() *Proxy {
 // Start the proxy server
 func (p *Proxy) Start(config ProxyConfig) error {
 	p.log = config.Log
+	p.kernelwgHost = config.KernelWGHost
 	//db, err := dbh.OpenDB(config.Log, config.DB, Migrations(config.Log), dbh.DBConnectFlagWipeDB)
 	db, err := dbh.OpenDB(config.Log, config.DB, Migrations(config.Log), 0)
 	if err != nil {
@@ -55,17 +58,17 @@ func (p *Proxy) Start(config ProxyConfig) error {
 
 	wg, err := newWireGuard(p)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error connecting to kernelwg: %w", err)
 	}
 	p.wg = wg
 	if err := p.wg.boot(); err != nil {
-		return err
+		return fmt.Errorf("Error booting kernelwg: %w", err)
 	}
 
 	//printDummyKeys()
 
 	if err := p.rebuildCache(); err != nil {
-		return err
+		return fmt.Errorf("Error rebuilding cache: %w", err)
 	}
 
 	p.reverseProxy = &httputil.ReverseProxy{}

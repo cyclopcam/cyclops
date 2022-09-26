@@ -17,11 +17,22 @@ func check(err error) {
 func main() {
 	logger, err := log.NewLog()
 	check(err)
+	logger = log.NewPrefixLogger(logger, "proxy")
 
-	pgPassword := os.Getenv("CYCLOPS_PGPASSWORD")
+	pgHost := os.Getenv("CYCLOPS_POSTGRES_HOST")
+	if pgHost == "" {
+		pgHost = "127.0.0.1"
+	}
+
+	pgPassword := os.Getenv("CYCLOPS_POSTGRES_PASSWORD")
 	if pgPassword == "" {
 		// dev time (for initial DB creation, this must match the POSTGRES_PASSWORD in scripts/proxy/docker-compose.yml)
 		pgPassword = "lol"
+	}
+
+	kernelwgHost := os.Getenv("CYCLOPS_KERNELWG_HOST")
+	if kernelwgHost == "" {
+		kernelwgHost = "127.0.0.1"
 	}
 
 	p := proxy.NewProxy()
@@ -30,11 +41,12 @@ func main() {
 		Log: logger,
 		DB: dbh.DBConfig{
 			Driver:   dbh.DriverPostgres,
-			Host:     "localhost",
+			Host:     pgHost,
 			Database: "proxy",
 			Username: "postgres",
 			Password: pgPassword,
 		},
+		KernelWGHost: kernelwgHost,
 	}
 
 	check(p.Start(cfg))

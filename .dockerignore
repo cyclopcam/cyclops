@@ -1,0 +1,12 @@
+scripts/proxy/tmp
+www/node_modules
+www/dist
+/enc
+/cyclops
+/debug
+/dump
+/raw
+/scripts
+/wasm
+Dockerfile
+/cmd/proxy/Dockerfile

@@ -196,6 +196,7 @@ func handleConnection(conn net.Conn, log log.Log) {
 		log.Errorf("Error creating wgctrl: %v", err)
 		return
 	}
+	defer wg.Close()
 
 	h := &handler{
 		conn: conn,
@@ -243,26 +244,59 @@ func handleConnection(conn net.Conn, log log.Log) {
 	}
 }
 
+func verifyPermissions(logger log.Log) error {
+	wg, err := wgctrl.New()
+	if err != nil {
+		return fmt.Errorf("Error creating wgctrl: %w", err)
+	}
+	defer wg.Close()
+
+	// Sanity check
+	//device, err := wg.Device("cyclops")
+	//if err != nil {
+	//	return fmt.Errorf("Error scanning Wireguard device: %v", err)
+	//}
+	//logger.Infof("Wireguard device public key: %v", device.PublicKey)
+
+	devices, err := wg.Devices()
+	if err != nil {
+		return fmt.Errorf("Error scanning Wireguard devices: %v", err)
+	}
+	for _, d := range devices {
+		logger.Infof("Wireguard device %v public key: %v", d.Name, d.PublicKey)
+	}
+
+	return nil
+}
+
 func main() {
 	logger, err := log.NewLog()
 	if err != nil {
 		panic(err)
 	}
 	logger = log.NewPrefixLogger(logger, "kernelwg")
-	//listenAddr := "127.0.0.1:666"
-	listenAddr := net.UnixAddr{
-		Net:  "unix",
-		Name: kernel.UnixSocketName,
+
+	if err := verifyPermissions(logger); err != nil {
+		logger.Criticalf("%v", err)
+		panic(err)
 	}
+	logger.Infof("Wireguard communication successful")
+
+	listenAddr := "127.0.0.1:666"
+	//listenAddr := net.UnixAddr{
+	//	Net:  "unix",
+	//	Name: kernel.UnixSocketName,
+	//}
 
 	logger.Infof("Listening on %v", listenAddr)
-	ln, err := net.ListenUnix("unix", &listenAddr)
+	//ln, err := net.ListenUnix("unix", &listenAddr)
+	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		logger.Errorf("Error listening: %v", err)
 		os.Exit(1)
 	}
 
-	ln.SetUnlinkOnClose(true)
+	//ln.SetUnlinkOnClose(true)
 
 	// Only connect to a single socket at a time
 	for {

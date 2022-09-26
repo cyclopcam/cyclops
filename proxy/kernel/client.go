@@ -18,10 +18,17 @@ type Client struct {
 	responseBuffer bytes.Buffer
 }
 
-func (c *Client) Connect() error {
-	conn, err := net.Dial("unix", UnixSocketName)
+func (c *Client) Connect(host string) error {
+	proto := "tcp"
+	addr := host + ":666"
+	conn, err := net.Dial(proto, addr)
+
+	//proto := "unix"
+	//addr := UnixSocketName
+	//conn, err := net.Dial(proto, addr)
+
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to dial %v %v: %w", proto, addr, err)
 	}
 	c.conn = conn
 	c.encoder = gob.NewEncoder(&c.requestBuffer)

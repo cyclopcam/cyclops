@@ -1,6 +1,6 @@
 # Install
 
-sudo apt install libavformat-dev libswscale-dev gcc pkg-config libturbojpeg0-dev
+sudo apt install libavformat-dev libswscale-dev gcc pkg-config libturbojpeg0-dev wireguard wireguard-tools
 
 ## dev env
 * Install Go

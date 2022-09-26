@@ -33,7 +33,7 @@ type wireGuard struct {
 
 func newWireGuard(proxy *Proxy) (*wireGuard, error) {
 	client := &kernel.Client{}
-	if err := client.Connect(); err != nil {
+	if err := client.Connect(proxy.kernelwgHost); err != nil {
 		return nil, err
 	}
 
@@ -67,7 +67,7 @@ func (w *wireGuard) boot() error {
 			return err
 		}
 	} else if err != nil {
-		return err
+		return fmt.Errorf("Error reading Wireguard device: %w", err)
 	} else {
 		w.log.Infof("Wireguard is already running, no state change necessary")
 	}
