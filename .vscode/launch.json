@@ -57,7 +57,24 @@
 			"type": "go",
 			"request": "launch",
 			"mode": "auto",
-			"program": "cyclops.go"
+			"program": "cmd/cyclops/cyclops.go",
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"name": "proxy.go",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+			"program": "cmd/proxy/proxy.go"
+		},
+		{
+			"name": "kernelwg.go",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+			"program": "cmd/kernelwg/kernelwg.go",
+			"asRoot": false,
+			"console": "integratedTerminal"
 		},
 		{
 			"name": "Current Go File",

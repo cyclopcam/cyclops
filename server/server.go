@@ -87,7 +87,9 @@ func NewServer(configDBFilename string) (*Server, error) {
 			return nil, err
 		}
 	}
-	s.SetupHTTP()
+	if err := s.SetupHTTP(); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 

@@ -45,6 +45,13 @@ type DBConfig struct {
 	SSLRootCert string
 }
 
+func MakeSqliteConfig(filename string) DBConfig {
+	return DBConfig{
+		Driver:   DriverSqlite,
+		Database: filename,
+	}
+}
+
 // LogSafeDescription seturn a string that is useful for debugging connection issues, but doesn't leak secrets
 func (db *DBConfig) LogSafeDescription() string {
 	desc := fmt.Sprintf("driver=%s host=%v database=%v username=%v", db.Driver, db.Host, db.Database, db.Username)
@@ -131,18 +138,18 @@ func MakeMigrationFromFunc(log log.Log, migrationNumber *int, f migration.Migrat
 }
 
 // OpenDB creates a new DB, or opens an existing one, and runs all the migrations before returning.
-func OpenDB(log log.Log, driver, dsn string, migrations []migration.Migrator, flags DBConnectFlags) (*gorm.DB, error) {
+func OpenDB(log log.Log, dbc DBConfig, migrations []migration.Migrator, flags DBConnectFlags) (*gorm.DB, error) {
 	if flags&DBConnectFlagWipeDB != 0 {
-		if err := DropAllTables(log, driver, dsn); err != nil {
+		if err := DropAllTables(log, dbc); err != nil {
 			return nil, err
 		}
 	}
 
 	// This is the common fast path, where the database has been created
-	db, err := migration.Open(driver, dsn, migrations)
+	db, err := migration.Open(dbc.Driver, dbc.DSN(), migrations)
 	if err == nil {
 		db.Close()
-		gormDB, err := gormOpen(driver, dsn)
+		gormDB, err := gormOpen(dbc.Driver, dbc.DSN())
 		//if err != nil {
 		//	err = fmt.Errorf("Failed to open %v database '%v': %w", driver, dsn, err)
 		//}
@@ -154,44 +161,46 @@ func OpenDB(log log.Log, driver, dsn string, migrations []migration.Migrator, fl
 		return nil, err
 	}
 
-	dbname, err := extractDBNameFromDSN(dsn)
-	if err != nil {
-		return nil, fmt.Errorf("While trying to create database, %v", err)
+	log.Infof("Attempting to create database %v", dbc.Database)
+
+	cfgCreate := dbc
+
+	if dbc.Driver == DriverPostgres {
+		// connect to the 'postgres' database in order to create the new DB
+		cfgCreate.Database = "postgres"
 	}
 
-	log.Infof("Attempting to create database %v", dbname)
-
-	// connect to the 'postgres' database in order to create the new DB
-	dsnCreate := strings.Replace(dsn, "dbname="+dbname, "dbname=postgres", -1)
-	if err := createDB(driver, dsnCreate, dbname); err != nil {
-		return nil, fmt.Errorf("While trying to create database '%v': %v", dbname, err)
+	if err := createDB(dbc.Driver, cfgCreate.DSN(), dbc.Database); err != nil {
+		return nil, fmt.Errorf("While trying to create database '%v': %v", dbc.Database, err)
 	}
 	// once again, run migrations (now that the DB has been created)
-	db, err = migration.Open(driver, dsn, migrations)
+	db, err = migration.Open(dbc.Driver, dbc.DSN(), migrations)
 	if err != nil {
 		return nil, err
 	}
 	db.Close()
 	// finally, open with gorm
-	return gormOpen(driver, dsn)
+	return gormOpen(dbc.Driver, dbc.DSN())
 }
 
 // DropAllTables delete all tables in the given database.
 // If the database does not exist, returns nil.
 // This function is intended to be used by unit tests.
-func DropAllTables(log log.Log, driver, dsn string) error {
-	if driver == DriverSqlite {
-		filename, err := extractFilenameFromDSN(dsn)
-		if err != nil {
-			return err
-		}
-		err = os.Remove(filename)
+func DropAllTables(log log.Log, dbc DBConfig) error {
+	if dbc.Driver == DriverSqlite {
+		filename := dbc.Database
+		err := os.Remove(filename)
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return err
 	}
-	db, err := sql.Open(driver, dsn)
+
+	// Handle Postgres
+	if dbc.Driver != DriverPostgres {
+		return fmt.Errorf("DropAllTables not supported on %v", dbc.Driver)
+	}
+	db, err := sql.Open(dbc.Driver, dbc.DSN())
 	if err == nil {
 		// Force delay-connect drivers to attempt a connect now
 		err = db.Ping()
@@ -202,8 +211,7 @@ func DropAllTables(log log.Log, driver, dsn string) error {
 		return err
 	}
 	defer db.Close()
-	dbname, _ := extractDBNameFromDSN(dsn)
-	log.Warnf("Erasing entire DB '%v'", dbname)
+	log.Warnf("Erasing entire DB '%v'", dbc.Database)
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -323,19 +331,6 @@ func gormOpen(driver, dsn string) (*gorm.DB, error) {
 	return db, nil
 }
 
-// This is for sqlite
-func extractFilenameFromDSN(dsn string) (string, error) {
-	return dsn, nil
-}
-
-func extractDBNameFromDSN(dsn string) (string, error) {
-	matches := regexp.MustCompile("dbname=([^ ]+)").FindAllStringSubmatch(dsn, -1)
-	if len(matches) != 1 {
-		return "", fmt.Errorf("Failed to extract dbname= out of DSN")
-	}
-	return matches[0][1], nil
-}
-
 func isDatabaseNotExist(err error) bool {
 	if err == nil {
 		return false
@@ -359,7 +354,9 @@ func createDB(driver, dsn, dbCreateName string) error {
 func init() {
 	// Checking for "does not exist" is definitely not sufficient, because that can get
 	// hit while trying to run, for example, a database migration on an incorrect field name.
-	// Genuine error examples:
+	// This is a bad false positive, and I have hit it in practice.
+	//
+	// True positive error examples:
 	// pq: database "testx" does not exist
 	DBNotExistRegex = regexp.MustCompile(`database "[^"]+" does not exist`)
 }

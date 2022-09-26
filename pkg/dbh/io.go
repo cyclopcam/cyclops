@@ -1,6 +1,7 @@
 package dbh
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -48,4 +49,10 @@ func IDListToSQLSet(ids []int64) string {
 
 func SanitizeIDList(s string) string {
 	return idListToString(StringToIDList(s))
+}
+
+// Escape a byte array as a string literal, and return the entire literal, with quotes.
+// eg. '\xDEADBEAF'
+func PGByteArrayLiteral(b []byte) string {
+	return "'\\x" + hex.EncodeToString(b) + "'"
 }

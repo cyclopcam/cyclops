@@ -44,7 +44,7 @@ func Open(log log.Log, root string) (*EventDB, error) {
 
 	log.Infof("Opening DB at '%v'", root)
 	dbPath := filepath.Join(root, "events.sqlite")
-	eventDB, err := dbh.OpenDB(log, dbh.DriverSqlite, dbPath, Migrations(log), 0)
+	eventDB, err := dbh.OpenDB(log, dbh.MakeSqliteConfig(dbPath), Migrations(log), 0)
 	if err == nil {
 		return &EventDB{
 			log:  log,

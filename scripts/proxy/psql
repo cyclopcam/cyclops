@@ -1,0 +1,3 @@
+#!/bin/bash
+
+PGPASSWORD=lol psql --host localhost --username postgres --dbname proxy

@@ -34,8 +34,9 @@ type CachedStaticFileServer struct {
 	log            log.Log
 	compressLevel  int
 	verbose        bool
-	wwwRoutes      []string
+	apiRoutes      []string         // Any path that begins with an item from apiRoutes produces a 404
 	indexIntercept http.HandlerFunc // optional callback during index.html serving (creating for auth hotlink functionality)
+	scannedFiles   map[string]bool  // All static files that we found at startup
 
 	immutableFilesystem bool // If true, then assume that static files never change (true when running a Docker image)
 
@@ -54,12 +55,14 @@ type cachedStaticFile struct {
 	Error        error // If there was an error compressing the file, then this is it
 }
 
-// absRoot is the root content path
-// wwwRoutes are special routes such as /login, /passwordreset, /about, /company, etc,
-// which all load up your index.html. The assumption is that your SPA's router module
-// figures out which page to show based on the URL, but from the server's perspective,
-// they all serve up index.html
-func NewCachedStaticFileServer(absRoot string, wwwRoutes []string, log log.Log, immutableFilesystem bool, indexIntercept http.HandlerFunc) *CachedStaticFileServer {
+// absRoot is the root content path.
+// apiRoutes are special routes such as /api, which should not serve up your index.html,
+// but return a 404 instead.
+// The assumption is that your SPA's router module figures out which page to show based
+// on the URL, but from the server's perspective, everything except for apiRoutes serves
+// up index.html
+// indexIntercept can be used to modify a request/response to index.html.
+func NewCachedStaticFileServer(absRoot string, apiRoutes []string, log log.Log, immutableFilesystem bool, indexIntercept http.HandlerFunc) (*CachedStaticFileServer, error) {
 	extensions := map[string]bool{
 		"css":  true,
 		"js":   true,
@@ -70,6 +73,17 @@ func NewCachedStaticFileServer(absRoot string, wwwRoutes []string, log log.Log, 
 		"md":   true,
 	}
 
+	// Scan all static files, so that we can distinguish between an 'index.html' route and a genuine static file
+	files, err := globRecursive(absRoot)
+	if err != nil {
+		return nil, err
+	}
+	fileSet := map[string]bool{}
+	for _, f := range files {
+		fileSet[f] = true
+	}
+	//fmt.Printf("Static files: \n%v\n", strings.Join(files, "\n"))
+
 	// chunk-vendors.js compressLevel size   time
 	//                  9             100665 110ms
 	//                  5             101379 10ms
@@ -78,7 +92,8 @@ func NewCachedStaticFileServer(absRoot string, wwwRoutes []string, log log.Log, 
 
 	return &CachedStaticFileServer{
 		absRoot:             absRoot,
-		wwwRoutes:           wwwRoutes,
+		apiRoutes:           apiRoutes,
+		scannedFiles:        fileSet,
 		log:                 log,
 		verbose:             false,
 		compressLevel:       5,
@@ -86,7 +101,22 @@ func NewCachedStaticFileServer(absRoot string, wwwRoutes []string, log log.Log, 
 		compressExtensions:  extensions,
 		files:               map[string]*cachedStaticFile{},
 		indexIntercept:      indexIntercept,
-	}
+	}, nil
+}
+
+func globRecursive(root string) ([]string, error) {
+	files := []string{}
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if d == nil && err != nil {
+			// root scan failed
+			return err
+		}
+		if !d.IsDir() {
+			files = append(files, path[len(root):])
+		}
+		return nil
+	})
+	return files, err
 }
 
 func (s *CachedStaticFileServer) ServeFile(w http.ResponseWriter, r *http.Request, relPath string, maxAgeSeconds int) {
@@ -266,22 +296,18 @@ func (s *CachedStaticFileServer) serveCachedFile(w http.ResponseWriter, r *http.
 func (s *CachedStaticFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	//s.parent.Log.Infof("Static file request (path=%v), If-Modified-Since='%v'", path, r.Header.Get("If-Modified-Since"))
-	if strings.HasPrefix(path, "/api/") {
-		http.Error(w, fmt.Sprintf("The url path '%v' is not a valid API", path), 404)
-		return
-	}
 
 	maxAgeSeconds := 5
 
-	isIndex := path == "/" || path == "/index.html" || path == "/index.htm"
-	if !isIndex {
-		for _, route := range s.wwwRoutes {
-			if strings.HasPrefix(path, route) {
-				isIndex = true
-				break
-			}
+	for _, api := range s.apiRoutes {
+		if strings.HasPrefix(path, api) {
+			http.Error(w, fmt.Sprintf("The url path '%v' is not a valid API", path), 404)
+			return
 		}
 	}
+
+	// If it's not a genuine file, then it must be index.html
+	isIndex := !s.scannedFiles[path]
 	if isIndex {
 		if s.indexIntercept != nil {
 			s.indexIntercept(w, r)
@@ -290,6 +316,7 @@ func (s *CachedStaticFileServer) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Serve up all other assets (svg, css, etc)
 	if reWebpackAsset.MatchString(path) {
 		// Although in theory one should be able to set a much longer expiry time, because these
 		// assets incorporate a hash, we stick to one day just in case, because screwups in this space DO OCCUR.

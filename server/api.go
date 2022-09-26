@@ -13,7 +13,7 @@ import (
 
 type ProtectedHandler func(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User)
 
-func (s *Server) SetupHTTP() {
+func (s *Server) SetupHTTP() error {
 	router := httprouter.New()
 
 	// protected creates an HTTP handler that only accepts an authenticated user with
@@ -49,7 +49,7 @@ func (s *Server) SetupHTTP() {
 		})
 	}
 
-	//www.Handle(s.Log, router, "GET", "/", s.httpIndex)
+	unprotected("GET", "/api/ping", s.httpSystemPing)
 	protected("v", "GET", "/api/system/info", s.httpSystemGetInfo)
 	protected("a", "POST", "/api/system/restart", s.httpSystemRestart)
 	unprotected("GET", "/api/system/constants", s.httpSystemConstants)
@@ -80,13 +80,19 @@ func (s *Server) SetupHTTP() {
 	unprotected("POST", "/api/auth/createUser", s.httpAuthCreateUser)
 	unprotected("POST", "/api/auth/login", s.httpAuthLogin)
 
-	isImmutable := false
-	root, err := filepath.Abs("debug/www")
+	isImmutable := true
+	relRoot := "www/dist"
+	absRoot, err := filepath.Abs(relRoot)
 	if err != nil {
-		panic(err)
+		s.Log.Warnf("Failed to resolve static file directory %v: %v. Run 'npm run build' in 'www' to build static files. If you're using 'npm run dev', then you can ignore this warning.", relRoot, err)
 	}
-	static := staticfiles.NewCachedStaticFileServer(root, []string{}, s.Log, isImmutable, nil)
+	s.Log.Infof("Serving static files from %v", absRoot)
+	static, err := staticfiles.NewCachedStaticFileServer(absRoot, []string{"/api/"}, s.Log, isImmutable, nil)
+	if err != nil {
+		s.Log.Warnf("Error in static files ('%v' resolved to '%v'), error %v. Run 'npm run build' in 'www' to build static files. If you're using 'npm run dev', then you can ignore this warning.", relRoot, absRoot, err)
+	}
 	router.NotFound = static
 
 	s.httpRouter = router
+	return nil
 }

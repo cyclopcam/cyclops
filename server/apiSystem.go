@@ -1,7 +1,9 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/server/camera"
@@ -18,6 +20,10 @@ type systemInfoJSON struct {
 // If this gets too bloated, then we can split it up
 type constantsJSON struct {
 	CameraModels []string `json:"cameraModels"`
+}
+
+func (s *Server) httpSystemPing(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	www.SendText(w, fmt.Sprintf("%v", time.Now().Unix()))
 }
 
 func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
