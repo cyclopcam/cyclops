@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/eventdb"
 	"github.com/bmharper/cyclops/server/util"
+	"github.com/bmharper/cyclops/server/vpn"
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
 )
@@ -39,6 +41,7 @@ type Server struct {
 	permanentEvents *eventdb.EventDB // Where we store our permanent videos
 	recentEvents    *eventdb.EventDB // Where we store our recent event videos
 	wsUpgrader      websocket.Upgrader
+	vpn             *vpn.VPN
 
 	recordersLock  sync.Mutex          // Guards access to recorders map
 	recorders      map[int64]*recorder // key is from nextRecorderID
@@ -89,6 +92,23 @@ func NewServer(configDBFilename string) (*Server, error) {
 	}
 	if err := s.SetupHTTP(); err != nil {
 		return nil, err
+	}
+
+	// Setup VPN and register with proxy
+	s.vpn = vpn.NewVPN(s.Log)
+	if err := s.vpn.ConnectKernelWG(); err != nil {
+		log.Warnf("Failed to connect to Wireguard root process 'kernelwg' (%v). Automatic VPN functionality will be unavailable.", err)
+	} else {
+		if err := s.vpn.Start(); err != nil {
+			log.Warnf("Failed to start Wireguard VPN: %v", err)
+		} else {
+			s.Log.Infof("Wireguard public key: %v", base64.StdEncoding.EncodeToString(s.vpn.PublicKey))
+			if err := s.vpn.RegisterWithProxy(); err != nil {
+				log.Warnf("Failed to register with VPN proxy: %v", err)
+			} else {
+				log.Infof("Registered with VPN proxy")
+			}
+		}
 	}
 	return s, nil
 }

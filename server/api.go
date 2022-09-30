@@ -26,6 +26,9 @@ func (s *Server) SetupHTTP() error {
 			}
 		}
 		handleWrapper := func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+			s.Log.Infof("HTTP (protected) %v", r.URL.Path)
+			//w.Header().Set("Access-Control-Allow-Origin", "https://appassets.androidplatform.net")
+			w.Header().Set("Access-Control-Allow-Origin", "*")
 			user := s.configDB.GetUser(r)
 			if user == nil {
 				www.PanicForbidden()
@@ -45,6 +48,9 @@ func (s *Server) SetupHTTP() error {
 	// unprotected creates an HTTP handler that is accessible without authentication
 	unprotected := func(method, route string, handle httprouter.Handle) {
 		www.Handle(s.Log, router, method, route, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+			s.Log.Infof("HTTP (unprotected) %v %v", method, r.URL.Path)
+			//w.Header().Set("Access-Control-Allow-Origin", "https://appassets.androidplatform.net")
+			w.Header().Set("Access-Control-Allow-Origin", "*")
 			handle(w, r, params)
 		})
 	}

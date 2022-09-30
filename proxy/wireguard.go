@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"net"
 
@@ -32,7 +33,7 @@ type wireGuard struct {
 }
 
 func newWireGuard(proxy *Proxy) (*wireGuard, error) {
-	client := &kernel.Client{}
+	client := kernel.NewClient()
 	if err := client.Connect(proxy.kernelwgHost); err != nil {
 		return nil, err
 	}
@@ -48,11 +49,11 @@ func newWireGuard(proxy *Proxy) (*wireGuard, error) {
 func (w *wireGuard) boot() error {
 	device, err := w.client.GetDevice()
 
-	if err != nil && err.Error() == kernel.ErrWireguardDeviceNotExist {
+	if err != nil && errors.Is(err, kernel.ErrWireguardDeviceNotExist) {
 		w.log.Infof("Starting Wireguard")
 
 		// Create the Wireguard device
-		if err := w.client.CreateDevice(); err != nil {
+		if err := w.client.BringDeviceUp(); err != nil {
 			return err
 		}
 

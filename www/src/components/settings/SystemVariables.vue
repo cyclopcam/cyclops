@@ -5,6 +5,7 @@ import FormBottom from '@/components/form/FormBottom.vue';
 import { onMounted, ref } from 'vue';
 import { encodeQuery, fetchOrErr, sleep } from '@/util/util.js';
 import type { SystemInfoJSON } from '@/api/api.js';
+import { apiPrefix } from '@/webview';
 
 let props = defineProps<{
 	initialSetup?: boolean,
@@ -133,9 +134,9 @@ async function isReady(): Promise<boolean> {
 }
 
 async function fetchLatest() {
-	let definitions = await (await fetch('/api/config/getVariableDefinitions')).json() as VariableDefinition[];
+	let definitions = await (await fetch(apiPrefix + '/api/config/getVariableDefinitions')).json() as VariableDefinition[];
 	definitions.sort((a, b) => a.uiGroup.localeCompare(b.uiGroup));
-	let val = await (await fetch('/api/config/getVariableValues')).json() as VariableValue[];
+	let val = await (await fetch(apiPrefix + '/api/config/getVariableValues')).json() as VariableValue[];
 	existing = new Map<string, string>();
 	let vmap: any = {};
 	for (let v of val) {
@@ -168,4 +169,5 @@ onMounted(() => {
 </template>
 
 <style lang="scss" scoped>
+
 </style>

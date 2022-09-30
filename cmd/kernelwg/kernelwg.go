@@ -30,20 +30,23 @@ type handler struct {
 	encoder        *gob.Encoder
 }
 
-func (h *handler) handleCreateDevice() error {
-	h.log.Infof("Creating Wireguard device %v", WireguardDeviceName)
+func (h *handler) handleBringDeviceUp() error {
+	h.log.Infof("Bring up Wireguard device %v", WireguardDeviceName)
 
 	cmd := exec.Command("wg-quick", "up", WireguardDeviceName)
-	err := cmd.Run()
-
-	h.log.Infof("Device %v creation response: %v", WireguardDeviceName, err)
-	return err
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		h.log.Infof("Device %v activation failed: %v. Output: %v", WireguardDeviceName, err, string(output))
+		return fmt.Errorf("%w: %v", err, string(output))
+	}
+	h.log.Infof("Device %v activation OK", WireguardDeviceName)
+	return nil
 }
 
 func (h *handler) handleIsDeviceAlive() error {
 	_, err := h.wg.Device(WireguardDeviceName)
 	if errors.Is(err, os.ErrNotExist) {
-		return errors.New(kernel.ErrWireguardDeviceNotExist)
+		return kernel.ErrWireguardDeviceNotExist
 	}
 	return err
 }
@@ -52,7 +55,7 @@ func (h *handler) handleGetDevice() (any, error) {
 	device, err := h.wg.Device(WireguardDeviceName)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, errors.New(kernel.ErrWireguardDeviceNotExist)
+			return nil, kernel.ErrWireguardDeviceNotExist
 		}
 		return nil, err
 	}
@@ -67,7 +70,7 @@ func (h *handler) handleGetPeers() (any, error) {
 	device, err := h.wg.Device(WireguardDeviceName)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, errors.New(kernel.ErrWireguardDeviceNotExist)
+			return nil, kernel.ErrWireguardDeviceNotExist
 		}
 		return nil, err
 	}
@@ -143,8 +146,8 @@ func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 		resp, err = h.handleGetDevice()
 	case kernel.MsgTypeCreatePeers:
 		err = h.handleCreatePeers(request.(*kernel.MsgCreatePeers))
-	case kernel.MsgTypeCreateDevice:
-		err = h.handleCreateDevice()
+	case kernel.MsgTypeBringDeviceUp:
+		err = h.handleBringDeviceUp()
 	case kernel.MsgTypeIsDeviceAlive:
 		err = h.handleIsDeviceAlive()
 	default:
@@ -262,6 +265,7 @@ func verifyPermissions(logger log.Log) error {
 	if err != nil {
 		return fmt.Errorf("Error scanning Wireguard devices: %v", err)
 	}
+	logger.Infof("Found %v active wireguard devices", len(devices))
 	for _, d := range devices {
 		logger.Infof("Wireguard device %v public key: %v", d.Name, d.PublicKey)
 	}

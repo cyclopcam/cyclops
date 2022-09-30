@@ -31,9 +31,10 @@ type Log interface {
 }
 
 type Logger struct {
-	Output io.Writer
-	GCP    *logging.Logger
-	Client *logging.Client
+	Output       io.Writer
+	GCP          *logging.Logger
+	Client       *logging.Client
+	EnableColors bool
 }
 
 type testLogWriter struct {
@@ -58,8 +59,10 @@ func NewLog() (Log, error) {
 		logger := client.Logger(gcpLogname)
 		l.Client = client
 		l.GCP = logger
+		l.EnableColors = false
 	} else {
 		l.Output = os.Stdout
+		l.EnableColors = true
 		l.Infof("Logging to stdout")
 	}
 	return l, nil
@@ -114,7 +117,15 @@ func (l *Logger) write(level Level, format string, a ...interface{}) {
 		})
 	} else {
 		prefix := fmt.Sprintf("%.3f %v ", float64(time.Now().UnixNano())/1e9, levelToName(level))
-		fmt.Fprintf(l.Output, prefix+format+"\n", a...)
+		if l.EnableColors && level > LevelInfo {
+			color := "\033[0;33m" // yellow
+			if level >= LevelError {
+				color = "\033[0;31m" // red
+			}
+			fmt.Fprintf(l.Output, color+prefix+format+"\033[0m\n", a...)
+		} else {
+			fmt.Fprintf(l.Output, prefix+format+"\n", a...)
+		}
 	}
 }
 

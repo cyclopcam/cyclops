@@ -99,7 +99,14 @@ func (c *ConfigDB) GetUserID(r *http.Request) int64 {
 			return session.UserID
 		}
 	}
-	if username, password, ok := r.BasicAuth(); ok {
+
+	username, password, haveBasic := r.BasicAuth()
+	if !haveBasic {
+		username = www.QueryValue(r, "username")
+		password = www.QueryValue(r, "password")
+	}
+
+	if username != "" && password != "" {
 		user := User{}
 		c.DB.Where("username_normalized = ?", NormalizeUsername(username)).Find(&user)
 		if user.ID != 0 {

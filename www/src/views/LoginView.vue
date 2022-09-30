@@ -4,7 +4,7 @@ import { onMounted, ref } from 'vue';
 import * as forms from '@/components/form/forms';
 import FormText from '@/components/form/FormText.vue';
 import FormBottom from '@/components/form/FormBottom.vue';
-import { fetchOrErr } from '@/util/util';
+import { encodeQuery, fetchOrErr } from '@/util/util';
 import { globals } from '@/globals.js';
 
 let username = ref("");
@@ -19,6 +19,10 @@ async function onSubmit() {
 	let basic = btoa(username.value.trim() + ":" + password.value.trim());
 	ctx.busy.value = true;
 	let r = await fetchOrErr('/api/auth/login', { method: 'POST', headers: { "Authorization": "BASIC " + basic } });
+
+	// Android WebView CORS blocks request when Authorization header is present.
+	//let r = await fetchOrErr('/api/auth/login?' + encodeQuery({ "username": username.value.trim(), "password": password.value.trim() }), { method: 'POST' });
+
 	ctx.busy.value = false;
 	if (!r.ok) {
 		ctx.submitError.value = r.error;
@@ -49,4 +53,5 @@ async function onSubmit() {
 </template>
 
 <style lang="scss" scoped>
+
 </style>

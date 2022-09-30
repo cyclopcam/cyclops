@@ -7,6 +7,7 @@ import SetupCameras from '../components/settings/SetupCameras.vue';
 import { globals } from '@/globals';
 import router from "@/router/routes";
 import SystemVariables from "../components/settings/SystemVariables.vue";
+import { apiPrefix } from '@/webview';
 
 enum Stages {
 	CreateFirstUser = 0,
@@ -44,9 +45,9 @@ async function moveToNextStage() {
 }
 
 onMounted(async () => {
-	let r = await fetch("/api/auth/whoami");
+	let r = await fetch(apiPrefix + "/api/auth/whoami");
 	if (r.ok) {
-		let info = await (await fetch("/api/system/info")).json();
+		let info = await (await fetch(apiPrefix + "/api/system/info")).json();
 		if (info.readyError) {
 			stage.value = Stages.ConfigureVariables;
 		} else {
@@ -55,7 +56,7 @@ onMounted(async () => {
 	}
 
 	// prime the network camera scanner
-	fetch("/api/config/scanNetworkForCameras", { method: "POST" });
+	fetch(apiPrefix + "/api/config/scanNetworkForCameras", { method: "POST" });
 })
 
 </script>

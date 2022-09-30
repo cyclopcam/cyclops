@@ -1,8 +1,8 @@
 package server
 
 import (
-	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/bmharper/cyclops/pkg/www"
@@ -22,8 +22,20 @@ type constantsJSON struct {
 	CameraModels []string `json:"cameraModels"`
 }
 
+type pingJSON struct {
+	Greeting string `json:"greeting"`
+	Hostname string `json:"hostname"`
+	Time     int64  `json:"time"`
+}
+
 func (s *Server) httpSystemPing(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	www.SendText(w, fmt.Sprintf("%v", time.Now().Unix()))
+	hostname, _ := os.Hostname()
+	ping := &pingJSON{
+		Greeting: "I am Cyclops", // This is used by the LAN scanner on our mobile app to find Cyclops servers, so it's part of our API.
+		Hostname: hostname,       // This is used by the LAN scanner on our mobile app to suggest a name
+		Time:     time.Now().Unix(),
+	}
+	www.SendJSON(w, ping)
 }
 
 func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {

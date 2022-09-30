@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"errors"
 	"net"
 	"time"
 
@@ -24,7 +25,7 @@ const MaxMsgSize = 1024 * 1024 * 1024
 const UnixSocketName = "@cyclops-wg"
 
 // Well known error messages
-const ErrWireguardDeviceNotExist = "Wireguard device does not exist"
+var ErrWireguardDeviceNotExist = errors.New("Wireguard device does not exist")
 
 type MsgType int
 
@@ -36,7 +37,7 @@ const (
 	MsgTypeGetDeviceResponse
 	MsgTypeGetPeers
 	MsgTypeGetPeersResponse
-	MsgTypeCreateDevice
+	MsgTypeBringDeviceUp
 	MsgTypeCreatePeers
 )
 

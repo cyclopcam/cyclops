@@ -6,3 +6,4 @@ t2-output
 cyclops.json
 node_modules
 /cyclops
+/www/dist

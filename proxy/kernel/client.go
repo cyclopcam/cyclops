@@ -10,6 +10,8 @@ import (
 	"net"
 )
 
+var ErrNotConnected = errors.New("Not connected to root wireguard process")
+
 type Client struct {
 	conn           net.Conn
 	encoder        *gob.Encoder
@@ -18,7 +20,12 @@ type Client struct {
 	responseBuffer bytes.Buffer
 }
 
+func NewClient() *Client {
+	return &Client{}
+}
+
 func (c *Client) Connect(host string) error {
+	c.Close()
 	proto := "tcp"
 	addr := host + ":666"
 	conn, err := net.Dial(proto, addr)
@@ -36,7 +43,21 @@ func (c *Client) Connect(host string) error {
 	return nil
 }
 
+func (c *Client) IsConnected() bool {
+	return c.conn != nil
+}
+
+func (c *Client) Close() {
+	if c.conn != nil {
+		c.conn.Close()
+		c.conn = nil
+	}
+}
+
 func (c *Client) do(requestType MsgType, request any, expectResponseType MsgType, response any) error {
+	if c.conn == nil {
+		return ErrNotConnected
+	}
 	headerPlaceholder := [8]byte{}
 	c.requestBuffer.Reset()
 	c.requestBuffer.Write(headerPlaceholder[:])
@@ -54,6 +75,7 @@ func (c *Client) do(requestType MsgType, request any, expectResponseType MsgType
 	binary.LittleEndian.PutUint32(header[4:8], uint32(requestType))
 	_, err := io.Copy(c.conn, &c.requestBuffer)
 	if err != nil {
+		// We should probably disconnect here, because the most likely cause is that the remote process has died
 		return fmt.Errorf("Error writing request: %w", err)
 	}
 
@@ -87,13 +109,22 @@ func (c *Client) do(requestType MsgType, request any, expectResponseType MsgType
 	}
 }
 
+// Rehydrate an error that got turned into a string over the wire
+func makeError(e string) error {
+	switch e {
+	case ErrNotConnected.Error():
+		return ErrNotConnected
+	}
+	return errors.New(e)
+}
+
 func (c *Client) readResponse(responseType MsgType, expectResponseType MsgType, response any) error {
 	if responseType == MsgTypeError {
 		r := MsgError{}
 		if err := c.decoder.Decode(&r); err != nil {
 			return fmt.Errorf("Error decoding MsgErr: %v", err)
 		}
-		return errors.New(r.Error)
+		return makeError(r.Error)
 	} else if responseType != expectResponseType {
 		return fmt.Errorf("Response type (%v) was not expected (%v)", responseType, expectResponseType)
 	}
@@ -127,8 +158,8 @@ func (c *Client) IsDeviceAlive() error {
 	return c.do(MsgTypeIsDeviceAlive, nil, MsgTypeNone, nil)
 }
 
-func (c *Client) CreateDevice() error {
-	return c.do(MsgTypeCreateDevice, nil, MsgTypeNone, nil)
+func (c *Client) BringDeviceUp() error {
+	return c.do(MsgTypeBringDeviceUp, nil, MsgTypeNone, nil)
 }
 
 func (c *Client) CreatePeers(msg *MsgCreatePeers) error {
