@@ -117,7 +117,7 @@ public class Scanner {
             return;
         }
         Log.i("C", "Local IP is " + formatIP(phoneIP));
-        scanner.state.setMessage("My IP is " + formatIP(phoneIP));
+        scanner.state.setMessage("Phone IP: " + formatIP(phoneIP));
         ArrayList<String> ipAddresses = new ArrayList<>();
         for (int i = 1; i < 255; i++) {
             int scanIP = setLowestByteOfIP(phoneIP, i);

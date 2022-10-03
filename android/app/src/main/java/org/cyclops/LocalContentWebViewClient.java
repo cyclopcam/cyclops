@@ -71,13 +71,11 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                     State.global.scanner.start();
                     return sendOK();
                 case "/natcom/scanStatus":
-                    //JSAPI.ScanResponseJSON resp = new JSAPI.ScanResponseJSON();
-                    //Scanner.State s = State.global.scanner.getState();
-                    //resp.status
                     return sendJSON(State.global.scanner.getState());
             }
         }
 
+        /*
         //boolean isAPI = request.getUrl().getPath().startsWith("/api");
         boolean isAPI = false; // try using http://cyclops:8080 inside Javascript
         if (isAPI) {
@@ -129,6 +127,7 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                 Log.i("C", "Forwarded request failed: " + e.toString());
             }
         }
+        */
 
         return mAssetLoader.shouldInterceptRequest(request.getUrl());
     }

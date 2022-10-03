@@ -77,11 +77,11 @@ $button-padding: 4px 8px 4px 8px;
 $button-padding-mobile: 6px 10px 6px 10px;
 
 @mixin button_background {
-	border-radius: 3px;
+	border-radius: 5px;
 	border: 1px solid #bbb;
-	@media (min-resolution: 192dpi) {
-		border-width: 0.5px;
-	}
+	//@media (min-resolution: 192dpi) {
+	//	border-width: 0.5px;
+	//}
 	background: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(0, 0%, 96%) 47%, hsl(0, 0%, 93%) 100%);
 }
 
@@ -395,8 +395,17 @@ $slideAmount: 100vw;
 	width: 15px;
 }
 
-//.stepHintBullets {
-//	font-size: 14px;
-//	margin: 4px 4px;
-//	max-width: 300px;
-//}
+.link {
+	font-weight: 500;
+	color: rgb(9, 9, 182);
+	cursor: pointer;
+	text-decoration: none;
+}
+
+.link:disabled {
+	color: #aaa;
+}
+
+.link:hover {
+	text-decoration: underline;
+}

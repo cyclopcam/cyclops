@@ -5,26 +5,6 @@ import Login from './components/Login.vue';
 
 type StringMap = { [key: string]: string };
 
-/*
-function urlKV(): StringMap {
-	let search = window.location.search;
-	if (search.length <= 1) {
-		return {};
-	}
-	// window.location.search starts with ?, so chop it off, then split
-	let pairs = window.location.search.substring(1).split("&");
-	let m: StringMap = {};
-	for (let p of pairs) {
-		let lr = p.split("=");
-		if (lr.length === 2) {
-			m[lr[0]] = lr[1];
-			console.log(lr[0], lr[1]);
-		}
-	}
-	return m;
-}
-*/
-
 function getMode(): string {
 	return globals.mode;
 }
@@ -36,14 +16,14 @@ function getMode(): string {
 	<div v-else>Unknown mode!</div>
 </template>
 
-<!-- NOTE! These styles are not scoped, which is why we import 'base' -->
+<!-- These styles are not scoped, so importing 'base' affects all children, and they don't need to import it -->
 <style lang="scss">
+@import '@/assets/base.scss';
+
 #app {
 	height: 100%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
-
-@import '@/assets/base.scss';
 </style>	
