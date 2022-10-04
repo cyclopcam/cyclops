@@ -11,7 +11,10 @@ class State {
         String publicKey = "";
     }
 
+    // These objects are created in MainActivity's onCreate
     Scanner scanner;
+    Connector connector;
+
     ArrayList<Server> servers = new ArrayList<Server>();
 
     State() {

@@ -4,33 +4,59 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.webkit.WebViewAssetLoader;
 
 import android.annotation.SuppressLint;
+import android.app.ActionBar;
 import android.os.Bundle;
 import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.widget.LinearLayout;
 
-public class MainActivity extends AppCompatActivity {
-    WebView mWebView;
-    LocalContentWebViewClient mLocalClient;
+import java.util.ArrayList;
 
-    @SuppressLint("SetJavaScriptEnabled")
+public class MainActivity extends AppCompatActivity implements Main {
+    WebView localWebView; // loads embedded JS code
+    WebView remoteWebView; // loads remote JS code from a Cyclops server
+    LocalContentWebViewClient localClient;
+    RemoteWebViewClient remoteClient;
+    boolean isRemote = false;
+    ArrayList<String> history = new ArrayList<>();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
         State.global.scanner = new Scanner(this);
-
-        mWebView = findViewById(R.id.webview);
-        WebSettings settings = mWebView.getSettings();
-        // Javascript is not enabled by default!
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
+        State.global.connector = new Connector(this);
 
         // dev time
         WebView.setWebContentsDebuggingEnabled(true);
 
-        //setContentView(mWebView);
+        localWebView = findViewById(R.id.localWebView);
+        remoteWebView = findViewById(R.id.remoteWebView);
+        setupWebView(localWebView);
+        setupWebView(remoteWebView);
+
+        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .addPathHandler("/res/", new WebViewAssetLoader.ResourcesPathHandler(this))
+                .build();
+        localClient = new LocalContentWebViewClient(assetLoader, this);
+        localWebView.setWebViewClient(localClient);
+        localWebView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
+
+        remoteClient = new RemoteWebViewClient(this);
+        remoteWebView.setWebViewClient(remoteClient);
+
+        //openServer("http://192.168.10.15:8080");
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    void setupWebView(WebView webview) {
+        WebSettings settings = webview.getSettings();
+        // Javascript is not enabled by default!
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
 
         // We need this in order to talk to a Cyclops server on the LAN..
         // Dammit even this doesn't work.
@@ -47,26 +73,55 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setSupportZoom(true);
         webSettings.setDefaultTextEncodingName("utf-8");
          */
-
-        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
-                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
-                .addPathHandler("/res/", new WebViewAssetLoader.ResourcesPathHandler(this))
-                .build();
-        mLocalClient = new LocalContentWebViewClient(assetLoader);
-        mWebView.setWebViewClient(mLocalClient);
-        mWebView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
-
-        //mWebView.loadUrl("http://192.168.10.11:8080");
     }
 
     @Override
     public void onBackPressed() {
-        mLocalClient.cyBack(mWebView, this);
+        if (isRemote) {
+            remoteClient.cyBack(remoteWebView);
+        } else {
+            localClient.cyBack(localWebView);
+        }
     }
 
     public void webViewBackFailed() {
+        if (history.size() != 0) {
+            String p = history.get(history.size() - 1);
+            history.remove(history.size() - 1);
+            switch (p) {
+                case "openServer":
+                    toggleWebViews(false);
+            }
+            return;
+        }
         // This will usually exit the activity
         Log.i("C", "going super.back");
         super.onBackPressed();
     }
+
+    public void toggleWebViews(boolean showRemote) {
+        LinearLayout.LayoutParams local = new LinearLayout.LayoutParams(
+                ActionBar.LayoutParams.MATCH_PARENT,
+                //showRemote ? 200 : ActionBar.LayoutParams.MATCH_PARENT,
+                showRemote ? 0 : ActionBar.LayoutParams.MATCH_PARENT,
+                0
+        );
+        LinearLayout.LayoutParams remote = new LinearLayout.LayoutParams(
+                ActionBar.LayoutParams.MATCH_PARENT,
+                0,
+                showRemote ? 1.0f : 0
+        );
+        localWebView.setLayoutParams(local);
+        remoteWebView.setLayoutParams(remote);
+        isRemote = showRemote;
+    }
+
+    public void openServer(String url, boolean addToHistory) {
+        toggleWebViews(true);
+        remoteWebView.loadUrl(url);
+        if (addToHistory) {
+            history.add("openServer");
+        }
+    }
+
 }

@@ -43,6 +43,7 @@ func main() {
 
 		srv.RunBackgroundRecorderLoop()
 
+		// SYNC-SERVER-PORT
 		err = srv.ListenHTTP(":8080")
 		fmt.Printf("Server exited: %v\n", err)
 		err = <-srv.ShutdownComplete

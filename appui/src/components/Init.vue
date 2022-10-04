@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { globals, maxIPsToScan } from '@/global';
-import type { ScanState } from '@/global';
+import { globals } from '@/global';
+import { maxIPsToScan, parseServers } from '@/scan';
+import type { ScanState, ParsedServer } from '@/scan';
 import { router, pushRoute } from '@/router/routes';
 import { onMounted, reactive, ref } from 'vue';
+
+function parsedServers(): ParsedServer[] {
+	return parseServers(scanState());
+}
 
 function showScanStatus(): boolean {
 	return globals.scanState.status !== "i";
@@ -31,24 +36,6 @@ async function pollStatus() {
 	}
 }
 
-interface ParsedServer {
-	ip: string;
-	host: string;
-}
-
-function parsedServers(): ParsedServer[] {
-	return scanState().servers.map(x => parseHostname(x));
-}
-
-// Split a string like "192.168.10.11 (rpi)" into the IP and hostname portions. Parentheses are removed.
-function parseHostname(hostname: string): ParsedServer {
-	let space = hostname.indexOf(' ');
-	if (space === -1) {
-		return { ip: hostname, host: '' };
-	}
-	return { ip: hostname.substring(0, space), host: hostname.substring(space + 2, hostname.length - 1) };
-}
-
 function progStyle() {
 	let finished = scanState().nScanned === maxIPsToScan;
 	return {
@@ -64,7 +51,7 @@ function onConnectExisting() {
 }
 
 function onClickLocal(s: ParsedServer) {
-	pushRoute({ name: "rtConnectLocal" });
+	pushRoute({ name: "rtConnectLocal", params: { ip: s.ip, host: s.host } });
 }
 
 </script>

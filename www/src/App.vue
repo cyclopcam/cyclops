@@ -10,6 +10,7 @@ import { RouterView } from 'vue-router'
 <style lang="scss">
 #app {
 	height: 100%;
+	//background-color: #efe;
 }
 
 @import '@/assets/base.scss';

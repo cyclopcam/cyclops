@@ -14,7 +14,7 @@ import (
 )
 
 const ProxyHttpPort = "127.0.0.1:8082" // In production we run on 443, but we use Docker there, and still run on 8082 inside Docker
-const ServerHttpPort = ":8080"         // Servers always run on 8080, but we could make this configurable
+const ServerHttpPort = ":8080"         // SYNC-SERVER-PORT. Servers always run on 8080, but we could make this configurable
 
 type Proxy struct {
 	log          log.Log

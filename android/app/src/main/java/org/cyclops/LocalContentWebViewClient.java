@@ -28,11 +28,13 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 
 public class LocalContentWebViewClient extends WebViewClientCompat {
-    private final WebViewAssetLoader mAssetLoader;
+    private final WebViewAssetLoader assetLoader;
     private final OkHttpClient client = new OkHttpClient();
+    private final Main main;
 
-    LocalContentWebViewClient(WebViewAssetLoader assetLoader) {
-        mAssetLoader = assetLoader;
+    LocalContentWebViewClient(WebViewAssetLoader assetLoader, Main main) {
+        this.assetLoader = assetLoader;
+        this.main = main;
     }
 
     @Override
@@ -47,13 +49,13 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
         view.evaluateJavascript("window.cySetMode('" + mode + "')", null);
     }
 
-    void cyBack(WebView view, MainActivity activity) {
+    void cyBack(WebView view) {
         view.evaluateJavascript("window.cyBack()", new ValueCallback<String>() {
             @Override
             public void onReceiveValue(String value) {
                 //Log.i("C", "cyBack response " + value);
                 if (!value.equals("true")) {
-                    activity.webViewBackFailed();
+                    main.webViewBackFailed();
                 }
             }
         });
@@ -75,9 +77,10 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         //Log.i("C", "shouldInterceptRequest " + request.getMethod() + " " + request.getUrl());
 
-        boolean isNatCom = request.getUrl().getPath().startsWith("/natcom");
+        Uri url = request.getUrl();
+        boolean isNatCom = url.getPath().startsWith("/natcom");
         if (isNatCom) {
-            String path = request.getUrl().getPath();
+            String path = url.getPath();
             switch (path) {
                 case "/natcom/scanForServers":
                     // Ignore the possibility that a scan may still be in progress.. start() will simply fail in that case,
@@ -86,6 +89,13 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                     return sendOK();
                 case "/natcom/scanStatus":
                     return sendJSON(State.global.scanner.getState());
+                case "/natcom/newLocalConnection":
+                    return sendJSON(State.global.connector.newConnection(url.getQueryParameter("ip")));
+                case "/natcom/forward":
+                    return forward(request);
+                case "/natcom/showServer":
+                    main.openServer(url.getQueryParameter("url"), true);
+                    return sendOK();
             }
         }
 
@@ -143,12 +153,68 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
         }
         */
 
-        return mAssetLoader.shouldInterceptRequest(request.getUrl());
+        return assetLoader.shouldInterceptRequest(request.getUrl());
+    }
+
+    // Forward an arbitrary request to an arbitrary server.
+    // The giant deficiency here, which is an absurd shortcoming of this WebView infrastructure,
+    // is that the Request Body is discarded. There is no way of accessing it.
+    // So any request data needs to be encoded in the URL or headers.
+    public WebResourceResponse forward(WebResourceRequest request) {
+        Request.Builder builder = new Request.Builder();
+        try {
+            // The caller specifies the complete target url with the url=... query parameter
+            builder.method(request.getMethod(), null).url(request.getUrl().getQueryParameter("url"));
+        } catch (IllegalArgumentException e) {
+            return new WebResourceResponse("text/plain", "utf-8", 500, e.toString(), null, null);
+        }
+
+        // Copy request headers
+        Map<String, String> headers = request.getRequestHeaders();
+        for (String key : headers.keySet()) {
+            if (key.startsWith("X-Forward-")) {
+                builder.addHeader(key.substring(10), headers.get(key));
+            }
+        }
+
+        try {
+            Response resp = client.newCall(builder.build()).execute();
+            HashMap<String, String> respHeaders = new HashMap<String, String>();
+            for (String name : resp.headers().names()) {
+                respHeaders.put(name, resp.header(name));
+            }
+            String mimeType = "";
+            String encoding = "";
+            String contentType = resp.header("Content-Type");
+            if (contentType != null) {
+                if (contentType.equals("text/plain; charset=utf-8")) {
+                    mimeType = "text/plain";
+                    encoding = "utf-8";
+                } else if (contentType.equals("application/json; charset=utf-8")) {
+                    mimeType = "application/json";
+                    encoding = "utf-8";
+                } else {
+                    //Log.i("C", "Copying contentType '" + contentType + "' to mimeType");
+                    mimeType = contentType;
+                }
+            }
+            // I'm reading all the response bytes here, so that we can close the ResponseBody
+            // and not have to worry about it anymore.
+            // If we close the body now, and return resp.body().InputStream, then it's too late to read the input stream.
+            ResponseBody respBody = resp.body();
+            InputStream respStream = null;
+            if (respBody != null) {
+                respStream = new ByteArrayInputStream(respBody.bytes());
+            }
+            return new WebResourceResponse(mimeType, encoding, resp.code(), resp.message(), respHeaders, respStream);
+        } catch (IOException e) {
+            return new WebResourceResponse("text/plain", "utf-8", 500, e.toString(), null, null);
+        }
     }
 
     @Override
     @SuppressWarnings("deprecation") // to support API < 21
     public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
-        return mAssetLoader.shouldInterceptRequest(Uri.parse(url));
+        return assetLoader.shouldInterceptRequest(Uri.parse(url));
     }
 }
