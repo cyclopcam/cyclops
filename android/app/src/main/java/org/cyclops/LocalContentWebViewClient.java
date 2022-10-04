@@ -1,7 +1,9 @@
 package org.cyclops;
 
+import android.app.Activity;
 import android.net.Uri;
 import android.util.Log;
+import android.webkit.ValueCallback;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
@@ -37,12 +39,24 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
     public void onPageFinished(WebView view, String url) {
         super.onPageFinished(view, url);
         if (State.global.servers.size() == 0) {
-            cySetMode(view, "init");
+            cySetMode(view, "rtInit");
         }
     }
 
     void cySetMode(WebView view, String mode) {
         view.evaluateJavascript("window.cySetMode('" + mode + "')", null);
+    }
+
+    void cyBack(WebView view, MainActivity activity) {
+        view.evaluateJavascript("window.cyBack()", new ValueCallback<String>() {
+            @Override
+            public void onReceiveValue(String value) {
+                //Log.i("C", "cyBack response " + value);
+                if (!value.equals("true")) {
+                    activity.webViewBackFailed();
+                }
+            }
+        });
     }
 
     WebResourceResponse sendOK() {

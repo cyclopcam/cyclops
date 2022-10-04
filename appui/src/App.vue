@@ -1,19 +1,15 @@
 <script setup lang="ts">
-import { globals } from '@/natcom';
-import Init from './components/Init.vue';
-import Login from './components/Login.vue';
-
-type StringMap = { [key: string]: string };
-
-function getMode(): string {
-	return globals.mode;
-}
+import { RouterView } from 'vue-router';
 </script>
 
 <template>
-	<login v-if="getMode() === 'login'" />
-	<init v-else-if="getMode() === 'init'" />
-	<div v-else>Unknown mode!</div>
+	<router-view v-slot="{ Component, route }">
+		<!-- The "+ ''" is merely here to satisfy the compiler. I don't know why this doesn't work out of the box. -->
+		<transition :name="route.meta.transitionName + ''">
+			<component :is="Component" />
+		</transition>
+	</router-view>
+
 </template>
 
 <!-- These styles are not scoped, so importing 'base' affects all children, and they don't need to import it -->

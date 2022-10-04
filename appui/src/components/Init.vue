@@ -1,61 +1,32 @@
 <script setup lang="ts">
-import { globals } from '@/natcom';
+import { globals, maxIPsToScan } from '@/global';
+import type { ScanState } from '@/global';
+import { router, pushRoute } from '@/router/routes';
 import { onMounted, reactive, ref } from 'vue';
 
-// SYNC-SCAN-STATE	
-interface ScanState {
-	error: string; // If not empty, then status will be "d", and scan has stopped
-	phoneIP: string;
-	//status: "i" | "b" | "e" | "s"; // i:initial, b:busy, e:error, s:success
-	status: "i" | "b" | "d"; // i:initial, b:busy, d:done
-	servers: string[];
-	nScanned: number;
-}
+function showScanStatus(): boolean {
+	return globals.scanState.status !== "i";
+};
 
-const maxIPsToScan = 253;
-
-let showScanStatus = ref(false);
-let scanState = reactive({ error: "", phoneIP: "", status: "i", servers: [], nScanned: 0 } as ScanState);
-
-// Used for UI design without having to do an IP scan
-function mockScanState() {
-	showScanStatus.value = true;
-	scanState.phoneIP = "192.168.10.65";
-	scanState.error = "";
-	scanState.nScanned = 253;
-	scanState.servers = ["192.168.10.11 (cyclops)", "192.168.10.15 (mars)"];
-	scanState.status = "d";
-}
-
-function mockScanStateError() {
-	showScanStatus.value = true;
-	scanState.phoneIP = "";
-	scanState.error = "Android Internal Error, Java foo bar etc etc. Errors are often long. Failed to get WiFi IP address";
-	scanState.nScanned = 0;
-	scanState.servers = [];
-	scanState.status = "d";
+function scanState(): ScanState {
+	return globals.scanState;
 }
 
 function onScan() {
-	showScanStatus.value = true;
-
-	// debug UI
-	//scanState.status = 'b';
-	//scanState.nScanned = 34;
-	//scanState.servers = ["192.168.10.11"];
-
+	let ss = scanState();
 	fetch('/natcom/scanForServers', { method: 'POST' });
 	pollStatus();
 }
 
 async function pollStatus() {
 	let r = await (await fetch('/natcom/scanStatus')).json();
-	scanState.error = r.error;
-	scanState.phoneIP = r.phoneIP;
-	scanState.status = r.status;
-	scanState.servers = r.servers;
-	scanState.nScanned = r.nScanned;
-	if (scanState.status === 'b') {
+	let ss = scanState();
+	ss.error = r.error;
+	ss.phoneIP = r.phoneIP;
+	ss.status = r.status;
+	ss.servers = r.servers;
+	ss.nScanned = r.nScanned;
+	if (ss.status === 'b') {
 		setTimeout(pollStatus, 300);
 	}
 }
@@ -66,7 +37,7 @@ interface ParsedServer {
 }
 
 function parsedServers(): ParsedServer[] {
-	return scanState.servers.map(x => parseHostname(x));
+	return scanState().servers.map(x => parseHostname(x));
 }
 
 // Split a string like "192.168.10.11 (rpi)" into the IP and hostname portions. Parentheses are removed.
@@ -79,37 +50,42 @@ function parseHostname(hostname: string): ParsedServer {
 }
 
 function progStyle() {
-	let finished = scanState.nScanned === maxIPsToScan;
+	let finished = scanState().nScanned === maxIPsToScan;
 	return {
-		"width": (scanState.nScanned * 100 / maxIPsToScan) + "%",
+		"width": (scanState().nScanned * 100 / maxIPsToScan) + "%",
 		"height": "4px",
 		"margin-top": "4px",
 		"background-color": finished ? "#333" : "#aaa",
 	}
 }
 
-onMounted(() => mockScanState());
-//onMounted(() => mockScanStateError());
+function onConnectExisting() {
+	pushRoute({ name: "rtConnectExisting" });
+}
+
+function onClickLocal(s: ParsedServer) {
+	pushRoute({ name: "rtConnectLocal" });
+}
 
 </script>
  
 <template>
 	<div class="flexColumnCenter init">
 		<h1 style="margin-bottom: 40px">Connect to your<br /> Cyclops system</h1>
-		<button @click="onScan" :disabled="scanState.status === 'b'">Scan Home Network</button>
-		<div class="link" @click="onScan" style="margin-top: 20px">Connect to
+		<button @click="onScan" :disabled="scanState().status === 'b'">Scan Home Network</button>
+		<div class="link" @click="onConnectExisting" style="margin-top: 20px">Connect to
 			Existing Server</div>
-		<div v-if="showScanStatus" :class="{scanning: true}">
-			<div :class="{block: true, error: scanState.error !== 'e'}">{{scanState.error}}</div>
-			<div v-if="scanState.nScanned !== 0" class="block textCenter">
-				Scanned {{scanState.nScanned}} / {{maxIPsToScan}}
+		<div v-if="showScanStatus()" class="scanning shadow15L">
+			<div :class="{block: true, error: scanState().error !== 'e'}">{{scanState().error}}</div>
+			<div v-if="scanState().nScanned !== 0" class="block textCenter">
+				Scanned {{scanState().nScanned}} / {{maxIPsToScan}}
 				<div :style="progStyle()" />
 			</div>
-			<div v-if="scanState.servers.length !== 0 || (scanState.status === 'd' && scanState.error === '')"
+			<div v-if="scanState().servers.length !== 0 || (scanState().status === 'd' && scanState().error === '')"
 				class="block" style="margin-top: 30px">
-				<h3 style="margin-bottom: 15px;">Found {{scanState.servers.length}} Cyclops Servers
+				<h3 style="margin-bottom: 15px;">Found {{scanState().servers.length}} Cyclops Servers
 				</h3>
-				<div v-for="s of parsedServers()" :key="s.ip" class="link server">
+				<div v-for="s of parsedServers()" :key="s.ip" class="link server" @click="onClickLocal(s)">
 					{{s.ip}}
 					<span style="margin-left: 5px">{{s.host}}</span>
 				</div>
@@ -124,11 +100,13 @@ onMounted(() => mockScanState());
 }
 
 .block {
-	margin-top: 10px;
+	margin: 10px 0px;
 }
 
 .scanning {
-	margin: 20px 15px;
+	margin: 30px 10px;
+	padding: 5px 20px;
+	border-radius: 10px;
 }
 
 .textCenter {
@@ -137,7 +115,6 @@ onMounted(() => mockScanState());
 
 .error {
 	color: #d00;
-	margin-bottom: 30px;
 }
 
 .server {

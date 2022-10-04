@@ -21,16 +21,20 @@ public class Scanner {
     // State is marshalled directly into a JSON response
     // SYNC-SCAN-STATE
     static class State {
-        String message = "not started";
+        String error = "";
+        String phoneIP = "";
         String status = "i"; // i:initial, b:busy, e:error, s:success
-        int nScanned = 0;
         ArrayList<String> servers = new ArrayList<String>();
+        int nScanned = 0;
 
         synchronized void addServer(String ip) {
             servers.add(ip);
         }
-        synchronized void setMessage(String msg) {
-            message = msg;
+        synchronized void setPhoneIP(String ip) {
+            phoneIP = ip;
+        }
+        synchronized void setError(String err) {
+            error = err;
         }
         synchronized void setStatus(String s) {
             status = s;
@@ -41,8 +45,8 @@ public class Scanner {
         synchronized ArrayList<String> getServers() {
             return (ArrayList<String>) servers.clone();
         }
-        synchronized String getMessage() {
-            return message;
+        synchronized String getError() {
+            return error;
         }
         synchronized String getStatus() {
             return status;
@@ -52,7 +56,8 @@ public class Scanner {
         }
         synchronized State copy() {
             State c = new State();
-            c.message = message;
+            c.error = error;
+            c.phoneIP = phoneIP;
             c.status = status;
             c.nScanned = nScanned;
             c.servers = (ArrayList<String>) servers.clone();
@@ -73,7 +78,6 @@ public class Scanner {
             return false;
         }
 
-        state.setMessage("Starting");
         state.setStatus("b");
 
         Scanner self = this;
@@ -112,12 +116,12 @@ public class Scanner {
         Log.i("C", "Getting local IP address");
         int phoneIP = getWifiIPAddress(scanner.context);
         if (phoneIP == 0) {
-            scanner.state.setMessage("No WiFi address found");
-            scanner.state.setStatus("e");
+            scanner.state.setError("No WiFi address found");
+            scanner.state.setStatus("d");
             return;
         }
         Log.i("C", "Local IP is " + formatIP(phoneIP));
-        scanner.state.setMessage("Phone IP: " + formatIP(phoneIP));
+        scanner.state.setPhoneIP("Phone IP: " + formatIP(phoneIP));
         ArrayList<String> ipAddresses = new ArrayList<>();
         for (int i = 1; i < 255; i++) {
             int scanIP = setLowestByteOfIP(phoneIP, i);
@@ -153,7 +157,7 @@ public class Scanner {
             }
         }
         Log.i("C", "Scanner threads finished");
-        scanner.state.setStatus("s");
+        scanner.state.setStatus("d");
     }
 
     static void scanAddresses(ArrayList<String> ipAddresses, State state) {

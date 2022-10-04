@@ -5,11 +5,13 @@ import androidx.webkit.WebViewAssetLoader;
 
 import android.annotation.SuppressLint;
 import android.os.Bundle;
+import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
 public class MainActivity extends AppCompatActivity {
     WebView mWebView;
+    LocalContentWebViewClient mLocalClient;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -50,9 +52,21 @@ public class MainActivity extends AppCompatActivity {
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .addPathHandler("/res/", new WebViewAssetLoader.ResourcesPathHandler(this))
                 .build();
-        mWebView.setWebViewClient(new LocalContentWebViewClient(assetLoader));
+        mLocalClient = new LocalContentWebViewClient(assetLoader);
+        mWebView.setWebViewClient(mLocalClient);
         mWebView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
 
         //mWebView.loadUrl("http://192.168.10.11:8080");
+    }
+
+    @Override
+    public void onBackPressed() {
+        mLocalClient.cyBack(mWebView, this);
+    }
+
+    public void webViewBackFailed() {
+        // This will usually exit the activity
+        Log.i("C", "going super.back");
+        super.onBackPressed();
     }
 }
