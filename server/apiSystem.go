@@ -75,3 +75,20 @@ func (s *Server) httpSystemConstants(w http.ResponseWriter, r *http.Request, par
 	}
 	www.SendJSON(w, c)
 }
+
+type checkVPNJSON struct {
+	Error string `json:"error"`
+}
+
+// This API is intended to be used at setup time, if the user has somehow failed to start kernelwg.
+func (s *Server) httpSystemStartVPN(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	if len(s.vpn.PublicKey) != 0 {
+		www.SendJSON(w, &checkVPNJSON{})
+	} else {
+		if err := s.startVPN(); err != nil {
+			www.SendJSON(w, &checkVPNJSON{Error: err.Error()})
+		} else {
+			www.SendJSON(w, &checkVPNJSON{})
+		}
+	}
+}

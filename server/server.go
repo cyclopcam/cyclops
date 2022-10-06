@@ -41,7 +41,9 @@ type Server struct {
 	permanentEvents *eventdb.EventDB // Where we store our permanent videos
 	recentEvents    *eventdb.EventDB // Where we store our recent event videos
 	wsUpgrader      websocket.Upgrader
-	vpn             *vpn.VPN
+
+	vpnLock sync.Mutex
+	vpn     *vpn.VPN
 
 	recordersLock  sync.Mutex          // Guards access to recorders map
 	recorders      map[int64]*recorder // key is from nextRecorderID
@@ -96,16 +98,27 @@ func NewServer(configDBFilename string) (*Server, error) {
 
 	// Setup VPN and register with proxy
 	s.vpn = vpn.NewVPN(s.Log)
+	s.startVPN()
+
+	return s, nil
+}
+
+func (s *Server) startVPN() error {
+	s.vpnLock.Lock()
+	defer s.vpnLock.Unlock()
+
 	if err := s.vpn.ConnectKernelWG(); err != nil {
-		log.Warnf("Failed to connect to Wireguard root process 'kernelwg' (%v). Automatic VPN functionality will be unavailable.", err)
+		s.Log.Warnf("Failed to connect to Wireguard root process 'kernelwg' (%v). Automatic VPN functionality will be unavailable.", err)
+		return fmt.Errorf("Failed to connect to Cyclops KernelWG service: %w", err)
 	} else {
 		if err := s.vpn.Start(); err != nil {
-			log.Warnf("Failed to start Wireguard VPN: %v", err)
+			s.Log.Warnf("Failed to start Wireguard VPN: %v", err)
+			return err
 		} else {
 			s.Log.Infof("Wireguard public key: %v", base64.StdEncoding.EncodeToString(s.vpn.PublicKey))
+			return nil
 		}
 	}
-	return s, nil
 }
 
 // port example: ":8080"

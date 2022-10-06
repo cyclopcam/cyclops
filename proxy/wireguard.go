@@ -103,9 +103,9 @@ func (w *wireGuard) createPeers(servers []Server) error {
 		return nil
 	}
 
-	msg := kernel.MsgCreatePeers{}
+	msg := kernel.MsgCreatePeersInMemory{}
 	for _, server := range servers {
-		peer := kernel.CreatePeer{}
+		peer := kernel.CreatePeerInMemory{}
 		copy(peer.PublicKey[:], server.PublicKey)
 		peer.AllowedIP.IP = net.ParseIP(server.VpnIP)
 		if peer.AllowedIP.IP == nil {

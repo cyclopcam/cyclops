@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import MobileFullscreen from '@/components/responsive/MobileFullscreen.vue';
 import NewUser from '@/components/settings/NewUser.vue';
+import SetupVPN from '@/components/settings/SetupVPN.vue';
 import { onMounted, ref } from 'vue';
 import { computed } from '@vue/reactivity';
 import SetupCameras from '../components/settings/SetupCameras.vue';
@@ -11,12 +12,14 @@ import { fetchWithAuth } from '@/util/util';
 
 enum Stages {
 	CreateFirstUser = 0,
-	ConfigureVariables = 1,
-	ConfigureCameras = 2,
+	SetupVPN = 1,
+	ConfigureVariables = 2,
+	ConfigureCameras = 3,
 }
 
 let stage = ref(Stages.CreateFirstUser);
 let isCreateFirstUser = computed(() => stage.value === Stages.CreateFirstUser);
+let isSetupVPN = computed(() => stage.value === Stages.SetupVPN);
 let isConfigureVariables = computed(() => stage.value === Stages.ConfigureVariables);
 let isConfigureCameras = computed(() => stage.value === Stages.ConfigureCameras);
 
@@ -24,6 +27,8 @@ function stageText() {
 	switch (stage.value) {
 		case Stages.CreateFirstUser:
 			return "Create a username and password for yourself";
+		case Stages.SetupVPN:
+			return "VPN Activation";
 		case Stages.ConfigureVariables:
 			return "System configuration";
 		case Stages.ConfigureCameras:
@@ -47,11 +52,16 @@ async function moveToNextStage() {
 onMounted(async () => {
 	let r = await fetchWithAuth("/api/auth/whoami");
 	if (r.ok) {
-		let info = await (await fetchWithAuth("/api/system/info")).json();
-		if (info.readyError) {
-			stage.value = Stages.ConfigureVariables;
+		let ping = await (await fetchWithAuth("/api/ping")).json();
+		if (ping.publicKey === '') {
+			stage.value = Stages.SetupVPN;
 		} else {
-			stage.value = Stages.ConfigureCameras;
+			let info = await (await fetchWithAuth("/api/system/info")).json();
+			if (info.readyError) {
+				stage.value = Stages.ConfigureVariables;
+			} else {
+				stage.value = Stages.ConfigureCameras;
+			}
 		}
 	}
 
@@ -69,6 +79,7 @@ onMounted(async () => {
 			<h2 style="text-align: center; margin: 30px 10px">{{ stageText() }}</h2>
 		</div>
 		<new-user v-if="isCreateFirstUser" :is-first-user="true" @finished="moveToNextStage()" />
+		<setup-v-p-n v-if="isSetupVPN" @finished="moveToNextStage()" />
 		<system-variables v-if="isConfigureVariables" :initial-setup="true" @finished="moveToNextStage()" />
 		<setup-cameras v-if="isConfigureCameras" @finished="moveToNextStage()" />
 	</mobile-fullscreen>
