@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"net/http"
 	"os"
 	"time"
@@ -23,17 +24,19 @@ type constantsJSON struct {
 }
 
 type pingJSON struct {
-	Greeting string `json:"greeting"`
-	Hostname string `json:"hostname"`
-	Time     int64  `json:"time"`
+	Greeting  string `json:"greeting"`
+	Hostname  string `json:"hostname"`
+	Time      int64  `json:"time"`
+	PublicKey string `json:"publicKey"`
 }
 
 func (s *Server) httpSystemPing(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	hostname, _ := os.Hostname()
 	ping := &pingJSON{
-		Greeting: "I am Cyclops", // This is used by the LAN scanner on our mobile app to find Cyclops servers, so it's part of our API.
-		Hostname: hostname,       // This is used by the LAN scanner on our mobile app to suggest a name
-		Time:     time.Now().Unix(),
+		Greeting:  "I am Cyclops", // This is used by the LAN scanner on our mobile app to find Cyclops servers, so it's part of our API.
+		Hostname:  hostname,       // This is used by the LAN scanner on our mobile app to suggest a name
+		Time:      time.Now().Unix(),
+		PublicKey: base64.StdEncoding.EncodeToString(s.vpn.PublicKey),
 	}
 	www.SendJSON(w, ping)
 }

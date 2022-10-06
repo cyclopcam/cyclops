@@ -4,10 +4,12 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/bmharper/cyclops/pkg/staticfiles"
 	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/server/configdb"
+	"github.com/go-chi/httprate"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -28,7 +30,7 @@ func (s *Server) SetupHTTP() error {
 		handleWrapper := func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 			s.Log.Infof("HTTP (protected) %v", r.URL.Path)
 			//w.Header().Set("Access-Control-Allow-Origin", "https://appassets.androidplatform.net")
-			w.Header().Set("Access-Control-Allow-Origin", "*")
+			//w.Header().Set("Access-Control-Allow-Origin", "*")
 			user := s.configDB.GetUser(r)
 			if user == nil {
 				www.PanicForbidden()
@@ -50,8 +52,20 @@ func (s *Server) SetupHTTP() error {
 		www.Handle(s.Log, router, method, route, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 			s.Log.Infof("HTTP (unprotected) %v %v", method, r.URL.Path)
 			//w.Header().Set("Access-Control-Allow-Origin", "https://appassets.androidplatform.net")
-			w.Header().Set("Access-Control-Allow-Origin", "*")
+			//w.Header().Set("Access-Control-Allow-Origin", "*")
 			handle(w, r, params)
+		})
+	}
+
+	// unprotectedLimited creates an unprotected HTTP handler that is rate limited
+	unprotectedLimited := func(method, route string, handle func(w http.ResponseWriter, r *http.Request), requestLimit int, windowLength time.Duration) {
+		// We don't need httprate.KeyByEndpoint, because we create a unique rate limiter for each endpoint.
+		// That's not really the intended use case, but I only need it for a few endpoints, so I think this is OK.
+		// The data structures in httprate looks decent, so we're hopefully not bloating up too much here.
+		limited := httprate.Limit(requestLimit, windowLength, httprate.WithKeyFuncs(httprate.KeyByIP))
+
+		www.Handle(s.Log, router, method, route, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+			limited(http.HandlerFunc(handle)).ServeHTTP(w, r)
 		})
 	}
 
@@ -69,7 +83,7 @@ func (s *Server) SetupHTTP() error {
 	protected("a", "GET", "/api/config/getVariableDefinitions", s.httpConfigGetVariableDefinitions)
 	protected("a", "GET", "/api/config/getVariableValues", s.httpConfigGetVariableValues)
 	protected("a", "POST", "/api/config/setVariable/:key", s.httpConfigSetVariable)
-	unprotected("POST", "/api/config/scanNetworkForCameras", s.httpConfigScanNetworkForCameras)
+	protected("a", "POST", "/api/config/scanNetworkForCameras", s.httpConfigScanNetworkForCameras)
 	protected("a", "POST", "/api/record/start/:cameraID", s.httpRecordStart)
 	protected("a", "POST", "/api/record/stop/:recorderID", s.httpRecordStop)
 	protected("v", "GET", "/api/record/getRecordings", s.httpRecordGetRecordings)
@@ -84,7 +98,7 @@ func (s *Server) SetupHTTP() error {
 	unprotected("GET", "/api/auth/hasAdmin", s.httpAuthHasAdmin)
 	protected("v", "GET", "/api/auth/whoami", s.httpAuthWhoAmi)
 	unprotected("POST", "/api/auth/createUser", s.httpAuthCreateUser)
-	unprotected("POST", "/api/auth/login", s.httpAuthLogin)
+	unprotectedLimited("POST", "/api/auth/login", s.httpAuthLogin, 10, 10*time.Second)
 
 	isImmutable := true
 	relRoot := "www/dist"

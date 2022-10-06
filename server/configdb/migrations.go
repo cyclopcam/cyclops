@@ -57,5 +57,11 @@ func Migrations(log log.Log) []migration.Migrator {
 
 	`))
 
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		DELETE FROM session;
+		ALTER TABLE session ADD COLUMN created_at INT NOT NULL;
+	`))
+
 	return migs
 }

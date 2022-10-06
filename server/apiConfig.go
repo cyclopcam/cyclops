@@ -91,7 +91,7 @@ func (s *Server) httpConfigSetVariable(w http.ResponseWriter, r *http.Request, p
 	})
 }
 
-func (s *Server) httpConfigScanNetworkForCameras(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (s *Server) httpConfigScanNetworkForCameras(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	cache := www.QueryValue(r, "cache")
 	timeoutMS := www.QueryInt(r, "timeout") // timeout in milliseconds
 

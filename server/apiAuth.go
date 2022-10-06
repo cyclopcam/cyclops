@@ -50,9 +50,9 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 
 	www.Check(s.configDB.DB.Create(&newUser).Error)
 	s.Log.Infof("Created new user %v, perms:%v", newUser.Username, newUser.Permissions)
-	s.configDB.LoginInternal(w, newUser.ID, time.Time{})
+	s.configDB.LoginInternal(w, newUser.ID, time.Time{}, www.QueryValue(r, "loginMode"))
 }
 
-func (s *Server) httpAuthLogin(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (s *Server) httpAuthLogin(w http.ResponseWriter, r *http.Request) {
 	s.configDB.Login(w, r)
 }

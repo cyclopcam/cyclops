@@ -25,6 +25,7 @@ const MaxMsgSize = 1024 * 1024 * 1024
 const UnixSocketName = "@cyclops-wg"
 
 // Well known error messages
+var ErrNotConnected = errors.New("Not connected to root wireguard process") // This is generated client-side
 var ErrWireguardDeviceNotExist = errors.New("Wireguard device does not exist")
 
 type MsgType int
@@ -38,7 +39,9 @@ const (
 	MsgTypeGetPeers
 	MsgTypeGetPeersResponse
 	MsgTypeBringDeviceUp
-	MsgTypeCreatePeers
+	MsgTypeCreatePeersInMemory
+	MsgTypeCreateDeviceInConfigFile
+	MsgTypeSetProxyPeerInConfigFile
 )
 
 type MsgError struct {
@@ -54,8 +57,19 @@ type MsgGetPeersResponse struct {
 	Peers []Peer
 }
 
-type MsgCreatePeers struct {
-	Peers []CreatePeer
+type MsgCreatePeersInMemory struct {
+	Peers []CreatePeerInMemory
+}
+
+type MsgSetProxyPeerInConfigFile struct {
+	PublicKey wgtypes.Key
+	AllowedIP net.IPNet
+	Endpoint  string
+}
+
+type MsgCreateDeviceInConfigFile struct {
+	PrivateKey wgtypes.Key
+	Address    string
 }
 
 // Device is a cut-down clone of wgtypes.Device
@@ -75,7 +89,8 @@ type Peer struct {
 	AllowedIPs                  []net.IPNet
 }
 
-type CreatePeer struct {
+type CreatePeerInMemory struct {
 	PublicKey wgtypes.Key
 	AllowedIP net.IPNet
+	Endpoint  string
 }

@@ -49,6 +49,7 @@ type User struct {
 }
 
 type Session struct {
+	CreatedAt dbh.IntTime
 	Key       []byte
 	UserID    int64
 	ExpiresAt dbh.IntTime `gorm:"default:null"`

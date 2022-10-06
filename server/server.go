@@ -103,11 +103,6 @@ func NewServer(configDBFilename string) (*Server, error) {
 			log.Warnf("Failed to start Wireguard VPN: %v", err)
 		} else {
 			s.Log.Infof("Wireguard public key: %v", base64.StdEncoding.EncodeToString(s.vpn.PublicKey))
-			if err := s.vpn.RegisterWithProxy(); err != nil {
-				log.Warnf("Failed to register with VPN proxy: %v", err)
-			} else {
-				log.Infof("Registered with VPN proxy")
-			}
 		}
 	}
 	return s, nil

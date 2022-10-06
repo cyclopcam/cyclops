@@ -2,6 +2,7 @@ package configdb
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/bmharper/cyclops/pkg/dbh"
@@ -11,7 +12,7 @@ import (
 const SessionCookie = "session"
 
 func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
-	userID := c.GetUserID(r)
+	userID := c.GetUserID(r, true)
 	if userID == 0 {
 		http.Error(w, "Not authorized", http.StatusUnauthorized)
 		return
@@ -21,46 +22,87 @@ func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
 	if expiresAtUnixMilli != 0 {
 		expiresAt = time.UnixMilli(expiresAtUnixMilli)
 	}
-	c.LoginInternal(w, userID, expiresAt)
+	c.LoginInternal(w, userID, expiresAt, www.QueryValue(r, "loginMode"))
 }
 
-func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time) {
-	// As of Chrome 104, make cookie duration is 400 days.
+type loginResponseJSON struct {
+	BearerToken string `json:"bearerToken"`
+}
+
+func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time, mode string) {
+	doCookie := mode == "Cookie" || mode == ""
+	doBearer := mode == "BearerToken"
+	if !(doCookie || doBearer) {
+		http.Error(w, "Invalid loginMode. Must be Cookie or BearerToken (default is Cookie)", http.StatusBadRequest)
+		return
+	}
+
+	// As of Chrome 104, max cookie duration is 400 days.
 	// https://stackoverflow.com/questions/16626875/google-chrome-maximum-cookie-expiry-date
 	// For a mobile app, we'll need some workaround to this, because you can't just have
 	// your security system ask you for a password at some random time.
-	maxExpireDate := time.Now().AddDate(0, 0, 399)
+	// So this is our solution:
+	// Whenever you login, you get two tokens:
+	// 1. The cookie
+	// 2. An X-Token header with a session token inside it.
+	// The expiry date of the X-Token session has no limit to it.
+	now := time.Now().UTC()
+	maxCookieExpireDate := now.AddDate(0, 0, 399)
 
-	if expiresAt.IsZero() || expiresAt.After(maxExpireDate) {
-		expiresAt = maxExpireDate
+	cookieExpiresAt := expiresAt
+
+	if cookieExpiresAt.IsZero() || cookieExpiresAt.After(maxCookieExpireDate) {
+		cookieExpiresAt = maxCookieExpireDate
 	}
-	key := StrongRandomAlphaNumChars(30)
-	session := Session{
-		Key:       HashSessionCookie(key),
-		UserID:    userID,
-		ExpiresAt: dbh.MakeIntTime(expiresAt),
+	cookieKey := StrongRandomAlphaNumChars(30)
+	bearerKey := StrongRandomAlphaNumChars(30)
+	if doCookie {
+		cookieSession := Session{
+			CreatedAt: dbh.MakeIntTime(now),
+			Key:       HashSessionToken(cookieKey),
+			UserID:    userID,
+			ExpiresAt: dbh.MakeIntTime(cookieExpiresAt),
+		}
+		if err := c.DB.Create(&cookieSession).Error; err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
-	if err := c.DB.Create(&session).Error; err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	if doBearer {
+		bearerSession := Session{
+			CreatedAt: dbh.MakeIntTime(now),
+			Key:       HashSessionToken(bearerKey),
+			UserID:    userID,
+			ExpiresAt: dbh.MakeIntTime(expiresAt),
+		}
+		if err := c.DB.Create(&bearerSession).Error; err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
-	c.Log.Infof("Logging %v in", userID)
-	//c.Log.Infof("Logging %v in. key: %v. hashed key hex: %v", userID, key, hex.EncodeToString(HashSessionCookie(key))) // only for debugging
-	cookie := &http.Cookie{
-		Name:    SessionCookie,
-		Value:   key,
-		Path:    "/",
-		Expires: expiresAt,
-	}
-	http.SetCookie(w, cookie)
 	c.PurgeExpiredSessions()
-	www.SendOK(w)
+	c.Log.Infof("Logging %v in", userID)
+	//c.Log.Infof("Logging %v in. key: %v. hashed key hex: %v", userID, key, hex.EncodeToString(HashSessionToken(key))) // only for debugging
+	if doCookie {
+		cookie := &http.Cookie{
+			Name:    SessionCookie,
+			Value:   cookieKey,
+			Path:    "/",
+			Expires: expiresAt,
+		}
+		http.SetCookie(w, cookie)
+	}
+	resp := &loginResponseJSON{}
+	if doBearer {
+		resp.BearerToken = bearerKey
+	}
+	www.SendJSON(w, resp)
 }
 
 func (c *ConfigDB) Logout(w http.ResponseWriter, r *http.Request) {
 	cookie, _ := r.Cookie(SessionCookie)
 	if cookie != nil {
-		c.DB.Where("key = ?", HashSessionCookie(cookie.Value)).Delete(&Session{})
+		c.DB.Where("key = ?", HashSessionToken(cookie.Value)).Delete(&Session{})
 	}
 	www.SendOK(w)
 }
@@ -68,7 +110,7 @@ func (c *ConfigDB) Logout(w http.ResponseWriter, r *http.Request) {
 // Returns the user id, or zero
 // On failure, sends a 401 to 'w'
 func (c *ConfigDB) MustGetUserID(w http.ResponseWriter, r *http.Request) int64 {
-	userID := c.GetUserID(r)
+	userID := c.GetUserID(r, false)
 	if userID == 0 {
 		http.Error(w, "Not authorized", http.StatusUnauthorized)
 	}
@@ -77,7 +119,7 @@ func (c *ConfigDB) MustGetUserID(w http.ResponseWriter, r *http.Request) int64 {
 
 // Returns the user or nil
 func (c *ConfigDB) GetUser(r *http.Request) *User {
-	userID := c.GetUserID(r)
+	userID := c.GetUserID(r, false)
 	if userID == 0 {
 		return nil
 	}
@@ -89,32 +131,41 @@ func (c *ConfigDB) GetUser(r *http.Request) *User {
 	return &user
 }
 
-// Returns the user id, or zero
-func (c *ConfigDB) GetUserID(r *http.Request) int64 {
+// Returns the user id, or zero.
+// You should only set allowBasic to true if this is a rate limited endpoint.
+func (c *ConfigDB) GetUserID(r *http.Request, allowBasic bool) int64 {
 	cookie, _ := r.Cookie(SessionCookie)
 	if cookie != nil {
 		session := Session{}
-		c.DB.Where("key = ?", HashSessionCookie(cookie.Value)).Find(&session)
+		c.DB.Where("key = ?", HashSessionToken(cookie.Value)).Find(&session)
+		if session.UserID != 0 && (session.ExpiresAt.IsZero() || session.ExpiresAt.Get().After(time.Now())) {
+			return session.UserID
+		}
+	}
+	authorization := r.Header.Get("Authorization")
+	if strings.HasPrefix(authorization, "Bearer ") {
+		// Bearer token
+		token := authorization[7:]
+		session := Session{}
+		c.DB.Where("key = ?", HashSessionToken(token)).Find(&session)
 		if session.UserID != 0 && (session.ExpiresAt.IsZero() || session.ExpiresAt.Get().After(time.Now())) {
 			return session.UserID
 		}
 	}
 
-	username, password, haveBasic := r.BasicAuth()
-	if !haveBasic {
-		username = www.QueryValue(r, "username")
-		password = www.QueryValue(r, "password")
-	}
-
-	if username != "" && password != "" {
-		user := User{}
-		c.DB.Where("username_normalized = ?", NormalizeUsername(username)).Find(&user)
-		if user.ID != 0 {
-			if VerifyHash(password, user.Password) {
-				return user.ID
+	if allowBasic {
+		username, password, haveBasic := r.BasicAuth()
+		if haveBasic {
+			user := User{}
+			c.DB.Where("username_normalized = ?", NormalizeUsername(username)).Find(&user)
+			if user.ID != 0 {
+				if VerifyHash(password, user.Password) {
+					return user.ID
+				}
 			}
 		}
 	}
+
 	return 0
 }
 

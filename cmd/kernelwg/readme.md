@@ -7,6 +7,12 @@ proxy service as root, we only run this portion as root, and we communicate over
 I don't really know what I'm doing here. I suspect I ought to be looking into tools like
 https://justine.lol/pledge/.
 
+## Run
+> go run cmd/kernelwg/*.go
+
+## Build
+> go build -o kernelwg cmd/kernelwg/*.go
+
 ## Docker
 
 I initially tried running this in Docker, but I couldn't get it to work. It failed

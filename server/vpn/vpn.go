@@ -2,13 +2,25 @@ package vpn
 
 import (
 	"errors"
+	"fmt"
+	"net"
+	"time"
 
 	"github.com/bmharper/cyclops/pkg/log"
+	"github.com/bmharper/cyclops/pkg/requests"
 	"github.com/bmharper/cyclops/proxy/kernel"
+	"github.com/bmharper/cyclops/proxy/proxymsg"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // package vpn manages our Wireguard setup
+// It will create /etc/wireguard/cyclops.conf if necessary, and populate it with
+// all the relevant details. Before doing so, it must contact the proxy server,
+// which will assign it a VPN IP address.
 
+const ProxyHost = "proxy-cpt.cyclopcam.org"
+
+// VPN is only safe to use by a single thread
 type VPN struct {
 	Log       log.Log
 	PublicKey []byte
@@ -24,6 +36,7 @@ func NewVPN(log log.Log) *VPN {
 
 // Connect to our Wireguard interface process
 func (v *VPN) ConnectKernelWG() error {
+	//v.testAutoReconnect()
 	return v.client.Connect("127.0.0.1")
 }
 
@@ -31,14 +44,25 @@ func (v *VPN) ConnectKernelWG() error {
 func (v *VPN) Start() error {
 	getResp, err := v.client.GetDevice()
 	if err == nil {
+		// Device was already up, so we're good to go
 		v.storeDeviceDetails(getResp)
 		return nil
 	} else if !errors.Is(err, kernel.ErrWireguardDeviceNotExist) {
 		return err
 	}
 
+	// Try bringing up device
 	if err := v.client.BringDeviceUp(); err != nil {
-		return err
+		if !errors.Is(err, kernel.ErrWireguardDeviceNotExist) {
+			return err
+		}
+		// The device does not exist, so we must create it
+		if err := v.createDevice(); err != nil {
+			return err
+		}
+		if err := v.client.BringDeviceUp(); err != nil {
+			return err
+		}
 	}
 
 	getResp, err = v.client.GetDevice()
@@ -48,10 +72,66 @@ func (v *VPN) Start() error {
 	return err
 }
 
-func (v *VPN) RegisterWithProxy() error {
+func (v *VPN) createDevice() error {
+	// step 1: Register our public key with the global proxy
+	v.Log.Infof("Registering with %v", ProxyHost)
+	privateKey, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		return err
+	}
+	req := proxymsg.RegisterJSON{
+		PublicKey: privateKey.PublicKey().String(),
+	}
+	resp, err := requests.RequestJSON[proxymsg.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
+	if err != nil {
+		return err
+	}
+	// Extract the proxy's Wireguard data, for later
+	peer := kernel.MsgSetProxyPeerInConfigFile{}
+	peer.PublicKey, err = wgtypes.ParseKey(resp.ProxyPublicKey)
+	if err != nil {
+		return err
+	}
+	peer.AllowedIP.IP = net.ParseIP(resp.ProxyVpnIP)
+	if peer.AllowedIP.IP == nil {
+		return fmt.Errorf("Proxy %v has invalid IP '%v'", ProxyHost, resp.ProxyVpnIP)
+	}
+	// We only accept traffic from the proxy server, and not from any of the other peers.
+	// One *could* allow peers to communicate with each other via the proxy, but I don't see the utility,
+	// and that seems like a bad idea for security.
+	peer.AllowedIP.Mask = net.IPv4Mask(255, 255, 255, 255)
+
+	peer.Endpoint = fmt.Sprintf("%v:%v", ProxyHost, resp.ProxyListenPort)
+
+	// step 2: Create our Wireguard device.
+	// We needed to know our VPN IP address before we could do this.
+	createMsg := &kernel.MsgCreateDeviceInConfigFile{
+		PrivateKey: privateKey,
+		Address:    resp.ServerVpnIP,
+	}
+	v.Log.Infof("Creating local Wireguard config file")
+	if err := v.client.CreateDeviceInConfigFile(createMsg); err != nil {
+		return err
+	}
+
+	// step 3: Add the proxy as a peer
+	v.Log.Infof("Adding proxy peer to local Wireguard config file")
+	if err := v.client.SetProxyPeerInConfigFile(&peer); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func (v *VPN) storeDeviceDetails(resp *kernel.MsgGetDeviceResponse) {
 	v.PublicKey = resp.PublicKey[:]
+}
+
+func (v *VPN) testAutoReconnect() {
+	go func() {
+		for {
+			time.Sleep(3 * time.Second)
+			v.Log.Infof("IsDeviceAlive: %v", v.client.IsDeviceAlive())
+		}
+	}()
 }

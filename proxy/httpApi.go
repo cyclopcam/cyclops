@@ -7,20 +7,10 @@ import (
 
 	"github.com/bmharper/cyclops/pkg/dbh"
 	"github.com/bmharper/cyclops/pkg/www"
+	"github.com/bmharper/cyclops/proxy/proxymsg"
 	"github.com/julienschmidt/httprouter"
 	"gorm.io/gorm"
 )
-
-type registerJSON struct {
-	PublicKey string `json:"publicKey"`
-}
-
-type registerResponseJSON struct {
-	ProxyPublicKey  string `json:"proxyPublicKey"`
-	ProxyVpnIP      string `json:"proxyVpnIP"`
-	ProxyListenPort int    `json:"proxyListenPort"`
-	ServerVpnIP     string `json:"serverVpnIP"`
-}
 
 // Register a new server
 // This API is idempotent
@@ -29,7 +19,7 @@ func (p *Proxy) httpRegister(w http.ResponseWriter, r *http.Request, params http
 	p.addPeerLock.Lock()
 	defer p.addPeerLock.Unlock()
 
-	input := registerJSON{}
+	input := proxymsg.RegisterJSON{}
 	www.ReadJSON(w, r, &input, 1024*1024)
 	key, err := base64.StdEncoding.DecodeString(input.PublicKey)
 	www.Check(err)
@@ -82,7 +72,7 @@ func (p *Proxy) httpRegister(w http.ResponseWriter, r *http.Request, params http
 	if err != nil {
 		www.PanicBadRequestf("Creation of peer failed: %v", err)
 	}
-	resp := registerResponseJSON{
+	resp := proxymsg.RegisterResponseJSON{
 		ProxyPublicKey:  p.wg.PublicKey.String(),
 		ProxyVpnIP:      p.wg.VpnIP,
 		ProxyListenPort: p.wg.ListenPort,

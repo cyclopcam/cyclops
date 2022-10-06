@@ -57,7 +57,9 @@ func VerifyHash(password string, hash []byte) bool {
 	return subtle.ConstantTimeCompare(dk, hash[1+saltSizeV1:1+saltSizeV1+scryptHashSizeV1]) == 1
 }
 
-func HashSessionCookie(value string) []byte {
+// Hash the session token to safeguard against timing attacks (eg in the DB's BTree lookup)
+// The caller gets the plaintext value, and that is the ONLY place where the plaintext lives.
+func HashSessionToken(value string) []byte {
 	h := sha256.Sum256([]byte(value))
 	return h[:]
 }

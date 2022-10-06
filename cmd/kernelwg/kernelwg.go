@@ -17,6 +17,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// This is the name of our wireguard device, which is the same on the proxy server and on a camera server.
 const WireguardDeviceName = "cyclops"
 const Debug = false
 
@@ -32,6 +33,13 @@ type handler struct {
 
 func (h *handler) handleBringDeviceUp() error {
 	h.log.Infof("Bring up Wireguard device %v", WireguardDeviceName)
+
+	// Check first if the config file exists, so that we can return a definitive "does not exist" error.
+	if _, err := os.Stat(configFilename()); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return kernel.ErrWireguardDeviceNotExist
+		}
+	}
 
 	cmd := exec.Command("wg-quick", "up", WireguardDeviceName)
 	output, err := cmd.CombinedOutput()
@@ -88,7 +96,9 @@ func (h *handler) handleGetPeers() (any, error) {
 	return &resp, nil
 }
 
-func (h *handler) handleCreatePeers(request *kernel.MsgCreatePeers) error {
+// Create peers in memory. They are not saved to the config file.
+// This is used by the proxy for bringing peers online.
+func (h *handler) handleCreatePeersInMemory(request *kernel.MsgCreatePeersInMemory) error {
 	h.log.Infof("Creating %v peers", len(request.Peers))
 	cfg := wgtypes.Config{
 		ReplacePeers: false, // If this is false, then we append peers, which is what we want
@@ -115,6 +125,56 @@ func (h *handler) handleCreatePeers(request *kernel.MsgCreatePeers) error {
 	return nil
 }
 
+func configFilename() string {
+	return fmt.Sprintf("/etc/wireguard/%v.conf", WireguardDeviceName)
+}
+
+// This is used on a Cyclops server when it is setting up it's Wireguard interface to
+// the proxy server. The purpose of this function is to create the initial /etc/wireguard/cyclops.conf
+// file, and/or set the [Interface] section at the top of that file.
+func (h *handler) handleCreateDeviceInConfigFile(request *kernel.MsgCreateDeviceInConfigFile) error {
+	h.log.Infof("Creating %v", configFilename())
+	cfg, err := loadConfigFile(configFilename())
+	if errors.Is(err, os.ErrNotExist) {
+		cfg = &configFile{}
+	} else if err != nil {
+		return err
+	}
+
+	iface := cfg.findSectionByTitle("Interface")
+	if iface == nil {
+		iface = cfg.addSection("Interface")
+	}
+
+	iface.set("PrivateKey", request.PrivateKey.String())
+	iface.set("Address", request.Address)
+
+	return cfg.writeFile(configFilename())
+}
+
+// This is used on a Cyclops server when it is setting up it's Wireguard interface to
+// the proxy server. The purpose of this function is to add the [Peer] section to
+// /etc/wireguard/cyclops.conf that points to our proxy server.
+func (h *handler) handleSetProxyPeerInConfigFile(request *kernel.MsgSetProxyPeerInConfigFile) error {
+	h.log.Infof("Setting proxy peer in cyclops.conf")
+	cfg, err := loadConfigFile(configFilename())
+	if err != nil {
+		return err
+	}
+
+	peer := cfg.findSectionByKeyValue("Peer", "PublicKey", request.PublicKey.String())
+	if peer == nil {
+		peer = cfg.addSection("Peer")
+	}
+
+	peer.set("PublicKey", request.PublicKey.String())
+	peer.set("Endpoint", request.Endpoint)
+	peer.set("AllowedIPs", request.AllowedIP.String())
+	peer.set("PersistentKeepalive", "25")
+
+	return cfg.writeFile(configFilename())
+}
+
 func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 	if Debug {
 		h.log.Infof("handleMessage %v, %v bytes", msgType, msgLen)
@@ -123,8 +183,12 @@ func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 	// Decode request, if any
 	var request any
 	switch msgType {
-	case kernel.MsgTypeCreatePeers:
-		request = &kernel.MsgCreatePeers{}
+	case kernel.MsgTypeCreatePeersInMemory:
+		request = &kernel.MsgCreatePeersInMemory{}
+	case kernel.MsgTypeCreateDeviceInConfigFile:
+		request = &kernel.MsgCreateDeviceInConfigFile{}
+	case kernel.MsgTypeSetProxyPeerInConfigFile:
+		request = &kernel.MsgSetProxyPeerInConfigFile{}
 	}
 	if request != nil {
 		err := h.decoder.Decode(request)
@@ -144,8 +208,12 @@ func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 	case kernel.MsgTypeGetDevice:
 		respType = kernel.MsgTypeGetDeviceResponse
 		resp, err = h.handleGetDevice()
-	case kernel.MsgTypeCreatePeers:
-		err = h.handleCreatePeers(request.(*kernel.MsgCreatePeers))
+	case kernel.MsgTypeCreatePeersInMemory:
+		err = h.handleCreatePeersInMemory(request.(*kernel.MsgCreatePeersInMemory))
+	case kernel.MsgTypeCreateDeviceInConfigFile:
+		err = h.handleCreateDeviceInConfigFile(request.(*kernel.MsgCreateDeviceInConfigFile))
+	case kernel.MsgTypeSetProxyPeerInConfigFile:
+		err = h.handleSetProxyPeerInConfigFile(request.(*kernel.MsgSetProxyPeerInConfigFile))
 	case kernel.MsgTypeBringDeviceUp:
 		err = h.handleBringDeviceUp()
 	case kernel.MsgTypeIsDeviceAlive:
