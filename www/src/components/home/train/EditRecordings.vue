@@ -6,7 +6,7 @@ import RecordingItem from "./RecordingItem.vue";
 import Buttin from "../../core/Buttin.vue";
 import Trash from '@/icons/trash-2.svg';
 import LabelerDialog from './LabelerDialog.vue';
-import router from "@/router/routes";
+import { pushRoute, router } from "@/router/routes";
 
 let props = defineProps<{
 	id?: string, // ID of video to edit (comes in via route)
@@ -74,7 +74,7 @@ function onDelete(rec: Recording) {
 }
 
 function onOpenLabeler(rec: Recording) {
-	router.push({ name: 'rtTrainLabelRecording', params: { id: rec.id } });
+	pushRoute({ name: 'rtTrainLabelRecording', params: { id: rec.id } });
 }
 
 async function onLabelIDChanged(id: number) {
@@ -84,7 +84,7 @@ async function onLabelIDChanged(id: number) {
 			labelRecording.value = rec;
 		} else {
 			// just navigate to manage page, to avoid useless paths in our history
-			router.push({ name: 'rtTrainEditRecordings' });
+			pushRoute({ name: 'rtTrainEditRecordings' });
 		}
 	} else {
 		console.log("labelRecording.value = null");

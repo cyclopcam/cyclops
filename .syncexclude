@@ -7,3 +7,4 @@ cyclops.json
 node_modules
 /cyclops
 /www/dist
+/android/app/build

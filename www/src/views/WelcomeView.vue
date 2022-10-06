@@ -5,9 +5,9 @@ import { onMounted, ref } from 'vue';
 import { computed } from '@vue/reactivity';
 import SetupCameras from '../components/settings/SetupCameras.vue';
 import { globals } from '@/globals';
-import router from "@/router/routes";
+import { replaceRoute, router } from "@/router/routes";
 import SystemVariables from "../components/settings/SystemVariables.vue";
-import { apiPrefix } from '@/webview';
+import { fetchWithAuth } from '@/util/util';
 
 enum Stages {
 	CreateFirstUser = 0,
@@ -37,7 +37,7 @@ async function moveToNextStage() {
 		// we're done
 		globals.networkError = '';
 		await globals.loadCameras();
-		router.replace({ name: "rtMonitor" });
+		replaceRoute({ name: "rtMonitor" });
 		return;
 	}
 
@@ -45,9 +45,9 @@ async function moveToNextStage() {
 }
 
 onMounted(async () => {
-	let r = await fetch(apiPrefix + "/api/auth/whoami");
+	let r = await fetchWithAuth("/api/auth/whoami");
 	if (r.ok) {
-		let info = await (await fetch(apiPrefix + "/api/system/info")).json();
+		let info = await (await fetchWithAuth("/api/system/info")).json();
 		if (info.readyError) {
 			stage.value = Stages.ConfigureVariables;
 		} else {
@@ -56,7 +56,9 @@ onMounted(async () => {
 	}
 
 	// prime the network camera scanner
-	fetch(apiPrefix + "/api/config/scanNetworkForCameras", { method: "POST" });
+	// UPDATE: This is not needed, and complicates things by forcing scanNetworkForCameras to be an unprotected API.
+	// Our network scan is so fast, that it's not necessary to warm it up.
+	//fetchWithAuth("/api/config/scanNetworkForCameras", { method: "POST" });
 })
 
 </script>

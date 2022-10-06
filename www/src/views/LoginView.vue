@@ -18,16 +18,25 @@ async function onSubmit() {
 	ctx.submitError.value = '';
 	let basic = btoa(username.value.trim() + ":" + password.value.trim());
 	ctx.busy.value = true;
-	let r = await fetchOrErr('/api/auth/login', { method: 'POST', headers: { "Authorization": "BASIC " + basic } });
-
-	// Android WebView CORS blocks request when Authorization header is present.
-	//let r = await fetchOrErr('/api/auth/login?' + encodeQuery({ "username": username.value.trim(), "password": password.value.trim() }), { method: 'POST' });
+	let r = await fetchOrErr('/api/auth/login?' + encodeQuery({ loginMode: "BearerToken" }), { method: 'POST', headers: { "Authorization": "BASIC " + basic } });
 
 	ctx.busy.value = false;
 	if (!r.ok) {
 		ctx.submitError.value = r.error;
 		return;
 	}
+
+	let j = await r.r.json();
+	let token = j.bearerToken;
+
+	// Save our token to localStorage.
+	localStorage.setItem("bearerToken", token);
+
+	// Inform our mobile app that we've logged in. Chrome's limit on cookie duration is about 400 days,
+	// but we can extend that by not using cookies. Also, the mobile app needs to know the list of
+	// servers that the client knows about.
+	fetch('/natcom/login?' + encodeQuery({ bearerToken: token }));
+
 	globals.networkError = '';
 	globals.postLoadAutoRoute();
 }

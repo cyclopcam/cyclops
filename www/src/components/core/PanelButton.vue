@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import router from '@/router/routes';
+import { pushRoute, router } from '@/router/routes';
 import right from '@/icons/chevron-right.svg';
 
 let props = defineProps<{
@@ -18,7 +18,7 @@ function isSolo(): boolean {
 }
 
 function onClick() {
-	router.push({ name: props.routeTarget });
+	pushRoute({ name: props.routeTarget });
 }
 
 function iconStyle(): any {

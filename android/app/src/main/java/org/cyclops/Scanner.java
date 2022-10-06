@@ -39,6 +39,11 @@ public class Scanner {
         synchronized void setStatus(String s) {
             status = s;
         }
+        synchronized void reset() {
+            error = "";
+            nScanned = 0;
+            servers = new ArrayList<>();
+        }
         synchronized void incScanned() {
             nScanned++;
         }
@@ -78,6 +83,7 @@ public class Scanner {
             return false;
         }
 
+        state.reset();
         state.setStatus("b");
 
         Scanner self = this;

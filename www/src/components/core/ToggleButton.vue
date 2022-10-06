@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import router from '@/router/routes.js';
+import { pushRoute, router } from '@/router/routes.js';
 import { computed } from '@vue/reactivity';
 
 let props = defineProps<{
@@ -21,7 +21,7 @@ let isSelected = computed(() => {
 });
 
 function onClick() {
-	router.push({ name: props.routeTarget ? props.routeTarget : props.route });
+	pushRoute({ name: props.routeTarget ? props.routeTarget : props.route });
 }
 </script>
 

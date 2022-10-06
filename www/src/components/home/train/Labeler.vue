@@ -10,7 +10,7 @@ import LevelsExplainer from './LevelsExplainer.vue';
 import Back from '@/icons/back-black.svg';
 import Next from '@/icons/next.svg';
 import SvgButton from '../../core/SvgButton.vue';
-import router from "@/router/routes";
+import { pushRoute, router } from "@/router/routes";
 import FullscreenTopbar from "../../core/FullscreenTopbar.vue";
 
 // It was too painful to make this a true top-level route,
@@ -132,11 +132,11 @@ function onTagSelect(tag: OntologyTag) {
 }
 
 function onCancel() {
-	router.push({ name: 'rtTrainEditRecordings' });
+	pushRoute({ name: 'rtTrainEditRecordings' });
 }
 
 function onSave() {
-	router.push({ name: 'rtTrainEditRecordings' });
+	pushRoute({ name: 'rtTrainEditRecordings' });
 }
 
 onMounted(async () => {

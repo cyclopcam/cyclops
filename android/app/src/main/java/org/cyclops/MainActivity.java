@@ -19,6 +19,11 @@ public class MainActivity extends AppCompatActivity implements Main {
     LocalContentWebViewClient localClient;
     RemoteWebViewClient remoteClient;
     boolean isRemote = false;
+
+    // Maintain our own history stack, for the tricky transitions between localWebView and remoteWebView.
+    // An example of where you need this, is when the user has just scanned the LAN for local servers.
+    // Then he clicks on a local server IP. This opens up the remote webview into that server. But then,
+    // if he clicks back, then we need to close that remote webview, and return to our local webview.
     ArrayList<String> history = new ArrayList<>();
 
     @Override
@@ -41,12 +46,14 @@ public class MainActivity extends AppCompatActivity implements Main {
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .addPathHandler("/res/", new WebViewAssetLoader.ResourcesPathHandler(this))
                 .build();
-        localClient = new LocalContentWebViewClient(assetLoader, this);
+        localClient = new LocalContentWebViewClient(assetLoader, this, this);
         localWebView.setWebViewClient(localClient);
         localWebView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
 
-        remoteClient = new RemoteWebViewClient(this);
+        remoteClient = new RemoteWebViewClient(this, this);
         remoteWebView.setWebViewClient(remoteClient);
+
+        toggleWebViews(false);
 
         //openServer("http://192.168.10.15:8080");
     }

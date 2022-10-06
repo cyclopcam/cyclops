@@ -1,6 +1,7 @@
 package org.cyclops;
 
 import android.app.Activity;
+import android.content.Context;
 import android.net.Uri;
 import android.util.Log;
 import android.webkit.ValueCallback;
@@ -31,10 +32,12 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
     private final WebViewAssetLoader assetLoader;
     private final OkHttpClient client = new OkHttpClient();
     private final Main main;
+    private final Activity activity;
 
-    LocalContentWebViewClient(WebViewAssetLoader assetLoader, Main main) {
+    LocalContentWebViewClient(WebViewAssetLoader assetLoader, Main main, Activity activity) {
         this.assetLoader = assetLoader;
         this.main = main;
+        this.activity = activity;
     }
 
     @Override
@@ -55,7 +58,7 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
             public void onReceiveValue(String value) {
                 //Log.i("C", "cyBack response " + value);
                 if (!value.equals("true")) {
-                    main.webViewBackFailed();
+                    activity.runOnUiThread(main::webViewBackFailed);
                 }
             }
         });
@@ -94,7 +97,7 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                 case "/natcom/forward":
                     return forward(request);
                 case "/natcom/showServer":
-                    main.openServer(url.getQueryParameter("url"), true);
+                    activity.runOnUiThread(() -> main.openServer(url.getQueryParameter("url"), true));
                     return sendOK();
             }
         }

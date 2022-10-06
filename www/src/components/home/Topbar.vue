@@ -9,7 +9,7 @@ import wand from "@/icons/wand.svg";
 import { globals } from "@/globals";
 import { computed } from "@vue/reactivity";
 import SvgButton from "../core/SvgButton.vue";
-import router from "@/router/routes";
+import { popRoute, router } from "@/router/routes";
 
 let error = computed(() => {
 	return globals.networkError;
@@ -17,7 +17,7 @@ let error = computed(() => {
 
 function onBack() {
 	// We probably want to pop one up in the hierarchy, instead of going back.
-	router.back();
+	popRoute();
 }
 
 function showBack(): boolean {

@@ -1,6 +1,7 @@
 package org.cyclops;
 
 import android.app.Activity;
+import android.content.Context;
 import android.net.Uri;
 import android.util.Log;
 import android.webkit.ValueCallback;
@@ -30,9 +31,11 @@ import okhttp3.ResponseBody;
 public class RemoteWebViewClient extends WebViewClientCompat {
     private final OkHttpClient client = new OkHttpClient();
     private final Main main;
+    private final Activity activity;
 
-    RemoteWebViewClient(Main main) {
+    RemoteWebViewClient(Main main, Activity activity) {
         this.main = main;
+        this.activity = activity;
     }
 
     @Override
@@ -46,7 +49,7 @@ public class RemoteWebViewClient extends WebViewClientCompat {
             public void onReceiveValue(String value) {
                 //Log.i("C", "cyBack response " + value);
                 if (!value.equals("true")) {
-                    main.webViewBackFailed();
+                    activity.runOnUiThread(main::webViewBackFailed);
                 }
             }
         });

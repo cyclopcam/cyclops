@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { globals } from '@/global';
+import { globals, ServerPort } from '@/global';
 import { maxIPsToScan, parseServers } from '@/scan';
 import type { ScanState, ParsedServer } from '@/scan';
 import { router, pushRoute } from '@/router/routes';
 import { onMounted, reactive, ref } from 'vue';
+import { encodeQuery } from '@/util/util';
 
 function parsedServers(): ParsedServer[] {
 	return parseServers(scanState());
@@ -50,8 +51,10 @@ function onConnectExisting() {
 	pushRoute({ name: "rtConnectExisting" });
 }
 
-function onClickLocal(s: ParsedServer) {
-	pushRoute({ name: "rtConnectLocal", params: { ip: s.ip, host: s.host } });
+async function onClickLocal(s: ParsedServer) {
+	let baseUrl = `http://${s.ip}:${ServerPort}`;
+	await fetch('/natcom/showServer?' + encodeQuery({ url: baseUrl }));
+	//pushRoute({ name: "rtConnectLocal", params: { ip: s.ip, host: s.host } });
 }
 
 </script>
@@ -105,6 +108,6 @@ function onClickLocal(s: ParsedServer) {
 }
 
 .server {
-	margin: 12px 0px;
+	margin: 20px 0px;
 }
 </style>
