@@ -68,7 +68,7 @@ func (h *handler) handleGetDevice() (any, error) {
 		return nil, err
 	}
 	resp := kernel.MsgGetDeviceResponse{
-		PublicKey:  device.PublicKey,
+		PrivateKey: device.PrivateKey,
 		ListenPort: device.ListenPort,
 	}
 	return &resp, nil

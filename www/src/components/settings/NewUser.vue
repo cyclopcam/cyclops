@@ -5,6 +5,7 @@ import FormBottom from '@/components/form/FormBottom.vue';
 import { ref } from 'vue';
 import { Permissions, UserRecord } from '@/db/config/configdb';
 import { encodeQuery, fetchOrErr } from '@/util/util';
+import { login } from '@/auth';
 
 let props = defineProps<{
 	isFirstUser: boolean,
@@ -29,7 +30,18 @@ async function onSubmit() {
 		ctx.submitError.value = r.error;
 		return;
 	}
-	// The initial createUser also logs us in, so we don't need to worry about logging in
+
+	// We very much expect this next call to succeed. If it fails, we should actually reload the site
+	if (props.isFirstUser) {
+		ctx.busy.value = true;
+		let loginError = await login(username.value, password.value);
+		ctx.busy.value = false;
+		if (loginError !== "") {
+			ctx.submitError.value = loginError;
+			return;
+		}
+	}
+
 	emits('finished');
 }
 
@@ -44,4 +56,5 @@ async function onSubmit() {
 </template>
 
 <style lang="scss" scoped>
+
 </style>

@@ -12,7 +12,11 @@
 	},
 	"dependencies": {
 		"@types/jmuxer": "^2.0.2",
+		"base64-arraybuffer": "^1.0.2",
+		"curve25519-js": "^0.0.4",
 		"jmuxer": "^2.0.4",
+		"js-sha256": "^0.9.0",
+		"ts-chacha20": "^1.2.0",
 		"vue": "^3.2.37",
 		"vue-router": "^4.0.16"
 	},

@@ -49,7 +49,7 @@ type MsgError struct {
 }
 
 type MsgGetDeviceResponse struct {
-	PublicKey  wgtypes.Key
+	PrivateKey wgtypes.Key
 	ListenPort int
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CameraInfo } from '@/camera/camera.js';
+import type { CameraInfo } from '@/camera/camera';
 
 defineProps<{
 	camera: CameraInfo,

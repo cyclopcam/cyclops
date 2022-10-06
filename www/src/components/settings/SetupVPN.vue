@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { fetchOrErr, sleep } from '@/util/util';
+import { globals } from "@/globals";
 
 let emits = defineEmits(['finished']);
 
@@ -35,6 +36,7 @@ async function start(pauseMS = 0) {
 	busy.value = false;
 	nTries++;
 	if (mockSuccessAfter2Tries && nTries === 2) {
+		showWarning.value = false;
 		return;
 	}
 
@@ -45,6 +47,14 @@ async function start(pauseMS = 0) {
 		// response received
 		let j = await r.r.json();
 		error.value = j.error;
+		//console.log("error.value", error.value, "isGood", isGood());
+
+		// Reload our global key
+		await globals.loadPublicKey();
+
+		if (isGood()) {
+			showWarning.value = false;
+		}
 	}
 }
 

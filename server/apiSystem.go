@@ -36,7 +36,7 @@ func (s *Server) httpSystemPing(w http.ResponseWriter, r *http.Request, params h
 		Greeting:  "I am Cyclops", // This is used by the LAN scanner on our mobile app to find Cyclops servers, so it's part of our API.
 		Hostname:  hostname,       // This is used by the LAN scanner on our mobile app to suggest a name
 		Time:      time.Now().Unix(),
-		PublicKey: base64.StdEncoding.EncodeToString(s.vpn.PublicKey),
+		PublicKey: base64.StdEncoding.EncodeToString(s.vpn.PublicKey[:]),
 	}
 	www.SendJSON(w, ping)
 }
@@ -81,7 +81,7 @@ type checkVPNJSON struct {
 }
 
 // This API is intended to be used at setup time, if the user has somehow failed to start kernelwg.
-func (s *Server) httpSystemStartVPN(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+func (s *Server) httpSystemStartVPN(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	if len(s.vpn.PublicKey) != 0 {
 		www.SendJSON(w, &checkVPNJSON{})
 	} else {

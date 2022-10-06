@@ -76,7 +76,7 @@ func (w *wireGuard) boot() error {
 	// Unfortunately the wgctrl interface does not tell us the server's IP address,
 	// so we just hardcode it. I don't understand why that data is excluded... it seems
 	// like a natural thing to have there.
-	w.PublicKey = device.PublicKey
+	w.PublicKey = device.PrivateKey.PublicKey()
 	w.ListenPort = device.ListenPort
 	w.VpnIP = ProxyAddr
 

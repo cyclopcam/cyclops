@@ -3,8 +3,8 @@ import * as forms from '@/components/form/forms';
 import FormText from '@/components/form/FormText.vue';
 import FormBottom from '@/components/form/FormBottom.vue';
 import { onMounted, ref } from 'vue';
-import { encodeQuery, fetchOrErr, fetchWithAuth, sleep } from '@/util/util.js';
-import type { SystemInfoJSON } from '@/api/api.js';
+import { encodeQuery, fetchOrErr, fetchWithAuth, sleep } from '@/util/util';
+import type { SystemInfoJSON } from '@/api/api';
 
 let props = defineProps<{
 	initialSetup?: boolean,

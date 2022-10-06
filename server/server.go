@@ -115,7 +115,8 @@ func (s *Server) startVPN() error {
 			s.Log.Warnf("Failed to start Wireguard VPN: %v", err)
 			return err
 		} else {
-			s.Log.Infof("Wireguard public key: %v", base64.StdEncoding.EncodeToString(s.vpn.PublicKey))
+			s.Log.Infof("Wireguard public key: %v", base64.StdEncoding.EncodeToString(s.vpn.PublicKey[:]))
+			s.configDB.SetPrivateKey(s.vpn.PrivateKey)
 			return nil
 		}
 	}

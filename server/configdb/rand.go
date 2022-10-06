@@ -1,6 +1,9 @@
 package configdb
 
-import "crypto/rand"
+import (
+	"crypto/rand"
+	"encoding/base64"
+)
 
 // This is 62 symbols, hence 5.9542 bits per character
 // At 20 characters, that's 119 bits
@@ -18,6 +21,22 @@ func StrongRandomAlphaNumChars(nchars int) string {
 		buf[i] = alphaNumChars[buf[i]%byte(len(alphaNumChars))]
 	}
 	return string(buf)
+}
+
+func StrongRandomBytes(nbytes int) []byte {
+	buf := make([]byte, nbytes)
+	if n, _ := rand.Read(buf[:]); n != nbytes {
+		panic("Unable to read from crypto/rand")
+	}
+	return buf
+}
+
+func StrongRandomBase64(nbytes int) string {
+	buf := make([]byte, nbytes)
+	if n, _ := rand.Read(buf[:]); n != nbytes {
+		panic("Unable to read from crypto/rand")
+	}
+	return base64.StdEncoding.EncodeToString(buf)
 }
 
 func StrongRandomDigits(nchars int) string {

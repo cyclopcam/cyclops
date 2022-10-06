@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Recording } from '@/recording/recording.js';
+import type { Recording } from '@/recording/recording';
 import { onMounted, ref } from 'vue';
 import Play from '@/icons/play-circle.svg';
 import Burger from '@/icons/more-vertical.svg';

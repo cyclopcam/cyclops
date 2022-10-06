@@ -3,7 +3,6 @@ package server
 import (
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/server/configdb"
@@ -31,6 +30,7 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 	}
 	newUser.Password = configdb.HashPassword(password)
 
+	//isInitialUser := false
 	creds := s.configDB.GetUser(r)
 	if creds == nil || !creds.HasPermission(configdb.UserPermissionAdmin) {
 		n, err := s.configDB.NumAdminUsers()
@@ -39,6 +39,7 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 			// There is already an admin user, so you can't create the initial user now
 			www.PanicForbidden()
 		}
+		//isInitialUser = true
 		s.Log.Infof("Creating initial user %v", newUser.Username)
 		if !newUser.HasPermission(configdb.UserPermissionAdmin) {
 			// We must force initial creation to be an admin user, otherwise you could somehow
@@ -50,7 +51,14 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 
 	www.Check(s.configDB.DB.Create(&newUser).Error)
 	s.Log.Infof("Created new user %v, perms:%v", newUser.Username, newUser.Permissions)
-	s.configDB.LoginInternal(w, newUser.ID, time.Time{}, www.QueryValue(r, "loginMode"))
+	www.SendOK(w)
+
+	//if isInitialUser {
+	//	// For initial login, send Cookie and BearerToken, so that caller has flexibility
+	//	s.configDB.LoginInternal(w, newUser.ID, time.Time{}, configdb.LoginModeCookieAndBearerToken)
+	//} else {
+	//	www.SendOK(w)
+	//}
 }
 
 func (s *Server) httpAuthLogin(w http.ResponseWriter, r *http.Request) {

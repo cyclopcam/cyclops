@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { CameraInfo } from '@/camera/camera.js';
-import { globals } from '@/globals.js';
+import type { CameraInfo } from '@/camera/camera';
+import { globals } from '@/globals';
 import CameraItem from '@/components/home/CameraItem.vue';
 import { ref } from 'vue';
 

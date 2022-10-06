@@ -4,8 +4,8 @@ import { onMounted, ref } from 'vue';
 import * as forms from '@/components/form/forms';
 import FormText from '@/components/form/FormText.vue';
 import FormBottom from '@/components/form/FormBottom.vue';
-import { encodeQuery, fetchOrErr } from '@/util/util';
-import { globals } from '@/globals.js';
+import { globals } from '@/globals';
+import { login } from '@/auth';
 
 let username = ref("");
 let password = ref("");
@@ -16,26 +16,14 @@ let ctx = new forms.Context(() =>
 
 async function onSubmit() {
 	ctx.submitError.value = '';
-	let basic = btoa(username.value.trim() + ":" + password.value.trim());
-	ctx.busy.value = true;
-	let r = await fetchOrErr('/api/auth/login?' + encodeQuery({ loginMode: "BearerToken" }), { method: 'POST', headers: { "Authorization": "BASIC " + basic } });
 
+	ctx.busy.value = true;
+	let loginError = await login(username.value, password.value);
 	ctx.busy.value = false;
-	if (!r.ok) {
-		ctx.submitError.value = r.error;
+	if (loginError !== '') {
+		ctx.submitError.value = loginError;
 		return;
 	}
-
-	let j = await r.r.json();
-	let token = j.bearerToken;
-
-	// Save our token to localStorage.
-	localStorage.setItem("bearerToken", token);
-
-	// Inform our mobile app that we've logged in. Chrome's limit on cookie duration is about 400 days,
-	// but we can extend that by not using cookies. Also, the mobile app needs to know the list of
-	// servers that the client knows about.
-	fetch('/natcom/login?' + encodeQuery({ bearerToken: token }));
 
 	globals.networkError = '';
 	globals.postLoadAutoRoute();

@@ -72,7 +72,7 @@ func (s *Server) SetupHTTP() error {
 	unprotected("GET", "/api/ping", s.httpSystemPing)
 	protected("v", "GET", "/api/system/info", s.httpSystemGetInfo)
 	protected("a", "POST", "/api/system/restart", s.httpSystemRestart)
-	protected("a", "POST", "/api/system/startVPN", s.httpSystemStartVPN)
+	unprotected("POST", "/api/system/startVPN", s.httpSystemStartVPN)
 	unprotected("GET", "/api/system/constants", s.httpSystemConstants)
 	protected("v", "GET", "/api/camera/info/:cameraID", s.httpCamGetInfo)
 	protected("v", "GET", "/api/camera/latestImage/:cameraID", s.httpCamGetLatestImage)

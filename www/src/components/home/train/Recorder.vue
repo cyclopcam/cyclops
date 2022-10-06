@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { CameraInfo } from '@/camera/camera.js';
-import { globals } from '@/globals.js';
+import { CameraInfo } from '@/camera/camera';
+import { globals } from '@/globals';
 import CameraItem from '@/components/home/CameraItem.vue';
 import { ref } from 'vue';
 import RedDot from "@/icons/red-dot.svg";

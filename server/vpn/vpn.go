@@ -22,9 +22,10 @@ const ProxyHost = "proxy-cpt.cyclopcam.org"
 
 // VPN is only safe to use by a single thread
 type VPN struct {
-	Log       log.Log
-	PublicKey []byte
-	client    *kernel.Client
+	Log        log.Log
+	PrivateKey wgtypes.Key
+	PublicKey  wgtypes.Key
+	client     *kernel.Client
 }
 
 func NewVPN(log log.Log) *VPN {
@@ -124,7 +125,8 @@ func (v *VPN) createDevice() error {
 }
 
 func (v *VPN) storeDeviceDetails(resp *kernel.MsgGetDeviceResponse) {
-	v.PublicKey = resp.PublicKey[:]
+	v.PrivateKey = resp.PrivateKey
+	v.PublicKey = resp.PrivateKey.PublicKey()
 }
 
 func (v *VPN) testAutoReconnect() {

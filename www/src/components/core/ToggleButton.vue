@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { pushRoute, router } from '@/router/routes.js';
 import { computed } from '@vue/reactivity';
+import { pushRoute, router } from '@/router/routes';
 
 let props = defineProps<{
 	icon: string,
