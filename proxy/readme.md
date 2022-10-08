@@ -29,7 +29,7 @@ You should now be able to hit the proxy, eg
 ## Server Setup
 
 1. Install Docker
-2. Run Postgres with Docker `docker run -d -v /deploy/proxydb:/var/lib/postgresql/data -p 127.0.0.1:5432:5432 -e POSTGRES_PASSWORD=....... postgres:14.5-alpine -c 'listen_addresses=*'`
+2. Run Postgres with Docker `docker run -d --restart unless-stopped -v /deploy/proxydb:/var/lib/postgresql/data -p 127.0.0.1:5432:5432 -e POSTGRES_PASSWORD=....... postgres:14.5-alpine -c 'listen_addresses=*'`
 3. Install caddy. I use caddy instead of nginx, because nginx needs dedicated routes in order to forward websockets. [caddyserver.com/docs/install](https://caddyserver.com/docs/install#debian-ubuntu-raspbian)
 4. Grant caddy ability to listen on low ports: `sudo setcap cap_net_bind_service=+ep $(which caddy)`
 
@@ -51,6 +51,10 @@ caddy reverse-proxy --from proxy-cpt.cyclopcam.org --to localhost:8082
 ```
 
 ```
+psql -h localhost -U postgres
+```
+
+```
 go build -o bin/proxy cmd/proxy/proxy.go
 go build -o bin/kernelwg cmd/kernelwg/*.go
 scp bin/proxy ubuntu@proxy-cpt.cyclopcam.org:~/
@@ -59,3 +63,8 @@ ssh ubuntu@proxy-cpt.cyclopcam.org "sudo systemctl stop cyclopsproxy && sudo sys
 ```
 
 Use deployment/proxy-services to create systemd services for caddy, cyclopskernelwg, and cyclopsproxy.
+
+## TODO
+* Remove peers that haven't spoken for X days (eg 3 days)
+* Populate last_traffic_at with data from Wireguard
+* Require some kind of proof of work before adding a peer (eg Android App installation)

@@ -16,7 +16,9 @@ func Migrations(log log.Log) []migration.Migrator {
 			id BIGSERIAL PRIMARY KEY,
 			public_key BYTEA NOT NULL,
 			vpn_ip TEXT NOT NULL,
-			created_at TIMESTAMP NOT NULL
+			created_at TIMESTAMP NOT NULL,
+			last_register_at TIMESTAMP NOT NULL,
+			last_traffic_at TIMESTAMP
 		);
 
 		CREATE UNIQUE INDEX idx_server_public_key ON server(public_key);

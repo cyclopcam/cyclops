@@ -8,15 +8,13 @@ import (
 	"github.com/bmharper/cyclops/pkg/dbh"
 	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/proxy/proxymsg"
-	"github.com/julienschmidt/httprouter"
 	"gorm.io/gorm"
 )
 
-const CyclopsServerCookie = "CyclopsServerPublicKey"
-
 // Register a new server
-// This API is idempotent
-func (p *Proxy) httpRegister(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+// This API is idempotent, and it is intended to be used by clients once a day to refresh
+// their liveliness.
+func (p *Proxy) httpRegister(w http.ResponseWriter, r *http.Request) {
 	// To keep this simple, we limit it to one at a time.
 	p.addPeerLock.Lock()
 	defer p.addPeerLock.Unlock()
@@ -37,16 +35,16 @@ func (p *Proxy) httpRegister(w http.ResponseWriter, r *http.Request, params http
 	// and we don't need to do anything like keep a DB field "is_alive_in_wireguard".
 	err = p.db.Transaction(func(tx *gorm.DB) error {
 		existing := Server{}
-		// Using ? doesn't work for this query...
-		p.db.Where("public_key = " + dbh.PGByteArrayLiteral(key)).First(&existing)
+		// Using ? doesn't work for this query, because of the BLOB search, so we hardcode the entire query string
+		wherePubkey := "public_key = " + dbh.PGByteArrayLiteral(key)
+		p.db.Where(wherePubkey).First(&existing)
 		if existing.VpnIP != "" {
+			// Update last_seen_at. We should really use Wireguard data too, because this is unauthenticated.
 			serverIP = existing.VpnIP
+			if err := p.db.Model(&existing).Update("last_register_at", "now()").Error; err != nil {
+				p.log.Warnf("Failed to update last_register_at: %v", err)
+			}
 			return nil
-		}
-
-		if time.Since(p.lastPeerAddedAt) < 5*time.Second {
-			// Dumb rate limiting.. for my paranoia. Eventually we'll need a better way of vetting new people.. eg email address and captcha validation.
-			time.Sleep(5 * time.Second)
 		}
 
 		p.log.Infof("Creating new peer %v", input.PublicKey)
@@ -54,10 +52,13 @@ func (p *Proxy) httpRegister(w http.ResponseWriter, r *http.Request, params http
 		if err != nil {
 			return err
 		}
+		now := time.Now().UTC()
 		server := Server{
-			PublicKey: key,
-			VpnIP:     ip,
-			CreatedAt: time.Now().UTC(),
+			PublicKey:      key,
+			VpnIP:          ip,
+			CreatedAt:      now,
+			LastRegisterAt: now,
+			// LastTrafficAt is null here, because the caller has not authenticated over Wireguard
 		}
 		if err := tx.Create(&server).Error; err != nil {
 			return err
@@ -81,18 +82,4 @@ func (p *Proxy) httpRegister(w http.ResponseWriter, r *http.Request, params http
 		ServerVpnIP:     serverIP,
 	}
 	www.SendJSON(w, &resp)
-}
-
-// Looks like we don't need this, we can simply use CookieManager.getInstance() on Android.
-func (p *Proxy) httpSetServer(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	publicKey := www.RequiredQueryValue(r, "publicKey")
-	cookie := &http.Cookie{
-		Name:  CyclopsServerCookie,
-		Value: publicKey,
-		Path:  "/",
-	}
-	http.SetCookie(w, cookie)
-	w.Header().Set("Content-Type", "text/html")
-	body := `<!DOCTYPE html><html><body>setServer</body></html>`
-	w.Write([]byte(body))
 }

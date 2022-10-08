@@ -11,9 +11,11 @@ type BaseModel struct {
 // A Cyclops server
 type Server struct {
 	BaseModel
-	PublicKey []byte    // Wireguard public key of this server
-	VpnIP     string    // IP address inside Wireguard VPN (eg 10.7.0.0)
-	CreatedAt time.Time // Time when server record was created
+	PublicKey      []byte    // Wireguard public key of this server
+	VpnIP          string    // IP address inside Wireguard VPN (eg 10.7.0.0)
+	CreatedAt      time.Time // Time when server record was created
+	LastRegisterAt time.Time // Time when server last called register
+	LastTrafficAt  time.Time // Time when we last saw authenticated Wireguard traffic from this server
 }
 
 // List of available VPN IP addresses
