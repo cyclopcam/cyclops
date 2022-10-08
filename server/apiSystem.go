@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"net/http"
 	"os"
@@ -10,6 +12,8 @@ import (
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/julienschmidt/httprouter"
+	"golang.org/x/crypto/curve25519"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // SYNC-SYSTEM-INFO-JSON
@@ -39,6 +43,39 @@ func (s *Server) httpSystemPing(w http.ResponseWriter, r *http.Request, params h
 		PublicKey: base64.StdEncoding.EncodeToString(s.vpn.PublicKey[:]),
 	}
 	www.SendJSON(w, ping)
+}
+
+type keysJSON struct {
+	PublicKey string `json:"publicKey"`
+	Proof     string `json:"proof"` // HMAC[SHA256](sharedSecret, challenge).  sharedSecret is from ECDH.
+}
+
+// This API is used to prove that we own the private key corresponding to our advertised public key.
+// A client can use this before offering up the bearer token that it owns for this public key.
+// Without this check, server B could impersonate server A by simply claiming the public key of server A.
+// Then, a client might send through the bearer token that it knows for server A. Now server B
+// has access to server A.
+// Challenge is a 32 byte
+func (s *Server) httpSystemKeys(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	publicKeyb64 := www.RequiredQueryValue(r, "publicKey")
+	challengeb64 := www.RequiredQueryValue(r, "challenge")
+	publicKey, err := wgtypes.ParseKey(publicKeyb64)
+	www.Check(err)
+	challenge, err := base64.StdEncoding.DecodeString(challengeb64)
+	www.Check(err)
+
+	shared := [32]byte{}
+	curve25519.ScalarMult(&shared, (*[32]byte)(&s.configDB.PrivateKey), (*[32]byte)(&publicKey))
+
+	mac := hmac.New(sha256.New, shared[:])
+	mac.Write(challenge)
+	hash := mac.Sum(nil)
+
+	keys := &keysJSON{
+		PublicKey: s.vpn.PublicKey.String(),
+		Proof:     base64.StdEncoding.EncodeToString(hash[:]),
+	}
+	www.SendJSON(w, keys)
 }
 
 func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
@@ -81,6 +118,8 @@ type checkVPNJSON struct {
 }
 
 // This API is intended to be used at setup time, if the user has somehow failed to start kernelwg.
+// .... disabling this because I no longer think it's a good part of user flow
+/*
 func (s *Server) httpSystemStartVPN(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	if len(s.vpn.PublicKey) != 0 {
 		www.SendJSON(w, &checkVPNJSON{})
@@ -92,3 +131,4 @@ func (s *Server) httpSystemStartVPN(w http.ResponseWriter, r *http.Request, para
 		}
 	}
 }
+*/

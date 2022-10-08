@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/bmharper/cyclops/pkg/dbh"
 	"github.com/bmharper/cyclops/pkg/log"
@@ -13,14 +12,16 @@ import (
 )
 
 type ConfigDB struct {
-	Log log.Log
-	DB  *gorm.DB
+	Log        log.Log
+	DB         *gorm.DB
+	PrivateKey wgtypes.Key
+	PublicKey  wgtypes.Key
 
-	keyLock    sync.Mutex
-	privateKey wgtypes.Key
+	//keyLock    sync.Mutex
+	//privateKey wgtypes.Key
 
-	sharedSecretKeysLock sync.Mutex
-	sharedSecretKeys     map[string][]byte // Map key is RemotePublicKey, SHA256(X25519_Shared_Secret(MyPrivateKey, RemotePublicKey)).
+	//sharedSecretKeysLock sync.Mutex
+	//sharedSecretKeys     map[string][]byte // Map key is RemotePublicKey, SHA256(X25519_Shared_Secret(MyPrivateKey, RemotePublicKey)).
 }
 
 func NewConfigDB(logger log.Log, dbFilename string) (*ConfigDB, error) {
@@ -29,8 +30,35 @@ func NewConfigDB(logger log.Log, dbFilename string) (*ConfigDB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open database %v: %w", dbFilename, err)
 	}
+	privateKey, err := readOrCreatePrivateKey(logger, configDB)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to read or create private key: %w", err)
+	}
 	return &ConfigDB{
-		Log: logger,
-		DB:  configDB,
+		Log:        logger,
+		DB:         configDB,
+		PrivateKey: privateKey,
+		PublicKey:  privateKey.PublicKey(),
 	}, nil
+}
+
+func readOrCreatePrivateKey(logger log.Log, db *gorm.DB) (wgtypes.Key, error) {
+	k := Key{}
+	db.Where("name = ?", KeyMain).First(&k)
+	if len(k.Value) == 32 {
+		return wgtypes.NewKey(k.Value)
+	}
+	// Generate key
+	logger.Infof("Generating private key")
+	key, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		return wgtypes.Key{}, err
+	}
+	k.Name = KeyMain
+	k.Value = make([]byte, 32)
+	copy(k.Value, key[:])
+	if err := db.Create(&k).Error; err != nil {
+		return wgtypes.Key{}, err
+	}
+	return key, nil
 }

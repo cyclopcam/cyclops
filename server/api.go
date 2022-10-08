@@ -18,6 +18,8 @@ type ProtectedHandler func(w http.ResponseWriter, r *http.Request, params httpro
 func (s *Server) SetupHTTP() error {
 	router := httprouter.New()
 
+	logEveryRequest := false
+
 	// protected creates an HTTP handler that only accepts an authenticated user with
 	// the given set of permissions.
 	// The set of permissions are from configdb.UserPermissions
@@ -28,7 +30,9 @@ func (s *Server) SetupHTTP() error {
 			}
 		}
 		handleWrapper := func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-			s.Log.Infof("HTTP (protected) %v", r.URL.Path)
+			if logEveryRequest {
+				s.Log.Infof("HTTP (protected) %v", r.URL.Path)
+			}
 			//w.Header().Set("Access-Control-Allow-Origin", "https://appassets.androidplatform.net")
 			//w.Header().Set("Access-Control-Allow-Origin", "*")
 			user := s.configDB.GetUser(r)
@@ -50,7 +54,9 @@ func (s *Server) SetupHTTP() error {
 	// unprotected creates an HTTP handler that is accessible without authentication
 	unprotected := func(method, route string, handle httprouter.Handle) {
 		www.Handle(s.Log, router, method, route, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-			s.Log.Infof("HTTP (unprotected) %v %v", method, r.URL.Path)
+			if logEveryRequest {
+				s.Log.Infof("HTTP (unprotected) %v %v", method, r.URL.Path)
+			}
 			//w.Header().Set("Access-Control-Allow-Origin", "https://appassets.androidplatform.net")
 			//w.Header().Set("Access-Control-Allow-Origin", "*")
 			handle(w, r, params)
@@ -65,14 +71,18 @@ func (s *Server) SetupHTTP() error {
 		limited := httprate.Limit(requestLimit, windowLength, httprate.WithKeyFuncs(httprate.KeyByIP))
 
 		www.Handle(s.Log, router, method, route, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+			if logEveryRequest {
+				s.Log.Infof("HTTP (rate limited) %v %v", method, r.URL.Path)
+			}
 			limited(http.HandlerFunc(handle)).ServeHTTP(w, r)
 		})
 	}
 
 	unprotected("GET", "/api/ping", s.httpSystemPing)
+	unprotected("GET", "/api/keys", s.httpSystemKeys)
 	protected("v", "GET", "/api/system/info", s.httpSystemGetInfo)
 	protected("a", "POST", "/api/system/restart", s.httpSystemRestart)
-	unprotected("POST", "/api/system/startVPN", s.httpSystemStartVPN)
+	//unprotected("POST", "/api/system/startVPN", s.httpSystemStartVPN) // disabling this because I no longer think it's a good part of user flow
 	unprotected("GET", "/api/system/constants", s.httpSystemConstants)
 	protected("v", "GET", "/api/camera/info/:cameraID", s.httpCamGetInfo)
 	protected("v", "GET", "/api/camera/latestImage/:cameraID", s.httpCamGetLatestImage)

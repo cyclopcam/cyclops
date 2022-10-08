@@ -52,10 +52,10 @@ caddy reverse-proxy --from proxy-cpt.cyclopcam.org --to localhost:8082
 
 ```
 go build -o bin/proxy cmd/proxy/proxy.go
-go build -o bin/kernelwg cmd/kernelwg/kernelwg.go
+go build -o bin/kernelwg cmd/kernelwg/*.go
 scp bin/proxy ubuntu@proxy-cpt.cyclopcam.org:~/
 scp bin/kernelwg ubuntu@proxy-cpt.cyclopcam.org:~/
-ssh ubuntu@proxy-cpt.cyclopcam.org "sudo cp /home/ubuntu/proxy /deploy && sudo cp /home/ubuntu/kernelwg /deploy"
+ssh ubuntu@proxy-cpt.cyclopcam.org "sudo systemctl stop cyclopsproxy && sudo systemctl stop cyclopskernelwg && sudo cp /home/ubuntu/proxy /deploy && sudo cp /home/ubuntu/kernelwg /deploy && sudo systemctl start cyclopskernelwg && sudo systemctl start cyclopsproxy"
 ```
 
 Use deployment/proxy-services to create systemd services for caddy, cyclopskernelwg, and cyclopsproxy.

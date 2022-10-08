@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	stdlog "log"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/migration"
 	"github.com/bmharper/cyclops/pkg/log"
@@ -16,6 +18,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 )
 
@@ -317,12 +320,24 @@ func gormOpen(driver, dsn string) (*gorm.DB, error) {
 	case DriverSqlite:
 		dialector = sqlite.Open(dsn)
 	}
+
+	newLogger := logger.New(
+		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), // io writer
+		logger.Config{
+			SlowThreshold:             time.Second,
+			LogLevel:                  logger.Warn,
+			IgnoreRecordNotFoundError: true, // This is the primary reason we use a custom logger. Record not found is just never a loggable thing.
+			Colorful:                  true,
+		},
+	)
+
 	config := &gorm.Config{
 		NamingStrategy: schema.NamingStrategy{
 			// Disable pluralization of tables.
 			// This is just another thing to worry about when writing our own migrations, so rather disable it.
 			SingularTable: true,
 		},
+		Logger: newLogger,
 	}
 	db, err := gorm.Open(dialector, config)
 	if err != nil {

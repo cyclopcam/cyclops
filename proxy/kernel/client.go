@@ -45,7 +45,8 @@ func (c *Client) connect() error {
 	//conn, err := net.Dial(proto, addr)
 
 	if err != nil {
-		return fmt.Errorf("Failed to dial %v %v: %w", proto, addr, err)
+		return err
+		//return fmt.Errorf("Failed to dial %v %v: %w", proto, addr, err) // This is just stuttering, the error already contains all this info
 	}
 	c.conn = conn
 	c.encoder = gob.NewEncoder(&c.requestBuffer)

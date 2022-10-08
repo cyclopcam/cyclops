@@ -24,6 +24,7 @@ func main() {
 
 	parser := argparse.NewParser("cyclops", "A teachable camera security system")
 	config := parser.String("c", "config", &argparse.Options{Help: "Configuration database file", Default: filepath.Join(home, "cyclops", "config.sqlite")})
+	disableVPN := parser.Flag("", "novpn", &argparse.Options{Help: "Disable VPN", Default: false})
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
@@ -33,7 +34,11 @@ func main() {
 	// Run in a continuous loop, so that the server can restart itself
 	// due to major configuration changes.
 	for {
-		srv, err := server.NewServer(*config)
+		flags := 0
+		if *disableVPN {
+			flags |= server.ServerFlagDisableVPN
+		}
+		srv, err := server.NewServer(*config, flags)
 		if err != nil {
 			fmt.Printf("%v\n", err)
 			os.Exit(1)

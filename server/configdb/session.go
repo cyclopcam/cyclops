@@ -61,12 +61,12 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 	if cookieExpiresAt.IsZero() || cookieExpiresAt.After(maxCookieExpireDate) {
 		cookieExpiresAt = maxCookieExpireDate
 	}
-	cookieKey := StrongRandomAlphaNumChars(30)
-	bearerKey := StrongRandomBytes(32)
+	cookieToken := StrongRandomAlphaNumChars(30)
+	bearerToken := StrongRandomBytes(32)
 	if doCookie {
 		cookieSession := Session{
 			CreatedAt: dbh.MakeIntTime(now),
-			Key:       HashSessionToken(cookieKey),
+			Key:       HashSessionToken(cookieToken),
 			UserID:    userID,
 			ExpiresAt: dbh.MakeIntTime(cookieExpiresAt),
 		}
@@ -78,7 +78,7 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 	if doBearer {
 		bearerSession := Session{
 			CreatedAt: dbh.MakeIntTime(now),
-			Key:       HashSessionToken(string(bearerKey)),
+			Key:       HashSessionToken(string(bearerToken)),
 			UserID:    userID,
 			ExpiresAt: dbh.MakeIntTime(expiresAt),
 		}
@@ -93,7 +93,7 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 	if doCookie {
 		cookie := &http.Cookie{
 			Name:    SessionCookie,
-			Value:   cookieKey,
+			Value:   cookieToken,
 			Path:    "/",
 			Expires: expiresAt,
 		}
@@ -101,7 +101,7 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 	}
 	resp := &loginResponseJSON{}
 	if doBearer {
-		resp.BearerToken = base64.StdEncoding.EncodeToString(bearerKey)
+		resp.BearerToken = base64.StdEncoding.EncodeToString(bearerToken)
 	}
 	www.SendJSON(w, resp)
 }
@@ -150,19 +150,28 @@ func (c *ConfigDB) GetUserID(r *http.Request, allowBasic bool) int64 {
 		}
 	}
 	authorization := r.Header.Get("Authorization")
-	clientPublicKey := r.Header.Get("X-PublicKey")
-	clientNonce := r.Header.Get("X-Nonce")
-	if strings.HasPrefix(authorization, "Bearer ") && clientPublicKey != "" && clientNonce != "" {
+	//clientPublicKey := r.Header.Get("X-PublicKey")
+	//clientNonce := r.Header.Get("X-Nonce")
+	//if strings.HasPrefix(authorization, "Bearer ") && clientPublicKey != "" && clientNonce != "" {
+	tokenBase64 := ""
+
+	if strings.HasPrefix(authorization, "Bearer ") {
 		// Bearer token
-		tokenBase64 := authorization[7:]
-		decryptedBearerToken := c.DecryptBearerToken(tokenBase64, clientPublicKey, clientNonce)
-		if decryptedBearerToken != nil {
-			session := Session{}
-			c.DB.Where("key = ?", HashSessionToken(string(decryptedBearerToken))).Find(&session)
-			if session.UserID != 0 && (session.ExpiresAt.IsZero() || session.ExpiresAt.Get().After(time.Now())) {
-				return session.UserID
-			}
+		tokenBase64 = authorization[7:]
+	} else {
+		tokenBase64 = r.URL.Query().Get("authorizationToken")
+	}
+
+	if tokenBase64 != "" {
+		//decryptedBearerToken := c.DecryptBearerToken(tokenBase64, clientPublicKey, clientNonce)
+		//if decryptedBearerToken != nil {
+		token, _ := base64.StdEncoding.DecodeString(tokenBase64)
+		session := Session{}
+		c.DB.Where("key = ?", HashSessionToken(string(token))).Find(&session)
+		if session.UserID != 0 && (session.ExpiresAt.IsZero() || session.ExpiresAt.Get().After(time.Now())) {
+			return session.UserID
 		}
+		//}
 	}
 
 	if allowBasic {

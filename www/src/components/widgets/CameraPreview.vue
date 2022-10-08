@@ -1,14 +1,20 @@
 <script setup lang="ts">
+import { bearerTokenQuery } from '@/auth';
 import type { CameraInfo } from '@/camera/camera';
+import { encodeQuery } from '@/util/util';
 
-defineProps<{
+let props = defineProps<{
 	camera: CameraInfo,
 }>()
+
+function cameraURL(): string {
+	return `/api/camera/latestImage/${props.camera.id}?` + encodeQuery(bearerTokenQuery());
+}
 </script>
 
 <template>
 	<div>
-		<img class="preview" :src="`/api/camera/latestImage/${camera.id}`" />
+		<img class="preview" :src="cameraURL()" />
 	</div>
 </template>
 

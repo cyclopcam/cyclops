@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { bearerTokenQuery } from '@/auth';
 import type { CameraRecord } from '@/db/config/configdb';
+import { encodeQuery } from '@/util/util';
 import { computed } from '@vue/reactivity';
 import { onMounted, onUnmounted, ref } from 'vue';
 import Modal from '../core/Modal.vue';
@@ -43,7 +45,7 @@ function onClose() {
 
 onMounted(() => {
 
-	let socketURL = "ws://" + window.location.host + "/api/ws/config/testCamera";
+	let socketURL = "ws://" + window.location.host + "/api/ws/config/testCamera?" + encodeQuery(bearerTokenQuery());
 
 	ws = new WebSocket(socketURL);
 	//ws.binaryType = "arraybuffer";

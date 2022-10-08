@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"os"
@@ -55,8 +54,12 @@ type Server struct {
 	lastScannedCameras     []*configdb.Camera
 }
 
+const (
+	ServerFlagDisableVPN = 1
+)
+
 // Create a new server, load config, start cameras, and listen on HTTP
-func NewServer(configDBFilename string) (*Server, error) {
+func NewServer(configDBFilename string, serverFlags int) (*Server, error) {
 	log, err := log.NewLog()
 	if err != nil {
 		return nil, err
@@ -75,6 +78,17 @@ func NewServer(configDBFilename string) (*Server, error) {
 	} else {
 		s.configDB = cfg
 	}
+	s.Log.Infof("Public key: %v", s.configDB.PublicKey)
+
+	// Setup VPN and register with proxy
+	enableVPN := (serverFlags & ServerFlagDisableVPN) == 0
+	s.vpn = vpn.NewVPN(s.Log, s.configDB.PrivateKey, s.configDB.PublicKey)
+	if enableVPN {
+		if err := s.startVPN(); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := s.configDB.GuessDefaultVariables(); err != nil {
 		log.Errorf("GuessDefaultVariables failed: %v", err)
 	}
@@ -96,10 +110,6 @@ func NewServer(configDBFilename string) (*Server, error) {
 		return nil, err
 	}
 
-	// Setup VPN and register with proxy
-	s.vpn = vpn.NewVPN(s.Log)
-	s.startVPN()
-
 	return s, nil
 }
 
@@ -108,15 +118,11 @@ func (s *Server) startVPN() error {
 	defer s.vpnLock.Unlock()
 
 	if err := s.vpn.ConnectKernelWG(); err != nil {
-		s.Log.Warnf("Failed to connect to Wireguard root process 'kernelwg' (%v). Automatic VPN functionality will be unavailable.", err)
 		return fmt.Errorf("Failed to connect to Cyclops KernelWG service: %w", err)
 	} else {
 		if err := s.vpn.Start(); err != nil {
-			s.Log.Warnf("Failed to start Wireguard VPN: %v", err)
-			return err
+			return fmt.Errorf("Failed to start Wireguard VPN: %w", err)
 		} else {
-			s.Log.Infof("Wireguard public key: %v", base64.StdEncoding.EncodeToString(s.vpn.PublicKey[:]))
-			s.configDB.SetPrivateKey(s.vpn.PrivateKey)
 			return nil
 		}
 	}

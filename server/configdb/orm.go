@@ -30,6 +30,11 @@ type Variable struct {
 	Value string `json:"value"`
 }
 
+type Key struct {
+	Name  string `gorm:"primaryKey"`
+	Value []byte
+}
+
 // UserPermissions are single characters that are present in the user's Permissions field
 type UserPermissions string
 

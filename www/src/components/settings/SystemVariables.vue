@@ -3,7 +3,7 @@ import * as forms from '@/components/form/forms';
 import FormText from '@/components/form/FormText.vue';
 import FormBottom from '@/components/form/FormBottom.vue';
 import { onMounted, ref } from 'vue';
-import { encodeQuery, fetchOrErr, fetchWithAuth, sleep } from '@/util/util';
+import { encodeQuery, fetchOrErr, sleep } from '@/util/util';
 import type { SystemInfoJSON } from '@/api/api';
 
 let props = defineProps<{
@@ -133,9 +133,9 @@ async function isReady(): Promise<boolean> {
 }
 
 async function fetchLatest() {
-	let definitions = await (await fetchWithAuth('/api/config/getVariableDefinitions')).json() as VariableDefinition[];
+	let definitions = await (await fetch('/api/config/getVariableDefinitions')).json() as VariableDefinition[];
 	definitions.sort((a, b) => a.uiGroup.localeCompare(b.uiGroup));
-	let val = await (await fetchWithAuth('/api/config/getVariableValues')).json() as VariableValue[];
+	let val = await (await fetch('/api/config/getVariableValues')).json() as VariableValue[];
 	existing = new Map<string, string>();
 	let vmap: any = {};
 	for (let v of val) {

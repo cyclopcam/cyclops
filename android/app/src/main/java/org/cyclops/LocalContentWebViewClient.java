@@ -97,7 +97,7 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                 case "/natcom/forward":
                     return forward(request);
                 case "/natcom/showServer":
-                    activity.runOnUiThread(() -> main.openServer(url.getQueryParameter("url"), true));
+                    activity.runOnUiThread(() -> main.navigateToServer(url.getQueryParameter("url"), true, null));
                     return sendOK();
             }
         }

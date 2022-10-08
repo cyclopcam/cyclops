@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { bearerTokenQuery } from "@/auth";
 import type { CameraInfo } from "@/camera/camera";
+import { encodeQuery } from "@/util/util";
 import JMuxer from "jmuxer";
 import { onMounted, onUnmounted, watch } from "vue";
 
@@ -111,7 +113,7 @@ function play() {
 
 	isPaused = false;
 
-	let socketURL = "ws://" + window.location.host + "/api/ws/camera/stream/LD/" + props.camera.id;
+	let socketURL = "ws://" + window.location.host + "/api/ws/camera/stream/LD/" + props.camera.id + "?" + encodeQuery(bearerTokenQuery());
 	console.log("Play " + socketURL);
 	muxer = new JMuxer({
 		node: 'camera' + props.camera.id,
@@ -184,7 +186,7 @@ function sendWSMessage(msg: WSMessage) {
 }
 
 function posterURL(): string {
-	return "/api/camera/latestImage/" + props.camera.id;
+	return "/api/camera/latestImage/" + props.camera.id + "?" + encodeQuery(bearerTokenQuery());
 }
 
 function videoStyle(): any {

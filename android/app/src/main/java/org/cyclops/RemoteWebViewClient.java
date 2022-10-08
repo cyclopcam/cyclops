@@ -29,9 +29,11 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 
 public class RemoteWebViewClient extends WebViewClientCompat {
-    private final OkHttpClient client = new OkHttpClient();
+    //private final OkHttpClient client = new OkHttpClient();
     private final Main main;
     private final Activity activity;
+    private Uri originalUrl;
+    private State.Server server;
 
     RemoteWebViewClient(Main main, Activity activity) {
         this.main = main;
@@ -40,7 +42,18 @@ public class RemoteWebViewClient extends WebViewClientCompat {
 
     @Override
     public void onPageFinished(WebView view, String url) {
+        if (this.server != null && !this.server.publicKey.equals("") && !this.server.bearerToken.equals("")) {
+            view.evaluateJavascript("window.cySetCredentials('" + this.server.publicKey + "' , '" + this.server.bearerToken + "')", null);
+        }
         super.onPageFinished(view, url);
+    }
+
+    void setUrl(Uri uri) {
+        this.originalUrl = uri;
+    }
+
+    void setServer(State.Server server) {
+        this.server = server;
     }
 
     void cyBack(WebView view) {
@@ -77,6 +90,14 @@ public class RemoteWebViewClient extends WebViewClientCompat {
             String path = url.getPath();
             switch (path) {
                 case "/natcom/hello":
+                    return sendOK();
+                case "/natcom/login":
+                    String publicKey = url.getQueryParameter("publicKey");
+                    String bearerToken = url.getQueryParameter("bearerToken");
+                    String host = originalUrl.getHost();
+                    //int port = originalUrl.getPort();
+                    State.global.addNewServer(host, publicKey, bearerToken);
+                    State.global.setCurrentServer(publicKey);
                     return sendOK();
             }
         }

@@ -12,6 +12,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const CyclopsServerCookie = "CyclopsServerPublicKey"
+
 // Register a new server
 // This API is idempotent
 func (p *Proxy) httpRegister(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -79,4 +81,18 @@ func (p *Proxy) httpRegister(w http.ResponseWriter, r *http.Request, params http
 		ServerVpnIP:     serverIP,
 	}
 	www.SendJSON(w, &resp)
+}
+
+// Looks like we don't need this, we can simply use CookieManager.getInstance() on Android.
+func (p *Proxy) httpSetServer(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	publicKey := www.RequiredQueryValue(r, "publicKey")
+	cookie := &http.Cookie{
+		Name:  CyclopsServerCookie,
+		Value: publicKey,
+		Path:  "/",
+	}
+	http.SetCookie(w, cookie)
+	w.Header().Set("Content-Type", "text/html")
+	body := `<!DOCTYPE html><html><body>setServer</body></html>`
+	w.Write([]byte(body))
 }

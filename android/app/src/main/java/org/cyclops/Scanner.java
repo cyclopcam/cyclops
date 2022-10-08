@@ -109,6 +109,27 @@ public class Scanner {
         return wifiInfo.getIpAddress();
     }
 
+    // Returns zero on failure
+    static int parseIP(String ip) {
+        String[] parts = ip.split("\\.");
+        if (parts.length != 4) {
+            return 0;
+        }
+        int p0 = Integer.parseInt(parts[0]);
+        int p1 = Integer.parseInt(parts[1]);
+        int p2 = Integer.parseInt(parts[2]);
+        int p3 = Integer.parseInt(parts[3]);
+        return makeIP(p0, p1, p2, p3);
+    }
+
+    static int makeIP(int p0, int p1, int p2, int p3) {
+        return (p3 << 24) | (p2 << 16) | (p1 << 8) | p0;
+    }
+
+    static boolean areIPsInSameSubnet(int ip1, int ip2) {
+        return (ip1 & 0x00ffffff) == (ip2 & 0x00ffffff); // little endian
+    }
+
     static String formatIP(int ip) {
         return Integer.toString(ip & 0xff) + "." + Integer.toString((ip >>> 8) & 0xff) + "." + Integer.toString((ip >>> 16) & 0xff) + "." + Integer.toString((ip >>> 24) & 0xff);
     }
@@ -166,29 +187,37 @@ public class Scanner {
         scanner.state.setStatus("d");
     }
 
+    // Returns null if unable to contact the server
+    static JSAPI.PingResponseJSON isCyclopsServer(OkHttpClient client, String ipAddress) {
+        String url = "http://" + ipAddress + ":" + Constants.ServerPort + "/api/ping";
+        Request req = new Request.Builder().url(url).build();
+        Gson gson = new Gson();
+        try {
+            Response resp = client.newCall(req).execute();
+            ResponseBody body = resp.body();
+            if (resp.code() == 200 && body != null) {
+                JSAPI.PingResponseJSON ping = gson.fromJson(body.string(), JSAPI.PingResponseJSON.class);
+                if (ping.greeting.equals("I am Cyclops")) {
+                    return ping;
+                }
+            }
+            if (body != null) {
+                body.close();
+            }
+        } catch (IOException e) {
+        }
+        return null;
+    }
+
     static void scanAddresses(ArrayList<String> ipAddresses, State state) {
         OkHttpClient client = new OkHttpClient.Builder()
                 .callTimeout(200, TimeUnit.MILLISECONDS)
                 .build();
-        Gson gson = new Gson();
         for (String scanIP : ipAddresses) {
-            String url = "http://" + scanIP + ":" + Constants.ServerPort + "/api/ping";
-            //Log.i("C", "Scanning " + url);
-            Request req = new Request.Builder().url(url).build();
-            try {
-                Response resp = client.newCall(req).execute();
-                ResponseBody body = resp.body();
-                if (resp.code() == 200 && body != null) {
-                    JSAPI.PingResponseJSON ping = gson.fromJson(body.string(), JSAPI.PingResponseJSON.class);
-                    if (ping.greeting.equals("I am Cyclops")) {
-                        Log.i("C", "Found Cyclops server at " + scanIP);
-                        state.addServer(scanIP + " (" + ping.hostname + ")");
-                    }
-                }
-                if (body != null) {
-                    body.close();
-                }
-            } catch (IOException e) {
+            JSAPI.PingResponseJSON ping = isCyclopsServer(client, scanIP);
+            if (ping != null) {
+                Log.i("C", "Found Cyclops server at " + scanIP);
+                state.addServer(scanIP + " (" + ping.hostname + ")");
             }
             state.incScanned();
             //Log.i("C", "after inc, nScanned = " + state.getnScanned());

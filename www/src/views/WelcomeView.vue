@@ -6,12 +6,11 @@ import { onMounted, ref } from 'vue';
 import { computed } from '@vue/reactivity';
 import SetupCameras from '../components/settings/SetupCameras.vue';
 import { globals } from '@/globals';
-import { replaceRoute, router } from "@/router/routes";
+import { replaceRoute } from "@/router/routes";
 import SystemVariables from "../components/settings/SystemVariables.vue";
-import { fetchWithAuth } from '@/util/util';
 
 enum Stages {
-	SetupVPN = 0,
+	SetupVPN = 0, // This is disabled.. but maybe someday we bring it back.
 	CreateFirstUser = 1,
 	ConfigureVariables = 2,
 	ConfigureCameras = 3,
@@ -50,7 +49,7 @@ async function moveToNextStage() {
 
 	if (stage.value === Stages.CreateFirstUser) {
 		// This code path is necessary for when the VPN is still not setup, but the user is logged in
-		let r = await fetchWithAuth("/api/auth/whoami");
+		let r = await fetch("/api/auth/whoami");
 		if (r.ok) {
 			moveToNextStage();
 		}
@@ -58,23 +57,39 @@ async function moveToNextStage() {
 }
 
 onMounted(async () => {
-	let ping = await (await fetchWithAuth("/api/ping")).json();
-	if (ping.publicKey === '') {
-		stage.value = Stages.SetupVPN;
+	await globals.waitForPublicKeyLoad();
+
+	// I'm disabling this for now, and forcing the VPN to be working before the system will boot
+	//let ping = await (await fetch("/api/ping")).json();
+	//if (ping.publicKey === '') {
+	//	stage.value = Stages.SetupVPN;
+	//	return;
+	//}
+
+	await globals.waitForSystemInfoLoad();
+	if (!globals.isLoggedIn) {
+		stage.value = Stages.CreateFirstUser;
 		return;
 	}
 
-	let r = await fetchWithAuth("/api/auth/whoami");
+	if (globals.readyError !== "") {
+		stage.value = Stages.ConfigureVariables;
+		return;
+	}
+
+	/*
+	let r = await fetch("/api/auth/whoami");
 	if (!r.ok) {
 		stage.value = Stages.CreateFirstUser;
 		return;
 	}
 
-	let info = await (await fetchWithAuth("/api/system/info")).json();
+	let info = await (await fetch("/api/system/info")).json();
 	if (info.readyError) {
 		stage.value = Stages.ConfigureVariables;
 		return;
 	}
+	*/
 
 	stage.value = Stages.ConfigureCameras;
 })

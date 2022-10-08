@@ -1,6 +1,7 @@
 package vpn
 
 import (
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net"
@@ -28,10 +29,12 @@ type VPN struct {
 	client     *kernel.Client
 }
 
-func NewVPN(log log.Log) *VPN {
+func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key) *VPN {
 	return &VPN{
-		Log:    log,
-		client: kernel.NewClient(),
+		Log:        log,
+		PrivateKey: privateKey,
+		PublicKey:  publicKey,
+		client:     kernel.NewClient(),
 	}
 }
 
@@ -45,9 +48,8 @@ func (v *VPN) ConnectKernelWG() error {
 func (v *VPN) Start() error {
 	getResp, err := v.client.GetDevice()
 	if err == nil {
-		// Device was already up, so we're good to go
-		v.storeDeviceDetails(getResp)
-		return nil
+		// Device was already up, so we're good to go, provided the key is correct
+		return v.validateDeviceDetails(getResp)
 	} else if !errors.Is(err, kernel.ErrWireguardDeviceNotExist) {
 		return err
 	}
@@ -67,21 +69,17 @@ func (v *VPN) Start() error {
 	}
 
 	getResp, err = v.client.GetDevice()
-	if err == nil {
-		v.storeDeviceDetails(getResp)
+	if err != nil {
+		return err
 	}
-	return err
+	return v.validateDeviceDetails(getResp)
 }
 
 func (v *VPN) createDevice() error {
 	// step 1: Register our public key with the global proxy
 	v.Log.Infof("Registering with %v", ProxyHost)
-	privateKey, err := wgtypes.GeneratePrivateKey()
-	if err != nil {
-		return err
-	}
 	req := proxymsg.RegisterJSON{
-		PublicKey: privateKey.PublicKey().String(),
+		PublicKey: v.PrivateKey.PublicKey().String(),
 	}
 	resp, err := requests.RequestJSON[proxymsg.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
 	if err != nil {
@@ -107,7 +105,7 @@ func (v *VPN) createDevice() error {
 	// step 2: Create our Wireguard device.
 	// We needed to know our VPN IP address before we could do this.
 	createMsg := &kernel.MsgCreateDeviceInConfigFile{
-		PrivateKey: privateKey,
+		PrivateKey: v.PrivateKey,
 		Address:    resp.ServerVpnIP,
 	}
 	v.Log.Infof("Creating local Wireguard config file")
@@ -124,9 +122,13 @@ func (v *VPN) createDevice() error {
 	return nil
 }
 
-func (v *VPN) storeDeviceDetails(resp *kernel.MsgGetDeviceResponse) {
-	v.PrivateKey = resp.PrivateKey
-	v.PublicKey = resp.PrivateKey.PublicKey()
+func (v *VPN) validateDeviceDetails(resp *kernel.MsgGetDeviceResponse) error {
+	if subtle.ConstantTimeCompare(resp.PrivateKey[:], v.PrivateKey[:]) == 0 {
+		return fmt.Errorf("Wireguard device has a different key. Delete /etc/wireguard/cyclops.conf, so that it can be recreated.")
+	}
+	return nil
+	//v.PrivateKey = resp.PrivateKey
+	//v.PublicKey = resp.PrivateKey.PublicKey()
 }
 
 func (v *VPN) testAutoReconnect() {

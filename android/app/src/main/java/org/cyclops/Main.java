@@ -4,5 +4,5 @@ import android.util.Log;
 
 public interface Main {
     void webViewBackFailed();
-    void openServer(String url, boolean addToHistory);
+    void navigateToServer(String url, boolean addToHistory, State.Server server);
 }
