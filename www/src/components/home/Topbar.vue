@@ -6,10 +6,14 @@ import monitor from "@/icons/monitor.svg";
 import bulb from "@/icons/bulb.svg";
 import back from "@/icons/back.svg";
 import wand from "@/icons/wand.svg";
+import wifi from "@/icons/wifi.svg";
+import network from "@/icons/network.svg";
 import { globals } from "@/globals";
 import { computed } from "@vue/reactivity";
 import SvgButton from "../core/SvgButton.vue";
 import { popRoute, router } from "@/router/routes";
+
+let isUsingProxy = globals.isUsingProxy;
 
 let error = computed(() => {
 	return globals.networkError;
@@ -56,8 +60,10 @@ onMounted(() => {
 				<toggle-button :icon="wand" title="Empty" route="rtEmpty" />
 				-->
 			</div>
-			<div class="flex" style="width: 60px">
+			<div class="flex" style="width: 60px; justify-content: flex-end;">
 				<!-- logout or something -->
+				<img v-if="!isUsingProxy" :src="wifi" class="networkIndicator" />
+				<img v-if="isUsingProxy" :src="network" class="networkIndicator" />
 			</div>
 		</div>
 		<div v-if="error" class="error">
@@ -99,6 +105,13 @@ onMounted(() => {
 .centerGroup {
 	display: flex;
 	gap: 8px;
+}
+
+.networkIndicator {
+	width: 12px;
+	height: 12px;
+	margin-right: 8px;
+	filter: contrast(0.5) brightness(2);
 }
 
 .error {

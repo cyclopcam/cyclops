@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/bmharper/cyclops/pkg/log"
@@ -23,24 +24,29 @@ const ProxyHost = "proxy-cpt.cyclopcam.org"
 
 // VPN is only safe to use by a single thread
 type VPN struct {
-	Log        log.Log
-	PrivateKey wgtypes.Key
-	PublicKey  wgtypes.Key
-	client     *kernel.Client
+	Log             log.Log
+	PrivateKey      wgtypes.Key
+	PublicKey       wgtypes.Key
+	client          *kernel.Client
+	connectionOK    atomic.Bool
+	shutdownStarted chan bool
 }
 
-func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key) *VPN {
-	return &VPN{
-		Log:        log,
-		PrivateKey: privateKey,
-		PublicKey:  publicKey,
-		client:     kernel.NewClient(),
+func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key, shutdownStarted chan bool) *VPN {
+	v := &VPN{
+		Log:             log,
+		PrivateKey:      privateKey,
+		PublicKey:       publicKey,
+		client:          kernel.NewClient(),
+		shutdownStarted: shutdownStarted,
 	}
+	v.registerLoop()
+	return v
 }
 
 // Connect to our Wireguard interface process
 func (v *VPN) ConnectKernelWG() error {
-	//v.testAutoReconnect()
+	//v.testAutoReconnectToKernelWG()
 	return v.client.Connect("127.0.0.1")
 }
 
@@ -126,12 +132,53 @@ func (v *VPN) validateDeviceDetails(resp *kernel.MsgGetDeviceResponse) error {
 	if subtle.ConstantTimeCompare(resp.PrivateKey[:], v.PrivateKey[:]) == 0 {
 		return fmt.Errorf("Wireguard device has a different key. Delete /etc/wireguard/cyclops.conf, so that it can be recreated.")
 	}
+	v.connectionOK.Store(true)
 	return nil
-	//v.PrivateKey = resp.PrivateKey
-	//v.PublicKey = resp.PrivateKey.PublicKey()
 }
 
-func (v *VPN) testAutoReconnect() {
+// Keep pinging server so that it knows we're alive.
+// In future we should probably remove this, and just rely on the Wireguard pings to
+// maintain liveness.
+// TODO: this needs to run up front, in case our IP changes
+func (v *VPN) registerLoop() {
+	nextRegisterAt := time.Now().Add(time.Second)
+
+	minSleep := 5 * time.Second
+	maxSleep := 10 * time.Minute
+	sleep := minSleep
+
+	go func() {
+		for {
+		inner:
+			select {
+			case <-time.After(sleep):
+				break inner
+			case <-v.shutdownStarted:
+				return
+			}
+
+			if v.connectionOK.Load() && time.Now().After(nextRegisterAt) {
+				req := proxymsg.RegisterJSON{
+					PublicKey: v.PrivateKey.PublicKey().String(),
+				}
+				_, err := requests.RequestJSON[proxymsg.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
+				if err != nil {
+					v.Log.Warnf("Failed to re-register with proxy: %v", err)
+					sleep = sleep * 2
+					if sleep > maxSleep {
+						sleep = maxSleep
+					}
+				} else {
+					v.Log.Infof("Re-register with proxy OK")
+					nextRegisterAt = time.Now().Add(12 * time.Hour)
+					sleep = minSleep
+				}
+			}
+		}
+	}()
+}
+
+func (v *VPN) testAutoReconnectToKernelWG() {
 	go func() {
 		for {
 			time.Sleep(3 * time.Second)

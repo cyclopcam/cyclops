@@ -82,7 +82,7 @@ func NewServer(configDBFilename string, serverFlags int) (*Server, error) {
 
 	// Setup VPN and register with proxy
 	enableVPN := (serverFlags & ServerFlagDisableVPN) == 0
-	s.vpn = vpn.NewVPN(s.Log, s.configDB.PrivateKey, s.configDB.PublicKey)
+	s.vpn = vpn.NewVPN(s.Log, s.configDB.PrivateKey, s.configDB.PublicKey, s.ShutdownStarted)
 	if enableVPN {
 		if err := s.startVPN(); err != nil {
 			return nil, err

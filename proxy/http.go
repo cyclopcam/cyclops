@@ -11,6 +11,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// SYNC-CYCLOPS-SERVER-COOKIE
 const CyclopsServerCookie = "CyclopsServerPublicKey"
 
 func (p *Proxy) listenHTTP() error {

@@ -45,7 +45,8 @@ function onClose() {
 
 onMounted(() => {
 
-	let socketURL = "ws://" + window.location.host + "/api/ws/config/testCamera?" + encodeQuery(bearerTokenQuery());
+	let scheme = window.location.origin.startsWith("https") ? "wss://" : "ws://";
+	let socketURL = scheme + window.location.host + "/api/ws/config/testCamera?" + encodeQuery(bearerTokenQuery());
 
 	ws = new WebSocket(socketURL);
 	//ws.binaryType = "arraybuffer";

@@ -1,12 +1,20 @@
 package org.cyclops;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.webkit.WebViewAssetLoader;
 
 import android.annotation.SuppressLint;
 import android.app.ActionBar;
 import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.LinkProperties;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
 import android.util.Log;
@@ -28,6 +36,10 @@ public class MainActivity extends AppCompatActivity implements Main {
     LocalContentWebViewClient localClient;
     RemoteWebViewClient remoteClient;
     boolean isRemote = false;
+    //ConnectivityManager.NetworkCallback networkCallback;
+    State.Server currentServer;
+    boolean isOnLAN = false;
+    String currentNetworkInterfaceName = "";
 
     // Maintain our own history stack, for the tricky transitions between localWebView and remoteWebView.
     // An example of where you need this, is when the user has just scanned the LAN for local servers.
@@ -75,6 +87,8 @@ public class MainActivity extends AppCompatActivity implements Main {
             switchToServer(current);
         }
 
+        setupNetworkMonitor();
+
         //openServer("http://192.168.10.15:8080");
     }
 
@@ -84,6 +98,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         // Javascript is not enabled by default!
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
 
         // We need this in order to talk to a Cyclops server on the LAN..
         // Dammit even this doesn't work.
@@ -143,8 +158,15 @@ public class MainActivity extends AppCompatActivity implements Main {
         isRemote = showRemote;
     }
 
+    // If you call switchToServer and 'server' = 'currentServer', then the function will first check
+    // if a change between LAN and proxy is needed. If no change is needed, then it will leave the
+    // app as-is.
     public void switchToServer(State.Server server) {
         Context context = this;
+
+        // Just check if connectivity is still fine. If fine, then don't reload.
+        boolean justCheck = currentServer != null && server.publicKey.equals(currentServer.publicKey);
+        currentServer = server.copy();
 
         new Thread(new Runnable() {
             @Override
@@ -152,12 +174,16 @@ public class MainActivity extends AppCompatActivity implements Main {
                 // Try first to connect over LAN, and if that fails, then fall back to proxy.
                 int storedLanIP = Scanner.parseIP(server.lanIP);
                 int wifiIP = Scanner.getWifiIPAddress(context);
-                //if (storedLanIP != 0 && wifiIP != 0 && Scanner.areIPsInSameSubnet(storedLanIP, wifiIP)) {
-                if (false) {
+                if (storedLanIP != 0 && wifiIP != 0 && Scanner.areIPsInSameSubnet(storedLanIP, wifiIP)) {
                     OkHttpClient client = new OkHttpClient.Builder().callTimeout(300, TimeUnit.MILLISECONDS).build();
                     JSAPI.PingResponseJSON ping = Scanner.isCyclopsServer(client, server.lanIP);
                     if (ping != null) {
+                        if (justCheck && isOnLAN) {
+                            Log.i("C", "Remaining on LAN " + server.lanIP + " for server " + server.publicKey);
+                            return;
+                        }
                         Log.i("C", "Connecting to LAN " + server.lanIP + " for server " + server.publicKey);
+                        isOnLAN = true;
                         runOnUiThread(() -> navigateToServer("http://" + server.lanIP + ":" + Constants.ServerPort, false, server));
                         return;
                     }
@@ -165,23 +191,40 @@ public class MainActivity extends AppCompatActivity implements Main {
 
                 // Fall back to using proxy
                 String proxyOrigin = "https://proxy-cpt.cyclopcam.org";
+                if (justCheck && !isOnLAN) {
+                    Log.i("C", "Remaining on proxy " + proxyOrigin + " for server " + server.publicKey);
+                    return;
+                }
+                isOnLAN = false;
                 Log.i("C", "Falling back to proxy " + proxyOrigin + " for server " + server.publicKey);
                 runOnUiThread(() -> {
                     CookieManager cookies = CookieManager.getInstance();
-                    cookies.setCookie(proxyOrigin, "cyclopsserver=" + server.publicKey, (Boolean ok) -> {
+                    // SYNC-CYCLOPS-SERVER-COOKIE
+                    cookies.setCookie(proxyOrigin, "CyclopsServerPublicKey=" + server.publicKey, (Boolean ok) -> {
                         Log.i("C", "setCookie result " + (ok ? "OK" : "Failed"));
                         navigateToServer(proxyOrigin, false, server);
                     });
                 });
-                //byte[] pubkey = Base64.decode(server.publicKey, 0);
-                //String pk64Url = Base64.encodeToString(pubkey, Base64.URL_SAFE);
-                //runOnUiThread(() -> navigateToServer("https://proxy-cpt.cyclopcam.org/proxy/" + pk64Url, false, server));
             }
         }).start();
     }
 
     public void navigateToServer(String url, boolean addToNavigationHistory, State.Server server) {
         toggleWebViews(true);
+        String currentURL = remoteWebView.getUrl();
+        if (currentURL != null) {
+            // Preserve the Vue route when switching between LAN and proxy.
+            // Unfortunately this doesn't preserve our entire UI state. THAT is left as an exercise for the reader (i.e. not trivial).
+            Uri current = Uri.parse(currentURL);
+            Uri next = Uri.parse(url);
+            if (current.getPath().length() > 0 && (next.getPath().equals("") || next.getPath().equals("/"))) {
+                if (url.endsWith("/")) {
+                    url = url.substring(0, url.length() - 1);
+                }
+                url += current.getPath();
+            }
+        }
+        Log.i("C", "navigateToServer. currentURL = " + currentURL + ". New URL = " + url);
         remoteClient.setServer(server);
         remoteClient.setUrl(Uri.parse(url));
         remoteWebView.loadUrl(url);
@@ -189,5 +232,73 @@ public class MainActivity extends AppCompatActivity implements Main {
             navigationHistory.add("openServer");
         }
     }
+
+    public void setupNetworkMonitor() {
+        ConnectivityManager connectivityManager = getSystemService(ConnectivityManager.class);
+
+        connectivityManager.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+            @Override
+            public void onAvailable(Network network) {
+                //Log.e("C", "The default network is now: " + network);
+            }
+
+            @Override
+            public void onLost(Network network) {
+                //Log.e("C", "The application no longer has a default network. The last default network was " + network);
+            }
+
+            @Override
+            public void onCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) {
+                //Log.e("C", "The default network changed capabilities: " + networkCapabilities);
+            }
+
+            @Override
+            public void onLinkPropertiesChanged(Network network, LinkProperties linkProperties) {
+                Log.e("C", "The default network changed link properties: " + linkProperties);
+                if (!linkProperties.getInterfaceName().equals(currentNetworkInterfaceName)) {
+                    currentNetworkInterfaceName = linkProperties.getInterfaceName();
+                    if (currentServer != null) {
+                        switchToServer(currentServer);
+                    }
+                }
+            }
+        });
+
+        /*
+        NetworkRequest networkRequest = new NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+                .build();
+
+        ConnectivityManager.NetworkCallback networkCallback = new ConnectivityManager.NetworkCallback() {
+            @Override
+            public void onAvailable(@NonNull Network network) {
+                Log.i("C", "networkCallback.onAvailable");
+                super.onAvailable(network);
+                if (currentServer != null) {
+                    switchToServer(currentServer);
+                }
+            }
+
+            @Override
+            public void onLost(@NonNull Network network) {
+                Log.i("C", "networkCallback.onLost");
+                super.onLost(network);
+            }
+
+            @Override
+            public void onCapabilitiesChanged(@NonNull Network network, @NonNull NetworkCapabilities networkCapabilities) {
+                Log.i("C", "networkCallback.onCapabilitiesChanged");
+                super.onCapabilitiesChanged(network, networkCapabilities);
+                final boolean unmetered = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
+            }
+        };
+
+        ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(ConnectivityManager.class);
+        connectivityManager.requestNetwork(networkRequest, networkCallback);
+         */
+    }
+
 
 }

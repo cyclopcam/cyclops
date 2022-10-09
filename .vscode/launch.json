@@ -58,6 +58,10 @@
 			"request": "launch",
 			"mode": "auto",
 			"program": "cmd/cyclops/cyclops.go",
+			"args": [
+				"--config",
+				"/home/ben/tmp/junk.sqlite"
+			],
 			"cwd": "${workspaceFolder}"
 		},
 		{

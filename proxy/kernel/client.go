@@ -9,11 +9,14 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"time"
 )
 
-// Client can only be used by a single thread at a time
+// Client can only be used by a single thread at a time.
+// There is a giant lock that ensures this.
 type Client struct {
+	lock            sync.Mutex
 	conn            net.Conn
 	host            string
 	encoder         *gob.Encoder
@@ -30,7 +33,10 @@ func NewClient() *Client {
 }
 
 func (c *Client) Connect(host string) error {
-	c.Close()
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	c.close()
 	c.host = host
 	return c.connect()
 }
@@ -55,10 +61,20 @@ func (c *Client) connect() error {
 }
 
 func (c *Client) IsConnected() bool {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	return c.conn != nil
 }
 
 func (c *Client) Close() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	c.close()
+}
+
+func (c *Client) close() {
 	if c.conn != nil {
 		c.conn.Close()
 		c.conn = nil
@@ -86,7 +102,7 @@ func (c *Client) do(requestType MsgType, request any, expectResponseType MsgType
 		if reconnectLoop == 0 && (errors.Is(err, io.EOF) || strings.Index(err.Error(), "broken pipe") != -1) {
 			// doInternal will try to reconnect
 			//fmt.Printf("do failed (%v). trying to reconnect\n", err)
-			c.Close()
+			c.close()
 			// loop for a 2nd try
 		} else {
 			// persistent failure
@@ -191,6 +207,9 @@ func (c *Client) readResponse(responseType MsgType, expectResponseType MsgType, 
 }
 
 func (c *Client) GetPeers() (*MsgGetPeersResponse, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	resp := MsgGetPeersResponse{}
 	if err := c.do(MsgTypeGetPeers, nil, MsgTypeGetPeersResponse, &resp); err != nil {
 		return nil, err
@@ -199,6 +218,9 @@ func (c *Client) GetPeers() (*MsgGetPeersResponse, error) {
 }
 
 func (c *Client) GetDevice() (*MsgGetDeviceResponse, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	resp := MsgGetDeviceResponse{}
 	if err := c.do(MsgTypeGetDevice, nil, MsgTypeGetDeviceResponse, &resp); err != nil {
 		return nil, err
@@ -207,21 +229,36 @@ func (c *Client) GetDevice() (*MsgGetDeviceResponse, error) {
 }
 
 func (c *Client) IsDeviceAlive() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	return c.do(MsgTypeIsDeviceAlive, nil, MsgTypeNone, nil)
 }
 
 func (c *Client) BringDeviceUp() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	return c.do(MsgTypeBringDeviceUp, nil, MsgTypeNone, nil)
 }
 
 func (c *Client) CreatePeers(msg *MsgCreatePeersInMemory) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	return c.do(MsgTypeCreatePeersInMemory, msg, MsgTypeNone, nil)
 }
 
 func (c *Client) CreateDeviceInConfigFile(msg *MsgCreateDeviceInConfigFile) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	return c.do(MsgTypeCreateDeviceInConfigFile, msg, MsgTypeNone, nil)
 }
 
 func (c *Client) SetProxyPeerInConfigFile(msg *MsgSetProxyPeerInConfigFile) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	return c.do(MsgTypeSetProxyPeerInConfigFile, msg, MsgTypeNone, nil)
 }

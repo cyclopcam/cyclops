@@ -113,7 +113,8 @@ function play() {
 
 	isPaused = false;
 
-	let socketURL = "ws://" + window.location.host + "/api/ws/camera/stream/LD/" + props.camera.id + "?" + encodeQuery(bearerTokenQuery());
+	let scheme = window.location.origin.startsWith("https") ? "wss://" : "ws://";
+	let socketURL = scheme + window.location.host + "/api/ws/camera/stream/LD/" + props.camera.id + "?" + encodeQuery(bearerTokenQuery());
 	console.log("Play " + socketURL);
 	muxer = new JMuxer({
 		node: 'camera' + props.camera.id,
