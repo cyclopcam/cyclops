@@ -279,7 +279,7 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 		final := buf.Bytes()
 		//s.log.Infof("Sending packet: %v", final[:5])
 		if err := conn.WriteMessage(websocket.BinaryMessage, final); err != nil {
-			s.log.Infof("Error writing to websocket %v: %v", err)
+			s.log.Infof("Error writing to websocket %v: %v", s.streamerID, err)
 		}
 	}
 }
