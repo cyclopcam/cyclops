@@ -25,18 +25,19 @@ const ProxyHost = "proxy-cpt.cyclopcam.org"
 // VPN is only safe to use by a single thread
 type VPN struct {
 	Log             log.Log
-	PrivateKey      wgtypes.Key
-	PublicKey       wgtypes.Key
+	privateKey      wgtypes.Key
+	publicKey       wgtypes.Key
 	client          *kernel.Client
 	connectionOK    atomic.Bool
+	deviceIP        string // Our IP in the VPN
 	shutdownStarted chan bool
 }
 
 func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key, shutdownStarted chan bool) *VPN {
 	v := &VPN{
 		Log:             log,
-		PrivateKey:      privateKey,
-		PublicKey:       publicKey,
+		privateKey:      privateKey,
+		publicKey:       publicKey,
 		client:          kernel.NewClient(),
 		shutdownStarted: shutdownStarted,
 	}
@@ -55,7 +56,7 @@ func (v *VPN) Start() error {
 	getResp, err := v.client.GetDevice()
 	if err == nil {
 		// Device was already up, so we're good to go, provided the key is correct
-		return v.validateDeviceDetails(getResp)
+		return v.validateAndSaveDeviceDetails(getResp)
 	} else if !errors.Is(err, kernel.ErrWireguardDeviceNotExist) {
 		return err
 	}
@@ -66,7 +67,7 @@ func (v *VPN) Start() error {
 			return err
 		}
 		// The device does not exist, so we must create it
-		if err := v.createDevice(); err != nil {
+		if err := v.registerAndCreateDevice(); err != nil {
 			return err
 		}
 		if err := v.client.BringDeviceUp(); err != nil {
@@ -78,20 +79,26 @@ func (v *VPN) Start() error {
 	if err != nil {
 		return err
 	}
-	return v.validateDeviceDetails(getResp)
+	return v.validateAndSaveDeviceDetails(getResp)
 }
 
-func (v *VPN) createDevice() error {
+func (v *VPN) registerAndCreateDevice() error {
 	// step 1: Register our public key with the global proxy
 	v.Log.Infof("Registering with %v", ProxyHost)
 	req := proxymsg.RegisterJSON{
-		PublicKey: v.PrivateKey.PublicKey().String(),
+		PublicKey: v.privateKey.PublicKey().String(),
 	}
 	resp, err := requests.RequestJSON[proxymsg.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
 	if err != nil {
 		return err
 	}
+	// step 2: Now that we know our IP in the VPN, we can create our Wireguard device.
+	return v.createDevice(resp)
+}
+
+func (v *VPN) createDevice(resp *proxymsg.RegisterResponseJSON) error {
 	// Extract the proxy's Wireguard data, for later
+	var err error
 	peer := kernel.MsgSetProxyPeerInConfigFile{}
 	peer.PublicKey, err = wgtypes.ParseKey(resp.ProxyPublicKey)
 	if err != nil {
@@ -108,10 +115,9 @@ func (v *VPN) createDevice() error {
 
 	peer.Endpoint = fmt.Sprintf("%v:%v", ProxyHost, resp.ProxyListenPort)
 
-	// step 2: Create our Wireguard device.
 	// We needed to know our VPN IP address before we could do this.
 	createMsg := &kernel.MsgCreateDeviceInConfigFile{
-		PrivateKey: v.PrivateKey,
+		PrivateKey: v.privateKey,
 		Address:    resp.ServerVpnIP,
 	}
 	v.Log.Infof("Creating local Wireguard config file")
@@ -119,7 +125,7 @@ func (v *VPN) createDevice() error {
 		return err
 	}
 
-	// step 3: Add the proxy as a peer
+	// Add the proxy as a peer
 	v.Log.Infof("Adding proxy peer to local Wireguard config file")
 	if err := v.client.SetProxyPeerInConfigFile(&peer); err != nil {
 		return err
@@ -128,18 +134,19 @@ func (v *VPN) createDevice() error {
 	return nil
 }
 
-func (v *VPN) validateDeviceDetails(resp *kernel.MsgGetDeviceResponse) error {
-	if subtle.ConstantTimeCompare(resp.PrivateKey[:], v.PrivateKey[:]) == 0 {
+func (v *VPN) validateAndSaveDeviceDetails(resp *kernel.MsgGetDeviceResponse) error {
+	if subtle.ConstantTimeCompare(resp.PrivateKey[:], v.privateKey[:]) == 0 {
 		return fmt.Errorf("Wireguard device has a different key. Delete /etc/wireguard/cyclops.conf, so that it can be recreated.")
 	}
+	v.deviceIP = resp.Address
 	v.connectionOK.Store(true)
+	v.Log.Infof("VPN IP is %v", v.deviceIP)
 	return nil
 }
 
 // Keep pinging server so that it knows we're alive.
-// In future we should probably remove this, and just rely on the Wireguard pings to
-// maintain liveness.
-// TODO: this needs to run up front, in case our IP changes
+// Also, if we've been dormant for a long time, then the proxy may have culled us,
+// and we may not receive a new VPN IP, so that's also why this system is essential.
 func (v *VPN) registerLoop() {
 	nextRegisterAt := time.Now().Add(time.Second)
 
@@ -159,9 +166,9 @@ func (v *VPN) registerLoop() {
 
 			if v.connectionOK.Load() && time.Now().After(nextRegisterAt) {
 				req := proxymsg.RegisterJSON{
-					PublicKey: v.PrivateKey.PublicKey().String(),
+					PublicKey: v.privateKey.PublicKey().String(),
 				}
-				_, err := requests.RequestJSON[proxymsg.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
+				response, err := requests.RequestJSON[proxymsg.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
 				if err != nil {
 					v.Log.Warnf("Failed to re-register with proxy: %v", err)
 					sleep = sleep * 2
@@ -169,13 +176,45 @@ func (v *VPN) registerLoop() {
 						sleep = maxSleep
 					}
 				} else {
-					v.Log.Infof("Re-register with proxy OK")
-					nextRegisterAt = time.Now().Add(12 * time.Hour)
+					if response.ServerVpnIP != v.deviceIP {
+						v.Log.Infof("VPN IP has changed. Recreating Wireguard device")
+						if err := v.recreateDevice(response); err != nil {
+							v.Log.Errorf("Recreating of Wireguard device failed: %v", err)
+							nextRegisterAt = time.Now().Add(5 * time.Minute)
+						} else {
+							v.Log.Errorf("New VPN IP is %v", v.deviceIP)
+							nextRegisterAt = time.Now().Add(12 * time.Hour)
+						}
+					} else {
+						v.Log.Infof("Re-register with proxy OK")
+						nextRegisterAt = time.Now().Add(12 * time.Hour)
+					}
 					sleep = minSleep
 				}
 			}
 		}
 	}()
+}
+
+func (v *VPN) recreateDevice(register *proxymsg.RegisterResponseJSON) error {
+	err := v.client.TakeDeviceDown()
+	if err != nil && !errors.Is(err, kernel.ErrWireguardDeviceNotExist) {
+		return err
+	}
+
+	if err := v.createDevice(register); err != nil {
+		return err
+	}
+
+	if err := v.client.BringDeviceUp(); err != nil {
+		return err
+	}
+
+	getResp, err := v.client.GetDevice()
+	if err != nil {
+		return err
+	}
+	return v.validateAndSaveDeviceDetails(getResp)
 }
 
 func (v *VPN) testAutoReconnectToKernelWG() {

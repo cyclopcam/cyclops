@@ -242,11 +242,25 @@ func (c *Client) BringDeviceUp() error {
 	return c.do(MsgTypeBringDeviceUp, nil, MsgTypeNone, nil)
 }
 
+func (c *Client) TakeDeviceDown() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	return c.do(MsgTypeTakeDeviceDown, nil, MsgTypeNone, nil)
+}
+
 func (c *Client) CreatePeers(msg *MsgCreatePeersInMemory) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	return c.do(MsgTypeCreatePeersInMemory, msg, MsgTypeNone, nil)
+}
+
+func (c *Client) RemovePeer(msg *MsgRemovePeerInMemory) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	return c.do(MsgTypeRemovePeerInMemory, msg, MsgTypeNone, nil)
 }
 
 func (c *Client) CreateDeviceInConfigFile(msg *MsgCreateDeviceInConfigFile) error {

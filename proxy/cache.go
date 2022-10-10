@@ -31,3 +31,10 @@ func (p *Proxy) getPeerIPFromCache(publicKey []byte) string {
 
 	return p.pubkeyToIPCache[string(publicKey)]
 }
+
+func (p *Proxy) removePeerFromCache(publicKey []byte) {
+	p.pubkeyToIPCacheLock.Lock()
+	defer p.pubkeyToIPCacheLock.Unlock()
+
+	delete(p.pubkeyToIPCache, string(publicKey))
+}

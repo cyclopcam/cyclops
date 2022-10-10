@@ -39,7 +39,9 @@ const (
 	MsgTypeGetPeers
 	MsgTypeGetPeersResponse
 	MsgTypeBringDeviceUp
+	MsgTypeTakeDeviceDown
 	MsgTypeCreatePeersInMemory
+	MsgTypeRemovePeerInMemory
 	MsgTypeCreateDeviceInConfigFile
 	MsgTypeSetProxyPeerInConfigFile
 )
@@ -51,6 +53,7 @@ type MsgError struct {
 type MsgGetDeviceResponse struct {
 	PrivateKey wgtypes.Key
 	ListenPort int
+	Address    string // Unlike the other state returned here, this is read from the Wireguard config file, so it might be empty
 }
 
 type MsgGetPeersResponse struct {
@@ -59,6 +62,11 @@ type MsgGetPeersResponse struct {
 
 type MsgCreatePeersInMemory struct {
 	Peers []CreatePeerInMemory
+}
+
+type MsgRemovePeerInMemory struct {
+	PublicKey wgtypes.Key
+	AllowedIP net.IPNet
 }
 
 type MsgSetProxyPeerInConfigFile struct {

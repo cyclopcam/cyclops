@@ -51,6 +51,26 @@ func (h *handler) handleBringDeviceUp() error {
 	return nil
 }
 
+func (h *handler) handleTakeDeviceDown() error {
+	h.log.Infof("Taking down Wireguard device %v", WireguardDeviceName)
+
+	// Check first if the config file exists, so that we can return a definitive "does not exist" error.
+	if _, err := os.Stat(configFilename()); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return kernel.ErrWireguardDeviceNotExist
+		}
+	}
+
+	cmd := exec.Command("wg-quick", "down", WireguardDeviceName)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		h.log.Infof("Device %v takedown failed: %v. Output: %v", WireguardDeviceName, err, string(output))
+		return fmt.Errorf("%w: %v", err, string(output))
+	}
+	h.log.Infof("Device %v is down", WireguardDeviceName)
+	return nil
+}
+
 func (h *handler) handleIsDeviceAlive() error {
 	_, err := h.wg.Device(WireguardDeviceName)
 	if errors.Is(err, os.ErrNotExist) {
@@ -67,9 +87,28 @@ func (h *handler) handleGetDevice() (any, error) {
 		}
 		return nil, err
 	}
+	// This is a hack here, because we're mixing kernel-provided Wireguard state with the config file.
+	// These two may be out of sync, which is why this is bad.
+	// The reason I'm doing this, is because I need to know our IP address in the VPN, and I can't
+	// see a cleaner way of doing this, than by looking at the Wireguard config file.
+	// An alternative would be to read the output of "ip -4 address", but I've already got logic in here
+	// for parsing Wireguard config files, so I'm using that.
+	cfg, err := loadConfigFile(configFilename())
+	address := ""
+	if err == nil {
+		iface := cfg.findSectionByTitle("Interface")
+		if iface != nil {
+			a := iface.get("Address")
+			if a != nil {
+				address = *a
+			}
+		}
+	}
+
 	resp := kernel.MsgGetDeviceResponse{
 		PrivateKey: device.PrivateKey,
 		ListenPort: device.ListenPort,
+		Address:    address,
 	}
 	return &resp, nil
 }
@@ -120,6 +159,27 @@ func (h *handler) handleCreatePeersInMemory(request *kernel.MsgCreatePeersInMemo
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("Error creating IP route to %v: %w", p.AllowedIP.String(), err)
 		}
+	}
+
+	return nil
+}
+
+func (h *handler) handleRemovePeerInMemory(request *kernel.MsgRemovePeerInMemory) error {
+	h.log.Infof("Removing peer %v", request.PublicKey)
+	cfg := wgtypes.Config{}
+	cfg.Peers = append(cfg.Peers, wgtypes.PeerConfig{
+		PublicKey: request.PublicKey,
+		Remove:    true,
+	})
+	if err := h.wg.ConfigureDevice(WireguardDeviceName, cfg); err != nil {
+		return err
+	}
+
+	// Delete IP route
+	// ip -4 route delete 10.101.1.2/32 dev cyclops
+	cmd := exec.Command("ip", "-4", "route", "delete", request.AllowedIP.String(), "dev", WireguardDeviceName)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("Error deleting IP route to %v: %w", request.AllowedIP.String(), err)
 	}
 
 	return nil
@@ -185,6 +245,8 @@ func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 	switch msgType {
 	case kernel.MsgTypeCreatePeersInMemory:
 		request = &kernel.MsgCreatePeersInMemory{}
+	case kernel.MsgTypeRemovePeerInMemory:
+		request = &kernel.MsgRemovePeerInMemory{}
 	case kernel.MsgTypeCreateDeviceInConfigFile:
 		request = &kernel.MsgCreateDeviceInConfigFile{}
 	case kernel.MsgTypeSetProxyPeerInConfigFile:
@@ -210,6 +272,8 @@ func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 		resp, err = h.handleGetDevice()
 	case kernel.MsgTypeCreatePeersInMemory:
 		err = h.handleCreatePeersInMemory(request.(*kernel.MsgCreatePeersInMemory))
+	case kernel.MsgTypeRemovePeerInMemory:
+		err = h.handleRemovePeerInMemory(request.(*kernel.MsgRemovePeerInMemory))
 	case kernel.MsgTypeCreateDeviceInConfigFile:
 		err = h.handleCreateDeviceInConfigFile(request.(*kernel.MsgCreateDeviceInConfigFile))
 	case kernel.MsgTypeSetProxyPeerInConfigFile:

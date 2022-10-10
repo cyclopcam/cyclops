@@ -10,3 +10,7 @@ type RegisterResponseJSON struct {
 	ProxyListenPort int    `json:"proxyListenPort"` // The port that the proxy's Wireguard listens on (eg 51820)
 	ServerVpnIP     string `json:"serverVpnIP"`     // Your IP in the VPN (eg "10.7.3.213")
 }
+
+type RemoveJSON struct {
+	PublicKey string `json:"publicKey"`
+}

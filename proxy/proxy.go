@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -17,12 +18,13 @@ const ProxyHttpPort = "127.0.0.1:8082"
 const ServerHttpPort = ":8080" // SYNC-SERVER-PORT. Servers always run on 8080, but we could make this configurable. It would need to be part of the 'register' API then...
 
 type Proxy struct {
-	log          log.Log
-	db           *gorm.DB
-	wg           *wireGuard
-	httpServer   *http.Server
-	reverseProxy *httputil.ReverseProxy
-	kernelwgHost string
+	log               log.Log
+	db                *gorm.DB
+	wg                *wireGuard
+	httpServer        *http.Server
+	reverseProxy      *httputil.ReverseProxy
+	kernelwgHost      string
+	adminPasswordHash []byte
 
 	addPeerLock     sync.Mutex
 	lastPeerAddedAt time.Time
@@ -34,9 +36,10 @@ type Proxy struct {
 }
 
 type ProxyConfig struct {
-	Log          log.Log
-	DB           dbh.DBConfig
-	KernelWGHost string
+	Log           log.Log
+	DB            dbh.DBConfig
+	KernelWGHost  string
+	AdminPassword string
 }
 
 func NewProxy() *Proxy {
@@ -49,6 +52,12 @@ func NewProxy() *Proxy {
 func (p *Proxy) Start(config ProxyConfig) error {
 	p.log = config.Log
 	p.kernelwgHost = config.KernelWGHost
+
+	if config.AdminPassword != "" {
+		h := sha256.Sum256([]byte(config.AdminPassword))
+		p.adminPasswordHash = h[:]
+	}
+
 	//db, err := dbh.OpenDB(config.Log, config.DB, Migrations(config.Log), dbh.DBConnectFlagWipeDB)
 	db, err := dbh.OpenDB(config.Log, config.DB, Migrations(config.Log), 0)
 	if err != nil {

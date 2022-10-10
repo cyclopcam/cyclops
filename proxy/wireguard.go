@@ -116,3 +116,21 @@ func (w *wireGuard) createPeers(servers []Server) error {
 	}
 	return w.client.CreatePeers(&msg)
 }
+
+func (w *wireGuard) removePeer(server Server) error {
+	key, err := wgtypes.NewKey(server.PublicKey)
+	if err != nil {
+		return err
+	}
+	w.log.Infof("Removing Wireguard peer %v %v", key, server.VpnIP)
+
+	msg := kernel.MsgRemovePeerInMemory{}
+	copy(msg.PublicKey[:], key[:])
+	msg.AllowedIP.IP = net.ParseIP(server.VpnIP)
+	if msg.AllowedIP.IP == nil {
+		return fmt.Errorf("Server %v has invalid IP '%v'", server.ID, server.VpnIP)
+	}
+	msg.AllowedIP.Mask = net.IPv4Mask(255, 255, 255, 255)
+
+	return w.client.RemovePeer(&msg)
+}

@@ -8,6 +8,7 @@ import (
 	"github.com/bmharper/cyclops/pkg/dbh"
 	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/proxy/proxymsg"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gorm.io/gorm"
 )
 
@@ -82,4 +83,45 @@ func (p *Proxy) httpRegister(w http.ResponseWriter, r *http.Request) {
 		ServerVpnIP:     serverIP,
 	}
 	www.SendJSON(w, &resp)
+}
+
+func (p *Proxy) httpRemove(w http.ResponseWriter, r *http.Request) {
+	req := proxymsg.RemoveJSON{}
+	www.ReadJSON(w, r, &req, 1024*1024)
+	key, err := wgtypes.ParseKey(req.PublicKey)
+	www.Check(err)
+	p.log.Infof("Forcibly removing peer %v", key)
+
+	www.Check(p.removePeer(key))
+	www.SendOK(w)
+}
+
+func (p *Proxy) removePeer(publicKey wgtypes.Key) error {
+	p.log.Infof("Removing peer %v", publicKey)
+
+	err := p.db.Transaction(func(tx *gorm.DB) error {
+		server := Server{}
+		wherePubkey := "public_key = " + dbh.PGByteArrayLiteral(publicKey[:])
+		p.db.Where(wherePubkey).First(&server)
+		if server.ID == 0 {
+			// does not exist
+			return nil
+		}
+		if err := p.wg.removePeer(server); err != nil {
+			return err
+		}
+		freeIP := IPFreePool{VpnIP: server.VpnIP}
+		if err := p.db.Create(&freeIP).Error; err != nil {
+			return err
+		}
+		if err := p.db.Delete(&server).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	p.removePeerFromCache(publicKey[:])
+	return nil
 }

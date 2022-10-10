@@ -35,6 +35,8 @@ func main() {
 		kernelwgHost = "127.0.0.1"
 	}
 
+	adminPassword := os.Getenv("CYCLOPS_ADMIN_PASSWORD")
+
 	p := proxy.NewProxy()
 
 	cfg := proxy.ProxyConfig{
@@ -46,7 +48,8 @@ func main() {
 			Username: "postgres",
 			Password: pgPassword,
 		},
-		KernelWGHost: kernelwgHost,
+		KernelWGHost:  kernelwgHost,
+		AdminPassword: adminPassword,
 	}
 
 	check(p.Start(cfg))

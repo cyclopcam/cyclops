@@ -119,6 +119,16 @@ func (s *configSection) set(key, value string) {
 	})
 }
 
+// Get a value by key
+func (s *configSection) get(key string) *string {
+	for i := range s.lines {
+		if s.lines[i].key == key {
+			return &s.lines[i].value
+		}
+	}
+	return nil
+}
+
 // Returns true if the config line is non-empty, and the first non-whitespace character is not #.
 // In other words, return false if the line is empty or if the line is a comment.
 func hasContent(line string) bool {

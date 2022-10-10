@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"time"
@@ -17,11 +19,24 @@ const CyclopsServerCookie = "CyclopsServerPublicKey"
 func (p *Proxy) listenHTTP() error {
 	router := httprouter.New()
 
-	//add := func(method, route string, handle httprouter.Handle) {
-	//	www.Handle(p.log, router, method, route, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	//		handle(w, r, params)
-	//	})
-	//}
+	admin := func(method, route string, handle func(w http.ResponseWriter, r *http.Request), requestLimit int, windowLength time.Duration) {
+		withAdmin := func(w http.ResponseWriter, r *http.Request) {
+			username, password, _ := r.BasicAuth()
+			h := sha256.Sum256([]byte(password))
+			if username == "admin" && p.adminPasswordHash != nil && subtle.ConstantTimeCompare(p.adminPasswordHash, h[:]) == 1 {
+				handle(w, r)
+			} else {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+			}
+		}
+
+		limited := httprate.Limit(requestLimit, windowLength, httprate.WithKeyFuncs(httprate.KeyByIP))
+
+		www.Handle(p.log, router, method, route, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+			limited(http.HandlerFunc(withAdmin)).ServeHTTP(w, r)
+		})
+
+	}
 
 	ratelimited := func(method, route string, handle func(w http.ResponseWriter, r *http.Request), requestLimit int, windowLength time.Duration) {
 		// We don't need httprate.KeyByEndpoint, because we create a unique rate limiter for each endpoint.
@@ -36,6 +51,7 @@ func (p *Proxy) listenHTTP() error {
 
 	// These are our own API entrypoints, which apply in the absense of a CyclopsServerCookie
 	ratelimited("POST", "/api/register", p.httpRegister, 5, time.Minute)
+	admin("POST", "/api/remove", p.httpRemove, 1, time.Second)
 
 	front := func(w http.ResponseWriter, r *http.Request) {
 		// If CyclopsServerCookie is specified, then forward request to that server
