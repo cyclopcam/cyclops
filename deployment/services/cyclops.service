@@ -1,13 +1,12 @@
 [Unit]
-Description=Cyclops proxy
+Description=Cyclops
 After=network.target network-online.target
 Requires=network-online.target
  
 [Service]
-User=cyclopsproxy
-Group=cyclopsproxy
-EnvironmentFile=/etc/cyclops/proxy.env
-ExecStart=/deploy/proxy
+User=cyclops
+Group=cyclops
+ExecStart=/usr/bin/cyclops --config /var/lib/cyclops/config.sqlite
 PrivateTmp=true
 ProtectSystem=full
 

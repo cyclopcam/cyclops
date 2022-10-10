@@ -8,3 +8,4 @@ node_modules
 /cyclops
 /www/dist
 /android/app/build
+/scripts/proxy/tmp

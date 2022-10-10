@@ -38,7 +38,7 @@ const (
 
 func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time, mode string) {
 	doCookie := mode == LoginModeCookie || mode == LoginModeCookieAndBearerToken || mode == ""
-	doBearer := mode == LoginModeBearerToken
+	doBearer := mode == LoginModeBearerToken || mode == LoginModeCookieAndBearerToken
 	if !(doCookie || doBearer) {
 		http.Error(w, "Invalid loginMode. Must be Cookie or BearerToken or CookieAndBearerToken (default is Cookie)", http.StatusBadRequest)
 		return

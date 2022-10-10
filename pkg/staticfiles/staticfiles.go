@@ -3,6 +3,7 @@ package staticfiles
 import (
 	"bytes"
 	"compress/gzip"
+	"embed"
 	"errors"
 	"fmt"
 	"io"
@@ -30,13 +31,16 @@ var reWebpackAsset *regexp.Regexp
 // I presume that Nginx is only built to cache gzipped content from files on disk, not from
 // files that come from a proxy.
 type CachedStaticFileServer struct {
-	absRoot        string // Root content path
+	//absRoot        string // Root content path
+	fs             embed.FS
+	fsRootDir      string // eg "www"
 	log            log.Log
 	compressLevel  int
 	verbose        bool
 	apiRoutes      []string         // Any path that begins with an item from apiRoutes produces a 404
 	indexIntercept http.HandlerFunc // optional callback during index.html serving (creating for auth hotlink functionality)
 	scannedFiles   map[string]bool  // All static files that we found at startup
+	modTime        time.Time        // When we embed files, we Stat() returns a zero time, so we need an alternative
 
 	immutableFilesystem bool // If true, then assume that static files never change (true when running a Docker image)
 
@@ -50,7 +54,7 @@ type CachedStaticFileServer struct {
 type cachedStaticFile struct {
 	Ready        int32 // Updated atomically, once file is ready to be served
 	LastModified time.Time
-	AbsPath      string
+	Path         string
 	Compressed   []byte
 	Error        error // If there was an error compressing the file, then this is it
 }
@@ -62,7 +66,7 @@ type cachedStaticFile struct {
 // on the URL, but from the server's perspective, everything except for apiRoutes serves
 // up index.html
 // indexIntercept can be used to modify a request/response to index.html.
-func NewCachedStaticFileServer(absRoot string, apiRoutes []string, log log.Log, immutableFilesystem bool, indexIntercept http.HandlerFunc) (*CachedStaticFileServer, error) {
+func NewCachedStaticFileServer(fs embed.FS, fsRootDir string, apiRoutes []string, log log.Log, immutableFilesystem bool, indexIntercept http.HandlerFunc) (*CachedStaticFileServer, error) {
 	extensions := map[string]bool{
 		"css":  true,
 		"js":   true,
@@ -73,14 +77,27 @@ func NewCachedStaticFileServer(absRoot string, apiRoutes []string, log log.Log, 
 		"md":   true,
 	}
 
+	// Default to the current time. This is the most conservative thing to do.
+	modTime := time.Now()
+	if ownPath, err := os.Executable(); err == nil {
+		if self, err := os.Stat(ownPath); err == nil {
+			// Use modtime of our own executable as the Last Modified time of all embedded files
+			modTime = self.ModTime()
+		}
+	}
+
 	// Scan all static files, so that we can distinguish between an 'index.html' route and a genuine static file
-	files, err := globRecursive(absRoot)
+	files, err := globRecursiveFS(fs, fsRootDir)
 	if err != nil {
 		return nil, err
 	}
-	fileSet := map[string]bool{}
+	// chop off the 'www' prefix, but retain the sleading slash
+	for i := range files {
+		files[i] = files[i][len(fsRootDir):]
+	}
+	scannedFiles := map[string]bool{}
 	for _, f := range files {
-		fileSet[f] = true
+		scannedFiles[f] = true
 	}
 	//fmt.Printf("Static files: \n%v\n", strings.Join(files, "\n"))
 
@@ -91,9 +108,11 @@ func NewCachedStaticFileServer(absRoot string, apiRoutes []string, log log.Log, 
 	// From the above numbers, it's not worth it raising the compression level to 9.
 
 	return &CachedStaticFileServer{
-		absRoot:             absRoot,
+		//absRoot:             absRoot,
+		fs:                  fs,
+		fsRootDir:           fsRootDir,
 		apiRoutes:           apiRoutes,
-		scannedFiles:        fileSet,
+		scannedFiles:        scannedFiles,
 		log:                 log,
 		verbose:             false,
 		compressLevel:       5,
@@ -101,7 +120,28 @@ func NewCachedStaticFileServer(absRoot string, apiRoutes []string, log log.Log, 
 		compressExtensions:  extensions,
 		files:               map[string]*cachedStaticFile{},
 		indexIntercept:      indexIntercept,
+		modTime:             modTime,
 	}, nil
+}
+
+func globRecursiveFS(fs embed.FS, dir string) ([]string, error) {
+	entries, err := fs.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	files := []string{}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			more, err := globRecursiveFS(fs, dir+"/"+entry.Name())
+			if err != nil {
+				return nil, err
+			}
+			files = append(files, more...)
+		} else {
+			files = append(files, dir+"/"+entry.Name())
+		}
+	}
+	return files, err
 }
 
 func globRecursive(root string) ([]string, error) {
@@ -126,7 +166,7 @@ func (s *CachedStaticFileServer) ServeFile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	absPath := filepath.Join(s.absRoot, relPath)
+	//absPath := filepath.Join(s.absRoot, relPath)
 	readerCanGzip := strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
 	isCompressible := s.isCompressible(relPath) && readerCanGzip
 	var cachedFile *cachedStaticFile
@@ -135,12 +175,12 @@ func (s *CachedStaticFileServer) ServeFile(w http.ResponseWriter, r *http.Reques
 	// This is the expected 99.999% code path for compressed files, when running in production
 	if isCompressible && s.immutableFilesystem {
 		s.filesLock.Lock()
-		cachedFile = s.files[absPath]
+		cachedFile = s.files[relPath]
 		busyOrDone := cachedFile != nil
 		if !busyOrDone {
 			// We are the first thread to want this, so it is our job to produce the compressed file
 			cachedFile = &cachedStaticFile{}
-			s.files[absPath] = cachedFile
+			s.files[relPath] = cachedFile
 		}
 		s.filesLock.Unlock()
 		if busyOrDone {
@@ -149,7 +189,7 @@ func (s *CachedStaticFileServer) ServeFile(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	file, err := os.Open(absPath)
+	file, err := s.fs.Open(s.fsRootDir + relPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			w.WriteHeader(404)
@@ -168,6 +208,10 @@ func (s *CachedStaticFileServer) ServeFile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	modTime := stat.ModTime()
+	if modTime.IsZero() {
+		// This path is always hit for embedded files
+		modTime = s.modTime
+	}
 	if stat.IsDir() {
 		w.WriteHeader(404)
 		return
@@ -199,7 +243,7 @@ func (s *CachedStaticFileServer) ServeFile(w http.ResponseWriter, r *http.Reques
 		// This is similar logic to the caching block at the top of the file, but we need to be doing this down here,
 		// because we now have the LastModified time of the file on disk.
 		s.filesLock.Lock()
-		cachedFile = s.files[absPath]
+		cachedFile = s.files[relPath]
 		createNew := false
 		if cachedFile != nil &&
 			atomic.LoadInt32(&cachedFile.Ready) == 1 &&
@@ -210,7 +254,7 @@ func (s *CachedStaticFileServer) ServeFile(w http.ResponseWriter, r *http.Reques
 			// which means that the file was modified after compression started, but compression is not done yet.
 			// This doesn't matter, because sooner or later, subsequent threads will notice the staleness.
 			if s.verbose {
-				s.log.Infof("%v had been modified since compression", absPath)
+				s.log.Infof("%v had been modified since compression", relPath)
 			}
 			createNew = true
 		} else if cachedFile == nil {
@@ -219,7 +263,7 @@ func (s *CachedStaticFileServer) ServeFile(w http.ResponseWriter, r *http.Reques
 
 		if createNew {
 			cachedFile = &cachedStaticFile{}
-			s.files[absPath] = cachedFile
+			s.files[relPath] = cachedFile
 		}
 		s.filesLock.Unlock()
 		if !createNew {
@@ -239,14 +283,14 @@ func (s *CachedStaticFileServer) ServeFile(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	cachedFile.Error = err
-	cachedFile.AbsPath = absPath
+	cachedFile.Path = relPath
 	cachedFile.Compressed = cwriter.Bytes()
 	cachedFile.Compressed = append([]byte(nil), cachedFile.Compressed...) // trim excess capacity
 	cachedFile.LastModified = modTime
 	atomic.StoreInt32(&cachedFile.Ready, 1)
 
 	if s.verbose {
-		s.log.Infof("Compressing %v took %v ms", absPath, time.Now().Sub(start).Milliseconds())
+		s.log.Infof("Compressing %v took %v ms", relPath, time.Now().Sub(start).Milliseconds())
 	}
 
 	s.serveCachedFile(w, r, cachedFile, maxAgeSeconds)
@@ -276,16 +320,16 @@ func (s *CachedStaticFileServer) serveCachedFile(w http.ResponseWriter, r *http.
 
 	if www.IsNotModifiedEx(w, r, cachedFile.LastModified, cacheControl) {
 		if s.verbose {
-			s.log.Infof("Serving cached compressed file %v (304 Not Modified)", cachedFile.AbsPath)
+			s.log.Infof("Serving cached compressed file %v (304 Not Modified)", cachedFile.Path)
 		}
 		return
 	}
 
 	if s.verbose {
-		s.log.Infof("Serving cached compressed file %v", cachedFile.AbsPath)
+		s.log.Infof("Serving cached compressed file %v", cachedFile.Path)
 	}
 
-	w.Header().Set("Content-Type", mime.TypeByExtension(path.Ext(cachedFile.AbsPath)))
+	w.Header().Set("Content-Type", mime.TypeByExtension(path.Ext(cachedFile.Path)))
 	w.Header().Set("Content-Encoding", "gzip")
 	w.Header().Set("Content-Length", fmt.Sprintf("%v", len(cachedFile.Compressed)))
 	io.Copy(w, bytes.NewReader(cachedFile.Compressed))
@@ -312,7 +356,7 @@ func (s *CachedStaticFileServer) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		if s.indexIntercept != nil {
 			s.indexIntercept(w, r)
 		}
-		s.ServeFile(w, r, "index.html", maxAgeSeconds)
+		s.ServeFile(w, r, "/index.html", maxAgeSeconds)
 		return
 	}
 

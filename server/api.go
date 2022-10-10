@@ -2,9 +2,10 @@ package server
 
 import (
 	"net/http"
-	"path/filepath"
 	"strings"
 	"time"
+
+	"embed"
 
 	"github.com/bmharper/cyclops/pkg/staticfiles"
 	"github.com/bmharper/cyclops/pkg/www"
@@ -12,6 +13,9 @@ import (
 	"github.com/go-chi/httprate"
 	"github.com/julienschmidt/httprouter"
 )
+
+//go:embed www
+var staticWWW embed.FS
 
 type ProtectedHandler func(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User)
 
@@ -112,15 +116,17 @@ func (s *Server) SetupHTTP() error {
 	unprotectedLimited("POST", "/api/auth/login", s.httpAuthLogin, 10, 10*time.Second)
 
 	isImmutable := true
-	relRoot := "www/dist"
-	absRoot, err := filepath.Abs(relRoot)
+	//relRoot := "www/dist"
+	//absRoot, err := filepath.Abs(relRoot)
+	//if err != nil {
+	//	s.Log.Warnf("Failed to resolve static file directory %v: %v. Run 'npm run build' in 'www' to build static files. If you're using 'npm run dev', then you can ignore this warning.", relRoot, err)
+	//}
+	//s.Log.Infof("Serving static files from %v", absRoot)
+	//static, err := staticfiles.NewCachedStaticFileServer(absRoot, []string{"/api/"}, s.Log, isImmutable, nil)
+	static, err := staticfiles.NewCachedStaticFileServer(staticWWW, "www", []string{"/api/"}, s.Log, isImmutable, nil)
 	if err != nil {
-		s.Log.Warnf("Failed to resolve static file directory %v: %v. Run 'npm run build' in 'www' to build static files. If you're using 'npm run dev', then you can ignore this warning.", relRoot, err)
-	}
-	s.Log.Infof("Serving static files from %v", absRoot)
-	static, err := staticfiles.NewCachedStaticFileServer(absRoot, []string{"/api/"}, s.Log, isImmutable, nil)
-	if err != nil {
-		s.Log.Warnf("Error in static files ('%v' resolved to '%v'), error %v. Run 'npm run build' in 'www' to build static files. If you're using 'npm run dev', then you can ignore this warning.", relRoot, absRoot, err)
+		s.Log.Warnf("Error in static files: %v. Run 'npm run build' in 'www' to build static files. If you're using 'npm run dev', then you can ignore this warning.", err)
+		//s.Log.Warnf("Error in static files ('%v' resolved to '%v'), error %v. Run 'npm run build' in 'www' to build static files. If you're using 'npm run dev', then you can ignore this warning.", relRoot, absRoot, err)
 	}
 	router.NotFound = static
 

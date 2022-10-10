@@ -4,10 +4,8 @@
 	"scripts": {
 		"dev": "vite",
 		"build": "run-p type-check build-only",
-		"build-webview": "run-p type-check build-only-webview",
 		"preview": "vite preview --port 4173",
-		"build-only": "vite build",
-		"build-only-webview": "vite build --base /assets/ --assetsDir site --outDir webview",
+		"build-only": "vite build --outDir ../server/www --emptyOutDir",
 		"type-check": "vue-tsc --noEmit"
 	},
 	"dependencies": {
