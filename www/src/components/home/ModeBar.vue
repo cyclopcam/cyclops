@@ -80,13 +80,17 @@ onMounted(() => {
 	flex-direction: column;
 	align-items: center;
 
-	padding: 6px 4px 6px 4px;
+	padding: 8px 4px 8px 4px;
 
 	@media (max-width: $mobileCutoff) {
-		padding: 4px 4px 4px 4px;
+		padding: 8px 4px 8px 4px;
 	}
 
-	box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.1);
+	// this was for when we draw ourselves on top
+	//box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.1);
+
+	// but now that we're on the bottom...
+	border-top: solid 1px #ccc;
 }
 
 .topbarInner {
