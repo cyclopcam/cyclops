@@ -14,6 +14,7 @@ import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewClientCompat;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -69,7 +70,10 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
     }
 
     WebResourceResponse sendJSON(Object obj) {
-        Gson gson = new Gson();
+        // By using serializeNulls(), we get blank strings coming through as blank strings (instead of being omitted)
+        Gson gson = new GsonBuilder().serializeNulls().create();
+        // hmm no... blank strings can be nulls. perhaps more confusing. hmmmm not sure
+        //Gson gson = new Gson();
         String j = gson.toJson(obj);
         Log.i("C", "JSON is " + j);
         return new WebResourceResponse("application/json", "utf-8", 200, "OK", null, new ByteArrayInputStream(j.getBytes(StandardCharsets.UTF_8)));
@@ -100,6 +104,12 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                 case "/natcom/switchToRegisteredServer":
                     activity.runOnUiThread(() -> main.switchToServerByPublicKey(url.getQueryParameter("publicKey")));
                     return sendOK();
+                case "/natcom/getCurrentServer":
+                    State.Server s = State.global.getCurrentServer();
+                    if (s == null) {
+                        s = new State.Server();
+                    }
+                    return sendJSON(s);
                 case "/natcom/getRegisteredServers":
                     return sendJSON(State.global.getServersCopy());
                 case "/natcom/showMenu":

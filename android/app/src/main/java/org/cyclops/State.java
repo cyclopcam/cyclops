@@ -23,7 +23,7 @@ class State {
 
     // Server is sent as JSON to appui
     // SYNC-NATCOM-SERVER
-    class Server {
+    static class Server {
         int state = STATE_NEW;
         String lanIP = "";
         String publicKey = "";
