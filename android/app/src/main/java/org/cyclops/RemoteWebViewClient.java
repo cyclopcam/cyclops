@@ -96,7 +96,7 @@ public class RemoteWebViewClient extends WebViewClientCompat {
                     String bearerToken = url.getQueryParameter("bearerToken");
                     String host = originalUrl.getHost();
                     //int port = originalUrl.getPort();
-                    State.global.addNewServer(host, publicKey, bearerToken);
+                    State.global.addNewServer(host, publicKey, bearerToken, "");
                     State.global.setCurrentServer(publicKey);
                     return sendOK();
             }

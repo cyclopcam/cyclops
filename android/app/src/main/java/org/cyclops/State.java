@@ -7,7 +7,10 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.util.Log;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 class State {
     static final State global = new State();
@@ -18,11 +21,14 @@ class State {
 
     static final String PREF_CURRENT_SERVER_PUBLIC_KEY = "CURRENT_SERVER_PUBLIC_KEY";
 
+    // Server is sent as JSON to appui
+    // SYNC-NATCOM-SERVER
     class Server {
         int state = STATE_NEW;
         String lanIP = "";
         String publicKey = "";
         String bearerToken = "";
+        String name = "";
 
         Server copy() {
             Server s = new Server();
@@ -30,16 +36,18 @@ class State {
             s.lanIP = lanIP;
             s.publicKey = publicKey;
             s.bearerToken = bearerToken;
+            s.name = name;
             return s;
         }
     }
 
     // These objects are created in MainActivity's onCreate
     Scanner scanner;
-    Connector connector;
     LocalDB db;
     SharedPreferences sharedPref;
 
+    // serversLock guards access to 'servers' and 'currentServerPublicKey'
+    Lock serversLock = new ReentrantLock();
     ArrayList<Server> servers = new ArrayList<Server>();
     String currentServerPublicKey = "";
 
@@ -48,69 +56,125 @@ class State {
     }
 
     void loadAll() {
-        loadAllFromDB();
-        currentServerPublicKey = sharedPref.getString(PREF_CURRENT_SERVER_PUBLIC_KEY, "");
+        serversLock.lock();
+        try {
+            loadAllFromDB();
+            currentServerPublicKey = sharedPref.getString(PREF_CURRENT_SERVER_PUBLIC_KEY, "");
+        } finally {
+            serversLock.unlock();
+        }
+    }
+
+    // Returns a deep copy of the servers list
+    ArrayList<Server> getServersCopy() {
+        serversLock.lock();
+        try {
+            ArrayList<Server> copy = new ArrayList<>();
+            for (Server s : servers) {
+                copy.add(s.copy());
+            }
+            return copy;
+        } finally {
+            serversLock.unlock();
+        }
     }
 
     Server getCurrentServer() {
-        for (Server s : servers) {
-            if (s.publicKey.equals(currentServerPublicKey)) {
-                return s;
+        serversLock.lock();
+        try {
+            for (Server s : servers) {
+                if (s.publicKey.equals(currentServerPublicKey)) {
+                    return s;
+                }
             }
+        } finally {
+            serversLock.unlock();
         }
         return null;
     }
 
+    Server getServerByPublicKey(String publicKey) {
+        serversLock.lock();
+        try {
+            for (Server s : servers) {
+                if (s.publicKey.equals(publicKey)) {
+                    return s.copy();
+                }
+            }
+            return null;
+        } finally {
+            serversLock.unlock();
+        }
+    }
+
     void setCurrentServer(String publicKey) {
-        Log.i("C", "setCurrentServer to " + publicKey);
-        currentServerPublicKey = publicKey;
-        SharedPreferences.Editor edit = sharedPref.edit();
-        edit.putString(PREF_CURRENT_SERVER_PUBLIC_KEY, publicKey);
-        edit.apply();
+        serversLock.lock();
+        try {
+            Log.i("C", "setCurrentServer to " + publicKey);
+            currentServerPublicKey = publicKey;
+            SharedPreferences.Editor edit = sharedPref.edit();
+            edit.putString(PREF_CURRENT_SERVER_PUBLIC_KEY, publicKey);
+            edit.apply();
+        } finally {
+            serversLock.unlock();
+        }
     }
 
     private void loadAllFromDB() {
-        servers.clear();
-        SQLiteDatabase h = db.getReadableDatabase();
-        String[] columns = {"publicKey", "lanIP", "bearerToken"};
-        Cursor c = h.query("server", columns, null, null, null, null, null);
-        while (c.moveToNext()) {
-            Server s = new Server();
-            s.state = STATE_NOTMODIFIED;
-            s.publicKey = c.getString(0);
-            s.lanIP = c.getString(1);
-            s.bearerToken = c.getString(2);
-            servers.add(s);
+        serversLock.lock();
+        try {
+            servers.clear();
+            SQLiteDatabase h = db.getReadableDatabase();
+            String[] columns = {"publicKey", "lanIP", "bearerToken", "name"};
+            Cursor c = h.query("server", columns, null, null, null, null, null);
+            while (c.moveToNext()) {
+                Server s = new Server();
+                s.state = STATE_NOTMODIFIED;
+                s.publicKey = c.getString(0);
+                s.lanIP = c.getString(1);
+                s.bearerToken = c.getString(2);
+                s.name = c.getString(3);
+                servers.add(s);
+            }
+            Log.i("C", "Loaded " + servers.size() + " servers from DB");
+            c.close();
+        } finally {
+            serversLock.unlock();
         }
-        Log.i("C", "Loaded " + servers.size() + " servers from DB");
-        c.close();
     }
 
     private void saveServersToDB() {
-        SQLiteDatabase h = db.getWritableDatabase();
-        // Update existing
-        for (Server s : servers) {
-            if (s.state == STATE_MODIFIED) {
-                Log.i("C", "Updating server " + s.publicKey + " in DB");
-                ContentValues v = new ContentValues();
-                v.put("lanIP", s.lanIP);
-                v.put("bearerToken", s.bearerToken);
-                String[] args = {s.publicKey};
-                h.update("server", v, "publicKey = ?", args);
-                s.state = STATE_NOTMODIFIED;
+        serversLock.lock();
+        try {
+            SQLiteDatabase h = db.getWritableDatabase();
+            // Update existing
+            for (Server s : servers) {
+                if (s.state == STATE_MODIFIED) {
+                    Log.i("C", "Updating server " + s.publicKey + " in DB");
+                    ContentValues v = new ContentValues();
+                    v.put("lanIP", s.lanIP);
+                    v.put("bearerToken", s.bearerToken);
+                    v.put("name", s.name);
+                    String[] args = {s.publicKey};
+                    h.update("server", v, "publicKey = ?", args);
+                    s.state = STATE_NOTMODIFIED;
+                }
             }
-        }
-        // Insert new
-        for (Server s : servers) {
-            if (s.state == STATE_NEW) {
-                Log.i("C", "Adding server " + s.publicKey + " to DB");
-                ContentValues v = new ContentValues();
-                v.put("publicKey", s.publicKey);
-                v.put("lanIP", s.lanIP);
-                v.put("bearerToken", s.bearerToken);
-                h.insert("server", null, v);
-                s.state = STATE_NOTMODIFIED;
+            // Insert new
+            for (Server s : servers) {
+                if (s.state == STATE_NEW) {
+                    Log.i("C", "Adding server " + s.publicKey + " to DB");
+                    ContentValues v = new ContentValues();
+                    v.put("publicKey", s.publicKey);
+                    v.put("lanIP", s.lanIP);
+                    v.put("bearerToken", s.bearerToken);
+                    v.put("name", s.name);
+                    h.insert("server", null, v);
+                    s.state = STATE_NOTMODIFIED;
+                }
             }
+        } finally {
+            serversLock.unlock();
         }
     }
 
@@ -119,13 +183,19 @@ class State {
         db = null;
     }
 
-    void addNewServer(String lanIP, String publicKey, String bearerToken) {
-        Server s = new Server();
-        s.lanIP = lanIP;
-        s.publicKey = publicKey;
-        s.bearerToken = bearerToken;
-        s.state = STATE_NEW;
-        servers.add(s);
-        saveServersToDB();
+    void addNewServer(String lanIP, String publicKey, String bearerToken, String name) {
+        serversLock.lock();
+        try {
+            Server s = new Server();
+            s.lanIP = lanIP;
+            s.publicKey = publicKey;
+            s.bearerToken = bearerToken;
+            s.name = name;
+            s.state = STATE_NEW;
+            servers.add(s);
+            saveServersToDB();
+        } finally {
+            serversLock.unlock();
+        }
     }
 }

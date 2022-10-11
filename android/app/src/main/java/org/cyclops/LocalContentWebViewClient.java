@@ -44,12 +44,12 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
     public void onPageFinished(WebView view, String url) {
         super.onPageFinished(view, url);
         if (State.global.servers.size() == 0) {
-            cySetMode(view, "rtInit");
+            cySetRoute(view, "rtInit");
         }
     }
 
-    void cySetMode(WebView view, String mode) {
-        view.evaluateJavascript("window.cySetMode('" + mode + "')", null);
+    void cySetRoute(WebView view, String route) {
+        view.evaluateJavascript("window.cySetRoute('" + route + "')", null);
     }
 
     void cyBack(WebView view) {
@@ -92,12 +92,18 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                     return sendOK();
                 case "/natcom/scanStatus":
                     return sendJSON(State.global.scanner.getState());
-                case "/natcom/newLocalConnection":
-                    return sendJSON(State.global.connector.newConnection(url.getQueryParameter("ip")));
                 case "/natcom/forward":
                     return forward(request);
-                case "/natcom/showServer":
+                case "/natcom/navigateToScannedLocalServer":
                     activity.runOnUiThread(() -> main.navigateToServer(url.getQueryParameter("url"), true, null));
+                    return sendOK();
+                case "/natcom/switchToRegisteredServer":
+                    activity.runOnUiThread(() -> main.switchToServerByPublicKey(url.getQueryParameter("publicKey")));
+                    return sendOK();
+                case "/natcom/getRegisteredServers":
+                    return sendJSON(State.global.getServersCopy());
+                case "/natcom/showMenu":
+                    activity.runOnUiThread(() -> main.showMenu(url.getQueryParameter("show").equals("1")));
                     return sendOK();
             }
         }

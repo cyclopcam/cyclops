@@ -1,7 +1,5 @@
 package org.cyclops;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.webkit.WebViewAssetLoader;
 
@@ -12,33 +10,34 @@ import android.net.ConnectivityManager;
 import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.net.NetworkRequest;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.util.Base64;
 import android.util.Log;
+import android.view.View;
 import android.webkit.CookieManager;
-import android.webkit.ValueCallback;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
 
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
-import okhttp3.Cookie;
 import okhttp3.OkHttpClient;
 
 public class MainActivity extends AppCompatActivity implements Main {
+    RelativeLayout rootView;
+    View statusBarPlaceholder;
     WebView localWebView; // loads embedded JS code
     WebView remoteWebView; // loads remote JS code from a Cyclops server
     LocalContentWebViewClient localClient;
     RemoteWebViewClient remoteClient;
-    boolean isRemote = false;
+    boolean isMenuVisible = false;
+    boolean isRemoteVisible = false;
+    boolean isRemoteInFocus = false;
+    boolean isOnLAN = false;
     //ConnectivityManager.NetworkCallback networkCallback;
     State.Server currentServer;
-    boolean isOnLAN = false;
     String currentNetworkInterfaceName = "";
 
     // Maintain our own history stack, for the tricky transitions between localWebView and remoteWebView.
@@ -54,13 +53,14 @@ public class MainActivity extends AppCompatActivity implements Main {
 
         State.global.sharedPref = getSharedPreferences("org.cyclopcam.cyclops.state", Context.MODE_PRIVATE);
         State.global.scanner = new Scanner(this);
-        State.global.connector = new Connector(this);
         State.global.db = new LocalDB(this);
         State.global.loadAll();
 
         // dev time
         WebView.setWebContentsDebuggingEnabled(true);
 
+        rootView = findViewById(R.id.mainRoot);
+        statusBarPlaceholder = findViewById(R.id.statusBarPlaceholder);
         localWebView = findViewById(R.id.localWebView);
         remoteWebView = findViewById(R.id.remoteWebView);
         setupWebView(localWebView);
@@ -78,7 +78,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         remoteWebView.setWebViewClient(remoteClient);
 
         if (State.global.servers.size() == 0) {
-            toggleWebViews(false);
+            showRemoteWebView(false);
         } else {
             State.Server current = State.global.getCurrentServer();
             if (current == null) {
@@ -119,7 +119,7 @@ public class MainActivity extends AppCompatActivity implements Main {
 
     @Override
     public void onBackPressed() {
-        if (isRemote) {
+        if (isRemoteInFocus) {
             remoteClient.cyBack(remoteWebView);
         } else {
             localClient.cyBack(localWebView);
@@ -132,7 +132,7 @@ public class MainActivity extends AppCompatActivity implements Main {
             navigationHistory.remove(navigationHistory.size() - 1);
             switch (p) {
                 case "openServer":
-                    toggleWebViews(false);
+                    showRemoteWebView(false);
             }
             return;
         }
@@ -141,21 +141,56 @@ public class MainActivity extends AppCompatActivity implements Main {
         super.onBackPressed();
     }
 
-    public void toggleWebViews(boolean showRemote) {
-        LinearLayout.LayoutParams local = new LinearLayout.LayoutParams(
-                ActionBar.LayoutParams.MATCH_PARENT,
-                //showRemote ? 200 : ActionBar.LayoutParams.MATCH_PARENT,
-                showRemote ? 0 : ActionBar.LayoutParams.MATCH_PARENT,
-                0
-        );
-        LinearLayout.LayoutParams remote = new LinearLayout.LayoutParams(
-                ActionBar.LayoutParams.MATCH_PARENT,
-                0,
-                showRemote ? 1.0f : 0
-        );
+    // Show a fullscreen menu that slides in from the left (when user clicks the burger menu on the top-left of the screen)
+    public void showMenu(boolean show) {
+        isMenuVisible = show;
+        if (show) {
+            isRemoteInFocus = false;
+        } else {
+            isRemoteInFocus = true;
+        }
+        recalculateWebViewLayout();
+    }
+
+    public void showRemoteWebView(boolean show) {
+        isRemoteVisible = show;
+        isRemoteInFocus = true;
+        recalculateWebViewLayout();
+    }
+
+    public void recalculateWebViewLayout() {
+        int statusBarHeight = statusBarPlaceholder.getHeight();
+
+        RelativeLayout.LayoutParams local = new RelativeLayout.LayoutParams(ActionBar.LayoutParams.MATCH_PARENT, 0);
+        if (isRemoteVisible) {
+            if (isMenuVisible) {
+                local.height = statusBarHeight * 8;
+            } else {
+                local.height = statusBarHeight;
+            }
+        } else {
+            local.height = ActionBar.LayoutParams.MATCH_PARENT;
+        }
+
+        RelativeLayout.LayoutParams remote = new RelativeLayout.LayoutParams(ActionBar.LayoutParams.MATCH_PARENT, 0);
+        if (isRemoteVisible) {
+            remote.addRule(RelativeLayout.BELOW, R.id.statusBarPlaceholder);
+            remote.height = rootView.getHeight() - statusBarHeight;
+        }
+        //Log.i("C", rootView.getHeight() + ", " + rootView.getMeasuredHeight() + ", " + statusBarPlaceholder.getHeight() + ", " + statusBarPlaceholder.getMeasuredHeight());
+
         localWebView.setLayoutParams(local);
         remoteWebView.setLayoutParams(remote);
-        isRemote = showRemote;
+    }
+
+    public void switchToServerByPublicKey(String publicKey) {
+        State.Server server = State.global.getServerByPublicKey(publicKey);
+        if (server == null) {
+            Log.e("C", "Requested to switch to unknown server " + publicKey);
+            return;
+        }
+        State.global.setCurrentServer(publicKey);
+        switchToServer(server);
     }
 
     // If you call switchToServer and 'server' = 'currentServer', then the function will first check
@@ -164,7 +199,7 @@ public class MainActivity extends AppCompatActivity implements Main {
     public void switchToServer(State.Server server) {
         Context context = this;
 
-        // Just check if connectivity is still fine. If fine, then don't reload.
+        // justCheck: If server is not changing, then just check whether connectivity is still OK
         boolean justCheck = currentServer != null && server.publicKey.equals(currentServer.publicKey);
         currentServer = server.copy();
 
@@ -176,6 +211,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                 int wifiIP = Scanner.getWifiIPAddress(context);
                 if (storedLanIP != 0 && wifiIP != 0 && Scanner.areIPsInSameSubnet(storedLanIP, wifiIP)) {
                     OkHttpClient client = new OkHttpClient.Builder().callTimeout(300, TimeUnit.MILLISECONDS).build();
+                    // TODO: incorporate cryptographic challenge to test if server is who he claims to be
                     JSAPI.PingResponseJSON ping = Scanner.isCyclopsServer(client, server.lanIP);
                     if (ping != null) {
                         if (justCheck && isOnLAN) {
@@ -210,7 +246,7 @@ public class MainActivity extends AppCompatActivity implements Main {
     }
 
     public void navigateToServer(String url, boolean addToNavigationHistory, State.Server server) {
-        toggleWebViews(true);
+        showRemoteWebView(true);
         String currentURL = remoteWebView.getUrl();
         if (currentURL != null) {
             // Preserve the Vue route when switching between LAN and proxy.
@@ -235,6 +271,10 @@ public class MainActivity extends AppCompatActivity implements Main {
 
     public void setupNetworkMonitor() {
         ConnectivityManager connectivityManager = getSystemService(ConnectivityManager.class);
+
+        // NOTE: There seems to be a notable case where this doesn't work, which is if our activity is
+        // put to sleep, and then wakes up on another network. I guess we should do a ping when our
+        // activity resumes or something.
 
         connectivityManager.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
             @Override
