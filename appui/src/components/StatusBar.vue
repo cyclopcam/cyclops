@@ -1,29 +1,35 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { bestServerName, blankServer, fetchRegisteredServers, getCurrentServer, showMenu, switchToRegisteredServer } from '@/nattypes';
+import { bestServerName, blankServer, getCurrentServer, showMenu, switchToRegisteredServer } from '@/nattypes';
 import type { Server } from '@/nattypes';
 import Menu from '@/icons/menu.svg';
+import { globals } from '@/global';
 
-let currentServer = ref(blankServer());
-let servers = ref([] as Server[]);
+//let currentServer = ref(blankServer());
+//let servers = ref([] as Server[]);
 let isMenuShown = ref(false);
+let current = ref(blankServer());
 
 function switchToServer(s: Server) {
 	switchToRegisteredServer(s.publicKey);
 }
 
 function currentServerName(): string {
-	return bestServerName(currentServer.value);
+	return bestServerName(current.value);
 }
 
 function onMenu() {
-	isMenuShown.value = !isMenuShown.value;
-	showMenu(isMenuShown.value);
+	//isMenuShown.value = !isMenuShown.value;
+	//globals.showMenu(isMenuShown.value);
+	globals.showMenu(!globals.isFullScreen);
 }
 
 onMounted(async () => {
-	currentServer.value = await getCurrentServer();
-	servers.value = await fetchRegisteredServers();
+	//currentServer.value = await getCurrentServer();
+	//servers.value = await fetchRegisteredServers();
+	await globals.waitForLoad();
+	current.value = globals.currentServer;
+	//console.log("currentServerName = ", currentServerName());
 })
 
 </script>
@@ -45,11 +51,11 @@ onMounted(async () => {
 	box-sizing: border-box;
 	flex: 0 0 auto;
 
-	// Our height must be perfectly in sync with the statusBarPlaceholder object in the Android app's
+	// Our StatusBar height must be perfectly in sync with the statusBarPlaceholder object in the Android app's
 	// activity_main.xml
 	height: 40px;
 
-	//background-color: mistyrose;
+	background-color: #fff;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;

@@ -1,5 +1,6 @@
 {
 	"files.exclude": {
-		"www": true
+		"www": true,
+		"scripts/proxy/tmp": true
 	}
 }

@@ -3,7 +3,7 @@ import type { Recording } from '@/recording/recording';
 import { onMounted, ref } from 'vue';
 import Play from '@/icons/play-circle.svg';
 import Burger from '@/icons/more-vertical.svg';
-import SvgButton from '../../core/SvgButton.vue';
+import SvgButton from '@/components/widgets/SvgButton.vue';
 import { dateTimeShort, fetchOrErr, randomString } from '@/util/util';
 import Menue from '../../core/Menue.vue';
 import { globals } from '@/globals';

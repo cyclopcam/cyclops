@@ -10,4 +10,7 @@ public class JSAPI {
         String hostname = "";
         long time = 0;
     }
+    public static class ScreenParamsJSON {
+        int contentHeight = 0;
+    }
 }

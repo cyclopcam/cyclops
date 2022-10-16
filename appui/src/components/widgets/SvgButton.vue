@@ -22,8 +22,8 @@ function iconStyle(): any {
 	}
 
 	return {
-		width: props.size ?? "",
-		height: props.size ?? "",
+		width: props.size ?? "24px",
+		height: props.size ?? "24px",
 		filter: filter,
 	}
 }

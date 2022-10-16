@@ -9,6 +9,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewClientCompat;
@@ -46,6 +47,12 @@ public class RemoteWebViewClient extends WebViewClientCompat {
             view.evaluateJavascript("window.cySetCredentials('" + this.server.publicKey + "' , '" + this.server.bearerToken + "')", null);
         }
         super.onPageFinished(view, url);
+    }
+
+    @Override
+    public void onReceivedHttpError(@NonNull WebView view, @NonNull WebResourceRequest request, @NonNull WebResourceResponse errorResponse) {
+        super.onReceivedHttpError(view, request, errorResponse);
+        Log.i("C", "Remote onReceivedHttpError: " + errorResponse.toString());
     }
 
     void setUrl(Uri uri) {

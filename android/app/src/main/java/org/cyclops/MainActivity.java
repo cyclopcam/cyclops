@@ -6,6 +6,8 @@ import androidx.webkit.WebViewAssetLoader;
 import android.annotation.SuppressLint;
 import android.app.ActionBar;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.net.ConnectivityManager;
 import android.net.LinkProperties;
 import android.net.Network;
@@ -17,6 +19,7 @@ import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 
@@ -30,12 +33,16 @@ public class MainActivity extends AppCompatActivity implements Main {
     View statusBarPlaceholder;
     WebView localWebView; // loads embedded JS code
     WebView remoteWebView; // loads remote JS code from a Cyclops server
+    //ImageView darkenOverlay;
+    ImageView statusbarScreenGrab;
+    Bitmap remoteWebViewScreenGrab;
     LocalContentWebViewClient localClient;
     RemoteWebViewClient remoteClient;
-    boolean isMenuVisible = false;
+    String dropdownMode = "";
     boolean isRemoteVisible = false;
     boolean isRemoteInFocus = false;
     boolean isOnLAN = false;
+    int contentHeight = 0;
     //ConnectivityManager.NetworkCallback networkCallback;
     State.Server currentServer;
     String currentNetworkInterfaceName = "";
@@ -88,6 +95,16 @@ public class MainActivity extends AppCompatActivity implements Main {
         }
 
         setupNetworkMonitor();
+
+        // Our dimensions are not available yet, because layout hasn't happened yet.
+        // See https://stackoverflow.com/questions/3591784/views-getwidth-and-getheight-returns-0 for an explanation
+        rootView.post(new Runnable() {
+            @Override
+            public void run() {
+                contentHeight = rootView.getHeight() - statusBarPlaceholder.getHeight();
+                Log.i("C", "contentHeight = " + contentHeight);
+            }
+        });
 
         //openServer("http://192.168.10.15:8080");
     }
@@ -142,9 +159,9 @@ public class MainActivity extends AppCompatActivity implements Main {
     }
 
     // Show a fullscreen menu that slides in from the left (when user clicks the burger menu on the top-left of the screen)
-    public void showMenu(boolean show) {
-        isMenuVisible = show;
-        if (show) {
+    public void showMenu(String mode) {
+        dropdownMode = mode;
+        if (dropdownMode.equals("0")) {
             isRemoteInFocus = false;
         } else {
             isRemoteInFocus = true;
@@ -158,14 +175,34 @@ public class MainActivity extends AppCompatActivity implements Main {
         recalculateWebViewLayout();
     }
 
+    // While growing our local content webview, the screen will often flash. This is presumably just
+    // because the browser first grows it's size, then does a layout, then repaints, etc, and during that
+    // time Android wants to paint, so it paints white. I've tried to preload the browser so that it's ready
+    // to render all it's content before the resize, but this doesn't seem to help. So our workaround is this:
+    // Before resizing, we set to View.INVISIBLE.
+    // After resizing, we set it to View.VISIBLE.
+    // This seems to help, but I do still see flashes, particularly the first time that the webview gets enlarged.
+    // Now, an unfortunate consequence of hiding the webview while it expands, is that our status bar also
+    // get hidden. To work around this, we show a screen grab of the status bar while we make the local web view
+    // invisible.
     public void recalculateWebViewLayout() {
         int statusBarHeight = statusBarPlaceholder.getHeight();
+        //boolean needOverlay = false;
 
         RelativeLayout.LayoutParams local = new RelativeLayout.LayoutParams(ActionBar.LayoutParams.MATCH_PARENT, 0);
         if (isRemoteVisible) {
-            if (isMenuVisible) {
-                local.height = statusBarHeight * 8;
+            if (dropdownMode.equals("1")) {
+                replaceStatusBarWithScreenGrab();
+                local.height = ActionBar.LayoutParams.MATCH_PARENT;
+                localWebView.setVisibility(View.INVISIBLE);
+                //localWebView.setAlpha(0.05f);
+            } else if (dropdownMode.equals("2")) {
+                removeStatusBarScreenGrab();
+                local.height = ActionBar.LayoutParams.MATCH_PARENT;
+                localWebView.setVisibility(View.VISIBLE);
+                //localWebView.setAlpha(1.0f);
             } else {
+                removeStatusBarScreenGrab();
                 local.height = statusBarHeight;
             }
         } else {
@@ -179,12 +216,84 @@ public class MainActivity extends AppCompatActivity implements Main {
         }
         //Log.i("C", rootView.getHeight() + ", " + rootView.getMeasuredHeight() + ", " + statusBarPlaceholder.getHeight() + ", " + statusBarPlaceholder.getMeasuredHeight());
 
+        //if (needOverlay && screenGrab == null) {
+        //    saveScreenGrab();
+        //} else if (!needOverlay && screenGrab != null) {
+        //    screenGrab = null;
+        //}
+
         localWebView.setLayoutParams(local);
         remoteWebView.setLayoutParams(remote);
+
+        /*
+        if (needDarken && darkenOverlay == null) {
+            darkenOverlay = new ImageView(this);
+            int[] colors = new int[]{0,0,0,0};
+            Bitmap blackBmp = Bitmap.createBitmap(colors, 2, 2, Bitmap.Config.ARGB_8888);
+            darkenOverlay.setImageBitmap(blackBmp);
+            darkenOverlay.setImageAlpha(127);
+            RelativeLayout.LayoutParams layout = new RelativeLayout.LayoutParams(ActionBar.LayoutParams.MATCH_PARENT, ActionBar.LayoutParams.MATCH_PARENT);
+            layout.addRule(RelativeLayout.ALIGN_TOP, R.id.mainRoot);
+            layout.addRule(RelativeLayout.ALIGN_LEFT, R.id.mainRoot);
+            layout.addRule(RelativeLayout.ALIGN_BOTTOM, R.id.mainRoot);
+            layout.addRule(RelativeLayout.ALIGN_RIGHT, R.id.mainRoot);
+            darkenOverlay.setLayoutParams(layout);
+            rootView.addView(darkenOverlay);
+            //rootView.bringChildToFront(remoteWebView);
+        } else if (!needDarken && darkenOverlay != null) {
+            rootView.removeView(darkenOverlay);
+            darkenOverlay = null;
+        }
+        */
+    }
+
+    // This must be callable from a background thread, which is why it's cached.
+    // The reason we need this is so that the local webview can have it's surface 100%
+    // ready to go, before we increase it's size to cover the whole screen.
+    public int getContentHeight() {
+        return contentHeight;
+    }
+
+    public Bitmap getRemoteViewScreenGrab() {
+        return remoteWebViewScreenGrab;
+    }
+
+    // this must be idempotent, so that caller can keep calling natcom/getScreenGrab until it returns a bitmap
+    public void createRemoteViewScreenGrab() {
+        if (remoteWebViewScreenGrab == null) {
+            remoteWebViewScreenGrab = getScreenGrabOfView(remoteWebView);
+        }
+    }
+
+    void replaceStatusBarWithScreenGrab() {
+        int statusBarHeight = statusBarPlaceholder.getHeight();
+        statusbarScreenGrab = new ImageView(this);
+        statusbarScreenGrab.setImageBitmap(getScreenGrabOfView(localWebView));
+        RelativeLayout.LayoutParams lp = new RelativeLayout.LayoutParams(0, 0);
+        lp.addRule(RelativeLayout.ALIGN_LEFT, R.id.mainRoot);
+        lp.addRule(RelativeLayout.ALIGN_TOP, R.id.mainRoot);
+        lp.width = ActionBar.LayoutParams.MATCH_PARENT;
+        lp.height = statusBarHeight;
+        statusbarScreenGrab.setLayoutParams(lp);
+        rootView.addView(statusbarScreenGrab);
+    }
+
+    void removeStatusBarScreenGrab() {
+        rootView.removeView(statusbarScreenGrab);
+        statusbarScreenGrab = null;
+    }
+
+    Bitmap getScreenGrabOfView(View grabView) {
+        Log.i("C", "Grabbing screen size " + grabView.getWidth() + " x " + grabView.getHeight());
+        Bitmap bmp = Bitmap.createBitmap(grabView.getWidth(), grabView.getHeight(), Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
+        //rootView.layout()
+        grabView.draw(c);
+        return bmp;
     }
 
     public void switchToServerByPublicKey(String publicKey) {
-        State.Server server = State.global.getServerByPublicKey(publicKey);
+        State.Server server = State.global.getServerCopyByPublicKey(publicKey);
         if (server == null) {
             Log.e("C", "Requested to switch to unknown server " + publicKey);
             return;
@@ -303,41 +412,6 @@ public class MainActivity extends AppCompatActivity implements Main {
                 }
             }
         });
-
-        /*
-        NetworkRequest networkRequest = new NetworkRequest.Builder()
-                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
-                .build();
-
-        ConnectivityManager.NetworkCallback networkCallback = new ConnectivityManager.NetworkCallback() {
-            @Override
-            public void onAvailable(@NonNull Network network) {
-                Log.i("C", "networkCallback.onAvailable");
-                super.onAvailable(network);
-                if (currentServer != null) {
-                    switchToServer(currentServer);
-                }
-            }
-
-            @Override
-            public void onLost(@NonNull Network network) {
-                Log.i("C", "networkCallback.onLost");
-                super.onLost(network);
-            }
-
-            @Override
-            public void onCapabilitiesChanged(@NonNull Network network, @NonNull NetworkCapabilities networkCapabilities) {
-                Log.i("C", "networkCallback.onCapabilitiesChanged");
-                super.onCapabilitiesChanged(network, networkCapabilities);
-                final boolean unmetered = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
-            }
-        };
-
-        ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(ConnectivityManager.class);
-        connectivityManager.requestNetwork(networkRequest, networkCallback);
-         */
     }
 
 

@@ -9,7 +9,7 @@ import InfoBubble from '../../widgets/InfoBubble.vue';
 import LevelsExplainer from './LevelsExplainer.vue';
 import Back from '@/icons/back-black.svg';
 import Next from '@/icons/next.svg';
-import SvgButton from '../../core/SvgButton.vue';
+import SvgButton from '@/components/widgets/SvgButton.vue';
 import { pushRoute, router } from "@/router/routes";
 import FullscreenTopbar from "../../core/FullscreenTopbar.vue";
 

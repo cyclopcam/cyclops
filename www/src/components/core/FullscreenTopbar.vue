@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import SvgButton from "./SvgButton.vue";
+import SvgButton from "@/components/widgets/SvgButton.vue";
 import Back from '@/icons/back.svg';
 
 </script>

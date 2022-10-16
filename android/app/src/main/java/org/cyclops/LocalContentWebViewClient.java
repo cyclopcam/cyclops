@@ -2,6 +2,7 @@ package org.cyclops;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.util.Log;
 import android.webkit.ValueCallback;
@@ -9,6 +10,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewClientCompat;
@@ -20,6 +22,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringBufferInputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
@@ -46,6 +49,8 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
         super.onPageFinished(view, url);
         if (State.global.servers.size() == 0) {
             cySetRoute(view, "rtInit");
+        } else {
+            cySetRoute(view, "rtDefault");
         }
     }
 
@@ -69,6 +74,10 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
         return new WebResourceResponse("text/plain", "utf-8", 200, "OK", null, null);
     }
 
+    WebResourceResponse sendTryAgain() {
+        return new WebResourceResponse("text/plain", "utf-8", 202, "Try Again", null, null);
+    }
+
     WebResourceResponse sendJSON(Object obj) {
         // By using serializeNulls(), we get blank strings coming through as blank strings (instead of being omitted)
         Gson gson = new GsonBuilder().serializeNulls().create();
@@ -77,6 +86,14 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
         String j = gson.toJson(obj);
         Log.i("C", "JSON is " + j);
         return new WebResourceResponse("application/json", "utf-8", 200, "OK", null, new ByteArrayInputStream(j.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    WebResourceResponse sendImage(int width, int height, int stride, byte[] pixels) {
+        HashMap<String, String> headers = new HashMap<>();
+        headers.put("X-Image-Width", Integer.toString(width));
+        headers.put("X-Image-Height", Integer.toString(height));
+        headers.put("X-Image-Stride", Integer.toString(stride));
+        return new WebResourceResponse("application/binary", "", 200, "OK", headers, new ByteArrayInputStream(pixels));
     }
 
     @Override
@@ -112,9 +129,28 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                     return sendJSON(s);
                 case "/natcom/getRegisteredServers":
                     return sendJSON(State.global.getServersCopy());
-                case "/natcom/showMenu":
-                    activity.runOnUiThread(() -> main.showMenu(url.getQueryParameter("show").equals("1")));
+                case "/natcom/setServerProperty":
+                    State.global.setServerProperty(url.getQueryParameter("publicKey"), url.getQueryParameter("key"), url.getQueryParameter("value"));
                     return sendOK();
+                case "/natcom/showMenu":
+                    activity.runOnUiThread(() -> main.showMenu(url.getQueryParameter("mode")));
+                    return sendOK();
+                case "/natcom/getScreenParams":
+                    JSAPI.ScreenParamsJSON resp = new JSAPI.ScreenParamsJSON();
+                    resp.contentHeight = main.getContentHeight();
+                    return sendJSON(resp);
+                case "/natcom/getScreenGrab":
+                    Bitmap bmp = main.getRemoteViewScreenGrab();
+                    if (bmp != null) {
+                        ByteBuffer buf = ByteBuffer.allocate(bmp.getRowBytes() * bmp.getHeight());
+                        bmp.copyPixelsToBuffer(buf);
+                        return sendImage(bmp.getWidth(), bmp.getHeight(), bmp.getRowBytes(), buf.array());
+                    } else {
+                        // this must be idempotent, so that caller can keep calling getScreenGrab until it returns a bitmap
+                        main.createRemoteViewScreenGrab();
+                        return sendTryAgain();
+                        //return sendOK();
+                    }
             }
         }
 

@@ -93,12 +93,25 @@ class State {
         return null;
     }
 
+    Server getServerCopyByPublicKey(String publicKey) {
+        try {
+            serversLock.lock();
+            Server s = getServerByPublicKey(publicKey);
+            if (s == null) {
+                return s;
+            }
+            return s.copy();
+        } finally {
+            serversLock.unlock();
+        }
+    }
+
     Server getServerByPublicKey(String publicKey) {
         serversLock.lock();
         try {
             for (Server s : servers) {
                 if (s.publicKey.equals(publicKey)) {
-                    return s.copy();
+                    return s;
                 }
             }
             return null;
@@ -115,6 +128,29 @@ class State {
             SharedPreferences.Editor edit = sharedPref.edit();
             edit.putString(PREF_CURRENT_SERVER_PUBLIC_KEY, publicKey);
             edit.apply();
+        } finally {
+            serversLock.unlock();
+        }
+    }
+
+    void setServerProperty(String publicKey, String key, String value) {
+        serversLock.lock();
+        try {
+            Log.i("C", "setServerProperty " + key + " : " + value);
+            Server s = getServerByPublicKey(publicKey);
+            if (s == null) {
+                return;
+            }
+            switch (key) {
+                case "name":
+                    s.name = value;
+                    s.state = STATE_MODIFIED;
+                    break;
+                default:
+                    Log.e("C", "Unknown property '" + key + "'");
+                    return;
+            }
+            saveServersToDB();
         } finally {
             serversLock.unlock();
         }

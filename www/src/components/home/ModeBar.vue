@@ -10,7 +10,7 @@ import wifi from "@/icons/wifi.svg";
 import network from "@/icons/network.svg";
 import { globals } from "@/globals";
 import { computed } from "@vue/reactivity";
-import SvgButton from "../core/SvgButton.vue";
+import SvgButton from "@/components/widgets/SvgButton.vue";
 import { popRoute, router } from "@/router/routes";
 
 let isUsingProxy = globals.isUsingProxy;

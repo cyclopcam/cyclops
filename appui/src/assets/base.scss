@@ -298,6 +298,7 @@ $slideAmount: 100vw;
 .slide-left-enter-active {
 	transition: $slideTransition;
 	position: absolute;
+	top: 0;
 }
 
 .slide-left-enter-to {
@@ -329,6 +330,7 @@ $slideAmount: 100vw;
 .slide-right-enter-active {
 	transition: $slideTransition;
 	position: absolute;
+	top: 0;
 }
 
 .slide-right-enter-to {
