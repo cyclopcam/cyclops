@@ -4,6 +4,7 @@ import type { Server } from '@/nattypes';
 import { onMounted, ref } from 'vue';
 import SvgButton from '@/components/widgets/SvgButton.vue';
 import Edit from '@/icons/edit.svg';
+import Plus from '@/icons/plus-circle.svg';
 import { router } from '@/router/routes';
 import { globals } from '@/global';
 
@@ -14,10 +15,19 @@ let canvas = ref(null);
 
 function onConnect(s: Server) {
 	switchToRegisteredServer(s.publicKey);
+	globals.showMenu(false);
 }
 
 function onEdit(s: Server) {
 	router.push({ name: 'rtEditServer', params: { publicKey: s.publicKey } });
+}
+
+function onAddLocal() {
+	//
+}
+
+function onAddRemote() {
+	//
 }
 
 onMounted(async () => {
@@ -36,6 +46,12 @@ onMounted(async () => {
 					{{bestServerName(s)}}
 				</a>
 				<svg-button :icon="Edit" @click="onEdit(s)" />
+			</div>
+			<div class="addserver">
+				<a class="link addlink" @click="onAddLocal()"><img :src="Plus" class="plus" /> Add Local Server</a>
+			</div>
+			<div class="addserver">
+				<a class="link addlink" @click="onAddRemote()"><img :src="Plus" class="plus" /> Add Remote Server</a>
 			</div>
 		</div>
 	</div>
@@ -66,5 +82,22 @@ h3 {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+}
+
+.plus {
+	width: 16px;
+	height: 16px;
+	margin-right: 8px;
+}
+
+.addlink {
+	display: flex;
+	align-items: center;
+}
+
+.addserver {
+	margin: 24px 4px 12px 10px;
+	display: flex;
+	align-items: center;
 }
 </style>

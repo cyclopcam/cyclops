@@ -14,6 +14,7 @@ import { onMounted, ref, watch } from 'vue';
 let canvas = ref(null);
 let contentParent = ref(null);
 let contentParentTop = ref("");
+let contentParentOpacity = ref("1");
 let enableTopTransition = ref(false);
 let isHidingFromSwipe = ref(false);
 let darkenOpacity = ref("");
@@ -47,18 +48,20 @@ function rootStyle() {
 
 function contentParentStyle() {
 	let transition = "top 0ms";
+	let tms = (isHidingFromSwipe.value ? swipeTransitionMS + "ms" : panelSlideTransitionMS + "ms");
 	if (enableTopTransition.value) {
-		transition = "top " + (isHidingFromSwipe.value ? swipeTransitionMS + "ms" : panelSlideTransitionMS + "ms");
+		transition = "top " + tms + ", opacity " + tms;
 	}
 	return {
 		transition: transition,
 		top: contentParentTop.value !== "" ? contentParentTop.value : undefined,
+		opacity: contentParentOpacity.value !== "" ? contentParentOpacity.value : undefined,
 	}
 }
 
 function darkenStyle() {
 	return {
-		transition: "opacity " + swipeTransitionMS + "ms",
+		transition: enableTopTransition.value ? "opacity " + swipeTransitionMS + "ms" : "",
 		opacity: darkenOpacity.value !== "" ? darkenOpacity.value : undefined,
 	}
 }
@@ -75,6 +78,7 @@ function hideContent(fromSwipe: boolean) {
 	contentParentTop.value = -(contentParent.value! as HTMLDivElement).clientHeight + "px";
 	isHidingFromSwipe.value = fromSwipe;
 	darkenOpacity.value = "0";
+	contentParentOpacity.value = "0";
 	if (fromSwipe) {
 		setTimeout(() => {
 			globals.showMenu(false, { immediateHide: true });
@@ -84,6 +88,7 @@ function hideContent(fromSwipe: boolean) {
 
 function showContent() {
 	enableTopTransition.value = true;
+	contentParentOpacity.value = "100%";
 	contentParentTop.value = "0px";
 	darkenOpacity.value = "0.3";
 }
@@ -139,10 +144,13 @@ onMounted(() => {
 
 	console.log("BitmapOverlay mounted");
 
+	// hide, while it's in view, otherwise we get a white flash, until contentRenderPause happens
+	contentParentOpacity.value = "0";
+	darkenOpacity.value = "0";
 
 	// Start out of view
 	// Pause first, so that our content can get it's height
-	let contentRenderPause = 10;
+	let contentRenderPause = 5;
 	setTimeout(() => {
 		hideContent(false);
 	}, contentRenderPause);
