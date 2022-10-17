@@ -8,6 +8,7 @@
 
 import { panelSlideTransitionMS } from '@/constants';
 import { globals } from '@/global';
+import { showMenu } from '@/nattypes';
 import { onMounted, ref, watch } from 'vue';
 
 let canvas = ref(null);
@@ -24,17 +25,25 @@ let lastTouchSpeed = 0;
 let swipeTransitionMS = 150;
 //let touchDelta = ref(0);
 
-function canvasStyle() {
+// On globals.contentHeight:
+// We have an absolute height, which is necessary for two things:
+// 1. So that the moment our webview is expanded to fill the screen, our content is ready to be displayed.
+//    If we didn't have this size up front, we'd need to wait for the webview to made large, then it will issue
+//    a layout.. and then finally we'll fill it. But that causes a white flash.
+// 2. When the onscreen keyboard appears, and our webview's height is shrunk, we still display our background bitmap at the same size,
+//    instead of shrinking it vertically, which looks really stupid.
+
+function rootStyle() {
 	return {
-		// We have an absolute height, which is necessary for two things:
-		// 1. So that the moment our webview is expanded to fill the screen, our content is ready to be displayed.
-		//    If we didn't have this size up front, we'd need to wait for the webview to made large, then it will issue
-		//    a layout.. and then finally we'll fill it. But that causes a white flash.
-		// 2. When the onscreen keyboard appears, and our webview's height is shrunk, we still display our background bitmap at the same size,
-		//    instead of shrinking it vertically, which looks really stupid.
 		"height": globals.contentHeight + "px",
 	}
 }
+
+//function canvasStyle() {
+//	return {
+//		"height": globals.contentHeight + "px",
+//	}
+//}
 
 function contentParentStyle() {
 	let transition = "top 0ms";
@@ -127,29 +136,41 @@ onMounted(() => {
 		cx.putImageData(globals.fullScreenBackdrop, 0, 0);
 		console.log("BitmapOverlay canvas dims", cc.clientWidth, cc.clientHeight, ", Bitmap dims", globals.fullScreenBackdrop.width, globals.fullScreenBackdrop.height);
 	}
-	// Measure the height of our content pane, so that we can slide it precisely out of 
-	// view, and then precisely into view.
-	//let contentDiv = contentParent.value! as HTMLDivElement;
-	//console.log("slotEl", contentDiv.firstElementChild!.clientHeight);
-	//console.log("slotEl", contentDiv!.clientHeight);
+
+	console.log("BitmapOverlay mounted");
+
 
 	// Start out of view
-	//contentParentTop.value = -contentDiv.firstElementChild!.clientHeight + "px";
-	//contentParentTop.value = -contentDiv.clientHeight + "px";
-	hideContent(false);
-
-	// Slide into view
+	// Pause first, so that our content can get it's height
+	let contentRenderPause = 10;
 	setTimeout(() => {
+		hideContent(false);
+	}, contentRenderPause);
+
+	// settlePause is waiting for our content to be rendered in our expanded WebView, to try and
+	// avoid the white flash. But so far I can't get it consistent.
+	let settlePause = 50; // + 5 * 1000;
+
+	setTimeout(() => {
+		// Ask Android to make our WebView visible again
+		console.log("BitmapOverlay showMenu 2");
+		//console.log("contentHeight = ", (contentParent.value! as HTMLDivElement).clientHeight);
+		showMenu("2");
+	}, contentRenderPause + settlePause);
+
+	// Slide our content into view, from the top
+	setTimeout(() => {
+		console.log("BitmapOverlay slide down");
 		//contentParentTop.value = "0px";
 		showContent();
-	})
+	}, contentRenderPause + settlePause + 10);
 });
 
 </script>
 
 <template>
-	<div class="bitmapOverlay">
-		<canvas ref="canvas" class="canvas" :style="canvasStyle()" />
+	<div class="bitmapOverlay" :style="rootStyle()">
+		<canvas ref="canvas" class="canvas" />
 		<div ref="darken" class="darken" :style="darkenStyle()" />
 		<div ref="contentParent" class="contentParent" :style="contentParentStyle()" @touchstart="onTouchStart"
 			@touchmove="onTouchMove" @touchend="onTouchEnd">
@@ -161,7 +182,7 @@ onMounted(() => {
 <style lang="scss" scoped>
 .bitmapOverlay {
 	width: 100%;
-	height: 100%;
+	//height: 100%; // height is defined by our rootStyle() function
 	position: relative;
 }
 
@@ -172,6 +193,7 @@ onMounted(() => {
 	width: 100%;
 	height: 100%;
 	overflow: visible;
+	//filter: hue-rotate(90deg);
 	//filter: brightness(0.7);
 }
 
@@ -181,7 +203,7 @@ onMounted(() => {
 	top: 0;
 	width: 100%;
 	height: 100%;
-	//background-color: #000;
+	background-color: #000;
 }
 
 .contentParent {

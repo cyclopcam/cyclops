@@ -10,5 +10,6 @@ public interface Main {
     void showMenu(String mode);
     int getContentHeight();
     Bitmap getRemoteViewScreenGrab();
+    void clearRemoteViewScreenGrab();
     void createRemoteViewScreenGrab();
 }

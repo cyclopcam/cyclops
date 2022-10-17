@@ -140,6 +140,10 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                     resp.contentHeight = main.getContentHeight();
                     return sendJSON(resp);
                 case "/natcom/getScreenGrab":
+                    boolean forceNew = url.getQueryParameter("forceNew").equals("1");
+                    if (forceNew) {
+                        main.clearRemoteViewScreenGrab();
+                    }
                     Bitmap bmp = main.getRemoteViewScreenGrab();
                     if (bmp != null) {
                         ByteBuffer buf = ByteBuffer.allocate(bmp.getRowBytes() * bmp.getHeight());

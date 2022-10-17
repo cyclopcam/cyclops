@@ -73,6 +73,11 @@ public class MainActivity extends AppCompatActivity implements Main {
         setupWebView(localWebView);
         setupWebView(remoteWebView);
 
+        // Get rid of white flash when expanding localWebView with screen grab underlay of remoteWebView.
+        // OK... even this doesn't work. It's very very hard to get to the bottom of this. Slow it down
+        // to debug, and it disappears...
+        localWebView.getSettings().setOffscreenPreRaster(true);
+
         final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .addPathHandler("/res/", new WebViewAssetLoader.ResourcesPathHandler(this))
@@ -115,6 +120,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         // Javascript is not enabled by default!
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        //settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
         // We need this in order to talk to a Cyclops server on the LAN..
@@ -192,16 +198,23 @@ public class MainActivity extends AppCompatActivity implements Main {
         RelativeLayout.LayoutParams local = new RelativeLayout.LayoutParams(ActionBar.LayoutParams.MATCH_PARENT, 0);
         if (isRemoteVisible) {
             if (dropdownMode.equals("1")) {
+                // The WebView wants to expand. But before expanding it, we make it invisible, so that there
+                // is no flicker as it redraws in an intermediate state.
+                Log.i("C", "recalculateWebViewLayout dropDown=1, localWebView.height = " + localWebView.getHeight());
                 replaceStatusBarWithScreenGrab();
                 local.height = ActionBar.LayoutParams.MATCH_PARENT;
-                localWebView.setVisibility(View.INVISIBLE);
-                //localWebView.setAlpha(0.05f);
+                //localWebView.setVisibility(View.INVISIBLE);
+                localWebView.setAlpha(0.01f);
             } else if (dropdownMode.equals("2")) {
+                // By this stage, the WebView has rendered itself, so we can show it
+                Log.i("C", "recalculateWebViewLayout dropDown=2, localWebView.height = " + localWebView.getHeight());
                 removeStatusBarScreenGrab();
                 local.height = ActionBar.LayoutParams.MATCH_PARENT;
-                localWebView.setVisibility(View.VISIBLE);
-                //localWebView.setAlpha(1.0f);
+                //localWebView.setVisibility(View.VISIBLE);
+                localWebView.setAlpha(1.0f);
             } else {
+                // Just status bar at the top
+                Log.i("C", "recalculateWebViewLayout dropDown=0, localWebView.height = " + localWebView.getHeight());
                 removeStatusBarScreenGrab();
                 local.height = statusBarHeight;
             }
@@ -224,27 +237,6 @@ public class MainActivity extends AppCompatActivity implements Main {
 
         localWebView.setLayoutParams(local);
         remoteWebView.setLayoutParams(remote);
-
-        /*
-        if (needDarken && darkenOverlay == null) {
-            darkenOverlay = new ImageView(this);
-            int[] colors = new int[]{0,0,0,0};
-            Bitmap blackBmp = Bitmap.createBitmap(colors, 2, 2, Bitmap.Config.ARGB_8888);
-            darkenOverlay.setImageBitmap(blackBmp);
-            darkenOverlay.setImageAlpha(127);
-            RelativeLayout.LayoutParams layout = new RelativeLayout.LayoutParams(ActionBar.LayoutParams.MATCH_PARENT, ActionBar.LayoutParams.MATCH_PARENT);
-            layout.addRule(RelativeLayout.ALIGN_TOP, R.id.mainRoot);
-            layout.addRule(RelativeLayout.ALIGN_LEFT, R.id.mainRoot);
-            layout.addRule(RelativeLayout.ALIGN_BOTTOM, R.id.mainRoot);
-            layout.addRule(RelativeLayout.ALIGN_RIGHT, R.id.mainRoot);
-            darkenOverlay.setLayoutParams(layout);
-            rootView.addView(darkenOverlay);
-            //rootView.bringChildToFront(remoteWebView);
-        } else if (!needDarken && darkenOverlay != null) {
-            rootView.removeView(darkenOverlay);
-            darkenOverlay = null;
-        }
-        */
     }
 
     // This must be callable from a background thread, which is why it's cached.
@@ -256,6 +248,10 @@ public class MainActivity extends AppCompatActivity implements Main {
 
     public Bitmap getRemoteViewScreenGrab() {
         return remoteWebViewScreenGrab;
+    }
+
+    public void clearRemoteViewScreenGrab() {
+        remoteWebViewScreenGrab = null;
     }
 
     // this must be idempotent, so that caller can keep calling natcom/getScreenGrab until it returns a bitmap

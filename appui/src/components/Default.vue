@@ -20,35 +20,9 @@ function onEdit(s: Server) {
 	router.push({ name: 'rtEditServer', params: { publicKey: s.publicKey } });
 }
 
-/*
-async function updateScreenGrab() {
-	let img = await getScreenGrab();
-	if (img) {
-		let cc = canvas.value! as HTMLCanvasElement;
-		let cx = cc.getContext('2d')!;
-		cx.putImageData(img, 0, 0);
-	}
-}
-
-let lastHeight = 0;
-function watchForSize() {
-	let r = root.value! as HTMLDivElement;
-	if (r) {
-		let height = r.clientHeight;
-		if (height !== lastHeight) {
-			lastHeight = height;
-			updateScreenGrab();
-		}
-	}
-
-	setTimeout(watchForSize, 50);
-}
-*/
-
 onMounted(async () => {
 	await globals.waitForLoad();
 	servers.value = globals.servers;
-	//watchForSize();
 })
 
 </script>

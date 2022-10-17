@@ -3,26 +3,22 @@ import { onMounted, ref } from 'vue';
 import { RouterView } from 'vue-router';
 import StatusBar from './components/StatusBar.vue';
 import BitmapOverlay from './components/widgets/BitmapOverlay.vue';
-import { globals } from './global';
-import { getScreenParams } from './nattypes';
+import { globals, ServerPort } from './global';
+import { blankServer, getScreenParams } from './nattypes';
 
-//let contentHeight = ref(0);
-//
-//function contentStyle() {
-//	return {
-//		// We have an absolute height, which is necessary for two things:
-//		// 1. So that the moment our webview is expanded to fill the screen, our content is ready to be displayed (no white flash)
-//		// 2. When the onscreen keyboard appears, and our webview's height is shrunk, we still display our background bitmap at the same size,
-//		//    instead of shrinking it vertically, which looks really stupid.
-//		"height": contentHeight.value + "px",
-//		"z-index": 0,
-//	}
-//}
-//
-//onMounted(async () => {
-//	let sp = await getScreenParams();
-//	contentHeight.value = sp.contentHeight;
-//})
+let current = ref(blankServer());
+
+function currentURL() {
+	if (current.value.publicKey === "") {
+		return "";
+	}
+	return "http://" + current.value.lanIP + ":" + ServerPort;
+}
+
+onMounted(async () => {
+	await globals.waitForLoad();
+	current.value = globals.currentServer;
+})
 
 </script>
 
@@ -38,6 +34,7 @@ import { getScreenParams } from './nattypes';
 			</router-view>
 		</bitmap-overlay>
 	</div>
+	<!--<iframe v-else class="remote" :src="currentURL()"></iframe> -->
 </template>
 
 <!-- These styles are not scoped, so importing 'base' affects all children, and they don't need to import it -->
@@ -53,11 +50,13 @@ import { getScreenParams } from './nattypes';
 
 .container {
 	width: 100%;
-	height: 1px;
-	flex: 1 1 auto;
-	//background-color: antiquewhite;
-	//display: flex;
-	//align-items: center;
-	//justify-content: center;
+	// Rather let BitmapOverlay inform us of it's size
+	//height: 1px;
+	//flex: 1 1 auto;
 }
+
+//.remote {
+//	width: 100%;
+//	height: 300px;
+//}
 </style>	
