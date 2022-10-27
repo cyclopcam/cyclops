@@ -48,7 +48,7 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
     public void onPageFinished(WebView view, String url) {
         super.onPageFinished(view, url);
         if (State.global.servers.size() == 0) {
-            cySetRoute(view, "rtInit");
+            cySetRoute(view, "rtAddLocal");
         } else {
             cySetRoute(view, "rtDefault");
         }

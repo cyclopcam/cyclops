@@ -9,3 +9,4 @@ node_modules
 /www/dist
 /android/app/build
 /scripts/proxy/tmp
+/bin
