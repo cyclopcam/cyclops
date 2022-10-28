@@ -36,10 +36,10 @@ onMounted(async () => {
  
 <template>
 	<div class="statusBar">
-		<img :src="Menu" @click="onMenu" class="menu" />
+		<img :src="Menu" @click="onMenu" class="menu" draggable="false" />
 		<!-- <button v-for="s of servers" :key="s.publicKey" @click="switchToServer(s)">A</button> -->
 		<div class="middle">
-			{{currentServerName()}}
+			{{ currentServerName() }}
 		</div>
 		<div class="right">
 		</div>

@@ -8,6 +8,7 @@ public class JSAPI {
     public static class PingResponseJSON {
         String greeting = "";
         String hostname = "";
+        String publicKey = "";
         long time = 0;
     }
     public static class ScreenParamsJSON {

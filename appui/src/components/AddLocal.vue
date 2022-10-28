@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { globals, ServerPort } from '@/global';
 import { maxIPsToScan, parseServers } from '@/scan';
+import { startScan, getScanStatus } from '@/nattypes';
 import type { ScanState, ParsedServer } from '@/scan';
 import { router, pushRoute } from '@/router/routes';
 import { onMounted, reactive, ref } from 'vue';
 import { encodeQuery } from '@/util/util';
+
+let props = defineProps<{
+	init: string,
+	scanOnLoad: string,
+}>()
 
 function parsedServers(): ParsedServer[] {
 	return parseServers(scanState());
@@ -20,12 +26,12 @@ function scanState(): ScanState {
 
 function onScan() {
 	let ss = scanState();
-	fetch('/natcom/scanForServers', { method: 'POST' });
+	startScan();
 	pollStatus();
 }
 
 async function pollStatus() {
-	let r = await (await fetch('/natcom/scanStatus')).json();
+	let r = await getScanStatus();
 	let ss = scanState();
 	ss.error = r.error;
 	ss.phoneIP = r.phoneIP;
@@ -57,27 +63,35 @@ async function onClickLocal(s: ParsedServer) {
 	//pushRoute({ name: "rtConnectLocal", params: { ip: s.ip, host: s.host } });
 }
 
+onMounted(() => {
+	if (props.scanOnLoad === "1") {
+		onScan();
+	}
+})
+
 </script>
  
 <template>
-	<div class="flexColumnCenter init">
+	<div class="flexColumnCenter pageContainer init">
 		<h1 style="margin-bottom: 40px">Connect to your<br /> Cyclops system</h1>
 		<button @click="onScan" :disabled="scanState().status === 'b'">Scan Home Network</button>
-		<div class="link" @click="onConnectExisting" style="margin-top: 20px">Connect to
-			Existing Server</div>
+		<div v-if="init === '1'" class="link" @click="onConnectExisting" style="margin-top: 20px">Connect to
+			Remote Server</div>
 		<div v-if="showScanStatus()" class="scanning shadow15L">
-			<div :class="{block: true, error: scanState().error !== 'e'}">{{scanState().error}}</div>
+			<div :class="{ block: true, error: scanState().error !== 'e' }">{{ scanState().error }}
+			</div>
 			<div v-if="scanState().nScanned !== 0" class="block textCenter">
-				Scanned {{scanState().nScanned}} / {{maxIPsToScan}}
+				Scanned {{ scanState().nScanned }} / {{ maxIPsToScan }}
 				<div :style="progStyle()" />
 			</div>
 			<div v-if="scanState().servers.length !== 0 || (scanState().status === 'd' && scanState().error === '')"
 				class="block" style="margin-top: 30px">
-				<h3 style="margin-bottom: 15px;">Found {{scanState().servers.length}} Cyclops Servers
+				<h3 style="margin-bottom: 15px;">Found {{ scanState().servers.length }} Cyclops Servers
 				</h3>
-				<div v-for="s of parsedServers()" :key="s.ip" class="link server" @click="onClickLocal(s)">
-					{{s.ip}}
-					<span style="margin-left: 5px">{{s.host}}</span>
+				<div v-for="s of parsedServers()" :key="s.ip" :class="{ link: true, server: true }"
+					@click="onClickLocal(s)">
+					{{ s.ip }}
+					<span style="margin-left: 5px">{{ s.host }}</span>
 				</div>
 			</div>
 		</div>
@@ -85,9 +99,7 @@ async function onClickLocal(s: ParsedServer) {
 </template>
 
 <style scoped lang="scss">
-.init {
-	margin: 10px;
-}
+.init {}
 
 .block {
 	margin: 10px 0px;

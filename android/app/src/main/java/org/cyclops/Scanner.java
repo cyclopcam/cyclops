@@ -18,17 +18,31 @@ import okhttp3.ResponseBody;
 
 // Scan LAN for Cyclops servers
 public class Scanner {
+    // ScannedServer is marshalled directly into a JSON response
+    // SYNC-SCANNED-SERVER
+    static class ScannedServer {
+        String ip = "";
+        String hostname = "";
+        String publicKey = "";
+
+        ScannedServer(String ip, String hostname, String publicKey) {
+            this.ip = ip;
+            this.hostname = hostname;
+            this.publicKey = publicKey;
+        }
+    }
+
     // State is marshalled directly into a JSON response
     // SYNC-SCAN-STATE
     static class State {
         String error = "";
         String phoneIP = "";
         String status = "i"; // i:initial, b:busy, e:error, s:success
-        ArrayList<String> servers = new ArrayList<String>();
+        ArrayList<ScannedServer> servers = new ArrayList<>();
         int nScanned = 0;
 
-        synchronized void addServer(String ip) {
-            servers.add(ip);
+        synchronized void addServer(ScannedServer s) {
+            servers.add(s);
         }
         synchronized void setPhoneIP(String ip) {
             phoneIP = ip;
@@ -47,8 +61,8 @@ public class Scanner {
         synchronized void incScanned() {
             nScanned++;
         }
-        synchronized ArrayList<String> getServers() {
-            return (ArrayList<String>) servers.clone();
+        synchronized ArrayList<ScannedServer> getServers() {
+            return (ArrayList<ScannedServer>) servers.clone();
         }
         synchronized String getError() {
             return error;
@@ -65,7 +79,7 @@ public class Scanner {
             c.phoneIP = phoneIP;
             c.status = status;
             c.nScanned = nScanned;
-            c.servers = (ArrayList<String>) servers.clone();
+            c.servers = (ArrayList<ScannedServer>) servers.clone();
             return c;
         }
     }
@@ -217,7 +231,8 @@ public class Scanner {
             JSAPI.PingResponseJSON ping = isCyclopsServer(client, scanIP);
             if (ping != null) {
                 Log.i("C", "Found Cyclops server at " + scanIP);
-                state.addServer(scanIP + " (" + ping.hostname + ")");
+
+                state.addServer(new ScannedServer(scanIP, ping.hostname, ping.publicKey));
             }
             state.incScanned();
             //Log.i("C", "after inc, nScanned = " + state.getnScanned());

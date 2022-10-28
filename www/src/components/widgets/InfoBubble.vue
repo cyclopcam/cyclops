@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import Modal from "../core/Modal.vue";
+import Modal from "./Modal.vue";
 
 let props = defineProps<{
 	title?: string, // Shows in default popup

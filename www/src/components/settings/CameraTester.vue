@@ -4,7 +4,7 @@ import type { CameraRecord } from '@/db/config/configdb';
 import { encodeQuery } from '@/util/util';
 import { computed } from '@vue/reactivity';
 import { onMounted, onUnmounted, ref } from 'vue';
-import Modal from '../core/Modal.vue';
+import Modal from '../widgets/Modal.vue';
 
 let props = defineProps<{
 	camera: CameraRecord,

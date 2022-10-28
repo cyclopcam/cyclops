@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import Modal from './Modal.vue';
+import Modal from '../widgets/Modal.vue';
 
 // Our name "Menue" is stupid, but we need it to avoid conflict with the built-in HTML <menu> element
 

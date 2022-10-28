@@ -40,7 +40,7 @@ func (s *Server) httpSystemPing(w http.ResponseWriter, r *http.Request, params h
 		Greeting:  "I am Cyclops", // This is used by the LAN scanner on our mobile app to find Cyclops servers, so it's part of our API.
 		Hostname:  hostname,       // This is used by the LAN scanner on our mobile app to suggest a name
 		Time:      time.Now().Unix(),
-		PublicKey: base64.StdEncoding.EncodeToString(s.configDB.PublicKey[:]),
+		PublicKey: s.configDB.PublicKey.String(), // This is used by the LAN scanner on our mobile app to identify a Cyclops server
 	}
 	www.SendJSON(w, ping)
 }

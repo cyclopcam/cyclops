@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Ontology, Recording } from '@/recording/recording';
-import Modal from '../../core/Modal.vue';
+import Modal from '../../widgets/Modal.vue';
 import Labeler from './Labeler.vue';
 
 let props = defineProps<{

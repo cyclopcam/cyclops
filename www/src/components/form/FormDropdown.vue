@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type * as forms from './forms';
-import Modal from '../core/Modal.vue';
+import Modal from '../widgets/Modal.vue';
 import { ref } from 'vue';
 
 let props = defineProps<{

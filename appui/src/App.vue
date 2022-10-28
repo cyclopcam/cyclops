@@ -40,6 +40,7 @@ onMounted(async () => {
 <!-- These styles are not scoped, so importing 'base' affects all children, and they don't need to import it -->
 <style lang="scss">
 @import '@/assets/base.scss';
+@import '@/assets/base-appui.scss';
 
 #app {
 	height: 100%;

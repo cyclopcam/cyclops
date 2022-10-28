@@ -5,7 +5,7 @@ import { onMounted, ref } from 'vue';
 import SvgButton from '@/components/widgets/SvgButton.vue';
 import Edit from '@/icons/edit.svg';
 import Plus from '@/icons/plus-circle.svg';
-import { router } from '@/router/routes';
+import { pushRoute, router } from '@/router/routes';
 import { globals } from '@/global';
 
 // This copy, and globals.waitForLoad is necessary to get consistent reactivity correctness
@@ -19,11 +19,11 @@ function onConnect(s: Server) {
 }
 
 function onEdit(s: Server) {
-	router.push({ name: 'rtEditServer', params: { publicKey: s.publicKey } });
+	pushRoute({ name: 'rtEditServer', params: { publicKey: s.publicKey } });
 }
 
 function onAddLocal() {
-	//
+	pushRoute({ name: 'rtAddLocal', params: { init: '0', scanOnLoad: '1' } });
 }
 
 function onAddRemote() {
@@ -38,17 +38,18 @@ onMounted(async () => {
 </script>
  
 <template>
-	<div ref="root" class="default">
+	<div ref="root" class="pageContainer default">
 		<h3>Connections</h3>
 		<div class="serverList">
 			<div class="server" v-for="s of servers" :key="s.publicKey">
 				<a class="link" @click="onConnect(s)">
-					{{bestServerName(s)}}
+					{{ bestServerName(s) }}
 				</a>
 				<svg-button :icon="Edit" @click="onEdit(s)" />
 			</div>
 			<div class="addserver">
-				<a class="link addlink" @click="onAddLocal()"><img :src="Plus" class="plus" /> Add Local Server</a>
+				<a class="link addlink" @click="onAddLocal()"><img :src="Plus" class="plus" /> Add Server on local WiFi
+					Network</a>
 			</div>
 			<div class="addserver">
 				<a class="link addlink" @click="onAddRemote()"><img :src="Plus" class="plus" /> Add Remote Server</a>
@@ -63,14 +64,8 @@ onMounted(async () => {
 	//position: relative;
 	//top: 0;
 
-	width: 100%;
-	//height: 300px;
-	background-color: #fff;
-	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
-	padding: 0px 20px 20px 20px;
-	//border-bottom: solid 4px #000;
 }
 
 h3 {
@@ -85,8 +80,8 @@ h3 {
 }
 
 .plus {
-	width: 16px;
-	height: 16px;
+	width: 24px;
+	height: 24px;
 	margin-right: 8px;
 }
 
