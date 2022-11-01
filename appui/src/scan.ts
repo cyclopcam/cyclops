@@ -1,3 +1,5 @@
+import { fakeServerList } from "./nattypes";
+
 // SYNC-SCANNED-SERVER
 export interface ScannedServer {
 	ip: string;
@@ -30,14 +32,17 @@ export function mockScanState(ss: ScanState, progress_0_to_1: number) {
 	ss.nScanned = Math.round(progress_0_to_1 * maxIPsToScan);
 	ss.servers = [];
 	// Keep these in sync with fakeServerList in nattypes.ts
+	let cyclops = fakeServerList.find(x => x.name === "cyclops")!;
+	let mars = fakeServerList.find(x => x.name === "mars")!;
+	let molehill = fakeServerList.find(x => x.name === "molehill")!;
 	if (progress_0_to_1 >= 0.1) {
-		ss.servers.push({ ip: "192.168.10.11", hostname: "cyclops", publicKey: "123456" });
+		ss.servers.push({ ip: cyclops.lanIP, hostname: cyclops.name, publicKey: cyclops.publicKey });
 	}
 	if (progress_0_to_1 >= 0.4) {
-		ss.servers.push({ ip: "192.168.10.15", hostname: "mars", publicKey: "43434343" });
+		ss.servers.push({ ip: mars.lanIP, hostname: mars.name, publicKey: mars.publicKey });
 	}
 	if (progress_0_to_1 >= 0.7) {
-		ss.servers.push({ ip: "192.168.10.69", hostname: "molehill", publicKey: "555599999" });
+		ss.servers.push({ ip: molehill.lanIP, hostname: molehill.name, publicKey: molehill.publicKey });
 	}
 	if (progress_0_to_1 >= 1) {
 		ss.status = "d";

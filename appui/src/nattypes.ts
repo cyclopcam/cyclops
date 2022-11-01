@@ -12,20 +12,30 @@ export interface Server {
 
 let debugScanStartedAt = 0;
 
-const fakeServerList = [
+export const fakeServerList: Server[] = [
 	{
 		lanIP: "192.168.10.11",
-		publicKey: "123456",
-		bearerToken: "foobar",
+		publicKey: "MCUAwePTQX3/K8LTXEAAyFJHp9dyzF8Z/tDRWvsfd10=",
+		bearerToken: "foobar1",
 		name: "cyclops",
 	},
 	{
 		lanIP: "192.168.10.15",
-		publicKey: "43434343",
-		bearerToken: "foobar",
+		publicKey: "sORQPp3+0Gz/16uU4kq9IlE5AlU50IRYBLRXGkyZHV0=",
+		bearerToken: "foobar2",
 		name: "mars",
+	},
+	{
+		lanIP: "192.168.10.69",
+		publicKey: "0Ht1CfNitWlTZeXfxK9I9Wy0W8ur29CrbDhx5tNKrWU=",
+		bearerToken: "foobar3",
+		name: "molehill",
 	}
 ];
+
+export function registeredFakeServers(): Server[] {
+	return fakeServerList.filter(x => x.name === "cyclops" || x.name === "mars");
+}
 
 export function cloneServer(s: Server): Server {
 	return {
@@ -75,7 +85,7 @@ export async function getScanStatus(): Promise<ScanState> {
 
 export async function fetchRegisteredServers() {
 	if (debugMode) {
-		return fakeServerList;
+		return registeredFakeServers();
 	}
 	let j = await (await fetch("/natcom/getRegisteredServers")).json();
 	return j as Server[];
@@ -87,7 +97,7 @@ export async function switchToRegisteredServer(publicKey: string) {
 
 export async function getCurrentServer(): Promise<Server> {
 	if (debugMode) {
-		return fakeServerList[0];
+		return registeredFakeServers()[0];
 	}
 	return await (await fetch("/natcom/getCurrentServer")).json() as Server;
 }
@@ -99,7 +109,7 @@ export async function showMenu(mode: string) {
 export async function getScreenParams(): Promise<{ contentHeight: number }> {
 	if (debugMode) {
 		// to be truthful, this should be (windowHeight - statusbarHeight) * DPR
-		return { contentHeight: 1700 };
+		return { contentHeight: 2300 };
 	}
 	return await (await fetch("/natcom/getScreenParams")).json();
 }
@@ -123,8 +133,9 @@ export async function waitForScreenGrab(): Promise<ImageData> {
 
 export async function getScreenGrab(forceNew: boolean): Promise<ImageData | null> {
 	if (debugMode) {
+		// getScreenParams() is the place where the height of this bitmap is controlled
 		let w = 100;
-		let h = 200;
+		let h = 600;
 		let arr = new Uint8ClampedArray(w * h * 4);
 		for (let y = 0; y < h; y++) {
 			let p = y * w * 4;

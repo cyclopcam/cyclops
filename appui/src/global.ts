@@ -5,6 +5,7 @@ import "@/natcom"; // We must import natcom *somewhere* so that it's global func
 import { blankServer, fetchRegisteredServers, getCurrentServer, getScreenGrab, getScreenParams, showMenu, waitForScreenGrab, type Server } from "./nattypes";
 import { encodeQuery, sleep } from "@/util/util";
 import { panelSlideTransitionMS } from "./constants";
+import { pushRoute, replaceRoute } from "./router/routes";
 
 // SYNC-SERVER-PORT
 export const ServerPort = 8080;
@@ -62,6 +63,10 @@ export class Globals {
 	async showMenu(visible: boolean, options: { immediateHide?: boolean } = {}) {
 		if (visible) {
 			console.log("Enlarge appui");
+			// Always set the route back to default when dropping down the menu.
+			// This is necessary because we don't have a little back arrow inside this
+			// UI. But perhaps we ought to have one...
+			replaceRoute({ name: 'rtDefault' });
 			this.fullScreenBackdrop = await waitForScreenGrab();
 			this.isFullScreen = true;
 			this.hideFullScreen = false;
