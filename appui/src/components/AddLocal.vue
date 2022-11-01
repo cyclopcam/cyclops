@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { globals, ServerPort } from '@/global';
-import { maxIPsToScan, parseServers } from '@/scan';
+import { maxIPsToScan } from '@/scan';
 import { startScan, getScanStatus } from '@/nattypes';
-import type { ScanState, ParsedServer } from '@/scan';
+import type { ScanState, ScannedServer } from '@/scan';
 import { router, pushRoute } from '@/router/routes';
 import { onMounted, reactive, ref } from 'vue';
 import { encodeQuery } from '@/util/util';
@@ -11,10 +11,6 @@ let props = defineProps<{
 	init: string,
 	scanOnLoad: string,
 }>()
-
-function parsedServers(): ParsedServer[] {
-	return parseServers(scanState());
-}
 
 function showScanStatus(): boolean {
 	return globals.scanState.status !== "i";
@@ -88,10 +84,10 @@ onMounted(() => {
 				class="block" style="margin-top: 30px">
 				<h3 style="margin-bottom: 15px;">Found {{ scanState().servers.length }} Cyclops Servers
 				</h3>
-				<div v-for="s of parsedServers()" :key="s.ip" :class="{ link: true, server: true }"
+				<div v-for="s of scanState().servers" :key="s.ip" :class="{ link: true, server: true }"
 					@click="onClickLocal(s)">
 					{{ s.ip }}
-					<span style="margin-left: 5px">{{ s.host }}</span>
+					<span style="margin-left: 5px">{{ s.hostname }}</span>
 				</div>
 			</div>
 		</div>

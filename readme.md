@@ -1,18 +1,24 @@
 # Install
 
-sudo apt install libavformat-dev libswscale-dev gcc pkg-config libturbojpeg0-dev wireguard wireguard-tools
+_Only tested on Ubuntu 22.04_
+
+sudo apt install libavformat-dev libswscale-dev gcc g++ pkg-config libturbojpeg0-dev wireguard wireguard-tools
 
 ## dev env
 * Install Go
 * Install the apt packages mentioned above
 * Install nvm
 * Use `nvm install v18.2.0` (The version is possibly not important, but this is the exact version I used when creating this document)
-* In `www`, do `npm install`
+* In `www`, do `npm install`, then `npm run build`
+* In `appui`, do `npm install`, then `npm run build`
+* `go build -o bin/kernelwg cmd/kernelwg/*.go`
 * First run of `go run cmd/cyclops/cyclops.go` takes a few minutes on RPi4, mostly due to single-threaded build of `github.com/mattn/go-sqlite3`
 
 Once setup, you should be able to run the server and the interface:
+* `sudo bin/kernelwg`
 * `go run cmd/cyclops/cyclops.go`
 * `npm run dev -- --host` (from the `www` directory). The `-- --host` allows you to connect from external devices.
+* `npm run dev -- --host` (from the `appui` directory, for working on the native app overlay)
 
 ### Seeking through videos
 When labelling a video, we very much want seeking through the video to be fast and smooth. This is handled for us
