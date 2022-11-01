@@ -53,12 +53,3 @@ export function mockScanStateError(ss: ScanState) {
 	ss.servers = [];
 	ss.status = "d";
 }
-
-// Split a string like "192.168.10.11 (rpi)" into the IP and hostname portions. Parentheses are removed.
-function parseHostname(hostname: string): ParsedServer {
-	let space = hostname.indexOf(' ');
-	if (space === -1) {
-		return { ip: hostname, host: '' };
-	}
-	return { ip: hostname.substring(0, space), host: hostname.substring(space + 2, hostname.length - 1) };
-}

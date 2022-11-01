@@ -53,7 +53,7 @@ function onConnectExisting() {
 	pushRoute({ name: "rtConnectExisting" });
 }
 
-async function onClickLocal(s: ParsedServer) {
+async function onClickLocal(s: ScannedServer) {
 	let baseUrl = `http://${s.ip}:${ServerPort}`;
 	await fetch('/natcom/navigateToScannedLocalServer?' + encodeQuery({ url: baseUrl }));
 	//pushRoute({ name: "rtConnectLocal", params: { ip: s.ip, host: s.host } });

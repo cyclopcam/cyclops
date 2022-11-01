@@ -42,11 +42,12 @@ onMounted(async () => {
 		<h3>Connections</h3>
 		<div class="serverList">
 			<div class="server" v-for="s of servers" :key="s.publicKey">
-				<a class="link" @click="onConnect(s)">
+				<a class="link" @click="onConnect(s)" style="font-weight: bold">
 					{{ bestServerName(s) }}
 				</a>
 				<svg-button :icon="Edit" @click="onEdit(s)" />
 			</div>
+			<div style="height: 5px" />
 			<div class="addserver">
 				<a class="link addlink" @click="onAddLocal()"><img :src="Plus" class="plus" /> Add Server on local WiFi
 					Network</a>
