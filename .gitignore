@@ -1,5 +1,4 @@
 *.mp4
-*.ts
 /dump
 /enc
 /cyclops
