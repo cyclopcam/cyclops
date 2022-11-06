@@ -68,5 +68,18 @@ func Migrations(log log.Log) []migration.Migrator {
 		CREATE TABLE key(name TEXT PRIMARY KEY, value BLOB NOT NULL);
 	`))
 
+//	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+//		`
+//		CREATE TABLE connection(
+//			public_key BLOB PRIMARY KEY,
+//			user_id INT NOT NULL,
+//			device_type TEXT NOT NULL,
+//			created_at INT NOT NULL,
+//			last_used_at INT NOT NULL
+//		);
+//
+//		ALTER TABLE session ADD COLUMN connection_public_key BLOB;
+//	`))
+
 	return migs
 }

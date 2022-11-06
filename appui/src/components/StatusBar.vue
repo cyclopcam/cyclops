@@ -1,43 +1,35 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { bestServerName, blankServer, getCurrentServer, showMenu, switchToRegisteredServer } from '@/nattypes';
-import type { Server } from '@/nattypes';
+import { bestServerName, blankServer, natGetCurrentServer, natSetLocalWebviewVisibility, natSwitchToRegisteredServer } from '@/nativeOutt';
+import type { Server } from '@/nativeOutt';
 import Menu from '@/icons/menu.svg';
 import { globals } from '@/global';
 
-//let currentServer = ref(blankServer());
-//let servers = ref([] as Server[]);
-let isMenuShown = ref(false);
-let current = ref(blankServer());
-
 function switchToServer(s: Server) {
-	switchToRegisteredServer(s.publicKey);
+	natSwitchToRegisteredServer(s.publicKey);
+}
+
+function isFullScreen(): boolean {
+	return globals.isFullScreen;
 }
 
 function currentServerName(): string {
-	return bestServerName(current.value);
+	return bestServerName(globals.currentServer);
 }
 
 function onMenu() {
-	//isMenuShown.value = !isMenuShown.value;
-	//globals.showMenu(isMenuShown.value);
-	globals.showMenu(!globals.isFullScreen);
+	if (globals.mustShowWelcomeScreen && globals.isFullScreen) {
+		// just do nothing, because hiding ourselves would just show a blank white page
+		return;
+	}
+	globals.showExpanded(!globals.isFullScreen);
 }
-
-onMounted(async () => {
-	//currentServer.value = await getCurrentServer();
-	//servers.value = await fetchRegisteredServers();
-	await globals.waitForLoad();
-	current.value = globals.currentServer;
-	//console.log("currentServerName = ", currentServerName());
-})
 
 </script>
  
 <template>
 	<div class="statusBar">
 		<img :src="Menu" @click="onMenu" class="menu" draggable="false" />
-		<!-- <button v-for="s of servers" :key="s.publicKey" @click="switchToServer(s)">A</button> -->
 		<div class="middle">
 			{{ currentServerName() }}
 		</div>
@@ -53,6 +45,7 @@ onMounted(async () => {
 
 	// Our StatusBar height must be perfectly in sync with the statusBarPlaceholder object in the Android app's
 	// activity_main.xml
+	// SYNC-STATUS-BAR-HEIGHT
 	height: 40px;
 
 	background-color: #fff;

@@ -5,21 +5,20 @@ import ConnectExisting from "@/components/ConnectExisting.vue";
 import Blank from "@/components/Blank.vue";
 import Default from "@/components/Default.vue";
 import EditServer from "@/components/EditServer.vue";
-import { debugMode } from "@/constants";
+import { dummyMode } from "@/constants";
 
 export const router = createRouter({
 	// WebHistory doesn't work with our WebView.
 	// MemoryHistory works for our WebView, but I haven't bothered to understand how it differs from WebHash
-	history: debugMode ? createWebHistory(import.meta.env.BASE_URL) : createMemoryHistory(),
+	history: dummyMode ? createWebHistory(import.meta.env.BASE_URL) : createMemoryHistory(),
 	//history: createWebHashHistory("https://appassets.androidplatform.net/assets/index.html"),
 	//history: createWebHistory(import.meta.env.BASE_URL),
 	routes: [
 		{
-			path: "/addLocal/:init/:scanOnLoad",
+			path: "/addLocal",
 			name: "rtAddLocal",
 			component: AddLocal,
 			meta: { depth: 1 },
-			props: true,
 		},
 		//{
 		//	path: "/local/:ip/:host",

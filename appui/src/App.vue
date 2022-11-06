@@ -4,7 +4,7 @@ import { RouterView } from 'vue-router';
 import StatusBar from './components/StatusBar.vue';
 import BitmapOverlay from './components/widgets/BitmapOverlay.vue';
 import { globals, ServerPort } from './global';
-import { blankServer, getScreenParams } from './nattypes';
+import { blankServer, natGetScreenParams } from './nativeOutt';
 
 let current = ref(blankServer());
 
@@ -15,9 +15,16 @@ function currentURL() {
 	return "http://" + current.value.lanIP + ":" + ServerPort;
 }
 
+//function isFullScreen(): boolean {
+//	console.log("App.vue isFullScreen: ", globals.isFullScreen);
+//	return globals.isFullScreen;
+//}
+
 onMounted(async () => {
+	console.log("App.vue onMounted start");
 	await globals.waitForLoad();
 	current.value = globals.currentServer;
+	console.log("App.vue onMounted end");
 })
 
 </script>

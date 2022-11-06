@@ -1,8 +1,8 @@
 import { reactive, ref, VueElement } from "vue";
 import { initialScanState, mockScanState, mockScanStateError, type ScanState } from "@/scan";
 
-import "@/natcom"; // We must import natcom *somewhere* so that it's global functions are available
-import { blankServer, fetchRegisteredServers, getCurrentServer, getScreenGrab, getScreenParams, showMenu, waitForScreenGrab, type Server } from "./nattypes";
+import "@/nativeIn"; // We must import nativeIn *somewhere* so that it's global functions are available
+import { blankServer, LocalWebviewVisibility, natFetchRegisteredServers, natGetCurrentServer, natGetScreenGrab, natGetScreenParams, natSetLocalWebviewVisibility, natWaitForScreenGrab, type Server } from "./nativeOut";
 import { encodeQuery, sleep } from "@/util/util";
 import { panelSlideTransitionMS } from "./constants";
 import { pushRoute, replaceRoute } from "./router/routes";
@@ -15,37 +15,54 @@ export class Globals {
 	scanState = initialScanState();
 	servers: Server[] = [];
 	currentServer: Server = blankServer();
-	isFullScreen = false;
+	isFullScreen = false; // instruction to App.vue to show BitmapOverlay
 	hideFullScreen = false; // instruction to BitmapOverlay to initiate slide-away animation
 	fullScreenBackdrop: ImageData | null = null;
 	isLoaded = false;
-	contentHeight = 0; // in CSS pixels
+	contentHeight = 0; // Height of our content beneath the status bar, in CSS pixels
+	mustShowWelcomeScreen = true; // This state must be sticky, and only disappear once the user is done with initial setup
 
 	constructor() {
-		//mockScanState(this.scanState);
-		//mockScanStateError(this.scanState);
-		this.loadScreenParams();
-		this.loadServers();
+		console.log("Globals constructor");
+	}
+
+	async startup() {
+		await this.loadScreenParams();
+		await this.loadServers();
+
+		this.mustShowWelcomeScreen = this.servers.length === 0;
+
+		console.log("isLoaded = true");
+		this.isLoaded = true;
+
+		if (this.mustShowWelcomeScreen) {
+			// showExpanded will take us to the welcome page
+			this.showExpanded(true);
+		} else {
+			// Note that since we don't expand ourselves in this code path, we'll remain
+			// just a status bar on top, and the remote webview will occupy most of the screen.
+			console.log("At least one known server, showing rtDefault");
+			replaceRoute({ name: 'rtDefault' });
+		}
 	}
 
 	async loadScreenParams() {
-		let sp = await getScreenParams();
+		let sp = await natGetScreenParams();
 		this.contentHeight = sp.contentHeight / window.devicePixelRatio;
 	}
 
 	async loadServers() {
 		try {
 			console.log("loadServer start");
-			this.servers = await fetchRegisteredServers();
-			let current = await getCurrentServer();
+			this.servers = await natFetchRegisteredServers();
+			let current = await natGetCurrentServer();
 			let c = this.servers.find(x => x.publicKey === current.publicKey);
 			if (c) {
 				this.currentServer = c;
 			}
 			console.log("loadServer done nServers = ", this.servers.length);
-		} finally {
-			console.log("isLoaded = true");
-			this.isLoaded = true;
+		} catch (e) {
+			console.error("loadServer error", e);
 		}
 	}
 
@@ -60,24 +77,24 @@ export class Globals {
 		}
 	}
 
-	async showMenu(visible: boolean, options: { immediateHide?: boolean } = {}) {
+	async showExpanded(visible: boolean, options: { immediateHide?: boolean, leaveRouteAlone?: boolean } = {}) {
 		if (visible) {
 			console.log("Enlarge appui");
 			// Always set the route back to default when dropping down the menu.
 			// This is necessary because we don't have a little back arrow inside this
 			// UI. But perhaps we ought to have one...
-			replaceRoute({ name: 'rtDefault' });
-			this.fullScreenBackdrop = await waitForScreenGrab();
-			this.isFullScreen = true;
+			if (!options.leaveRouteAlone) {
+				if (this.mustShowWelcomeScreen) {
+					console.log("No known servers, showing welcome screen");
+					replaceRoute({ name: 'rtAddLocal' });
+				} else {
+					replaceRoute({ name: 'rtDefault' });
+				}
+			}
+			this.fullScreenBackdrop = await natWaitForScreenGrab();
+			this.isFullScreen = true; // This starts the creation of BitmapOverlay, which will do natSetLocalWebviewVisibility("2") after being mounted.
 			this.hideFullScreen = false;
-			showMenu("1");
-			// wait for a vue/browser layout, and then actually expand the WebView on the Android side
-			//setTimeout(() => {
-			//	showMenu("1");
-			//}, 0);
-			//setTimeout(() => {
-			//	showMenu("2");
-			//}, 50);
+			natSetLocalWebviewVisibility(LocalWebviewVisibility.PrepareToShow);
 		} else {
 			console.log("Shrink appui");
 			if (options?.immediateHide) {
@@ -92,7 +109,7 @@ export class Globals {
 					this.isFullScreen = false;
 				}, panelSlideTransitionMS);
 			}
-			await showMenu("0");
+			await natSetLocalWebviewVisibility(LocalWebviewVisibility.Hidden);
 		}
 	}
 

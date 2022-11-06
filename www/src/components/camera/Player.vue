@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { bearerTokenQuery } from "@/auth";
 import type { CameraInfo } from "@/camera/camera";
 import { encodeQuery } from "@/util/util";
 import JMuxer from "jmuxer";
@@ -114,7 +113,8 @@ function play() {
 	isPaused = false;
 
 	let scheme = window.location.origin.startsWith("https") ? "wss://" : "ws://";
-	let socketURL = scheme + window.location.host + "/api/ws/camera/stream/LD/" + props.camera.id + "?" + encodeQuery(bearerTokenQuery());
+	//let socketURL = scheme + window.location.host + "/api/ws/camera/stream/LD/" + props.camera.id + "?" + encodeQuery(bearerTokenQuery());
+	let socketURL = scheme + window.location.host + "/api/ws/camera/stream/LD/" + props.camera.id;
 	console.log("Play " + socketURL);
 	muxer = new JMuxer({
 		node: 'camera' + props.camera.id,
@@ -187,7 +187,8 @@ function sendWSMessage(msg: WSMessage) {
 }
 
 function posterURL(): string {
-	return "/api/camera/latestImage/" + props.camera.id + "?" + encodeQuery(bearerTokenQuery());
+	//return "/api/camera/latestImage/" + props.camera.id + "?" + encodeQuery(bearerTokenQuery());
+	return "/api/camera/latestImage/" + props.camera.id;
 }
 
 function videoStyle(): any {

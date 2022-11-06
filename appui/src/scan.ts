@@ -1,4 +1,4 @@
-import { fakeServerList } from "./nattypes";
+import { fakeServerList } from "./nativeOut";
 
 // SYNC-SCANNED-SERVER
 export interface ScannedServer {
@@ -32,11 +32,11 @@ export function mockScanState(ss: ScanState, progress_0_to_1: number) {
 	ss.nScanned = Math.round(progress_0_to_1 * maxIPsToScan);
 	ss.servers = [];
 	// Keep these in sync with fakeServerList in nattypes.ts
-	let cyclops = fakeServerList.find(x => x.name === "cyclops")!;
+	let venus = fakeServerList.find(x => x.name === "venus")!;
 	let mars = fakeServerList.find(x => x.name === "mars")!;
 	let molehill = fakeServerList.find(x => x.name === "molehill")!;
 	if (progress_0_to_1 >= 0.1) {
-		ss.servers.push({ ip: cyclops.lanIP, hostname: cyclops.name, publicKey: cyclops.publicKey });
+		ss.servers.push({ ip: venus.lanIP, hostname: venus.name, publicKey: venus.publicKey });
 	}
 	if (progress_0_to_1 >= 0.4) {
 		ss.servers.push({ ip: mars.lanIP, hostname: mars.name, publicKey: mars.publicKey });

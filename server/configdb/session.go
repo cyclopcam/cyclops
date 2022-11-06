@@ -10,6 +10,7 @@ import (
 	"github.com/bmharper/cyclops/pkg/www"
 )
 
+// SYNC-CYCLOPS-SESSION-COOKIE
 const SessionCookie = "session"
 
 func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
@@ -26,6 +27,7 @@ func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
 	c.LoginInternal(w, userID, expiresAt, www.QueryValue(r, "loginMode"))
 }
 
+// SYNC-LOGIN-RESPONSE-JSON
 type loginResponseJSON struct {
 	BearerToken string `json:"bearerToken"`
 }

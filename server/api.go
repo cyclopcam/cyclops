@@ -22,7 +22,7 @@ type ProtectedHandler func(w http.ResponseWriter, r *http.Request, params httpro
 func (s *Server) SetupHTTP() error {
 	router := httprouter.New()
 
-	logEveryRequest := false
+	logEveryRequest := true
 
 	// protected creates an HTTP handler that only accepts an authenticated user with
 	// the given set of permissions.

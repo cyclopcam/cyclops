@@ -14,6 +14,7 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 import android.webkit.CookieManager;
@@ -62,6 +63,9 @@ public class MainActivity extends AppCompatActivity implements Main {
         State.global.scanner = new Scanner(this);
         State.global.db = new LocalDB(this);
         State.global.loadAll();
+
+        // Uncomment the following line when testing initial application UI
+        State.global.resetAllState(); // DO NOT COMMIT
 
         // dev time
         WebView.setWebContentsDebuggingEnabled(true);
@@ -164,8 +168,21 @@ public class MainActivity extends AppCompatActivity implements Main {
         super.onBackPressed();
     }
 
+    // This is called after the user logs in to a new server
+    public void onLogin(String bearerToken) {
+        Log.i("C", "onLogin to " + currentServer.publicKey + ", bearerToken: " + bearerToken.substring(0, 4) + "...");
+        State.global.addNewServer(currentServer.lanIP, currentServer.publicKey, bearerToken, currentServer.name);
+        State.global.setCurrentServer(currentServer.publicKey);
+        localClient.cyRefreshServers(localWebView);
+    }
+
+    // This is called after the user logs in to a new server
+    //public void notifyRegisteredServersChanged() {
+    //    localClient.cyRefreshServers(localWebView);
+    //}
+
     // Show a fullscreen menu that slides in from the left (when user clicks the burger menu on the top-left of the screen)
-    public void showMenu(String mode) {
+    public void setLocalWebviewVisibility(String mode) {
         dropdownMode = mode;
         if (dropdownMode.equals("0")) {
             isRemoteInFocus = false;
@@ -219,6 +236,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                 local.height = statusBarHeight;
             }
         } else {
+            Log.i("C", "recalculateWebViewLayout remote hidden");
             local.height = ActionBar.LayoutParams.MATCH_PARENT;
         }
 
@@ -280,12 +298,19 @@ public class MainActivity extends AppCompatActivity implements Main {
     }
 
     Bitmap getScreenGrabOfView(View grabView) {
-        Log.i("C", "Grabbing screen size " + grabView.getWidth() + " x " + grabView.getHeight());
-        Bitmap bmp = Bitmap.createBitmap(grabView.getWidth(), grabView.getHeight(), Bitmap.Config.ARGB_8888);
-        Canvas c = new Canvas(bmp);
-        //rootView.layout()
-        grabView.draw(c);
-        return bmp;
+        if (grabView.getWidth() == 0 || grabView.getHeight() == 0) {
+            Log.i("C", "grabView is empty, so just getScreenGrabOfView is returning a 1x1 white bitmap");
+            int[] colors = new int[]{0xffffffff};
+            Bitmap bmp = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
+            return bmp;
+        } else {
+            Log.i("C", "Grabbing screen size " + grabView.getWidth() + " x " + grabView.getHeight());
+            Bitmap bmp = Bitmap.createBitmap(grabView.getWidth(), grabView.getHeight(), Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(bmp);
+            //rootView.layout()
+            grabView.draw(c);
+            return bmp;
+        }
     }
 
     public void switchToServerByPublicKey(String publicKey) {
@@ -306,7 +331,6 @@ public class MainActivity extends AppCompatActivity implements Main {
 
         // justCheck: If server is not changing, then just check whether connectivity is still OK
         boolean justCheck = currentServer != null && server.publicKey.equals(currentServer.publicKey);
-        currentServer = server.copy();
 
         new Thread(new Runnable() {
             @Override
@@ -350,7 +374,25 @@ public class MainActivity extends AppCompatActivity implements Main {
         }).start();
     }
 
+    public void navigateToScannedLocalServer(String publicKey) {
+        // We reference the ScannedServer object here so that details such as
+        // the hostname and LAN IP can filter through in case the user logs into this server.
+        Scanner.ScannedServer s = State.global.scanner.getScannedServer(publicKey);
+        if (s == null) {
+            Log.i("C", "navigateToScannedLocalServer failed to find server " + publicKey);
+            return;
+        }
+        // Clone ScannedServer into a State.Server object, which carries all of the same
+        // relevant details. We'll use this later, if the user logs in.
+        State.Server tmp = new State.Server();
+        tmp.lanIP = s.ip;
+        tmp.name = s.hostname;
+        tmp.publicKey = s.publicKey;
+        navigateToServer("http://" + s.ip + ":" + Constants.ServerPort, true, tmp);
+    }
+
     public void navigateToServer(String url, boolean addToNavigationHistory, State.Server server) {
+        currentServer = server.copy();
         showRemoteWebView(true);
         String currentURL = remoteWebView.getUrl();
         if (currentURL != null) {
@@ -367,7 +409,6 @@ public class MainActivity extends AppCompatActivity implements Main {
         }
         Log.i("C", "navigateToServer. currentURL = " + currentURL + ". New URL = " + url);
         remoteClient.setServer(server);
-        remoteClient.setUrl(Uri.parse(url));
         remoteWebView.loadUrl(url);
         if (addToNavigationHistory) {
             navigationHistory.add("openServer");

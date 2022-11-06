@@ -4,9 +4,12 @@
 	"scripts": {
 		"dev": "vite",
 		"build": "run-p type-check build-only",
+		"build-debug": "run-p type-check build-only-debug",
 		"build-and-sync": "npm run build && rsync -av --delete dist/ ../android/app/src/main/assets/",
+		"build-debug-and-sync": "npm run build-debug && rsync -av --delete dist/ ../android/app/src/main/assets/",
 		"preview": "vite preview --port 4173",
 		"build-only": "vite build --base /assets/ --assetsDir site",
+		"build-only-debug": "vite build --base /assets/ --assetsDir site --sourcemap true --minify false",
 		"type-check": "vue-tsc --noEmit"
 	},
 	"dependencies": {

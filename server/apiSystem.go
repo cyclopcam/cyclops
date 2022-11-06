@@ -45,6 +45,7 @@ func (s *Server) httpSystemPing(w http.ResponseWriter, r *http.Request, params h
 	www.SendJSON(w, ping)
 }
 
+// SYNC-KEYS-RESPONSE-JSON
 type keysJSON struct {
 	PublicKey string `json:"publicKey"`
 	Proof     string `json:"proof"` // HMAC[SHA256](sharedSecret, challenge).  sharedSecret is from ECDH.

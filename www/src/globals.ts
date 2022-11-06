@@ -1,7 +1,7 @@
 import { CameraInfo } from "./camera/camera";
 import { reactive } from "vue";
 import { replaceRoute, router } from "./router/routes";
-import { fetchOrErr, fetchWithAuth, sleep, type FetchResult } from "./util/util";
+import { fetchOrErr, sleep, type FetchResult } from "./util/util";
 import type { SystemInfoJSON } from "./api/api";
 import { generateKeyPair, sharedKey } from "curve25519-js";
 import * as base64 from "base64-arraybuffer";
@@ -17,24 +17,27 @@ export class Globals {
 	isUsingProxy = window.location.origin.startsWith("https://proxy");
 
 	cameras: CameraInfo[] = [];
-	networkError = "";
-	isLoggedIn = false; // Valid once isSystemInfoLoadFinished = true
-	readyError = ""; // Valid once isSystemInfoLoadFinished = true. If not empty, then system needs configuring before it can start.
+	networkError = ""; // Most recent network error, typically shown in the top/bottom bar
+	isLoggedIn = false; // Only valid after isSystemInfoLoadFinished = true
+	readyError = ""; // Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
 	isSystemInfoLoadFinished = false;
 
 	// isServerPublicKeyLoaded is set to true after we've validated the server's
-	// public key. Even if validation fails, we still set this to true.
+	// public key. Even if public key validation fails, we still set this to true.
 	isServerPublicKeyLoaded = false;
 
 	// Base64 encoding of public key of the server we're connected to.
 	// We only set this key if the server proves that it owns this public key,
-	// by signing a challenge that we send to it.
+	// by signing a challenge that we send to it. If validation fails, then this
+	// string remains empty.
 	serverPublicKey = "";
-	// The only reason we generate a key pair is for the challenge/response
+
+	// The only reason we generate our own key pair is for the challenge/response
 	// conversation with the server. If I knew how to use an X25519 key to
 	// sign a message, then we wouldn't need this.
 	ownPrivateKey: Uint8Array;
 	ownPublicKey: Uint8Array;
+
 	//ownPublicKeyBase64: string;
 	//sharedTokenKey: Uint8Array | null = null;
 	//sharedNonce: Uint8Array;
@@ -100,6 +103,11 @@ export class Globals {
 
 		try {
 			let r = await fetch("/api/auth/whoami");
+			// I've decided to move this code into the native app, because it's just so dangerous
+			// to store these long term tokens in localStorage. For example, a malicious app on the
+			// same Lan IP would be able to read from localStorage.. thereby exfiltrating all of your
+			// bearer tokens.
+			/*
 			if (r.status === 403) {
 				// try using our bearer token to login
 				// TODO: Use private key instead of bearer token for this purpose
@@ -113,6 +121,7 @@ export class Globals {
 					}
 				}
 			}
+			*/
 			if (r.status === 403) {
 				this.isLoggedIn = false;
 				r = await (await fetch("/api/auth/hasAdmin")).json();

@@ -3,7 +3,7 @@ import App from "./App.vue";
 import { router } from "./router/routes";
 import { globals } from "./globals";
 import { loadConstants } from "./constants";
-import "./natcom";
+import "./nativeIn";
 
 loadConstants();
 

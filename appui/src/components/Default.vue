@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { bestServerName, fetchRegisteredServers, getCurrentServer, getScreenGrab, switchToRegisteredServer } from '@/nattypes';
-import type { Server } from '@/nattypes';
+import { bestServerName, natFetchRegisteredServers, natGetCurrentServer, natGetScreenGrab, natSwitchToRegisteredServer } from '@/nativeOutt';
+import type { Server } from '@/nativeOutt';
 import { onMounted, ref } from 'vue';
 import SvgButton from '@/components/widgets/SvgButton.vue';
 import Edit from '@/icons/edit.svg';
@@ -14,8 +14,8 @@ let root = ref(null);
 let canvas = ref(null);
 
 function onConnect(s: Server) {
-	switchToRegisteredServer(s.publicKey);
-	globals.showMenu(false);
+	natSwitchToRegisteredServer(s.publicKey);
+	globals.showExpanded(false);
 }
 
 function onEdit(s: Server) {
@@ -23,7 +23,7 @@ function onEdit(s: Server) {
 }
 
 function onAddLocal() {
-	pushRoute({ name: 'rtAddLocal', params: { init: '0', scanOnLoad: '1' } });
+	pushRoute({ name: 'rtAddLocal' });
 }
 
 function onAddRemote() {

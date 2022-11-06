@@ -5,10 +5,12 @@ import android.util.Log;
 
 public interface Main {
     void webViewBackFailed();
-    void navigateToServer(String url, boolean addToHistory, State.Server server);
+    void navigateToScannedLocalServer(String publicKey);
     void switchToServerByPublicKey(String publicKey);
-    void showMenu(String mode);
+    void setLocalWebviewVisibility(String mode);
+    void onLogin(String bearerToken);
     int getContentHeight();
+    //void notifyRegisteredServersChanged();
     Bitmap getRemoteViewScreenGrab();
     void clearRemoteViewScreenGrab();
     void createRemoteViewScreenGrab();

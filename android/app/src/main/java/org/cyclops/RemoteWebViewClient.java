@@ -33,7 +33,6 @@ public class RemoteWebViewClient extends WebViewClientCompat {
     //private final OkHttpClient client = new OkHttpClient();
     private final Main main;
     private final Activity activity;
-    private Uri originalUrl;
     private State.Server server;
 
     RemoteWebViewClient(Main main, Activity activity) {
@@ -53,10 +52,6 @@ public class RemoteWebViewClient extends WebViewClientCompat {
     public void onReceivedHttpError(@NonNull WebView view, @NonNull WebResourceRequest request, @NonNull WebResourceResponse errorResponse) {
         super.onReceivedHttpError(view, request, errorResponse);
         Log.i("C", "Remote onReceivedHttpError: " + errorResponse.toString());
-    }
-
-    void setUrl(Uri uri) {
-        this.originalUrl = uri;
     }
 
     void setServer(State.Server server) {
@@ -99,12 +94,7 @@ public class RemoteWebViewClient extends WebViewClientCompat {
                 case "/natcom/hello":
                     return sendOK();
                 case "/natcom/login":
-                    String publicKey = url.getQueryParameter("publicKey");
-                    String bearerToken = url.getQueryParameter("bearerToken");
-                    String host = originalUrl.getHost();
-                    //int port = originalUrl.getPort();
-                    State.global.addNewServer(host, publicKey, bearerToken, "");
-                    State.global.setCurrentServer(publicKey);
+                    activity.runOnUiThread(() -> main.onLogin(url.getQueryParameter("bearerToken")));
                     return sendOK();
             }
         }

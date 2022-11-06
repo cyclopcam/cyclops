@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { bearerTokenQuery } from '@/auth';
 import type { CameraRecord } from '@/db/config/configdb';
 import { encodeQuery } from '@/util/util';
 import { computed } from '@vue/reactivity';
@@ -21,9 +20,8 @@ let preview = ref(null);
 let status = ref("Initializing");
 let state = ref(States.Testing);
 let ws: WebSocket | null = null;
-let imageBlob: Blob | null = null;
-
-interface ServerMessage {
+    imageBlob: Blob | null = null;
+      erface ServerMessage {
 	error: string;
 	status: string;
 	image: string;
@@ -46,7 +44,8 @@ function onClose() {
 onMounted(() => {
 
 	let scheme = window.location.origin.startsWith("https") ? "wss://" : "ws://";
-	let socketURL = scheme + window.location.host + "/api/ws/config/testCamera?" + encodeQuery(bearerTokenQuery());
+	//let socketURL = scheme + window.location.host + "/api/ws/config/testCamera?" + encodeQuery(bearerTokenQuery());
+	let socketURL = scheme + window.location.host + "/api/ws/config/testCamera";
 
 	ws = new WebSocket(socketURL);
 	//ws.binaryType = "arraybuffer";

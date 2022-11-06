@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { bestServerName, cloneServer, fetchRegisteredServers, setServerProperty } from '@/nattypes';
-import type { Server } from '@/nattypes';
+import { bestServerName, cloneServer, natFetchRegisteredServers, natSetServerProperty } from '@/nativeOutt';
+import type { Server } from '@/nativeOutt';
 import { onMounted, ref, watch } from 'vue';
 import Copy from '@/icons/copy-blue.svg';
 import Trash from '@/icons/trash-2.svg';
@@ -66,7 +66,7 @@ function onDeleteConfirm() {
 }
 
 function onSave() {
-	setServerProperty(server.value.publicKey, "name", server.value.name);
+	natSetServerProperty(server.value.publicKey, "name", server.value.name);
 	orgServer.value = cloneServer(server.value);
 	router.back();
 }

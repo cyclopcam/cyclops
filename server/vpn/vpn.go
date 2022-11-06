@@ -31,6 +31,7 @@ type VPN struct {
 	connectionOK    atomic.Bool
 	deviceIP        string // Our IP in the VPN
 	shutdownStarted chan bool
+	hasRegistered   atomic.Bool
 }
 
 func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key, shutdownStarted chan bool) *VPN {
@@ -41,7 +42,6 @@ func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key, shutdownStarted chan
 		client:          kernel.NewClient(),
 		shutdownStarted: shutdownStarted,
 	}
-	v.registerLoop()
 	return v
 }
 
@@ -53,6 +53,14 @@ func (v *VPN) ConnectKernelWG() error {
 
 // Start our Wireguard device, and save our public key
 func (v *VPN) Start() error {
+	if err := v.start(); err != nil {
+		return err
+	}
+	v.runRegisterLoop()
+	return nil
+}
+
+func (v *VPN) start() error {
 	getResp, err := v.client.GetDevice()
 	if err == nil {
 		// Device was already up, so we're good to go, provided the key is correct
@@ -92,6 +100,7 @@ func (v *VPN) registerAndCreateDevice() error {
 	if err != nil {
 		return err
 	}
+	v.hasRegistered.Store(true)
 	// step 2: Now that we know our IP in the VPN, we can create our Wireguard device.
 	return v.createDevice(resp)
 }
@@ -136,7 +145,13 @@ func (v *VPN) createDevice(resp *proxymsg.RegisterResponseJSON) error {
 
 func (v *VPN) validateAndSaveDeviceDetails(resp *kernel.MsgGetDeviceResponse) error {
 	if subtle.ConstantTimeCompare(resp.PrivateKey[:], v.privateKey[:]) == 0 {
-		return fmt.Errorf("Wireguard device has a different key. Delete /etc/wireguard/cyclops.conf, so that it can be recreated.")
+		color := "\033[0;32m"
+		reset := " \033[0m"
+		v.Log.Infof("%vInstructions:%v", color, reset)
+		v.Log.Infof("%v1. sudo wg-quick down cyclops%v", color, reset)
+		v.Log.Infof("%v2. sudo rm /etc/wireguard/cyclops.conf%v", color, reset)
+		v.Log.Infof("%v3. Try starting cyclops again%v", color, reset)
+		return fmt.Errorf("Wireguard device has a different key. Follow instructions in the logs.")
 	}
 	v.deviceIP = resp.Address
 	v.connectionOK.Store(true)
@@ -147,8 +162,16 @@ func (v *VPN) validateAndSaveDeviceDetails(resp *kernel.MsgGetDeviceResponse) er
 // Keep pinging server so that it knows we're alive.
 // Also, if we've been dormant for a long time, then the proxy may have culled us,
 // and we may not receive a new VPN IP, so that's also why this system is essential.
-func (v *VPN) registerLoop() {
+func (v *VPN) runRegisterLoop() {
+	registerInterval := 12 * time.Hour
+
 	nextRegisterAt := time.Now().Add(time.Second)
+	if v.hasRegistered.Load() {
+		// This code path gets hit on first time startup, where we make first contact
+		// with the proxy. It's confusing to see two registrations in the logs,
+		// so that's really the only reason why this code path exists.
+		nextRegisterAt = time.Now().Add(registerInterval)
+	}
 
 	minSleep := 5 * time.Second
 	maxSleep := 10 * time.Minute
@@ -176,18 +199,19 @@ func (v *VPN) registerLoop() {
 						sleep = maxSleep
 					}
 				} else {
+					v.hasRegistered.Store(true)
 					if response.ServerVpnIP != v.deviceIP {
 						v.Log.Infof("VPN IP has changed. Recreating Wireguard device")
 						if err := v.recreateDevice(response); err != nil {
 							v.Log.Errorf("Recreating of Wireguard device failed: %v", err)
-							nextRegisterAt = time.Now().Add(5 * time.Minute)
+							nextRegisterAt = time.Now().Add(time.Minute)
 						} else {
 							v.Log.Errorf("New VPN IP is %v", v.deviceIP)
-							nextRegisterAt = time.Now().Add(12 * time.Hour)
+							nextRegisterAt = time.Now().Add(registerInterval)
 						}
 					} else {
 						v.Log.Infof("Re-register with proxy OK")
-						nextRegisterAt = time.Now().Add(12 * time.Hour)
+						nextRegisterAt = time.Now().Add(registerInterval)
 					}
 					sleep = minSleep
 				}

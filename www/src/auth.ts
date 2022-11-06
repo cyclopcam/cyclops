@@ -5,6 +5,7 @@ import { sha256 } from "js-sha256";
 import * as base64 from "base64-arraybuffer";
 import { Chacha20 } from "ts-chacha20";
 import { hmac256_sign } from "./util/hmac";
+import { natLogin } from "./nativeOut";
 //import { createHmac } from "crypto";
 
 // If we are logged in to a server with a public wireguard key, then return the session
@@ -102,18 +103,35 @@ function areBuffersEqual(a: Uint8Array, b: Uint8Array): boolean {
 	return x === 0;
 }
 
-export function setBearerToken(publicKey: string, tokenb64: string) {
-	localStorage.setItem(publicKey + "-token", tokenb64);
-}
+//export function setBearerToken(publicKey: string, tokenb64: string) {
+//	localStorage.setItem(publicKey + "-token", tokenb64);
+//}
 
 // Returns an error on failure, or an empty string on success
 export async function login(username: string, password: string): Promise<string> {
-	let getToken = globals.serverPublicKey !== '';
+	if (globals.serverPublicKey === '') {
+		return "Server failed to validate its public key";
+	}
 
-	console.log("Logging in with CookieAndBearerToken");
+	//if (globals.isApp) {
+	//	// Defer all login related functionality to the native app.
+	//	return natLogin(globals.serverPublicKey, username.trim(), password.trim());
+	//}
+
+	// For a while, I started down the road of having logins be a two step process:
+	// 1. Get the native app to login with a long term bearer token
+	// 2. Get the native app to use that bearer token to login with a cookie
+	// However, that just makes for more native code.
+	// We are capable of doing 1 & 2 in a single step here, so we might as well.
+
+	let loginMode = "Cookie";
+	if (globals.isApp) {
+		loginMode = "CookieAndBearerToken";
+	}
+
+	console.log(`Logging in with ${loginMode}`);
 	let basic = btoa(username.trim() + ":" + password.trim());
-	//let r = await fetchOrErr('/api/auth/login?' + encodeQuery({ loginMode: getToken ? "BearerToken" : "Cookie" }),
-	let r = await fetchOrErr('/api/auth/login?' + encodeQuery({ loginMode: "CookieAndBearerToken" }),
+	let r = await fetchOrErr('/api/auth/login?' + encodeQuery({ loginMode: loginMode }),
 		{ method: 'POST', headers: { "Authorization": "BASIC " + basic } });
 	if (!r.ok) {
 		return r.error;
@@ -122,19 +140,19 @@ export async function login(username: string, password: string): Promise<string>
 
 	let j = await r.r.json();
 
-	if (getToken) {
-		let tokenb64 = j.bearerToken;
-		setBearerToken(globals.serverPublicKey, tokenb64);
+	if (globals.isApp) {
+		let bearerToken = j.bearerToken; // base64-encoded bearer token
+		//setBearerToken(globals.serverPublicKey, bearerToken);
 		// Inform our mobile app that we've logged in. Chrome's limit on cookie duration is about 400 days,
 		// but we can extend that by not using cookies. Also, the mobile app needs to know the list of
 		// servers that the client knows about.
-		fetch('/natcom/login?' + encodeQuery({ publicKey: globals.serverPublicKey, bearerToken: tokenb64 }));
-	} else {
-		// In this case, at least the mobile app knows to store this server IP address
-		fetch('/natcom/login');
+		//fetch('/natcom/login?' + encodeQuery({ publicKey: globals.serverPublicKey, bearerToken: bearerToken }));
+		natLogin(globals.serverPublicKey, bearerToken);
 	}
 	return "";
 }
+
+/*
 
 export function createSharedSecretKey(privateKey: Uint8Array, publicKey: Uint8Array): Uint8Array {
 	let raw = sharedKey(privateKey, publicKey);
@@ -155,3 +173,4 @@ export function bearerTokenQuery(): { authorizationToken: string } | {} {
 		return {};
 	}
 }
+*/

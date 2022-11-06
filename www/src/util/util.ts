@@ -57,6 +57,7 @@ export async function fetchOrErr(url: string, options?: RequestInit): Promise<Fe
 	}
 }
 
+/*
 export async function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit | undefined): Promise<Response> {
 	if (!init) {
 		init = {};
@@ -85,6 +86,7 @@ export async function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit
 	}
 	return fetch(input, init);
 }
+*/
 
 export function encodeQuery(kv: { [key: string]: string | number | boolean }): string {
 	let s = "";

@@ -1,5 +1,7 @@
 package requests
 
+// requests is a library for making JSON requests to HTTP APIs
+
 import (
 	"bytes"
 	"encoding/json"

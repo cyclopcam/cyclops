@@ -32,6 +32,8 @@ public class Scanner {
         }
     }
 
+    // Regarding concurrent access, we make every member function synchronized,
+    // because this seems like less lines of code than using a mutex.
     // State is marshalled directly into a JSON response
     // SYNC-SCAN-STATE
     static class State {
@@ -82,6 +84,14 @@ public class Scanner {
             c.servers = (ArrayList<ScannedServer>) servers.clone();
             return c;
         }
+        synchronized ScannedServer getByPublicKey(String publicKey) {
+            for (ScannedServer s : servers) {
+                if (s.publicKey.equals(publicKey)) {
+                    return s;
+                }
+            }
+            return null;
+        }
     }
 
     private Context context;
@@ -110,8 +120,12 @@ public class Scanner {
     }
 
     // Return a copy of the state
-    State getState() {
+    State getStateCopy() {
         return state.copy();
+    }
+
+    ScannedServer getScannedServer(String publicKey) {
+        return state.getByPublicKey(publicKey);
     }
 
     static int getWifiIPAddress(Context context) {

@@ -8,7 +8,7 @@
 
 import { panelSlideTransitionMS } from '@/constants';
 import { globals } from '@/global';
-import { showMenu } from '@/nattypes';
+import { LocalWebviewVisibility, natSetLocalWebviewVisibility } from '@/nativeOutt';
 import { onMounted, ref, watch } from 'vue';
 
 let canvas = ref(null);
@@ -29,10 +29,10 @@ let swipeTransitionMS = 150;
 // On globals.contentHeight:
 // We have an absolute height, which is necessary for two things:
 // 1. So that the moment our webview is expanded to fill the screen, our content is ready to be displayed.
-//    If we didn't have this size up front, we'd need to wait for the webview to made large, then it will issue
+//    If we didn't have this size up front, we'd need to wait for the webview to be made large, then it will issue
 //    a layout.. and then finally we'll fill it. But that causes a white flash.
 // 2. When the onscreen keyboard appears, and our webview's height is shrunk, we still display our background bitmap at the same size,
-//    instead of shrinking it vertically, which looks really stupid.
+//    instead of shrinking it vertically, which looks really stupid. By declaring a fixed size, this shrinkage doesn't happen.
 
 function rootStyle() {
 	return {
@@ -40,11 +40,15 @@ function rootStyle() {
 	}
 }
 
-//function canvasStyle() {
-//	return {
-//		"height": globals.contentHeight + "px",
-//	}
-//}
+// Make the container take up 100% of the screen (i.e nothing underneath)
+// In your component (eg AddLocal.vue), you must ALSO set height:100%, to make this work.
+function isFullScreenContainer(): boolean {
+	return globals.mustShowWelcomeScreen;
+}
+
+function allowSwipeAway(): boolean {
+	return !isFullScreenContainer();
+}
 
 function contentParentStyle() {
 	let transition = "top 0ms";
@@ -56,6 +60,7 @@ function contentParentStyle() {
 		transition: transition,
 		top: contentParentTop.value !== "" ? contentParentTop.value : undefined,
 		opacity: contentParentOpacity.value !== "" ? contentParentOpacity.value : undefined,
+		height: isFullScreenContainer() ? "100%" : undefined,
 	}
 }
 
@@ -81,7 +86,7 @@ function hideContent(fromSwipe: boolean) {
 	contentParentOpacity.value = "0";
 	if (fromSwipe) {
 		setTimeout(() => {
-			globals.showMenu(false, { immediateHide: true });
+			globals.showExpanded(false, { immediateHide: true });
 		}, swipeTransitionMS);
 	}
 }
@@ -104,9 +109,11 @@ function recordLastTouchPos(ev: TouchEvent): number {
 
 function onTouchStart(ev: TouchEvent) {
 	//ev.preventDefault();
-	isTouchDown = true;
-	touchDownAt = ev.touches[0].clientY;
-	recordLastTouchPos(ev);
+	if (allowSwipeAway()) {
+		isTouchDown = true;
+		touchDownAt = ev.touches[0].clientY;
+		recordLastTouchPos(ev);
+	}
 }
 
 function onTouchMove(ev: TouchEvent) {
@@ -163,7 +170,7 @@ onMounted(() => {
 		// Ask Android to make our WebView visible again
 		console.log("BitmapOverlay showMenu 2");
 		//console.log("contentHeight = ", (contentParent.value! as HTMLDivElement).clientHeight);
-		showMenu("2");
+		natSetLocalWebviewVisibility(LocalWebviewVisibility.Show);
 	}, contentRenderPause + settlePause);
 
 	// Slide our content into view, from the top

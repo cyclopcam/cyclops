@@ -19,6 +19,7 @@ class State {
     static final int STATE_MODIFIED = 1; // Record has been modified
     static final int STATE_NOTMODIFIED = 2; // Record has not been modified
 
+    // SYNC-ALL-PREFS
     static final String PREF_CURRENT_SERVER_PUBLIC_KEY = "CURRENT_SERVER_PUBLIC_KEY";
 
     // Server is sent as JSON to appui
@@ -53,6 +54,26 @@ class State {
 
     State() {
         //Log.i("C", "Global state constructor");
+    }
+
+    // This was built for debugging, to reset an application install to it's initial just-installed state
+    void resetAllState() {
+        Log.i("C", "Resetting all state");
+        serversLock.lock();
+        try {
+            // SYNC-ALL-PREFS
+            SharedPreferences.Editor edit = sharedPref.edit();
+            edit.remove(PREF_CURRENT_SERVER_PUBLIC_KEY);
+            edit.apply();
+
+            SQLiteDatabase h = db.getWritableDatabase();
+            h.delete("server", "", null);
+
+            currentServerPublicKey = "";
+            servers = new ArrayList<Server>();
+        } finally {
+            serversLock.unlock();
+        }
     }
 
     void loadAll() {

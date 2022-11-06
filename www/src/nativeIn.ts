@@ -1,7 +1,8 @@
-import { setBearerToken } from "./auth";
+// nativeIn exposes entrypoints that our native app (Java/Swift) uses to talk to us.
+
+//import { setBearerToken } from "./auth";
 import { globals } from "./globals";
 import { popRoute } from "./router/routes";
-// natcom is for native communication with our mobile app
 
 // Back/Forward in history
 (window as any).cyBack = () => {
@@ -17,6 +18,6 @@ import { popRoute } from "./router/routes";
 };
 
 // Ensure that we have credentials for this server
-(window as any).cySetCredentials = (publicKey: string, bearerToken: string) => {
-	setBearerToken(publicKey, bearerToken);
-};
+//(window as any).cySetCredentials = (publicKey: string, bearerToken: string) => {
+//	setBearerToken(publicKey, bearerToken);
+//};
