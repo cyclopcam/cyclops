@@ -3,11 +3,16 @@ package org.cyclops;
 import android.content.Context;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.util.Base64;
 import android.util.Log;
 
 import com.google.gson.Gson;
 
+import com.google.crypto.tink.subtle.X25519;
+
 import java.io.IOException;
+import java.security.InvalidKeyException;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
@@ -217,7 +222,7 @@ public class Scanner {
 
     // Returns null if unable to contact the server
     static JSAPI.PingResponseJSON isCyclopsServer(OkHttpClient client, String ipAddress) {
-        String url = "http://" + ipAddress + ":" + Constants.ServerPort + "/api/ping";
+        String url = Constants.serverLanURL(ipAddress) + "/api/ping";
         Request req = new Request.Builder().url(url).build();
         Gson gson = new Gson();
         try {
@@ -235,6 +240,36 @@ public class Scanner {
         } catch (IOException e) {
         }
         return null;
+    }
+
+    // Returns true if the cyclops server is contactable, and owns the public key that we specify.
+    // If the public key check passes, then we check if our current session cookie is still valid.
+    // If our session cookie is invalid, or will expire soon, then we request a new one, by using
+    // our bearer token.
+    // If any step of the process fails, we return false.
+    static boolean preflightServerCheck(Crypto crypto, HttpClient client, String ipAddress, String publicKey) {
+        // create 32 bytes for a challenge
+        byte[] challenge = crypto.createChallenge();
+        String challengeb64 = Base64.encodeToString(challenge, Base64.NO_WRAP);
+        String ownPublicKeyb64 = Base64.encodeToString(crypto.ownPublicKey, Base64.NO_WRAP);
+        String url = Constants.serverLanURL(ipAddress) + "/api/keys?" + client.encodeQuery("publicKey", ownPublicKeyb64, "challenge", challengeb64);
+        HttpClient.Response resp = client.GET(url, null);
+        if (resp.Error != null) {
+            Log.i("C", "Failed to call " + url + " : " + resp.Error);
+            return false;
+        }
+        Gson gson = new Gson();
+        try (ResponseBody body = resp.Resp.body()) {
+            if (resp.Resp.code() == 200 && body != null) {
+                JSAPI.KeysResponseJSON keys = gson.fromJson(body.charStream(), JSAPI.KeysResponseJSON.class);
+                // check the signature
+                if (crypto.verifyChallenge(publicKey, challenge, Base64.decode(keys.proof, Base64.NO_WRAP))) {
+                    return true;
+                }
+                Log.i("C", "Server's signature check failed");
+            }
+        }
+        return false;
     }
 
     static void scanAddresses(ArrayList<String> ipAddresses, State state) {

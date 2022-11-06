@@ -5,12 +5,24 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.util.Base64;
 import android.util.Log;
+import android.webkit.WebResourceResponse;
 
+import com.google.gson.Gson;
+
+import java.io.IOException;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
+//import java.util.Base64;
+import java.util.HashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 class State {
     static final State global = new State();
@@ -51,6 +63,8 @@ class State {
     Lock serversLock = new ReentrantLock();
     ArrayList<Server> servers = new ArrayList<Server>();
     String currentServerPublicKey = "";
+
+    private final HttpClient client = new HttpClient();
 
     State() {
         //Log.i("C", "Global state constructor");
@@ -240,19 +254,90 @@ class State {
         db = null;
     }
 
-    void addNewServer(String lanIP, String publicKey, String bearerToken, String name) {
+    void addOrUpdateServer(String lanIP, String publicKey, String bearerToken, String name) {
         serversLock.lock();
         try {
-            Server s = new Server();
+            Server s = getServerByPublicKey(publicKey);
+            if (s == null) {
+                s = new Server();
+                s.state = STATE_NEW;
+                servers.add(s);
+            }
             s.lanIP = lanIP;
             s.publicKey = publicKey;
             s.bearerToken = bearerToken;
             s.name = name;
-            s.state = STATE_NEW;
-            servers.add(s);
             saveServersToDB();
         } finally {
             serversLock.unlock();
         }
     }
+
+    static class LoginResult {
+        String error;
+        String token;
+    }
+
+    // Use our bearer token to perform a cookie-based login, and set the cookie for our webviews
+    void recreateSession(String publicKey, boolean isProxy) {
+    }
+
+    // The code below should work.. but I decided to keep logins on the Typescript side.
+    // There's no benefit to performing logins here.
+    /*
+    // Returns an empty string on success, or an error message on failure
+    String login(String url, String publicKey, String username, String password) {
+        // Talk to server
+        LoginResult lr = performLogin(url, publicKey, username, password);
+        if (lr.error != null) {
+            return lr.error;
+        }
+
+        // Save session token
+        serversLock.lock();
+        try {
+            Server s = getServerByPublicKey(publicKey);
+            if (s == null) {
+                s = new Server();
+                s.publicKey = publicKey;
+                s.state = STATE_NEW;
+            }
+            s.bearerToken = lr.token;
+            servers.add(s);
+            saveServersToDB();
+        } finally {
+            serversLock.unlock();
+        }
+
+        return "";
+    }
+
+    // Returns an empty string on success, or an error message on failure
+    LoginResult performLogin(String url, String publicKey, String username, String password) {
+        HashMap<String, String> headers = new HashMap<>();
+        headers.put("Authorization", "BASIC " + Base64.encodeToString((username + ":" + password).getBytes(), 0));
+        HttpClient.Response resp = client.POST(url, headers);
+        LoginResult result = new LoginResult();
+        if (resp.Error != null) {
+            result.error = resp.Error;
+        } else {
+            ResponseBody body = resp.Resp.body();
+            if (resp.Resp.code() == 200 && body != null) {
+                Gson gson = new Gson();
+                JSAPI.LoginResponseJSON v = gson.fromJson(body.charStream(), JSAPI.LoginResponseJSON.class);
+                result.token = v.bearerToken;
+            } else {
+                if (body != null) {
+                    result.error = body.toString();
+                } else {
+                    result.error = "Error " + resp.Resp.code();
+                }
+            }
+            if (body != null) {
+                body.close();
+            }
+        }
+        return result;
+    }
+     */
 }

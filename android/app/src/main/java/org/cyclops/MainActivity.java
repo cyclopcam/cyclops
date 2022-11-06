@@ -47,6 +47,8 @@ public class MainActivity extends AppCompatActivity implements Main {
     //ConnectivityManager.NetworkCallback networkCallback;
     State.Server currentServer;
     String currentNetworkInterfaceName = "";
+    HttpClient connectivityCheckClient;
+    Crypto crypto;
 
     // Maintain our own history stack, for the tricky transitions between localWebView and remoteWebView.
     // An example of where you need this, is when the user has just scanned the LAN for local servers.
@@ -58,6 +60,10 @@ public class MainActivity extends AppCompatActivity implements Main {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        crypto = new Crypto();
+
+        connectivityCheckClient = new HttpClient(new OkHttpClient.Builder().callTimeout(300, TimeUnit.MILLISECONDS).build());
 
         State.global.sharedPref = getSharedPreferences("org.cyclopcam.cyclops.state", Context.MODE_PRIVATE);
         State.global.scanner = new Scanner(this);
@@ -168,10 +174,10 @@ public class MainActivity extends AppCompatActivity implements Main {
         super.onBackPressed();
     }
 
-    // This is called after the user logs in to a new server
+    // This is called after the user logs in to a server
     public void onLogin(String bearerToken) {
         Log.i("C", "onLogin to " + currentServer.publicKey + ", bearerToken: " + bearerToken.substring(0, 4) + "...");
-        State.global.addNewServer(currentServer.lanIP, currentServer.publicKey, bearerToken, currentServer.name);
+        State.global.addOrUpdateServer(currentServer.lanIP, currentServer.publicKey, bearerToken, currentServer.name);
         State.global.setCurrentServer(currentServer.publicKey);
         localClient.cyRefreshServers(localWebView);
     }
@@ -313,6 +319,14 @@ public class MainActivity extends AppCompatActivity implements Main {
         }
     }
 
+    public String serverLanURL(State.Server server) {
+        return Constants.serverLanURL(server.lanIP);
+    }
+
+    public String serverLanURL(Scanner.ScannedServer server) {
+        return Constants.serverLanURL(server.ip);
+    }
+
     public void switchToServerByPublicKey(String publicKey) {
         State.Server server = State.global.getServerCopyByPublicKey(publicKey);
         if (server == null) {
@@ -339,17 +353,15 @@ public class MainActivity extends AppCompatActivity implements Main {
                 int storedLanIP = Scanner.parseIP(server.lanIP);
                 int wifiIP = Scanner.getWifiIPAddress(context);
                 if (storedLanIP != 0 && wifiIP != 0 && Scanner.areIPsInSameSubnet(storedLanIP, wifiIP)) {
-                    OkHttpClient client = new OkHttpClient.Builder().callTimeout(300, TimeUnit.MILLISECONDS).build();
-                    // TODO: incorporate cryptographic challenge to test if server is who he claims to be
-                    JSAPI.PingResponseJSON ping = Scanner.isCyclopsServer(client, server.lanIP);
-                    if (ping != null) {
+                    boolean isGood = Scanner.preflightServerCheck(crypto, connectivityCheckClient, server.lanIP, server.publicKey);
+                    if (isGood) {
                         if (justCheck && isOnLAN) {
                             Log.i("C", "Remaining on LAN " + server.lanIP + " for server " + server.publicKey);
                             return;
                         }
                         Log.i("C", "Connecting to LAN " + server.lanIP + " for server " + server.publicKey);
                         isOnLAN = true;
-                        runOnUiThread(() -> navigateToServer("http://" + server.lanIP + ":" + Constants.ServerPort, false, server));
+                        runOnUiThread(() -> navigateToServer(serverLanURL(server), false, server, true));
                         return;
                     }
                 }
@@ -367,7 +379,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                     // SYNC-CYCLOPS-SERVER-COOKIE
                     cookies.setCookie(proxyOrigin, "CyclopsServerPublicKey=" + server.publicKey, (Boolean ok) -> {
                         Log.i("C", "setCookie result " + (ok ? "OK" : "Failed"));
-                        navigateToServer(proxyOrigin, false, server);
+                        navigateToServer(proxyOrigin, false, server, true);
                     });
                 });
             }
@@ -382,20 +394,32 @@ public class MainActivity extends AppCompatActivity implements Main {
             Log.i("C", "navigateToScannedLocalServer failed to find server " + publicKey);
             return;
         }
+        String baseUrl = serverLanURL(s);
+
         // Clone ScannedServer into a State.Server object, which carries all of the same
-        // relevant details. We'll use this later, if the user logs in.
+        // relevant details. We'll use this later, if the user logs in (see currentServer in onLogin)
         State.Server tmp = new State.Server();
         tmp.lanIP = s.ip;
         tmp.name = s.hostname;
         tmp.publicKey = s.publicKey;
-        navigateToServer("http://" + s.ip + ":" + Constants.ServerPort, true, tmp);
+
+        // Clear the session cookie for the host, so that we don't somehow get tricked into revealing
+        // a session key for an existing server that we talk to, which happens to have the same IP
+        // as a freshly scanned server.
+        CookieManager cookies = CookieManager.getInstance();
+        // SYNC-CYCLOPS-SESSION-COOKIE
+        cookies.setCookie(baseUrl, "session=x", (Boolean ok) -> {
+            Log.i("C", "setCookie session=x result " + (ok ? "OK" : "Failed"));
+            navigateToServer(baseUrl, true, tmp, false);
+        });
     }
 
-    public void navigateToServer(String url, boolean addToNavigationHistory, State.Server server) {
+    // This is private to remind you that you must ensure the cookie state is good before navigating to a server
+    private void navigateToServer(String url, boolean addToNavigationHistory, State.Server server, boolean preserveURL) {
         currentServer = server.copy();
         showRemoteWebView(true);
         String currentURL = remoteWebView.getUrl();
-        if (currentURL != null) {
+        if (preserveURL && currentURL != null) {
             // Preserve the Vue route when switching between LAN and proxy.
             // Unfortunately this doesn't preserve our entire UI state. THAT is left as an exercise for the reader (i.e. not trivial).
             Uri current = Uri.parse(currentURL);

@@ -42,9 +42,9 @@ public class RemoteWebViewClient extends WebViewClientCompat {
 
     @Override
     public void onPageFinished(WebView view, String url) {
-        if (this.server != null && !this.server.publicKey.equals("") && !this.server.bearerToken.equals("")) {
-            view.evaluateJavascript("window.cySetCredentials('" + this.server.publicKey + "' , '" + this.server.bearerToken + "')", null);
-        }
+        //if (this.server != null && !this.server.publicKey.equals("") && !this.server.bearerToken.equals("")) {
+        //    view.evaluateJavascript("window.cySetCredentials('" + this.server.publicKey + "' , '" + this.server.bearerToken + "')", null);
+        //}
         super.onPageFinished(view, url);
     }
 
@@ -74,6 +74,10 @@ public class RemoteWebViewClient extends WebViewClientCompat {
         return new WebResourceResponse("text/plain", "utf-8", 200, "OK", null, null);
     }
 
+    WebResourceResponse sendError(String err) {
+        return new WebResourceResponse("text/plain", "utf-8", 400, err, null, null);
+    }
+
     WebResourceResponse sendJSON(Object obj) {
         Gson gson = new Gson();
         String j = gson.toJson(obj);
@@ -96,6 +100,15 @@ public class RemoteWebViewClient extends WebViewClientCompat {
                 case "/natcom/login":
                     activity.runOnUiThread(() -> main.onLogin(url.getQueryParameter("bearerToken")));
                     return sendOK();
+                /*
+                case "/natcom/login2":
+                    String err = State.global.login(url.getQueryParameter("url"), url.getQueryParameter("publicKey"), url.getQueryParameter("username"), url.getQueryParameter("password"));
+                    if (err.equals("")) {
+                        return sendOK();
+                    } else {
+                        return sendError(err);
+                    }
+                 */
             }
         }
 

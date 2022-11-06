@@ -14,4 +14,15 @@ public class JSAPI {
     public static class ScreenParamsJSON {
         int contentHeight = 0;
     }
+    // SYNC-LOGIN-RESPONSE-JSON
+    public static class LoginResponseJSON {
+        String bearerToken = "";
+    }
+
+    // SYNC-KEYS-RESPONSE-JSON
+    public static class KeysResponseJSON {
+        String publicKey;
+        String proof; // HMAC[SHA256](sharedSecret, challenge).  sharedSecret is from ECDH.
+    }
+
 }
