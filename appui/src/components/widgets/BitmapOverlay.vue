@@ -8,7 +8,7 @@
 
 import { panelSlideTransitionMS } from '@/constants';
 import { globals } from '@/global';
-import { LocalWebviewVisibility, natSetLocalWebviewVisibility } from '@/nativeOutt';
+import { LocalWebviewVisibility, natSetLocalWebviewVisibility } from '@/nativeOut';
 import { onMounted, ref, watch } from 'vue';
 
 let canvas = ref(null);

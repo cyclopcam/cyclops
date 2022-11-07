@@ -144,9 +144,21 @@ func (c *ConfigDB) GetUser(r *http.Request) *User {
 // You should only set allowBasic to true if this is a rate limited endpoint.
 func (c *ConfigDB) GetUserID(r *http.Request, allowBasic bool) int64 {
 	cookie, _ := r.Cookie(SessionCookie)
+	sessionCookie := ""
 	if cookie != nil {
+		sessionCookie = cookie.Value
+	} else {
+		// Allow the session cookie to be specified as a header. This is a convenience added
+		// for our Android app, which needs to check the status of it's session cookie
+		// before deciding what to do next. Injecting a cookie into the webview is a few more
+		// lines of Java code, and async callbacks, so sending a simple header is easier,
+		// and that's the reason why we allow it.
+		sessionCookie = r.Header.Get("X-Session-Cookie")
+	}
+
+	if sessionCookie != "" {
 		session := Session{}
-		c.DB.Where("key = ?", HashSessionToken(cookie.Value)).Find(&session)
+		c.DB.Where("key = ?", HashSessionToken(sessionCookie)).Find(&session)
 		if session.UserID != 0 && (session.ExpiresAt.IsZero() || session.ExpiresAt.Get().After(time.Now())) {
 			return session.UserID
 		}

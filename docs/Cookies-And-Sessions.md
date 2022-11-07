@@ -36,3 +36,17 @@ step into our native mobile app: Before opening a WebView into a LAN address, we
 ask it to sign a challenge with its private key. If the signature that it
 produces does not match the public key that we have on record for that IP
 address, then we refuse to connect.
+
+## Cookie Lifetime
+
+Conceptually, we should be able to login once, acquire a cookie, and keep using
+that cookie for years. However, this is not possible because Chrome's maximum
+expiry time on a cookie is 400 days. So we need a mechanism to refresh our
+session cookie. Our solution is to generate two tokens during initial login:
+
+1. A bearer token
+2. A session cookie
+
+When the session cookie expires, or is invalid for any reason, we use our bearer
+token to acquire a fresh cookie. The bearer token is stored in the native app's
+database, and is only used when refreshing the cookie.

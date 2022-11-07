@@ -98,7 +98,7 @@ public class RemoteWebViewClient extends WebViewClientCompat {
                 case "/natcom/hello":
                     return sendOK();
                 case "/natcom/login":
-                    activity.runOnUiThread(() -> main.onLogin(url.getQueryParameter("bearerToken")));
+                    activity.runOnUiThread(() -> main.onLogin(url.getQueryParameter("bearerToken"), url.getQueryParameter("sessionCookie")));
                     return sendOK();
                 /*
                 case "/natcom/login2":

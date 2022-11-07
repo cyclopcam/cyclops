@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { bestServerName, natFetchRegisteredServers, natGetCurrentServer, natGetScreenGrab, natSwitchToRegisteredServer } from '@/nativeOutt';
-import type { Server } from '@/nativeOutt';
+import { bestServerName, natFetchRegisteredServers, natGetCurrentServer, natGetScreenGrab, natSwitchToRegisteredServer } from '@/nativeOut';
+import type { Server } from '@/nativeOut';
 import { onMounted, ref } from 'vue';
 import SvgButton from '@/components/widgets/SvgButton.vue';
 import Edit from '@/icons/edit.svg';

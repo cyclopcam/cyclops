@@ -5,9 +5,12 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.util.Log;
 
+// Steps for adding a new migration:
+// 1. Add a new SQL_MIGRATE_X string
+// 2. Add your new string to SQL_MIGRATIONS
+// 3. Increment DATABASE_VERSION
 public class LocalDB extends SQLiteOpenHelper {
-    // If you change the database schema, you must increment the database version.
-    public static final int DATABASE_VERSION = 2;
+    public static final int DATABASE_VERSION = 3;
     public static final String DATABASE_NAME = "cyclops.db";
 
     public LocalDB(Context context) {
@@ -32,9 +35,11 @@ public class LocalDB extends SQLiteOpenHelper {
 
     private static final String SQL_MIGRATE_1 = "CREATE TABLE server (publicKey TEXT PRIMARY KEY, lanIP TEXT, bearerToken TEXT);";
     private static final String SQL_MIGRATE_2 = "ALTER TABLE server ADD COLUMN name TEXT;";
+    private static final String SQL_MIGRATE_3 = "ALTER TABLE server ADD COLUMN sessionCookie TEXT;";
     public static final String[] SQL_MIGRATIONS = {
             SQL_MIGRATE_1,
             SQL_MIGRATE_2,
+            SQL_MIGRATE_3,
     };
 }
 

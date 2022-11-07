@@ -20,8 +20,9 @@ let preview = ref(null);
 let status = ref("Initializing");
 let state = ref(States.Testing);
 let ws: WebSocket | null = null;
-    imageBlob: Blob | null = null;
-      erface ServerMessage {
+let imageBlob: Blob | null = null;
+
+interface ServerMessage {
 	error: string;
 	status: string;
 	image: string;

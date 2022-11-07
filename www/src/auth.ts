@@ -146,10 +146,25 @@ export async function login(username: string, password: string): Promise<string>
 		// Inform our mobile app that we've logged in. Chrome's limit on cookie duration is about 400 days,
 		// but we can extend that by not using cookies. Also, the mobile app needs to know the list of
 		// servers that the client knows about.
-		//fetch('/natcom/login?' + encodeQuery({ publicKey: globals.serverPublicKey, bearerToken: bearerToken }));
-		natLogin(globals.serverPublicKey, bearerToken);
+
+		// Get our 'session' cookie
+		let sessionCookie = getCookie("session");
+		if (!sessionCookie) {
+			return "Failed to get session cookie";
+		}
+
+		natLogin(globals.serverPublicKey, bearerToken, sessionCookie);
 	}
 	return "";
+}
+
+// Returns the cookie with the given name, or undefined if not found
+// Source: https://javascript.info/cookie
+function getCookie(name: string) {
+	let matches = document.cookie.match(new RegExp(
+		"(?:^|; )" + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"
+	));
+	return matches ? decodeURIComponent(matches[1]) : undefined;
 }
 
 /*

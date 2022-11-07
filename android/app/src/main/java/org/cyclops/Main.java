@@ -10,7 +10,7 @@ public interface Main {
     void switchToServerByPublicKey(String publicKey);
     void setLocalWebviewVisibility(String mode);
     //WebResourceResponse login(String username, String password);
-    void onLogin(String bearerToken);
+    void onLogin(String bearerToken, String sessionCookie);
     int getContentHeight();
     //void notifyRegisteredServersChanged();
     Bitmap getRemoteViewScreenGrab();

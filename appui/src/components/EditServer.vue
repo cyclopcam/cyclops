@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { bestServerName, cloneServer, natFetchRegisteredServers, natSetServerProperty } from '@/nativeOutt';
-import type { Server } from '@/nativeOutt';
+import { bestServerName, cloneServer, natFetchRegisteredServers, natSetServerProperty } from '@/nativeOut';
+import type { Server } from '@/nativeOut';
 import { onMounted, ref, watch } from 'vue';
 import Copy from '@/icons/copy-blue.svg';
 import Trash from '@/icons/trash-2.svg';

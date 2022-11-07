@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { globals, ServerPort } from '@/global';
 import { maxIPsToScan } from '@/scan';
-import { natStartScan, natGetScanStatus, natNavigateToScannedLocalServer, natSetLocalWebviewVisibility, LocalWebviewVisibility, registeredFakeServers, fakeServerList } from '@/nativeOutt';
+import { natStartScan, natGetScanStatus, natNavigateToScannedLocalServer, natSetLocalWebviewVisibility, LocalWebviewVisibility, registeredFakeServers, fakeServerList } from '@/nativeOut';
 import type { ScanState, ScannedServer } from '@/scan';
 import { router, pushRoute } from '@/router/routes';
 import { onMounted, reactive, ref } from 'vue';

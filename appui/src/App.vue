@@ -4,7 +4,7 @@ import { RouterView } from 'vue-router';
 import StatusBar from './components/StatusBar.vue';
 import BitmapOverlay from './components/widgets/BitmapOverlay.vue';
 import { globals, ServerPort } from './global';
-import { blankServer, natGetScreenParams } from './nativeOutt';
+import { blankServer, natGetScreenParams } from './nativeOut';
 
 let current = ref(blankServer());
 

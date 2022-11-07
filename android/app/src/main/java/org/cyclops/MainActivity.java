@@ -175,9 +175,9 @@ public class MainActivity extends AppCompatActivity implements Main {
     }
 
     // This is called after the user logs in to a server
-    public void onLogin(String bearerToken) {
-        Log.i("C", "onLogin to " + currentServer.publicKey + ", bearerToken: " + bearerToken.substring(0, 4) + "...");
-        State.global.addOrUpdateServer(currentServer.lanIP, currentServer.publicKey, bearerToken, currentServer.name);
+    public void onLogin(String bearerToken, String sessionCookie) {
+        Log.i("C", "onLogin to " + currentServer.publicKey + ", bearerToken: " + bearerToken.substring(0, 4) + "..." + ", sessionCookie: " + sessionCookie.substring(0, 4) + "...");
+        State.global.addOrUpdateServer(currentServer.lanIP, currentServer.publicKey, bearerToken, currentServer.name, sessionCookie);
         State.global.setCurrentServer(currentServer.publicKey);
         localClient.cyRefreshServers(localWebView);
     }
@@ -353,8 +353,8 @@ public class MainActivity extends AppCompatActivity implements Main {
                 int storedLanIP = Scanner.parseIP(server.lanIP);
                 int wifiIP = Scanner.getWifiIPAddress(context);
                 if (storedLanIP != 0 && wifiIP != 0 && Scanner.areIPsInSameSubnet(storedLanIP, wifiIP)) {
-                    boolean isGood = Scanner.preflightServerCheck(crypto, connectivityCheckClient, server.lanIP, server.publicKey);
-                    if (isGood) {
+                    String err = Scanner.preflightServerCheck(crypto, connectivityCheckClient, server);
+                    if (err == null) {
                         if (justCheck && isOnLAN) {
                             Log.i("C", "Remaining on LAN " + server.lanIP + " for server " + server.publicKey);
                             return;

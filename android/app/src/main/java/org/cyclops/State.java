@@ -42,6 +42,7 @@ class State {
         String publicKey = "";
         String bearerToken = "";
         String name = "";
+        String sessionCookie = "";
 
         Server copy() {
             Server s = new Server();
@@ -50,6 +51,7 @@ class State {
             s.publicKey = publicKey;
             s.bearerToken = bearerToken;
             s.name = name;
+            s.sessionCookie = sessionCookie;
             return s;
         }
     }
@@ -196,7 +198,7 @@ class State {
         try {
             servers.clear();
             SQLiteDatabase h = db.getReadableDatabase();
-            String[] columns = {"publicKey", "lanIP", "bearerToken", "name"};
+            String[] columns = {"publicKey", "lanIP", "bearerToken", "name", "sessionCookie"};
             Cursor c = h.query("server", columns, null, null, null, null, null);
             while (c.moveToNext()) {
                 Server s = new Server();
@@ -205,6 +207,7 @@ class State {
                 s.lanIP = c.getString(1);
                 s.bearerToken = c.getString(2);
                 s.name = c.getString(3);
+                s.sessionCookie = c.getString(4);
                 servers.add(s);
             }
             Log.i("C", "Loaded " + servers.size() + " servers from DB");
@@ -226,6 +229,7 @@ class State {
                     v.put("lanIP", s.lanIP);
                     v.put("bearerToken", s.bearerToken);
                     v.put("name", s.name);
+                    v.put("sessionCookie", s.sessionCookie);
                     String[] args = {s.publicKey};
                     h.update("server", v, "publicKey = ?", args);
                     s.state = STATE_NOTMODIFIED;
@@ -240,6 +244,7 @@ class State {
                     v.put("lanIP", s.lanIP);
                     v.put("bearerToken", s.bearerToken);
                     v.put("name", s.name);
+                    v.put("sessionCookie", s.sessionCookie);
                     h.insert("server", null, v);
                     s.state = STATE_NOTMODIFIED;
                 }
@@ -254,19 +259,20 @@ class State {
         db = null;
     }
 
-    void addOrUpdateServer(String lanIP, String publicKey, String bearerToken, String name) {
+    void addOrUpdateServer(String lanIP, String publicKey, String bearerToken, String name, String sessionCookie) {
         serversLock.lock();
         try {
             Server s = getServerByPublicKey(publicKey);
             if (s == null) {
                 s = new Server();
-                s.state = STATE_NEW;
                 servers.add(s);
+                s.state = STATE_NEW;
+                s.publicKey = publicKey;
+                s.name = name;
             }
             s.lanIP = lanIP;
-            s.publicKey = publicKey;
             s.bearerToken = bearerToken;
-            s.name = name;
+            s.sessionCookie = sessionCookie;
             saveServersToDB();
         } finally {
             serversLock.unlock();
