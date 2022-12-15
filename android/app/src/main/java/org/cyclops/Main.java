@@ -7,10 +7,10 @@ import android.webkit.WebResourceResponse;
 public interface Main {
     void webViewBackFailed();
     void navigateToScannedLocalServer(String publicKey);
-    void switchToServerByPublicKey(String publicKey);
     void setLocalWebviewVisibility(String mode);
     //WebResourceResponse login(String username, String password);
     void onLogin(String bearerToken, String sessionCookie);
+    void switchToServer(String publicKey);
     int getContentHeight();
     //void notifyRegisteredServersChanged();
     Bitmap getRemoteViewScreenGrab();

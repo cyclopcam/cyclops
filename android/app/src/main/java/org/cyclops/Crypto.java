@@ -12,7 +12,7 @@ import java.security.SecureRandom;
 import javax.crypto.Mac;
 
 public class Crypto {
-    // Own own temporary keypair.
+    // Our own temporary keypair.
     // This is the simplest way I can think of to allow the server to sign
     // a challenge. We could also allow the user to create an ed25519 key
     // from it's x25519 key, but I don't understand that mechanism well
@@ -20,6 +20,9 @@ public class Crypto {
     // and use the Diffie Hellman shared secret as the HMAC key.
     // In order to do Diffie Hellman, we need to create a key for ourselves,
     // which is what we're doing here.
+    // Note that https://github.com/teslamotors/liblithium is a proof of concept
+    // where they sign using an X25519 curve, but I'm sticking with this
+    // for now, because I understand it.
     byte[] ownPrivateKey;
     byte[] ownPublicKey;
 
@@ -40,7 +43,7 @@ public class Crypto {
         return challenge;
     }
 
-    // Verify challenge that we've issued to a cyclops server, to prove that it owns
+    // Verify the challenge that we've issued to a cyclops server, to prove that it owns
     // the public key that it claims.
     boolean verifyChallenge(String serverPublicKey, byte[] challenge, byte[] response) {
         if (challenge.length != 32 || response.length != 32) {

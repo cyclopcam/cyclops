@@ -3,15 +3,14 @@ package staticfiles
 import (
 	"bytes"
 	"compress/gzip"
-	"embed"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"net/http"
 	"os"
 	"path"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -32,7 +31,7 @@ var reWebpackAsset *regexp.Regexp
 // files that come from a proxy.
 type CachedStaticFileServer struct {
 	//absRoot        string // Root content path
-	fs             embed.FS
+	fsys           fs.FS
 	fsRootDir      string // eg "www"
 	log            log.Log
 	compressLevel  int
@@ -66,7 +65,7 @@ type cachedStaticFile struct {
 // on the URL, but from the server's perspective, everything except for apiRoutes serves
 // up index.html
 // indexIntercept can be used to modify a request/response to index.html.
-func NewCachedStaticFileServer(fs embed.FS, fsRootDir string, apiRoutes []string, log log.Log, immutableFilesystem bool, indexIntercept http.HandlerFunc) (*CachedStaticFileServer, error) {
+func NewCachedStaticFileServer(fsys fs.FS, fsRootDir string, apiRoutes []string, log log.Log, immutableFilesystem bool, indexIntercept http.HandlerFunc) (*CachedStaticFileServer, error) {
 	extensions := map[string]bool{
 		"css":  true,
 		"js":   true,
@@ -87,13 +86,13 @@ func NewCachedStaticFileServer(fs embed.FS, fsRootDir string, apiRoutes []string
 	}
 
 	// Scan all static files, so that we can distinguish between an 'index.html' route and a genuine static file
-	files, err := globRecursiveFS(fs, fsRootDir)
+	files, err := globRecursive(fsys, fsRootDir)
 	if err != nil {
 		return nil, err
 	}
-	// chop off the 'www' prefix, but retain the sleading slash
+	// Add a leading slash to all files
 	for i := range files {
-		files[i] = files[i][len(fsRootDir):]
+		files[i] = "/" + files[i]
 	}
 	scannedFiles := map[string]bool{}
 	for _, f := range files {
@@ -109,7 +108,7 @@ func NewCachedStaticFileServer(fs embed.FS, fsRootDir string, apiRoutes []string
 
 	return &CachedStaticFileServer{
 		//absRoot:             absRoot,
-		fs:                  fs,
+		fsys:                fsys,
 		fsRootDir:           fsRootDir,
 		apiRoutes:           apiRoutes,
 		scannedFiles:        scannedFiles,
@@ -124,35 +123,25 @@ func NewCachedStaticFileServer(fs embed.FS, fsRootDir string, apiRoutes []string
 	}, nil
 }
 
-func globRecursiveFS(fs embed.FS, dir string) ([]string, error) {
-	entries, err := fs.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
+func globRecursive(fsys fs.FS, root string) ([]string, error) {
 	files := []string{}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			more, err := globRecursiveFS(fs, dir+"/"+entry.Name())
-			if err != nil {
-				return nil, err
-			}
-			files = append(files, more...)
-		} else {
-			files = append(files, dir+"/"+entry.Name())
-		}
-	}
-	return files, err
-}
 
-func globRecursive(root string) ([]string, error) {
-	files := []string{}
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	// The +1 is to remove the leading slash (which is applicable on embedded files)
+	chopPrefix := len(root) + 1
+
+	if root == "." || root == "" {
+		// This path is for physical filesystem (not embedded)
+		root = "." // WalkDir needs a non-empty root
+		chopPrefix = 0
+	}
+
+	err := fs.WalkDir(fsys, root, func(path string, d fs.DirEntry, err error) error {
 		if d == nil && err != nil {
 			// root scan failed
 			return err
 		}
 		if !d.IsDir() {
-			files = append(files, path[len(root):])
+			files = append(files, path[chopPrefix:])
 		}
 		return nil
 	})
@@ -189,7 +178,13 @@ func (s *CachedStaticFileServer) ServeFile(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	file, err := s.fs.Open(s.fsRootDir + relPath)
+	if s.fsRootDir == "" && strings.HasPrefix(relPath, "/") {
+		// Chop off leading slash for the case where our root directory is the root of the filesystem.
+		// This path is hit when serving up hot reloadable content from a real file system (not embedded file).
+		relPath = relPath[1:]
+	}
+
+	file, err := s.fsys.Open(s.fsRootDir + relPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			w.WriteHeader(404)

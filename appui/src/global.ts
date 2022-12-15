@@ -2,7 +2,7 @@ import { reactive, ref, VueElement } from "vue";
 import { initialScanState, mockScanState, mockScanStateError, type ScanState } from "@/scan";
 
 import "@/nativeIn"; // We must import nativeIn *somewhere* so that it's global functions are available
-import { blankServer, LocalWebviewVisibility, natFetchRegisteredServers, natGetCurrentServer, natGetScreenGrab, natGetScreenParams, natSetLocalWebviewVisibility, natWaitForScreenGrab, type Server } from "./nativeOut";
+import { blankServer, LocalWebviewVisibility, natFetchRegisteredServers, natGetLastServer, natGetScreenGrab, natGetScreenParams, natSetLocalWebviewVisibility, natWaitForScreenGrab, type Server } from "./nativeOut";
 import { encodeQuery, sleep } from "@/util/util";
 import { panelSlideTransitionMS } from "./constants";
 import { pushRoute, replaceRoute } from "./router/routes";
@@ -55,7 +55,7 @@ export class Globals {
 		try {
 			console.log("loadServer start");
 			this.servers = await natFetchRegisteredServers();
-			let current = await natGetCurrentServer();
+			let current = await natGetLastServer();
 			let c = this.servers.find(x => x.publicKey === current.publicKey);
 			if (c) {
 				this.currentServer = c;

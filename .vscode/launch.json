@@ -58,7 +58,8 @@
 			"request": "launch",
 			"mode": "auto",
 			"program": "cmd/cyclops/cyclops.go",
-			"cwd": "${workspaceFolder}"
+			"cwd": "${workspaceFolder}",
+			"args": []
 		},
 		{
 			"name": "proxy.go",

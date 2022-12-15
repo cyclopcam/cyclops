@@ -37,6 +37,7 @@ Without better knowledge, I'm going with:
 // Any option, if left to the zero value, is ignored, and defaults are used instead.
 type ScanOptions struct {
 	Timeout time.Duration // Timeout on connecting to each host
+	OwnIP   net.IP        // The IP address of the local machine
 }
 
 /*
@@ -45,10 +46,18 @@ type ScanOptions struct {
 options is optional.
 */
 func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
-	ip, err := getLocalIPv4()
-	//fmt.Printf("getLocalIPv4: %v, %v\n", ip, err)
-	if err != nil {
-		return nil, err
+	var (
+		ip  net.IP
+		err error
+	)
+	if options != nil && options.OwnIP != nil {
+		ip = options.OwnIP
+	} else {
+		ip, err = getLocalIPv4()
+		//fmt.Printf("getLocalIPv4: %v, %v\n", ip, err)
+		if err != nil {
+			return nil, err
+		}
 	}
 	ip4 := ip.To4()
 	if ip4 == nil {

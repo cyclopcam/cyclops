@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 
@@ -23,12 +24,23 @@ func main() {
 	}
 
 	parser := argparse.NewParser("cyclops", "A teachable camera security system")
-	config := parser.String("c", "config", &argparse.Options{Help: "Configuration database file", Default: filepath.Join(home, "cyclops", "config.sqlite")})
+	configFile := parser.String("c", "config", &argparse.Options{Help: "Configuration database file", Default: filepath.Join(home, "cyclops", "config.sqlite")})
 	disableVPN := parser.Flag("", "novpn", &argparse.Options{Help: "Disable VPN", Default: false})
+	hotReloadWWW := parser.Flag("", "hot", &argparse.Options{Help: "Hot reload www instead of embedding into binary", Default: false})
+	ownIPStr := parser.String("", "ip", &argparse.Options{Help: "IP address of this machine (for network scanning)", Default: ""})
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
 		os.Exit(1)
+	}
+
+	var ownIP net.IP
+	if *ownIPStr != "" {
+		ownIP = net.ParseIP(*ownIPStr)
+		if ownIP == nil {
+			fmt.Printf("Invalid IP address: %v\n", *ownIPStr)
+			os.Exit(1)
+		}
 	}
 
 	// Run in a continuous loop, so that the server can restart itself
@@ -38,10 +50,16 @@ func main() {
 		if *disableVPN {
 			flags |= server.ServerFlagDisableVPN
 		}
-		srv, err := server.NewServer(*config, flags)
+		if *hotReloadWWW {
+			flags |= server.ServerFlagHotReloadWWW
+		}
+		srv, err := server.NewServer(*configFile, flags)
 		if err != nil {
 			fmt.Printf("%v\n", err)
 			os.Exit(1)
+		}
+		if ownIP != nil {
+			srv.OwnIP = ownIP
 		}
 		srv.ListenForInterruptSignal()
 		check(srv.StartAllCameras())

@@ -113,11 +113,6 @@ export async function login(username: string, password: string): Promise<string>
 		return "Server failed to validate its public key";
 	}
 
-	//if (globals.isApp) {
-	//	// Defer all login related functionality to the native app.
-	//	return natLogin(globals.serverPublicKey, username.trim(), password.trim());
-	//}
-
 	// For a while, I started down the road of having logins be a two step process:
 	// 1. Get the native app to login with a long term bearer token
 	// 2. Get the native app to use that bearer token to login with a cookie
@@ -130,10 +125,12 @@ export async function login(username: string, password: string): Promise<string>
 	}
 
 	console.log(`Logging in with ${loginMode}`);
+	console.log(`Hello????`);
 	let basic = btoa(username.trim() + ":" + password.trim());
 	let r = await fetchOrErr('/api/auth/login?' + encodeQuery({ loginMode: loginMode }),
 		{ method: 'POST', headers: { "Authorization": "BASIC " + basic } });
 	if (!r.ok) {
+		console.log(`Login error: ${r.error}`);
 		return r.error;
 	}
 	globals.isLoggedIn = true;
@@ -141,6 +138,8 @@ export async function login(username: string, password: string): Promise<string>
 	let j = await r.r.json();
 
 	if (globals.isApp) {
+		console.log(`Sending tokens to app`);
+
 		let bearerToken = j.bearerToken; // base64-encoded bearer token
 		//setBearerToken(globals.serverPublicKey, bearerToken);
 		// Inform our mobile app that we've logged in. Chrome's limit on cookie duration is about 400 days,
@@ -152,8 +151,11 @@ export async function login(username: string, password: string): Promise<string>
 		if (!sessionCookie) {
 			return "Failed to get session cookie";
 		}
+		console.log(`Login to ${globals.serverPublicKey} with session ${sessionCookie} and bearer token ${bearerToken}`);
 
 		natLogin(globals.serverPublicKey, bearerToken, sessionCookie);
+	} else {
+		console.log(`App mode not activated, so not sending tokens to app`);
 	}
 	return "";
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { bestServerName, blankServer, natGetCurrentServer, natSetLocalWebviewVisibility, natSwitchToRegisteredServer } from '@/nativeOut';
+import { bestServerName, blankServer, natGetLastServer, natSetLocalWebviewVisibility, natSwitchToRegisteredServer } from '@/nativeOut';
 import type { Server } from '@/nativeOut';
 import Menu from '@/icons/menu.svg';
 import { globals } from '@/global';

@@ -46,6 +46,8 @@ public class RemoteWebViewClient extends WebViewClientCompat {
         //    view.evaluateJavascript("window.cySetCredentials('" + this.server.publicKey + "' , '" + this.server.bearerToken + "')", null);
         //}
         super.onPageFinished(view, url);
+        view.evaluateJavascript("window.cyActivateAppMode()", null);
+        Log.i("C", "app mode activated?");
     }
 
     @Override
@@ -98,6 +100,7 @@ public class RemoteWebViewClient extends WebViewClientCompat {
                 case "/natcom/hello":
                     return sendOK();
                 case "/natcom/login":
+                    Log.i("C", "natcom/login reached");
                     activity.runOnUiThread(() -> main.onLogin(url.getQueryParameter("bearerToken"), url.getQueryParameter("sessionCookie")));
                     return sendOK();
                 /*

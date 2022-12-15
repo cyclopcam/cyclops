@@ -32,7 +32,7 @@ class State {
     static final int STATE_NOTMODIFIED = 2; // Record has not been modified
 
     // SYNC-ALL-PREFS
-    static final String PREF_CURRENT_SERVER_PUBLIC_KEY = "CURRENT_SERVER_PUBLIC_KEY";
+    static final String PREF_LAST_SERVER_PUBLIC_KEY = "LAST_SERVER_PUBLIC_KEY";
 
     // Server is sent as JSON to appui
     // SYNC-NATCOM-SERVER
@@ -61,10 +61,10 @@ class State {
     LocalDB db;
     SharedPreferences sharedPref;
 
-    // serversLock guards access to 'servers' and 'currentServerPublicKey'
+    // serversLock guards access to 'servers' and 'lastServerPublicKey'
     Lock serversLock = new ReentrantLock();
     ArrayList<Server> servers = new ArrayList<Server>();
-    String currentServerPublicKey = "";
+    String lastServerPublicKey = "";
 
     private final HttpClient client = new HttpClient();
 
@@ -79,13 +79,13 @@ class State {
         try {
             // SYNC-ALL-PREFS
             SharedPreferences.Editor edit = sharedPref.edit();
-            edit.remove(PREF_CURRENT_SERVER_PUBLIC_KEY);
+            edit.remove(PREF_LAST_SERVER_PUBLIC_KEY);
             edit.apply();
 
             SQLiteDatabase h = db.getWritableDatabase();
             h.delete("server", "", null);
 
-            currentServerPublicKey = "";
+            lastServerPublicKey = "";
             servers = new ArrayList<Server>();
         } finally {
             serversLock.unlock();
@@ -96,7 +96,7 @@ class State {
         serversLock.lock();
         try {
             loadAllFromDB();
-            currentServerPublicKey = sharedPref.getString(PREF_CURRENT_SERVER_PUBLIC_KEY, "");
+            lastServerPublicKey = sharedPref.getString(PREF_LAST_SERVER_PUBLIC_KEY, "");
         } finally {
             serversLock.unlock();
         }
@@ -116,11 +116,11 @@ class State {
         }
     }
 
-    Server getCurrentServer() {
+    Server getLastServer() {
         serversLock.lock();
         try {
             for (Server s : servers) {
-                if (s.publicKey.equals(currentServerPublicKey)) {
+                if (s.publicKey.equals(lastServerPublicKey)) {
                     return s;
                 }
             }
@@ -157,13 +157,13 @@ class State {
         }
     }
 
-    void setCurrentServer(String publicKey) {
+    void setLastServer(String publicKey) {
         serversLock.lock();
         try {
-            Log.i("C", "setCurrentServer to " + publicKey);
-            currentServerPublicKey = publicKey;
+            Log.i("C", "setLastServer to " + publicKey);
+            lastServerPublicKey = publicKey;
             SharedPreferences.Editor edit = sharedPref.edit();
-            edit.putString(PREF_CURRENT_SERVER_PUBLIC_KEY, publicKey);
+            edit.putString(PREF_LAST_SERVER_PUBLIC_KEY, publicKey);
             edit.apply();
         } finally {
             serversLock.unlock();
@@ -181,6 +181,10 @@ class State {
             switch (key) {
                 case "name":
                     s.name = value;
+                    s.state = STATE_MODIFIED;
+                    break;
+                case "sessionCookie":
+                    s.sessionCookie = value;
                     s.state = STATE_MODIFIED;
                     break;
                 default:
@@ -264,11 +268,14 @@ class State {
         try {
             Server s = getServerByPublicKey(publicKey);
             if (s == null) {
+                Log.i("C", "Adding new server " + publicKey + " (" + name + ")");
                 s = new Server();
                 servers.add(s);
                 s.state = STATE_NEW;
                 s.publicKey = publicKey;
                 s.name = name;
+            } else {
+                s.state = STATE_MODIFIED;
             }
             s.lanIP = lanIP;
             s.bearerToken = bearerToken;
@@ -279,14 +286,14 @@ class State {
         }
     }
 
-    static class LoginResult {
-        String error;
-        String token;
-    }
+    //static class LoginResult {
+    //    String error;
+    //    String token;
+    //}
 
     // Use our bearer token to perform a cookie-based login, and set the cookie for our webviews
-    void recreateSession(String publicKey, boolean isProxy) {
-    }
+    //void recreateSession(String publicKey, boolean isProxy) {
+    //}
 
     // The code below should work.. but I decided to keep logins on the Typescript side.
     // There's no benefit to performing logins here.

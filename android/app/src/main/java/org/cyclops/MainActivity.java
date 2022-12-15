@@ -45,7 +45,7 @@ public class MainActivity extends AppCompatActivity implements Main {
     boolean isOnLAN = false;
     int contentHeight = 0;
     //ConnectivityManager.NetworkCallback networkCallback;
-    State.Server currentServer;
+    State.Server currentServer; // The server that our remote webview is pointed at
     String currentNetworkInterfaceName = "";
     HttpClient connectivityCheckClient;
     Crypto crypto;
@@ -71,7 +71,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         State.global.loadAll();
 
         // Uncomment the following line when testing initial application UI
-        State.global.resetAllState(); // DO NOT COMMIT
+        //State.global.resetAllState(); // DO NOT COMMIT
 
         // dev time
         WebView.setWebContentsDebuggingEnabled(true);
@@ -102,11 +102,11 @@ public class MainActivity extends AppCompatActivity implements Main {
         if (State.global.servers.size() == 0) {
             showRemoteWebView(false);
         } else {
-            State.Server current = State.global.getCurrentServer();
-            if (current == null) {
-                current = State.global.servers.get(0);
+            State.Server last = State.global.getLastServer();
+            if (last == null) {
+                last = State.global.servers.get(0);
             }
-            switchToServer(current);
+            switchToServer(last.publicKey);
         }
 
         setupNetworkMonitor();
@@ -122,6 +122,13 @@ public class MainActivity extends AppCompatActivity implements Main {
         });
 
         //openServer("http://192.168.10.15:8080");
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // If we've just woken up then it's possible that we've changed networks
+        revalidateCurrentConnection();
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -178,7 +185,7 @@ public class MainActivity extends AppCompatActivity implements Main {
     public void onLogin(String bearerToken, String sessionCookie) {
         Log.i("C", "onLogin to " + currentServer.publicKey + ", bearerToken: " + bearerToken.substring(0, 4) + "..." + ", sessionCookie: " + sessionCookie.substring(0, 4) + "...");
         State.global.addOrUpdateServer(currentServer.lanIP, currentServer.publicKey, bearerToken, currentServer.name, sessionCookie);
-        State.global.setCurrentServer(currentServer.publicKey);
+        State.global.setLastServer(currentServer.publicKey);
         localClient.cyRefreshServers(localWebView);
     }
 
@@ -327,42 +334,65 @@ public class MainActivity extends AppCompatActivity implements Main {
         return Constants.serverLanURL(server.ip);
     }
 
-    public void switchToServerByPublicKey(String publicKey) {
-        State.Server server = State.global.getServerCopyByPublicKey(publicKey);
-        if (server == null) {
-            Log.e("C", "Requested to switch to unknown server " + publicKey);
-            return;
+    public void revalidateCurrentConnection() {
+        if (currentServer != null) {
+            switchToServer(currentServer.publicKey);
         }
-        State.global.setCurrentServer(publicKey);
-        switchToServer(server);
     }
 
     // If you call switchToServer and 'server' = 'currentServer', then the function will first check
     // if a change between LAN and proxy is needed. If no change is needed, then it will leave the
     // app as-is.
-    public void switchToServer(State.Server server) {
+    // However, if you're doing that, then rather use revalidateCurrentConnection(), to make that
+    // explicit.
+    public void switchToServer(String publicKey) {
         Context context = this;
 
+        State.Server target = State.global.getServerCopyByPublicKey(publicKey);
+        if (target == null) {
+            Log.e("C", "Requested to switch to unknown server " + publicKey);
+            return;
+        }
+
         // justCheck: If server is not changing, then just check whether connectivity is still OK
-        boolean justCheck = currentServer != null && server.publicKey.equals(currentServer.publicKey);
+        boolean justCheck = currentServer != null && publicKey.equals(currentServer.publicKey);
+
+        State.global.setLastServer(publicKey);
 
         new Thread(new Runnable() {
             @Override
             public void run() {
                 // Try first to connect over LAN, and if that fails, then fall back to proxy.
+                State.Server server = target;
                 int storedLanIP = Scanner.parseIP(server.lanIP);
                 int wifiIP = Scanner.getWifiIPAddress(context);
                 if (storedLanIP != 0 && wifiIP != 0 && Scanner.areIPsInSameSubnet(storedLanIP, wifiIP)) {
                     String err = Scanner.preflightServerCheck(crypto, connectivityCheckClient, server);
                     if (err == null) {
+                        // Refresh state of 'server', because the preflight check can alter it (eg obtain a new session cookie)
+                        server = State.global.getServerCopyByPublicKey(server.publicKey);
                         if (justCheck && isOnLAN) {
                             Log.i("C", "Remaining on LAN " + server.lanIP + " for server " + server.publicKey);
                             return;
                         }
                         Log.i("C", "Connecting to LAN " + server.lanIP + " for server " + server.publicKey);
                         isOnLAN = true;
-                        runOnUiThread(() -> navigateToServer(serverLanURL(server), false, server, true));
+                        //runOnUiThread(() -> navigateToServer(serverLanURL(server), false, server, true));
+
+                        State.Server finalServer = server; // need *another* server instance, because Java
+                        runOnUiThread(() -> {
+                            String lanURL = serverLanURL(finalServer);
+                            CookieManager cookies = CookieManager.getInstance();
+                            // SYNC-CYCLOPS-SESSION-COOKIE
+                            cookies.setCookie(lanURL, "session=" + finalServer.sessionCookie, (Boolean ok) -> {
+                                Log.i("C", "setCookie session=<sessionCookie> result " + (ok ? "OK" : "Failed"));
+                                navigateToServer(lanURL, false, finalServer, true);
+                            });
+                        });
+
                         return;
+                    } else {
+                        Log.i("C", "Preflight check failed for LAN " + server.lanIP + " for server " + server.publicKey + ": " + err);
                     }
                 }
 
@@ -374,12 +404,13 @@ public class MainActivity extends AppCompatActivity implements Main {
                 }
                 isOnLAN = false;
                 Log.i("C", "Falling back to proxy " + proxyOrigin + " for server " + server.publicKey);
+                State.Server finalServer = server;
                 runOnUiThread(() -> {
                     CookieManager cookies = CookieManager.getInstance();
                     // SYNC-CYCLOPS-SERVER-COOKIE
-                    cookies.setCookie(proxyOrigin, "CyclopsServerPublicKey=" + server.publicKey, (Boolean ok) -> {
-                        Log.i("C", "setCookie result " + (ok ? "OK" : "Failed"));
-                        navigateToServer(proxyOrigin, false, server, true);
+                    cookies.setCookie(proxyOrigin, "CyclopsServerPublicKey=" + finalServer.publicKey, (Boolean ok) -> {
+                        Log.i("C", "setCookie CyclopsServerPublicKey result " + (ok ? "OK" : "Failed"));
+                        navigateToServer(proxyOrigin, false, finalServer, true);
                     });
                 });
             }
@@ -467,9 +498,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                 Log.e("C", "The default network changed link properties: " + linkProperties);
                 if (!linkProperties.getInterfaceName().equals(currentNetworkInterfaceName)) {
                     currentNetworkInterfaceName = linkProperties.getInterfaceName();
-                    if (currentServer != null) {
-                        switchToServer(currentServer);
-                    }
+                    revalidateCurrentConnection();
                 }
             }
         });

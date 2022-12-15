@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,6 +29,8 @@ type Server struct {
 	MustRestart      bool       // Value of the 'restart' parameter to Shutdown()
 	ShutdownStarted  chan bool  // This channel is closed when shutdown starts. So you can select() on it, to wait for shutdown.
 	ShutdownComplete chan error // Used by main() to report any shutdown errors
+	OwnIP            net.IP     // If not nil, overrides the IP address used when scanning the LAN for cameras
+	HotReloadWWW     bool       // Don't embed the 'www' directory into our binary, but load it from disk, and assume it's not immutable. This is for dev time on the 'www' source.
 
 	camerasLock  sync.Mutex
 	cameras      []*camera.Camera
@@ -55,7 +58,8 @@ type Server struct {
 }
 
 const (
-	ServerFlagDisableVPN = 1
+	ServerFlagDisableVPN   = 1
+	ServerFlagHotReloadWWW = 2 // Don't embed the 'www' directory into our binary, but load it from disk, and assume it's not immutable. This is for dev time on the 'www' source.
 )
 
 // Create a new server, load config, start cameras, and listen on HTTP
@@ -69,6 +73,7 @@ func NewServer(configDBFilename string, serverFlags int) (*Server, error) {
 		RingBufferSize:   200 * 1024 * 1024,
 		ShutdownComplete: make(chan error, 1),
 		ShutdownStarted:  make(chan bool),
+		HotReloadWWW:     (serverFlags & ServerFlagHotReloadWWW) != 0,
 		cameraFromID:     map[int64]*camera.Camera{},
 		recorders:        map[int64]*recorder{},
 		nextRecorderID:   1,

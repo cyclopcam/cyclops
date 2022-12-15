@@ -8,6 +8,7 @@
     android:orientation="vertical"
     tools:context=".MainActivity">
 
+    <!-- SYNC-STATUS-BAR-HEIGHT -->
     <View
         android:id="@+id/statusBarPlaceholder"
         android:layout_width="match_parent"

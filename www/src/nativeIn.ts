@@ -7,14 +7,17 @@ import { popRoute } from "./router/routes";
 // Back/Forward in history
 (window as any).cyBack = () => {
 	if (!popRoute()) {
+		console.log("cyBack (history stack is empty)");
 		return false;
 	}
+	console.log("cyBack (route popped)");
 	return true;
 };
 
 // Set app mode
 (window as any).cyActivateAppMode = () => {
 	globals.isApp = true;
+	console.log("App mode activated");
 };
 
 // Ensure that we have credentials for this server

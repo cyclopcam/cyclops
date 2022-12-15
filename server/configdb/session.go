@@ -150,8 +150,8 @@ func (c *ConfigDB) GetUserID(r *http.Request, allowBasic bool) int64 {
 	} else {
 		// Allow the session cookie to be specified as a header. This is a convenience added
 		// for our Android app, which needs to check the status of it's session cookie
-		// before deciding what to do next. Injecting a cookie into the webview is a few more
-		// lines of Java code, and async callbacks, so sending a simple header is easier,
+		// before deciding what to do next. Injecting a cookie into the webview is more
+		// lines of Java code plus async callbacks, so sending a simple header is easier,
 		// and that's the reason why we allow it.
 		sessionCookie = r.Header.Get("X-Session-Cookie")
 	}

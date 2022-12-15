@@ -101,11 +101,11 @@ export async function natSwitchToRegisteredServer(publicKey: string) {
 	await fetch("/natcom/switchToRegisteredServer?" + encodeQuery({ publicKey: publicKey }));
 }
 
-export async function natGetCurrentServer(): Promise<Server> {
+export async function natGetLastServer(): Promise<Server> {
 	if (dummyMode) {
 		return registeredFakeServers.length === 0 ? blankServer() : registeredFakeServers[0];
 	}
-	return await (await fetch("/natcom/getCurrentServer")).json() as Server;
+	return await (await fetch("/natcom/getLastServer")).json() as Server;
 }
 
 export enum LocalWebviewVisibility {

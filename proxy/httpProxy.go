@@ -17,7 +17,7 @@ func (p *Proxy) serveProxyRequest(w http.ResponseWriter, r *http.Request, server
 
 	// Use these headers to side-load information that proxyDirector will use.
 	// I find it strange that proxyDirector is not allowed to return an error...
-	// Also, to be clear, the http.Request that proxyDirector sees is NOT the same
+	// Also, note that the http.Request that proxyDirector sees is NOT the same
 	// as the Request object that we're seeing here. Director gets a fresh Request.
 	r.Header.Set("X-Cyclops-Server-IP", vpnIP)
 	r.Header.Set("X-Cyclops-Path", r.URL.Path)

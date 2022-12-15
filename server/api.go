@@ -1,7 +1,11 @@
 package server
 
 import (
+	"errors"
+	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -115,15 +119,25 @@ func (s *Server) SetupHTTP() error {
 	unprotected("POST", "/api/auth/createUser", s.httpAuthCreateUser)
 	unprotectedLimited("POST", "/api/auth/login", s.httpAuthLogin, 10, 10*time.Second)
 
-	isImmutable := true
-	//relRoot := "www/dist"
-	//absRoot, err := filepath.Abs(relRoot)
-	//if err != nil {
-	//	s.Log.Warnf("Failed to resolve static file directory %v: %v. Run 'npm run build' in 'www' to build static files. If you're using 'npm run dev', then you can ignore this warning.", relRoot, err)
-	//}
-	//s.Log.Infof("Serving static files from %v", absRoot)
 	//static, err := staticfiles.NewCachedStaticFileServer(absRoot, []string{"/api/"}, s.Log, isImmutable, nil)
-	static, err := staticfiles.NewCachedStaticFileServer(staticWWW, "www", []string{"/api/"}, s.Log, isImmutable, nil)
+	isImmutable := true
+	var fsys fs.FS
+	fsysRoot := "www"
+	fsys = staticWWW
+	if s.HotReloadWWW {
+		relRoot := "server/www"
+		absRoot, err := filepath.Abs(relRoot)
+		if err != nil {
+			s.Log.Errorf("Failed to resolve static file directory %v: %v. Run 'npm run build' in 'www' to build static files.", relRoot, err)
+			return errors.New("Failed to resolve static file directory for hot reload")
+		}
+		s.Log.Infof("Serving static files from %v, with hot reload", absRoot)
+		fsys = os.DirFS(absRoot)
+		fsysRoot = ""
+		isImmutable = false
+	}
+
+	static, err := staticfiles.NewCachedStaticFileServer(fsys, fsysRoot, []string{"/api/"}, s.Log, isImmutable, nil)
 	if err != nil {
 		s.Log.Warnf("Error in static files: %v. Run 'npm run build' in 'www' to build static files. If you're using 'npm run dev', then you can ignore this warning.", err)
 		//s.Log.Warnf("Error in static files ('%v' resolved to '%v'), error %v. Run 'npm run build' in 'www' to build static files. If you're using 'npm run dev', then you can ignore this warning.", relRoot, absRoot, err)

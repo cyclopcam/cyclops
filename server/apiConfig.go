@@ -104,6 +104,9 @@ func (s *Server) httpConfigScanNetworkForCameras(w http.ResponseWriter, r *http.
 		if timeoutMS != 0 {
 			options.Timeout = time.Millisecond * time.Duration(timeoutMS)
 		}
+		if s.OwnIP != nil {
+			options.OwnIP = s.OwnIP
+		}
 		cameras, err := scanner.ScanForLocalCameras(options)
 		if err != nil {
 			www.PanicServerError(err.Error())

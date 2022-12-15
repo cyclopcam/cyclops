@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+go build -o bin/kernelwg cmd/kernelwg/*.go
+sudo bin/kernelwg
