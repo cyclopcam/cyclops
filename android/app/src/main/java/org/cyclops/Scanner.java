@@ -261,16 +261,20 @@ public class Scanner {
         String url = Constants.serverLanURL(server.lanIP) + "/api/auth/whoami";
         HttpClient.Response resp = client.GET(url, new HashMap<>(Map.of("X-Session-Cookie", server.sessionCookie)));
         if (resp.Error != null) {
+            Log.i("C", "Preflight session error: " + resp.Error);
             return resp.Error;
         }
+        resp.Resp.close();
         if (resp.Resp.code() == 200) {
+            Log.i("C", "Preflight session OK");
             return null;
         }
         if (resp.Resp.code() == 401 || resp.Resp.code() == 403) {
             // session cookie is invalid, so we need to get a new one
+            Log.i("C", "Preflight session 401/403");
             return preflightServerCheck_RecreateSession(client, server);
         }
-        return "Unexpected session check response code " + resp.Resp.code();
+        return "Preflight session: Unexpected response code " + resp.Resp.code();
     }
 
     static String preflightServerCheck_RecreateSession(HttpClient client, org.cyclops.State.Server server) {
@@ -278,16 +282,19 @@ public class Scanner {
         String url = Constants.serverLanURL(server.lanIP) + "/api/auth/login";
         HttpClient.Response resp = client.POST(url, new HashMap<>(Map.of("Authorization", "Bearer " + server.bearerToken)));
         if (resp.Error != null) {
+            Log.i("C", "Recreate session error: " + resp.Error);
             return resp.Error;
         }
         if (resp.Resp.code() != 200) {
+            Log.i("C", "Recreate session != 200: " + resp.Resp.toString());
             return resp.Resp.toString();
         }
         String cookie = resp.Resp.header("Set-Cookie");
         if (cookie == null) {
+            Log.i("C", "Recreate session: no cookie");
             return "No session cookie in response";
         }
-        Log.i("C", "New cookie is '" + cookie + "'");
+        Log.i("C", "Recreate session, New cookie is '" + cookie + "'");
         // TODO: extract correct cookie value.. right now 'cookie' is probably something like "session=xyz; Path=/; HttpOnly"
         org.cyclops.State.global.setServerProperty(server.publicKey, "sessionCookie", cookie);
         return "";
@@ -311,6 +318,7 @@ public class Scanner {
                 JSAPI.KeysResponseJSON keys = gson.fromJson(body.charStream(), JSAPI.KeysResponseJSON.class);
                 // check the signature
                 if (crypto.verifyChallenge(publicKey, challenge, Base64.decode(keys.proof, Base64.NO_WRAP))) {
+                    Log.i("C", "Preflight public key OK");
                     return null;
                 }
                 Log.i("C", "Server's signature check failed");

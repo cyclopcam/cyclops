@@ -9,10 +9,13 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.net.ConnectivityManager;
+import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.Uri;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.Log;
@@ -46,7 +49,7 @@ public class MainActivity extends AppCompatActivity implements Main {
     int contentHeight = 0;
     //ConnectivityManager.NetworkCallback networkCallback;
     State.Server currentServer; // The server that our remote webview is pointed at
-    String currentNetworkInterfaceName = "";
+    String currentNetworkSignature = ""; // Used to detect when we change networks, to avoid sending secrets to a new server with the same IP address
     HttpClient connectivityCheckClient;
     Crypto crypto;
 
@@ -385,7 +388,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                             CookieManager cookies = CookieManager.getInstance();
                             // SYNC-CYCLOPS-SESSION-COOKIE
                             cookies.setCookie(lanURL, "session=" + finalServer.sessionCookie, (Boolean ok) -> {
-                                Log.i("C", "setCookie session=<sessionCookie> result " + (ok ? "OK" : "Failed"));
+                                Log.i("C", "setCookie(LAN) session=" + finalServer.sessionCookie.substring(0, 6) + "... result " + (ok ? "OK" : "Failed"));
                                 navigateToServer(lanURL, false, finalServer, true);
                             });
                         });
@@ -409,8 +412,14 @@ public class MainActivity extends AppCompatActivity implements Main {
                     CookieManager cookies = CookieManager.getInstance();
                     // SYNC-CYCLOPS-SERVER-COOKIE
                     cookies.setCookie(proxyOrigin, "CyclopsServerPublicKey=" + finalServer.publicKey, (Boolean ok) -> {
-                        Log.i("C", "setCookie CyclopsServerPublicKey result " + (ok ? "OK" : "Failed"));
-                        navigateToServer(proxyOrigin, false, finalServer, true);
+                        Log.i("C", "setCookie(proxy) CyclopsServerPublicKey=" +finalServer.publicKey.substring(0,8) + "... result " + (ok ? "OK" : "Failed"));
+                        // SYNC-CYCLOPS-SESSION-COOKIE
+                        cookies.setCookie(proxyOrigin, "session=" + finalServer.sessionCookie, (Boolean ok2) -> {
+                            String shortCookie = finalServer.sessionCookie.substring(0, 5);
+                            Log.i("C", "setCookie(proxy) session=" + shortCookie + "... result " + (ok2 ? "OK" : "Failed"));
+                            navigateToServer(proxyOrigin, false, finalServer, true);
+                        });
+
                     });
                 });
             }
@@ -495,9 +504,32 @@ public class MainActivity extends AppCompatActivity implements Main {
 
             @Override
             public void onLinkPropertiesChanged(Network network, LinkProperties linkProperties) {
-                Log.e("C", "The default network changed link properties: " + linkProperties);
-                if (!linkProperties.getInterfaceName().equals(currentNetworkInterfaceName)) {
-                    currentNetworkInterfaceName = linkProperties.getInterfaceName();
+                Log.i("C", "The default network changed link properties: " + linkProperties);
+
+                String networkSignature = linkProperties.getInterfaceName() + " ";
+                for (LinkAddress addr : linkProperties.getLinkAddresses()) {
+                    networkSignature += "," + addr.toString();
+                }
+
+                // In order to detect the SSID and BSSID, we need location data enabled.
+                // See https://stackoverflow.com/questions/21391395/get-ssid-when-wifi-is-connected
+                // This is why we have ACCESS_COARSE_LOCATION and ACCESS_FINE_LOCATION permissions in our manifest.
+                // meh... there are just so many answers on that page, and it's not working for me, so I'm just
+                // going to disable it. The only really robust solution is to run a wireguard HTTP proxy right on
+                // the phone...
+                WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wifi != null) {
+                    WifiInfo info = wifi.getConnectionInfo();
+                    if (info != null) {
+                        //String ssid = info.getSSID();
+                        networkSignature += " wifi:" + info.getSSID() + info.getBSSID();
+                    }
+                }
+                Log.i("C", "Old network signature: " + currentNetworkSignature);
+                Log.i("C", "New network signature: " + networkSignature);
+
+                if (!networkSignature.equals(currentNetworkSignature)) {
+                    currentNetworkSignature = networkSignature;
                     revalidateCurrentConnection();
                 }
             }

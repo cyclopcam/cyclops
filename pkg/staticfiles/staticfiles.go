@@ -30,7 +30,6 @@ var reWebpackAsset *regexp.Regexp
 // I presume that Nginx is only built to cache gzipped content from files on disk, not from
 // files that come from a proxy.
 type CachedStaticFileServer struct {
-	//absRoot        string // Root content path
 	fsys           fs.FS
 	fsRootDir      string // eg "www"
 	log            log.Log
@@ -38,7 +37,6 @@ type CachedStaticFileServer struct {
 	verbose        bool
 	apiRoutes      []string         // Any path that begins with an item from apiRoutes produces a 404
 	indexIntercept http.HandlerFunc // optional callback during index.html serving (creating for auth hotlink functionality)
-	scannedFiles   map[string]bool  // All static files that we found at startup
 	modTime        time.Time        // When we embed files, we Stat() returns a zero time, so we need an alternative
 
 	immutableFilesystem bool // If true, then assume that static files never change (true when running a Docker image)
@@ -85,21 +83,6 @@ func NewCachedStaticFileServer(fsys fs.FS, fsRootDir string, apiRoutes []string,
 		}
 	}
 
-	// Scan all static files, so that we can distinguish between an 'index.html' route and a genuine static file
-	files, err := globRecursive(fsys, fsRootDir)
-	if err != nil {
-		return nil, err
-	}
-	// Add a leading slash to all files
-	for i := range files {
-		files[i] = "/" + files[i]
-	}
-	scannedFiles := map[string]bool{}
-	for _, f := range files {
-		scannedFiles[f] = true
-	}
-	//fmt.Printf("Static files: \n%v\n", strings.Join(files, "\n"))
-
 	// chunk-vendors.js compressLevel size   time
 	//                  9             100665 110ms
 	//                  5             101379 10ms
@@ -107,11 +90,9 @@ func NewCachedStaticFileServer(fsys fs.FS, fsRootDir string, apiRoutes []string,
 	// From the above numbers, it's not worth it raising the compression level to 9.
 
 	return &CachedStaticFileServer{
-		//absRoot:             absRoot,
 		fsys:                fsys,
 		fsRootDir:           fsRootDir,
 		apiRoutes:           apiRoutes,
-		scannedFiles:        scannedFiles,
 		log:                 log,
 		verbose:             false,
 		compressLevel:       5,
@@ -155,7 +136,6 @@ func (s *CachedStaticFileServer) ServeFile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	//absPath := filepath.Join(s.absRoot, relPath)
 	readerCanGzip := strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
 	isCompressible := s.isCompressible(relPath) && readerCanGzip
 	var cachedFile *cachedStaticFile
@@ -330,6 +310,20 @@ func (s *CachedStaticFileServer) serveCachedFile(w http.ResponseWriter, r *http.
 	io.Copy(w, bytes.NewReader(cachedFile.Compressed))
 }
 
+func (s *CachedStaticFileServer) fileExists(file string) bool {
+	// remove the leading slash, because os.DirFS() doesn't like it
+	if strings.HasPrefix(file, "/") {
+		file = file[1:]
+	}
+
+	if s.fsRootDir != "" {
+		file = path.Join(s.fsRootDir, file)
+	}
+
+	st, err := fs.Stat(s.fsys, file)
+	return err == nil && !st.IsDir()
+}
+
 // This is our static files handler, which gets hit if none of our other routes match.
 // Most routes match API entrypoints.
 func (s *CachedStaticFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -346,7 +340,7 @@ func (s *CachedStaticFileServer) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	}
 
 	// If it's not a genuine file, then it must be index.html
-	isIndex := !s.scannedFiles[path]
+	isIndex := !s.fileExists(path)
 	if isIndex {
 		if s.indexIntercept != nil {
 			s.indexIntercept(w, r)

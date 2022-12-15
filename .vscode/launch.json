@@ -59,7 +59,9 @@
 			"mode": "auto",
 			"program": "cmd/cyclops/cyclops.go",
 			"cwd": "${workspaceFolder}",
-			"args": []
+			"args": [
+				"--hot"
+			]
 		},
 		{
 			"name": "proxy.go",

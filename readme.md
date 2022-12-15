@@ -30,9 +30,12 @@ Once setup, you should be able to run the server and the interface:
 ### WSL / Using a VM for Dev
 
 If you're using WSL, or any kind of VM for dev work, then you're probably behind
-a NAT of that VM. This will break the LAN scanning mechanism, because Cyclops
-will scan the VM's NAT network, instead of your actual home network. To work
-around this, you can specify your LAN network.
+a NAT of that VM. This will break the camera LAN scanning mechanism, because
+Cyclops will scan the VM's NAT network, instead of your actual home network. To
+work around this, you can specify your LAN network with the `--ip` flag. For
+example, to launch the server, use this script
+`scripts/server --ip 192.168.1.10`, if your own IP is `192.168.1.10`, and the
+cameras on your LAN are on the `192.168.1.x` network.
 
 # Other Topics
 

@@ -47,7 +47,7 @@ public class RemoteWebViewClient extends WebViewClientCompat {
         //}
         super.onPageFinished(view, url);
         view.evaluateJavascript("window.cyActivateAppMode()", null);
-        Log.i("C", "app mode activated?");
+        //Log.i("C", "app mode activated?");
     }
 
     @Override
