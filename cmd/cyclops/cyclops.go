@@ -19,7 +19,9 @@ func check(err error) {
 func main() {
 	home, _ := os.UserHomeDir()
 	if home == "" {
-		// Don't know how this would happen in practice.. maybe some kind of system account
+		// I don't know how this would happen in practice.. maybe some kind of system account.
+		// But anyway, it's usual for this to be overridden with the --config option, so this
+		// default is not very important.
 		home = "/var/lib"
 	}
 

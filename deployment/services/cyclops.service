@@ -6,7 +6,7 @@ Requires=network-online.target
 [Service]
 User=cyclops
 Group=cyclops
-ExecStart=/usr/bin/cyclops --config /var/lib/cyclops/config.sqlite
+ExecStart=/usr/local/bin/cyclops --config /var/lib/cyclops/config.sqlite
 PrivateTmp=true
 ProtectSystem=full
 

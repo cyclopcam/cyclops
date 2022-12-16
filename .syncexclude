@@ -7,6 +7,7 @@ cyclops.json
 node_modules
 /cyclops
 /www/dist
+/server/www
 /android/app/build
 /scripts/proxy/tmp
 /bin

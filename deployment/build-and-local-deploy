@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# Build and deploy as systemd services.
+
+set -e
+
+if ! grep -q cyclops /etc/group; then
+	echo Creating cyclops group
+	sudo groupadd --system cyclops
+fi
+
+if ! grep -q cyclops /etc/passwd; then
+	echo Creating cyclops user
+	sudo useradd --system \
+		--gid cyclops \
+		--create-home \
+		--home-dir /var/lib/cyclops \
+		--shell /usr/sbin/nologin \
+		--comment "Cyclops Camera Security System" \
+		cyclops
+fi
+
+cd www && npm install && npm run build && cd ..
+go build -o bin/kernelwg cmd/kernelwg/*.go
+go build -o bin/cyclops cmd/cyclops/cyclops.go
+
+if [ ! -f /etc/systemd/system/cyclops.service ]; then
+	echo Creating cyclops service
+	sudo cp deployment/services/cyclops.service /etc/systemd/system
+	sudo systemctl daemon-reload
+	sudo systemctl enable cyclops
+fi
+
+if [ ! -f /etc/systemd/system/cyclops-kernelwg.service ]; then
+	echo Creating cyclops-kernelwg service
+	sudo cp deployment/services/cyclops-kernelwg.service /etc/systemd/system
+	sudo systemctl daemon-reload
+	sudo systemctl enable cyclops-kernelwg
+fi
+
+sudo systemctl stop cyclops
+sudo systemctl stop cyclops-kernelwg
+sudo cp bin/kernelwg /usr/local/bin/cyclops-kernelwg
+sudo cp bin/cyclops /usr/local/bin/cyclops
+sudo systemctl start cyclops-kernelwg
+sudo systemctl start cyclops

@@ -4,7 +4,7 @@ After=network.target network-online.target
 Requires=network-online.target
  
 [Service]
-ExecStart=/usr/bin/cyclops-kernelwg
+ExecStart=/usr/local/bin/cyclops-kernelwg
 
 [Install]
 WantedBy=multi-user.target
