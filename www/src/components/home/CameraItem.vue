@@ -11,7 +11,7 @@ let props = defineProps<{
 defineEmits(['play', 'stop']);
 
 function style(): any {
-	// We want an aspect ratio that is most average, because in <player> we distort the aspect ratio
+	// We want an aspect ratio that is the most average, because in <player> we distort the aspect ratio
 	// We use aspect = 1.5 because it's more square than 16:9 (1.777), to accomodate cameras that are more square.
 	let aspect = 1.5;
 	let width = 320;
@@ -108,7 +108,7 @@ function iconIsRecord() { return (props.icon ?? "play") === "record"; }
 
 .name {
 	position: absolute;
-	left: 4px;
+	right: 4px; // put name on the right, because video-encoded time display is usually on the top left
 	top: 4px;
 	font-size: 10px;
 	color: #fff;

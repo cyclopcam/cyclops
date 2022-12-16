@@ -4,20 +4,33 @@ import { globals } from '@/globals';
 import CameraItem from '@/components/home/CameraItem.vue';
 import { ref } from 'vue';
 
-let play = ref(false);
+let isPlaying = ref({} as { [index: number]: boolean }); // ID -> boolean
+let linkedPlay = false;
 
 function cameras(): CameraInfo[] {
 	return globals.cameras;
 }
 
-function onPlay() {
+function onPlay(cam: CameraInfo) {
 	console.log("onPlay");
-	play.value = true;
+	if (linkedPlay) {
+		for (let c of cameras()) {
+			isPlaying.value[c.id] = true;
+		}
+	} else {
+		isPlaying.value[cam.id] = true;
+	}
 }
 
-function onStop() {
+function onStop(cam: CameraInfo) {
 	console.log("onStop");
-	play.value = false;
+	if (linkedPlay) {
+		for (let c of cameras()) {
+			isPlaying.value[c.id] = false;
+		}
+	} else {
+		isPlaying.value[cam.id] = false;
+	}
 }
 
 </script>
@@ -30,8 +43,8 @@ function onStop() {
 		</toolbar>
 		-->
 		<div class="cameras">
-			<camera-item v-for="cam of cameras()" :camera="cam" :play="play" @play="onPlay" @stop="onStop"
-				size="medium" />
+			<camera-item v-for="cam of cameras()" :camera="cam" :play="isPlaying[cam.id] ?? false" @play="onPlay(cam)"
+				@stop="onStop(cam)" size="medium" />
 		</div>
 	</div>
 </template>

@@ -13,8 +13,9 @@ let servers = ref([] as Server[]);
 let root = ref(null);
 let canvas = ref(null);
 
-function onConnect(s: Server) {
-	natSwitchToRegisteredServer(s.publicKey);
+async function onConnect(s: Server) {
+	await natSwitchToRegisteredServer(s.publicKey);
+	globals.currentServer = s;
 	globals.showExpanded(false);
 }
 

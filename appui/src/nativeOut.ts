@@ -140,11 +140,13 @@ export async function natNavigateToScannedLocalServer(s: ScannedServer) {
 }
 
 export async function natWaitForScreenGrab(): Promise<ImageData> {
+	let start = new Date().getTime();
 	let pauseMS = 5;
 	let maxWaitMS = 2000;
 	for (let i = 0; i < maxWaitMS / pauseMS; i++) {
 		let img = await natGetScreenGrab(i === 0);
 		if (img !== null) {
+			console.log("natWaitForScreenGrab took " + (new Date().getTime() - start) + " ms");
 			return img;
 		}
 		await sleep(pauseMS);

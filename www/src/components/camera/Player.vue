@@ -2,7 +2,7 @@
 import type { CameraInfo } from "@/camera/camera";
 import { encodeQuery } from "@/util/util";
 import JMuxer from "jmuxer";
-import { onMounted, onUnmounted, watch } from "vue";
+import { onMounted, onUnmounted, watch, ref } from "vue";
 
 /*
 
@@ -38,6 +38,16 @@ let props = defineProps<{
 }>()
 let emits = defineEmits(['click']);
 
+let posterUrlCacheBreaker = ref(Math.round(Math.random() * 1e9));
+
+// Once a <video> element has received the first frame, then it will stop using the poster image,
+// and instead use the first video frame for its poster. We don't want this. We want to keep
+// updating our poster image every few seconds, even if the video is paused.
+let showOverlay = ref(false);
+
+let showCanvas = ref(true);
+let canvas = ref(null);
+
 let muxer: JMuxer | null = null;
 let ws: WebSocket | null = null;
 let backlogDone = false;
@@ -45,6 +55,8 @@ let nPackets = 0;
 let nBytes = 0;
 let firstPacketTime = 0;
 let isPaused = false;
+let posterURLUpdateFrequencyMS = 5 * 1000; // When the page is active, we update our poster URL every X seconds
+let posterURLTimerID: any = 0;
 
 // SYNC-WEBSOCKET-COMMANDS
 enum WSMessage {
@@ -80,7 +92,7 @@ function parse(data: ArrayBuffer) {
 		backlogDone = true;
 	}
 
-	if (logPacketCount && nPackets % 60 === 0) {
+	if (logPacketCount && nPackets % 30 === 0) {
 		console.log(`${props.camera.name} received ${nPackets} packets`);
 	}
 
@@ -101,12 +113,14 @@ function parse(data: ArrayBuffer) {
 	return {
 		video: video,
 		duration: backlog ? undefined : normalDuration,
+		//duration: undefined,
 	};
 }
 
 function play() {
 	let isPlaying = muxer !== null;
 	console.log("play(). isPlaying: " + (isPlaying ? "yes" : "no"));
+	showOverlay.value = false;
 	if (isPlaying)
 		return;
 
@@ -124,7 +138,8 @@ function play() {
 		// If we do specify FPS here, then it becomes Max FPS, and consequently max speedup during backlog catchup.
 		//fps: 60, 
 		maxDelay: 200,
-		flushingTime: 100, // jsmuxer basically runs as setInterval(() => flushFrames(), flushingTime)
+		//flushingTime: 100, // jsmuxer basically runs as setInterval(() => flushFrames(), flushingTime)
+		flushingTime: 50, // jsmuxer basically runs as setInterval(() => flushFrames(), flushingTime)
 	} as any);
 
 	ws = new WebSocket(socketURL);
@@ -136,12 +151,24 @@ function play() {
 		if (muxer) {
 			let data = parse(event.data);
 			muxer.feed(data);
+			if (showCanvas.value) {
+				invalidateCanvas();
+			}
 		}
 	});
 
 	ws.addEventListener("error", function (e) {
 		console.log("Socket Error");
 	});
+}
+
+function invalidateCanvas() {
+	let can = canvas.value! as HTMLCanvasElement;
+	can.width = 1;
+	can.height = 1;
+	let cx = can.getContext('2d')!;
+	cx.fillStyle = "rgba(0,0,0,0.01)";
+	cx.fillRect(0, 0, 1, 1);
 }
 
 function onClick() {
@@ -151,6 +178,7 @@ function onClick() {
 
 function onPlay() {
 	console.log("onPlay");
+
 	//play();
 	if (isPaused) {
 		isPaused = false;
@@ -160,6 +188,10 @@ function onPlay() {
 
 function onPause() {
 	console.log("onPause");
+
+	showOverlay.value = true;
+	resetPosterURL();
+
 	//stop();
 	isPaused = true;
 	sendWSMessage(WSMessage.Pause);
@@ -167,6 +199,10 @@ function onPause() {
 
 function stop() {
 	console.log("Player.vue stop");
+
+	showOverlay.value = true;
+	resetPosterURL();
+
 	isPaused = false;
 	if (ws) {
 		ws.close();
@@ -187,8 +223,17 @@ function sendWSMessage(msg: WSMessage) {
 }
 
 function posterURL(): string {
-	//return "/api/camera/latestImage/" + props.camera.id + "?" + encodeQuery(bearerTokenQuery());
-	return "/api/camera/latestImage/" + props.camera.id;
+	return "/api/camera/latestImage/" + props.camera.id + "?" + encodeQuery({ cacheBreaker: posterUrlCacheBreaker.value });
+}
+
+function borderRadius(): string | undefined {
+	return props.round ? "5px" : undefined;
+}
+
+function imgStyle(): any {
+	return {
+		"border-radius": borderRadius(),
+	}
 }
 
 function videoStyle(): any {
@@ -214,7 +259,7 @@ function videoStyle(): any {
 	return {
 		//width: width,
 		//height: height,
-		"border-radius": props.round ? "5px" : "",
+		"border-radius": borderRadius(),
 	}
 }
 
@@ -226,22 +271,46 @@ watch(() => props.play, (newVal, oldVal) => {
 	}
 })
 
+function resetPosterURL() {
+	posterUrlCacheBreaker.value = Math.round(Math.random() * 1e9);
+}
+
+function posterURLUpdateTimer() {
+	if (document.visibilityState === "visible") {
+		resetPosterURL();
+	}
+	//console.log(`posterURLUpdateTimer ${props.camera.id}`);
+	posterURLTimerID = setTimeout(posterURLUpdateTimer, posterURLUpdateFrequencyMS);
+}
+
 onUnmounted(() => {
+	clearTimeout(posterURLTimerID);
 	stop();
 })
 
 onMounted(() => {
+	posterURLUpdateTimer();
 	if (props.play)
 		play();
 })
 </script>
 
 <template>
-	<video class="video" :id="'camera' + camera.id" autoplay :poster="posterURL()" @play="onPlay" @pause="onPause"
-		@click="onClick" :style="videoStyle()" />
+	<div class="container">
+		<video class="video" :id="'camera' + camera.id" autoplay :poster="posterURL()" @play="onPlay" @pause="onPause"
+			@click="onClick" :style="videoStyle()" />
+		<img v-if="showOverlay" class="overlay" :src="posterURL()" :style="imgStyle()" />
+		<canvas v-if="showCanvas" ref="canvas" class="canvas" />
+	</div>
 </template>
 
 <style lang="scss" scoped>
+.container {
+	width: 100%;
+	height: 100%;
+	position: relative;
+}
+
 .video {
 	width: 100%;
 	height: 100%;
@@ -250,5 +319,23 @@ onMounted(() => {
 	// aspect ratio of the decoded video stream, and this usually leaves a letter box in our UI. Normally I hate distorting
 	// aspect ratio, but in this case I actually think it's the best option.
 	object-fit: fill;
+}
+
+.overlay {
+	pointer-events: none;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.canvas {
+	pointer-events: none;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 1px;
+	height: 1px;
 }
 </style>

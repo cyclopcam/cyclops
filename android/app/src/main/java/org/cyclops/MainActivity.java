@@ -321,10 +321,15 @@ public class MainActivity extends AppCompatActivity implements Main {
             return bmp;
         } else {
             Log.i("C", "Grabbing screen size " + grabView.getWidth() + " x " + grabView.getHeight());
+            Bitmap cached = grabView.getDrawingCache();
+            if (cached != null) {
+                Log.i("C", "getDrawingCache() -> size " + cached.getWidth() + " x " + cached.getHeight());
+            }
             Bitmap bmp = Bitmap.createBitmap(grabView.getWidth(), grabView.getHeight(), Bitmap.Config.ARGB_8888);
             Canvas c = new Canvas(bmp);
             //rootView.layout()
             grabView.draw(c);
+            Log.i("C", "Screen grab done");
             return bmp;
         }
     }

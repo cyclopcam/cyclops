@@ -51,17 +51,18 @@ type VideoWebSocketStreamer struct {
 	nPacketsSent    int64
 	lastLogTime     time.Time
 	debug           bool
-	logPacketCount  bool // SYNC-LOG-PACKET-COUNT
+	logPacketCount  bool
 }
 
 func NewVideoWebSocketStreamer(cameraName string, logger log.Log) *VideoWebSocketStreamer {
 	streamerID := atomic.AddInt64(&nextWebSocketStreamerID, 1)
 	return &VideoWebSocketStreamer{
-		incoming:   make(StreamSinkChan, StreamSinkChanDefaultBufferSize),
-		streamerID: streamerID,
-		log:        log.NewPrefixLogger(logger, fmt.Sprintf("Camera %v WebSocket %v", cameraName, streamerID)),
-		sendQueue:  make(chan *videox.DecodedPacket, WebSocketSendBufferSize),
-		debug:      false,
+		incoming:       make(StreamSinkChan, StreamSinkChanDefaultBufferSize),
+		streamerID:     streamerID,
+		log:            log.NewPrefixLogger(logger, fmt.Sprintf("Camera %v WebSocket %v", cameraName, streamerID)),
+		sendQueue:      make(chan *videox.DecodedPacket, WebSocketSendBufferSize),
+		debug:          false,
+		logPacketCount: false, // SYNC-LOG-PACKET-COUNT
 	}
 }
 
@@ -87,7 +88,7 @@ func (s *VideoWebSocketStreamer) onPacketRTP(packet *videox.DecodedPacket) {
 		}
 	} else {
 		s.nPacketsSent++
-		if s.logPacketCount && s.nPacketsSent%60 == 0 {
+		if s.logPacketCount && s.nPacketsSent%30 == 0 {
 			// This log is used in conjunction with a similar console.log in the web client, to debug stale frame/backlog issues.
 			// Search for SYNC-LOG-PACKET-COUNT
 			s.log.Infof("Sent %v", s.nPacketsSent)
