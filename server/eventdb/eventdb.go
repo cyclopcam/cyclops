@@ -42,15 +42,19 @@ func Open(log log.Log, root string) (*EventDB, error) {
 		return nil, fmt.Errorf("Failed to set event storage path '%v': %w", root, err)
 	}
 
-	log.Infof("Opening DB at '%v'", root)
+	log.Infof("Opening Events DB at '%v'", root)
 	dbPath := filepath.Join(root, "events.sqlite")
 	eventDB, err := dbh.OpenDB(log, dbh.MakeSqliteConfig(dbPath), Migrations(log), 0)
 	if err == nil {
-		return &EventDB{
+		self := &EventDB{
 			log:  log,
 			db:   eventDB,
 			Root: root,
-		}, nil
+		}
+		if err := LoadStandardOntology(self); err != nil {
+			return nil, err
+		}
+		return self, nil
 	} else {
 		err = fmt.Errorf("Failed to open database %v: %w", dbPath, err)
 	}
@@ -151,7 +155,7 @@ func (e *EventDB) DeleteRecordingComplete(id int64) error {
 	}
 
 	// Get all physical records before deleting from the DB
-	err, physical := e.GetPhysicalRecordsOf(&rec)
+	physical, err := e.GetPhysicalRecordsOf(&rec)
 	if err != nil {
 		return err
 	}
@@ -168,15 +172,15 @@ func (e *EventDB) DeleteRecordingComplete(id int64) error {
 }
 
 // Get all physical records for the given logical or simple recording object
-func (e *EventDB) GetPhysicalRecordsOf(rec *Recording) (error, []*Recording) {
+func (e *EventDB) GetPhysicalRecordsOf(rec *Recording) ([]*Recording, error) {
 	if rec.IsSimple() || rec.IsPhysical() {
-		return nil, []*Recording{rec}
+		return []*Recording{rec}, nil
 	}
 	physical := []*Recording{}
 	if err := e.db.Where("parent_id = ?", rec.ID).Find(&physical).Error; err != nil {
-		return err, nil
+		return nil, err
 	}
-	return nil, physical
+	return physical, nil
 }
 
 // Delete the video files (but not the DB record) of the given recordings
@@ -199,71 +203,107 @@ func (e *EventDB) DeleteFilesOf(recordings []*Recording) error {
 	return firstErr
 }
 
-func (e *EventDB) GetRecording(id int64) (error, *Recording) {
+func (e *EventDB) GetRecording(id int64) (*Recording, error) {
 	rec := Recording{}
 	if err := e.db.First(&rec, id).Error; err != nil {
-		return err, nil
+		return nil, err
 	}
-	return nil, &rec
+	return &rec, nil
 }
 
-func (e *EventDB) GetRecordings() (error, []Recording) {
+func (e *EventDB) GetRecordings() ([]Recording, error) {
 	recordings := []Recording{}
 	if err := e.db.Where("record_type IN (?,?)", RecordTypeLogical, RecordTypeSimple).Find(&recordings).Error; err != nil {
-		return err, nil
+		return nil, err
 	}
-	return nil, recordings
+	return recordings, nil
 }
 
-func (e *EventDB) Count() (error, int64) {
+func (e *EventDB) Count() (int64, error) {
 	n := int64(0)
 	if err := e.db.Model(&Recording{}).Where("record_type IN (?,?)", RecordTypeLogical, RecordTypeSimple).Count(&n).Error; err != nil {
-		return err, 0
+		return 0, err
 	}
-	return nil, n
+	return n, nil
 }
 
-func (e *EventDB) GetOntologies() (error, []Ontology) {
+func (e *EventDB) SetRecordingLabels(rec *Recording) error {
+	return e.db.Model(&rec).Select("use_for_training", "labels").Updates(rec).Error
+}
+
+func (e *EventDB) GetOntologies() ([]Ontology, error) {
 	ontologies := []Ontology{}
 	if err := e.db.Find(&ontologies).Error; err != nil {
-		return err, nil
+		return nil, err
 	}
-	return nil, ontologies
+	return ontologies, nil
+}
+
+func (e *EventDB) GetLatestOntology() (*Ontology, error) {
+	ontology := Ontology{}
+	if err := e.db.Order("created_at DESC").First(&ontology).Error; err != nil {
+		return nil, err
+	}
+	return &ontology, nil
 }
 
 // Return true if there are any recordings that reference the given ontology
-func (e *EventDB) IsOntologyUsed(id int64) (error, bool) {
+func (e *EventDB) IsOntologyUsed(id int64) (bool, error) {
 	n := int64(0)
 	if err := e.db.Model(&Recording{}).Where("ontology_id = ?", id).Count(&n).Error; err != nil {
-		return err, false
+		return false, err
 	}
-	return nil, n != 0
+	return n != 0, nil
 }
 
 // Find an existing ontology that matches the given spec, or create a new one if necessary
-func (e *EventDB) CreateOntology(spec OntologyDefinition) (error, int64) {
-	err, existing := e.GetOntologies()
+func (e *EventDB) CreateOntology(spec *OntologyDefinition) (int64, error) {
+	existing, err := e.GetOntologies()
 	if err != nil {
-		return err, 0
+		return 0, err
 	}
 	// Look for existing
 	specHash := spec.Hash()
 	for i := range existing {
 		if string(existing[i].Definition.Data.Hash()) == string(specHash) {
-			return nil, existing[i].ID
+			return existing[i].ID, nil
 		}
 	}
 	// Create new
 	now := time.Now()
 	ontology := &Ontology{
 		CreatedAt:  dbh.MakeIntTime(now),
-		ModifiedAt: dbh.MakeIntTime(now),
-		Definition: dbh.MakeJSONField(spec),
+		Definition: dbh.MakeJSONField(*spec),
 	}
 	if err := e.db.Create(ontology).Error; err != nil {
-		return err, 0
+		return 0, err
 	}
-	return nil, ontology.ID
+	return ontology.ID, nil
+}
+
+// Find the latest ontology that is a superset of the given spec.
+// Returns (nil, nil) if no such ontology exists.
+func (e *EventDB) FindLatestOntologyThatIsSupersetOf(spec *OntologyDefinition) (*Ontology, error) {
+	// Try first for the most likely scenario. This avoids a gradual slowdown over time,
+	// as more historical ontologies fill up the DB.
+	latest, err := e.GetLatestOntology()
+	if latest != nil && latest.Definition.Data.IsSupersetOf(spec) {
+		return latest, nil
+	}
+	latest = nil
+
+	all, err := e.GetOntologies()
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].Definition.Data.IsSupersetOf(spec) {
+			if latest == nil || all[i].CreatedAt.Get().After(latest.CreatedAt.Get()) {
+				latest = &all[i]
+			}
+		}
+	}
+	return nil, nil
 }
 
 // Delete unused ontologies.

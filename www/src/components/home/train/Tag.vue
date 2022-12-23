@@ -51,8 +51,8 @@ function infoText() {
 <template>
 	<div class="flex">
 		<label class="flex">
-			<input v-if="selectable" type="checkbox" :checked="selected" @input="$emit('select')" />
-			<div :class="{name: true, alarmBG: isAlarm(), recordBG: isRecord(), ignoreBG: isIgnore()}">{{tag.name}}
+			<input v-if="selectable" type="radio" :checked="selected" @input="$emit('select')" />
+			<div :class="{ name: true, alarmBG: isAlarm(), recordBG: isRecord(), ignoreBG: isIgnore() }">{{ tag.name }}
 			</div>
 		</label>
 		<info-bubble v-if="showInfoBubble" style="margin-left: 10px" :title="infoTitle()" :text="infoText()" />

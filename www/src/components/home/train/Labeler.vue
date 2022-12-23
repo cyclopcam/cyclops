@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { OntologyLevel, OntologyTag, type Ontology, type Recording } from '@/recording/recording';
+import { OntologyLevel, OntologyTag, type Ontology, type Recording, Labels } from '@/recording/recording';
 import { encodeQuery } from '@/util/util';
 import { onMounted, ref } from 'vue';
 import VideoTimeline from '../../core/VideoTimeline.vue';
@@ -7,11 +7,7 @@ import Cropper from '../../core/Cropper.vue';
 import Tag from './Tag.vue';
 import InfoBubble from '../../widgets/InfoBubble.vue';
 import LevelsExplainer from './LevelsExplainer.vue';
-import Back from '@/icons/back-black.svg';
-import Next from '@/icons/next.svg';
-import SvgButton from '@/components/widgets/SvgButton.vue';
-import { pushRoute, router } from "@/router/routes";
-import FullscreenTopbar from "../../core/FullscreenTopbar.vue";
+import { pushRoute } from "@/router/routes";
 
 // It was too painful to make this a true top-level route,
 // so I moved it back to a child component, where we bring
@@ -34,6 +30,7 @@ let videoTag = ref(new OntologyTag("", OntologyLevel.Record)); // Blank name ===
 let haveCrop = ref(false);
 let isFreshLabel = ref(true); // True if this is the first time that the user is labelling this video (i.e. there was no existing labelling data for it)
 let useVideo = ref(false);
+let error = ref("");
 
 function videoElement(): HTMLVideoElement {
 	return video.value! as HTMLVideoElement
@@ -45,8 +42,6 @@ function videoURL(): string {
 
 function ontology(): Ontology {
 	if (props.recording.ontology) {
-		// TODO: Create a temporary ontology which is the union of recording.ontology and latestOntology,
-		// and if necessary, insert that into the DB as latest.
 		return props.recording.ontology;
 	}
 	return props.latestOntology;
@@ -135,8 +130,18 @@ function onCancel() {
 	pushRoute({ name: 'rtTrainEditRecordings' });
 }
 
-function onSave() {
-	pushRoute({ name: 'rtTrainEditRecordings' });
+async function onSave() {
+	props.recording.labels = new Labels();
+	props.recording.labels.videoTags.push(ontology().tags.indexOf(videoTag.value));
+	props.recording.labels.cropStart = Math.round(cropStart.value * 100) / 100;
+	props.recording.labels.cropEnd = Math.round(cropEnd.value * 100) / 100;
+
+	let r = await props.recording.saveLabels();
+	if (!r.ok) {
+		error.value = r.error;
+	} else {
+		pushRoute({ name: 'rtTrainEditRecordings' });
+	}
 }
 
 onMounted(async () => {
@@ -154,7 +159,7 @@ onMounted(async () => {
 
 		<div class="form">
 			<div style="height:25px" />
-			<div :class="{instruction:true, nextStep: step() === Steps.Event}">What is happening in this video?</div>
+			<div :class="{ instruction: true, nextStep: step() === Steps.Event }">What is happening in this video?</div>
 			<div class="flex tagListContainer">
 				<div class="flexColumn tagList">
 					<tag v-for="tag of orderedTags()" :tag="tag" :selectable="true" :selected="videoTag === tag"
@@ -168,8 +173,8 @@ onMounted(async () => {
 			</div>
 
 			<div style="height:25px" />
-			<div :class="{cropContainer: true, unavailable: step() < Steps.Crop, available: step() >= Steps.Crop}">
-				<div :class="{instruction:true, nextStep: step() === Steps.Crop}">
+			<div :class="{ cropContainer: true, unavailable: step() < Steps.Crop, available: step() >= Steps.Crop }">
+				<div :class="{ instruction: true, nextStep: step() === Steps.Crop }">
 					Crop the video to the precise moments when this occurs</div>
 				<cropper class="cropper" :duration="duration" :start="cropStart" :end="cropEnd"
 					@seek-start="onCropStart" @seek-end="onCropEnd" />
@@ -178,16 +183,17 @@ onMounted(async () => {
 
 			<div style="height:15px" />
 			<label
-				:class="{checkboxLabel: true, unavailable: step() < Steps.UseVideo, available: step() >= Steps.UseVideo, nextStep: step() === Steps.UseVideo}">
+				:class="{ checkboxLabel: true, unavailable: step() < Steps.UseVideo, available: step() >= Steps.UseVideo, nextStep: step() === Steps.UseVideo }">
 				<input type="checkbox" v-model="useVideo" />Use this video to train my system
 			</label>
 
 			<div style="height:20px" />
+			<div v-if="error !== ''" class="error">{{ error }}</div>
 			<div class="bottomPanel">
 				<!-- <svg-button :icon="Back" size="30px" @click="onBack" /> -->
 				<button @click="onCancel">Cancel</button>
 				<div
-					:class="{finish: true, unavailable: step() < Steps.Done, available: step() >= Steps.Done, nextStep: step() === Steps.Done}">
+					:class="{ finish: true, unavailable: step() < Steps.Done, available: step() >= Steps.Done, nextStep: step() === Steps.Done }">
 					<!-- <svg-button :icon="Next" size="40px" @click="onDone" /> -->
 					<button class="focalButton" @click="onSave">Save</button>
 				</div>
@@ -303,6 +309,11 @@ $timelineWidth: calc($videoWidth - 20px);
 
 .timeline {
 	width: $timelineWidth;
+}
+
+.error {
+	margin: 10px 0px;
+	color: #d00;
 }
 
 .bottomPanel {

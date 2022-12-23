@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CameraInfo } from "@/camera/camera";
 import { encodeQuery } from "@/util/util";
+import { globals } from "@/globals";
 import JMuxer from "jmuxer";
 import { onMounted, onUnmounted, watch, ref } from "vue";
 
@@ -28,6 +29,34 @@ Why don't we just stop the video if we receive a pause event?
 Because if the user re-activates the tab, then she will want the video to resume
 playing, without having to click "play" again.
 
+Weird Android WebView issue
+---------------------------
+On Android the following happens:
+The first time that we try to play a video, something goes wrong, and the video
+doesn't play. We see no error messages - JMuxer is happy. However, when I look
+at the Android logs (via logcat), I see the following:
+
+VideoCapabilities   org.cyclops   W  Unsupported mime image/vnd.android.heic
+VideoCapabilities   org.cyclops   W  Unrecognized profile/level 0/3 for video/mpeg2
+VideoCapabilities   org.cyclops   W  Unrecognized profile/level 0/3 for video/mpeg2
+cr_MediaCodecUtil   org.cyclops   E  Decoder for type video/av01 is not supported on this device [requireSoftware=false, requireHardware=true].
+
+This is strange, because it only happens the first time we try to play a video.
+On subsequent attempts, everything works.
+
+My workaround for this is to wait for the JMuxer onReady event, then recreate
+JMuxer, play back our original packets, and continue from there. This does create
+a noticable pause before playing back the first time, and it only works about
+90% of the time. I'm hoping this just goes away with time, and subsequent
+Android/Chrome updates.
+
+UPDATE: There's more to this story.
+Now I'm seeing the above error messages, and then success after that. Without
+having to do anything. During this time, the camera streams went from black & white
+to color. That may have something to do with it. Also, I once saw a JMuxer
+"missing frames" event. I'm beginning to wonder if my "backlog" mechanism is
+the true culprit here.
+
 */
 
 let props = defineProps<{
@@ -53,6 +82,7 @@ let ws: WebSocket | null = null;
 let backlogDone = false;
 let nPackets = 0;
 let nBytes = 0;
+let lastRecvID = 0;
 let firstPacketTime = 0;
 let isPaused = false;
 let posterURLUpdateFrequencyMS = 5 * 1000; // When the page is active, we update our poster URL every X seconds
@@ -64,7 +94,13 @@ enum WSMessage {
 	Resume = "resume",
 }
 
-function parse(data: ArrayBuffer) {
+interface parsedPacket {
+	video: Uint8Array,
+	recvID: number,
+	duration?: number
+}
+
+function parse(data: ArrayBuffer): parsedPacket {
 	let input = new Uint8Array(data);
 	let dv = new DataView(input.buffer);
 
@@ -78,10 +114,15 @@ function parse(data: ArrayBuffer) {
 	//console.log("foos", foo1, foo2);
 	//let pts = dv.getFloat64(0, true);
 	let flags = dv.getUint32(0, true);
+	let recvID = dv.getUint32(4, true);
 	let backlog = (flags & 1) !== 0;
 	//console.log("pts", pts);
-	let video = input.subarray(4);
+	let video = input.subarray(8);
 	let logPacketCount = false; // SYNC-LOG-PACKET-COUNT
+
+	if (lastRecvID !== 0 && recvID !== lastRecvID + 1) {
+		console.log(`recvID ${recvID} !== lastRecvID ${lastRecvID} + 1`);
+	}
 
 	nBytes += input.length;
 	nPackets++;
@@ -110,11 +151,36 @@ function parse(data: ArrayBuffer) {
 	// during backlog catchup, we leave duration undefined, which causes the player to catch up
 	// as fast as it can (which is precisely what we want).
 
+	lastRecvID = recvID;
+
 	return {
 		video: video,
+		recvID: recvID,
 		duration: backlog ? undefined : normalDuration,
 		//duration: undefined,
 	};
+}
+
+function videoElementID(): string {
+	return 'vplayer-camera-' + props.camera.id;
+}
+
+function createMuxer(onReady: () => void): JMuxer {
+	return new JMuxer({
+		node: videoElementID(),
+		mode: "video",
+		debug: false,
+		// OK.. we want to leave FPS unspecified, so that we can control it per-frame, for backlog catchup.
+		// If we do specify FPS here, then it becomes Max FPS, and consequently max speedup during backlog catchup.
+		//fps: 60, 
+		maxDelay: 200,
+		//flushingTime: 100, // jsmuxer basically runs as setInterval(() => flushFrames(), flushingTime)
+		flushingTime: 50, // jsmuxer basically runs as setInterval(() => flushFrames(), flushingTime)
+		onReady: onReady,
+		onError: () => { console.log("jmuxer onError"); },
+		onMissingVideoFrames: () => { console.log("jmuxer onMissingVideoFrames"); },
+		onMissingAudioFrames: () => { console.log("jmuxer onMissingAudioFrames"); },
+	} as any);
 }
 
 function play() {
@@ -127,20 +193,58 @@ function play() {
 	isPaused = false;
 
 	let scheme = window.location.origin.startsWith("https") ? "wss://" : "ws://";
-	//let socketURL = scheme + window.location.host + "/api/ws/camera/stream/LD/" + props.camera.id + "?" + encodeQuery(bearerTokenQuery());
 	let socketURL = scheme + window.location.host + "/api/ws/camera/stream/LD/" + props.camera.id;
 	console.log("Play " + socketURL);
-	muxer = new JMuxer({
-		node: 'camera' + props.camera.id,
-		mode: "video",
-		debug: false,
-		// OK.. we want to leave FPS unspecified, so that we can control it per-frame, for backlog catchup.
-		// If we do specify FPS here, then it becomes Max FPS, and consequently max speedup during backlog catchup.
-		//fps: 60, 
-		maxDelay: 200,
-		//flushingTime: 100, // jsmuxer basically runs as setInterval(() => flushFrames(), flushingTime)
-		flushingTime: 50, // jsmuxer basically runs as setInterval(() => flushFrames(), flushingTime)
-	} as any);
+
+	let firstPackets: parsedPacket[] = [];
+	let phase = 0;
+	let isMuxerReady = false;
+
+	let onMuxerReadyPass2 = () => {
+		console.log("onMuxerReadyPass2");
+		phase = 2;
+	}
+
+	let onMuxerReadyPass1 = () => {
+		// See the long comment at the top of the page about the "Weird Android Issue".
+		// Basically, we're resetting the muxer here, but we only need to do it once per page load.
+		if (isMuxerReady && firstPackets.length > 10) {
+			let player = document.getElementById(videoElementID()) as HTMLVideoElement;
+			let nFrames = (player as any).webkitDecodedFrameCount;
+			console.log(`frames: ${nFrames}, firstPackets.length: ${firstPackets.length}`);
+			globals.isFirstVideoPlay = false;
+			if (nFrames === 0) {
+				console.log(`No frames decoded, so recreating muxer`);
+				phase = 1;
+				muxer!.destroy();
+				muxer = createMuxer(onMuxerReadyPass2);
+				// I suspect that my "backlog" mechanism might be at fault.
+				// This hack seems to be more robust when I omit the backlog on the
+				// 2nd attempt.
+				//for (let p of firstPackets) {
+				//	muxer.feed(p);
+				//}
+				firstPackets = [];
+			}
+		} else {
+			setTimeout(onMuxerReadyPass1, 200);
+		}
+	}
+
+	//let ticker = () => {
+	//	let player = document.getElementById(videoElementID()) as HTMLVideoElement;
+	//	let nFrames = (player as any).webkitDecodedFrameCount;
+	//	console.log(`ticker. frames: ${nFrames}`);
+	//	setTimeout(ticker, 1000);
+	//}
+	//ticker();
+
+	if (globals.isFirstVideoPlay) {
+		setTimeout(onMuxerReadyPass1, 500);
+	}
+
+	muxer = createMuxer(() => { console.log("muxer ready"); isMuxerReady = true });
+	//muxer = createMuxer(onMuxerReadyPass1);
 
 	ws = new WebSocket(socketURL);
 	ws.binaryType = "arraybuffer";
@@ -151,9 +255,13 @@ function play() {
 		if (muxer) {
 			let data = parse(event.data);
 			muxer.feed(data);
+			if (globals.isFirstVideoPlay && phase === 0) {
+				firstPackets.push(data);
+			}
 			if (showCanvas.value) {
 				invalidateCanvas();
 			}
+			nPackets++;
 		}
 	});
 
@@ -177,7 +285,7 @@ function onClick() {
 }
 
 function onPlay() {
-	console.log("onPlay");
+	console.log("video element onPlay event");
 
 	//play();
 	if (isPaused) {
@@ -297,8 +405,8 @@ onMounted(() => {
 
 <template>
 	<div class="container">
-		<video class="video" :id="'camera' + camera.id" autoplay :poster="posterURL()" @play="onPlay" @pause="onPause"
-			@click="onClick" :style="videoStyle()" />
+		<video class="video" :id="'vplayer-camera-' + camera.id" autoplay :poster="posterURL()" @play="onPlay"
+			@pause="onPause" @click="onClick" :style="videoStyle()" />
 		<img v-if="showOverlay" class="overlay" :src="posterURL()" :style="imgStyle()" />
 		<canvas v-if="showCanvas" ref="canvas" class="canvas" />
 	</div>

@@ -60,19 +60,20 @@ const (
 // training data. This is why we record both high and low whenever the auto recorder kicks in.
 type Recording struct {
 	BaseModel
-	RandomID     string                 `json:"randomID"`                                 // Used to ensure uniqueness when merging event databases
-	StartTime    dbh.IntTime            `json:"startTime"`                                // Wall time when recording started
-	RecordType   RecordType             `json:"recordType"`                               // Type of record
-	Origin       RecordingOrigin        `json:"origin"`                                   // Reason why recording exists
-	ParentID     int64                  `json:"parentID" gorm:"default:null"`             // ID of parent recording record, if this is a Physical record
-	FormatHD     string                 `json:"formatHD" gorm:"default:null"`             // Only valid value is "mp4"
-	FormatLD     string                 `json:"formatLD" gorm:"default:null"`             // Only valid value is "mp4"
-	Labels       *dbh.JSONField[Labels] `json:"labels,omitempty" gorm:"default:null"`     // If labels is defined, then OntologyID is also defined
-	OntologyID   int64                  `json:"ontologyID,omitempty" gorm:"default:null"` // Labels reference indices in Ontology, which is why we need to store a reference to the Ontology
-	Bytes        int64                  `json:"bytes"`                                    // Total storage of videos + thumbnails
-	DimensionsHD string                 `json:"dimensionsHD" gorm:"default:null"`         // "Width,Height" of HD video
-	DimensionsLD string                 `json:"dimensionsLD" gorm:"default:null"`         // "Width,Height" of LD video
-	CameraID     int64                  `json:"cameraID" gorm:"default:null"`             // ID of camera in config DB
+	RandomID       string                 `json:"randomID"`                                 // Used to ensure uniqueness when merging event databases
+	StartTime      dbh.IntTime            `json:"startTime"`                                // Wall time when recording started
+	RecordType     RecordType             `json:"recordType"`                               // Type of record
+	Origin         RecordingOrigin        `json:"origin"`                                   // Reason why recording exists
+	ParentID       int64                  `json:"parentID" gorm:"default:null"`             // ID of parent recording record, if this is a Physical record
+	FormatHD       string                 `json:"formatHD" gorm:"default:null"`             // Only valid value is "mp4"
+	FormatLD       string                 `json:"formatLD" gorm:"default:null"`             // Only valid value is "mp4"
+	Labels         *dbh.JSONField[Labels] `json:"labels,omitempty" gorm:"default:null"`     // If labels is defined, then OntologyID is also defined
+	UseForTraining int                    `json:"useForTraining" gorm:"default:null"`       // If 1, then this recording will be used for training
+	OntologyID     int64                  `json:"ontologyID,omitempty" gorm:"default:null"` // Labels reference indices in Ontology, which is why we need to store a reference to the Ontology
+	Bytes          int64                  `json:"bytes"`                                    // Total storage of videos + thumbnails
+	DimensionsHD   string                 `json:"dimensionsHD" gorm:"default:null"`         // "Width,Height" of HD video
+	DimensionsLD   string                 `json:"dimensionsLD" gorm:"default:null"`         // "Width,Height" of LD video
+	CameraID       int64                  `json:"cameraID" gorm:"default:null"`             // ID of camera in config DB
 }
 
 func (r *Recording) IsLogical() bool {
@@ -158,7 +159,9 @@ func (r *Recording) baseFilename() string {
 
 // Labels associated with a recording
 type Labels struct {
-	VideoTags []int `json:"videoTags"` // Tags associated with the entire recording (eg "person"). Values refer to zero-based indices of OntologyDefinition.VideoTags
+	VideoTags []int   `json:"videoTags"` // Tags associated with the entire recording (eg "intruder"). Values refer to zero-based indices of OntologyDefinition.VideoTags
+	CropStart float64 `json:"cropStart"` // Start time of cropped video, in seconds
+	CropEnd   float64 `json:"cropEnd"`   // End time of cropped video, in seconds
 }
 
 // An immutable ontology, referenced by a Recording, so that we know all the possible
@@ -166,7 +169,6 @@ type Labels struct {
 type Ontology struct {
 	BaseModel
 	CreatedAt  dbh.IntTime                        `json:"createdAt"`
-	ModifiedAt dbh.IntTime                        `json:"modifiedAt"`
 	Definition *dbh.JSONField[OntologyDefinition] `json:"definition,omitempty"`
 }
 
@@ -203,4 +205,22 @@ func (o *OntologyDefinition) Hash() []byte {
 	}
 	hash := sha256.Sum256([]byte(hs.String()))
 	return hash[:]
+}
+
+func (o *OntologyDefinition) IsSupersetOf(b *OntologyDefinition) bool {
+	for i := range b.Tags {
+		if !o.ContainsTag(b.Tags[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (o *OntologyDefinition) ContainsTag(tag OntologyTag) bool {
+	for i := range o.Tags {
+		if o.Tags[i].Name == tag.Name && o.Tags[i].Level == tag.Level {
+			return true
+		}
+	}
+	return false
 }

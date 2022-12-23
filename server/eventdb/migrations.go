@@ -54,5 +54,17 @@ func Migrations(log log.Log) []migration.Migrator {
 		CREATE INDEX idx_ontology_modified_at ON ontology(modified_at);
 	`))
 
+	// Ontologies are immutable, so there is no point in having a modified_at field
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		DROP INDEX idx_ontology_modified_at;
+		ALTER TABLE ontology DROP COLUMN modified_at;
+	`))
+
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		ALTER TABLE recording ADD COLUMN use_for_training INT;
+	`))
+
 	return migs
 }

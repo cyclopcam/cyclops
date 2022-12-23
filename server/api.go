@@ -106,6 +106,7 @@ func (s *Server) SetupHTTP() error {
 	protected("a", "POST", "/api/record/start/:cameraID", s.httpRecordStart)
 	protected("a", "POST", "/api/record/stop/:recorderID", s.httpRecordStop)
 	protected("v", "GET", "/api/record/getRecordings", s.httpRecordGetRecordings)
+	protected("a", "POST", "/api/record/setLabels", s.httpRecordSetLabels)
 	protected("v", "GET", "/api/record/count", s.httpRecordCount)
 	protected("v", "POST", "/api/record/delete/:id", s.httpRecordDeleteRecording)
 	protected("v", "GET", "/api/record/getOntologies", s.httpRecordGetOntologies)

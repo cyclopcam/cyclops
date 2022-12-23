@@ -157,18 +157,25 @@ func (s *Server) httpRecordStop(w http.ResponseWriter, r *http.Request, params h
 
 func (s *Server) httpRecordGetRecordings(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	if id := www.QueryInt64(r, "id"); id != 0 {
-		err, recording := s.permanentEvents.GetRecording(id)
+		recording, err := s.permanentEvents.GetRecording(id)
 		www.Check(err)
 		www.SendJSON(w, []*eventdb.Recording{recording})
 	} else {
-		err, recordings := s.permanentEvents.GetRecordings()
+		recordings, err := s.permanentEvents.GetRecordings()
 		www.Check(err)
 		www.SendJSON(w, recordings)
 	}
 }
 
+func (s *Server) httpRecordSetLabels(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	rec := eventdb.Recording{}
+	www.ReadJSON(w, r, &rec, 1024*1024)
+	www.Check(s.permanentEvents.SetRecordingLabels(&rec))
+	www.SendOK(w)
+}
+
 func (s *Server) httpRecordCount(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	err, count := s.permanentEvents.Count()
+	count, err := s.permanentEvents.Count()
 	www.Check(err)
 	www.SendInt64(w, count)
 }
@@ -180,7 +187,7 @@ func (s *Server) httpRecordDeleteRecording(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) httpRecordGetOntologies(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	err, ontologies := s.permanentEvents.GetOntologies()
+	ontologies, err := s.permanentEvents.GetOntologies()
 	www.Check(err)
 	www.SendJSON(w, ontologies)
 }
@@ -192,7 +199,7 @@ func (s *Server) httpRecordSetOntology(w http.ResponseWriter, r *http.Request, p
 	// already referenced by recordings.
 	// One thing we might want to do is to modify an ontology in-place, if the following conditions are met:
 	// 1. The most recent ontology in the DB is a subset of the new ontology
-	err, id := s.permanentEvents.CreateOntology(spec)
+	id, err := s.permanentEvents.CreateOntology(&spec)
 	www.Check(err)
 	// Prune unused ontologies, so that we don't end up with unnecessary records
 	www.Check(s.permanentEvents.PruneUnusedOntologies([]int64{id}))
@@ -200,7 +207,7 @@ func (s *Server) httpRecordSetOntology(w http.ResponseWriter, r *http.Request, p
 }
 
 func (s *Server) httpRecordGetThumbnail(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	err, recording := s.permanentEvents.GetRecording(www.ParseID(params.ByName("id")))
+	recording, err := s.permanentEvents.GetRecording(www.ParseID(params.ByName("id")))
 	www.Check(err)
 	fullpath := filepath.Join(s.permanentEvents.Root, recording.ThumbnailFilename())
 	www.SendFile(w, r, fullpath, "")
@@ -209,7 +216,7 @@ func (s *Server) httpRecordGetThumbnail(w http.ResponseWriter, r *http.Request, 
 func (s *Server) httpRecordGetVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	res := parseResolutionOrPanic(params.ByName("resolution"))
 	seekable := www.QueryValue(r, "seekable") == "1"
-	err, recording := s.permanentEvents.GetRecording(www.ParseID(params.ByName("id")))
+	recording, err := s.permanentEvents.GetRecording(www.ParseID(params.ByName("id")))
 	www.Check(err)
 	fullpath := filepath.Join(s.permanentEvents.Root, recording.VideoFilename(res))
 	if seekable {

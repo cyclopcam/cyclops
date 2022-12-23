@@ -12,7 +12,7 @@ function cameras(): CameraInfo[] {
 }
 
 function onPlay(cam: CameraInfo) {
-	console.log("onPlay");
+	console.log(`Monitor onPlay camera ${cam.id}`);
 	if (linkedPlay) {
 		for (let c of cameras()) {
 			isPlaying.value[c.id] = true;

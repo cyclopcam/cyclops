@@ -1,4 +1,4 @@
-import { encodeQuery, fetchOrErr } from "@/util/util";
+import { encodeQuery, fetchOrErr, type FetchResult } from "@/util/util";
 import type { OrError } from "@/util/util";
 
 export class Recording {
@@ -6,11 +6,13 @@ export class Recording {
 	startTime = new Date();
 	ontology: Ontology | null = null;
 	labels: Labels | null = null;
+	useForTraining = false;
 
 	static fromJSON(j: any, idToOntology: { [key: number]: Ontology } | null): Recording {
 		let r = new Recording();
 		r.id = j.id;
 		r.startTime = new Date(j.startTime);
+		r.useForTraining = j.useForTraining ?? false;
 		if (idToOntology) {
 			r.ontology = idToOntology[j.ontologyID] || null;
 		}
@@ -19,6 +21,16 @@ export class Recording {
 			r.labels.videoTags = j.labels.videoTags;
 		}
 		return r;
+	}
+
+	toJSON(): any {
+		return {
+			id: this.id,
+			startTime: this.startTime.getTime(),
+			ontologyID: this.ontology?.id,
+			labels: this.labels,
+			useForTraining: this.useForTraining,
+		};
 	}
 
 	static async fetch(ontologies?: Ontology[], id?: number): Promise<OrError<Recording[]>> {
@@ -44,11 +56,25 @@ export class Recording {
 
 		return { ok: true, value: recordings };
 	}
+
+	async saveLabels(): Promise<FetchResult> {
+		return fetchOrErr("/api/record/setLabels", { method: "POST", body: JSON.stringify(this.toJSON()) });
+	}
 }
 
 // Labels on a video
 export class Labels {
 	videoTags: number[] = []; // indices refer to Ontology.videoTags
+	cropStart: number = 0; // video crop start time in seconds
+	cropEnd: number = 0; // video crop end time in seconds
+
+	fromJSON(j: any): Labels {
+		let labels = new Labels();
+		labels.videoTags = j.videoTags;
+		labels.cropStart = j.cropStart;
+		labels.cropEnd = j.cropEnd;
+		return labels;
+	}
 }
 
 export enum OntologyLevel {
@@ -97,14 +123,12 @@ export class OntologyTag {
 export class Ontology {
 	id = 0;
 	createdAt = new Date();
-	modifiedAt = new Date();
 	tags: OntologyTag[] = []; // allowable video tags. In Recording records, tags are zero-based indices into this array.
 
 	static fromJSON(j: any): Ontology {
 		let o = new Ontology();
 		o.id = j.id;
 		o.createdAt = new Date(j.createdAt);
-		o.modifiedAt = new Date(j.modifiedAt);
 		if (j.definition) {
 			if (j.definition.tags) {
 				o.tags = j.definition.tags.map((x: any) => OntologyTag.fromJSON(x));
@@ -117,7 +141,6 @@ export class Ontology {
 		return {
 			id: this.id,
 			createdAt: this.createdAt.getTime(),
-			modifiedAt: this.modifiedAt.getTime(),
 			definition: {
 				tags: this.tags.map((x) => x.toJSON()),
 			},
@@ -140,8 +163,8 @@ export class Ontology {
 		let m = 0;
 		let best = null;
 		for (let o of list) {
-			if (o.modifiedAt.getTime() > m) {
-				m = o.modifiedAt.getTime();
+			if (o.createdAt.getTime() > m) {
+				m = o.createdAt.getTime();
 				best = o;
 			}
 		}

@@ -5,30 +5,25 @@
 			whether the system is armed or unarmed:</div>
 		<table>
 			<tr>
-				<td></td>
-				<td class="gr"></td>
-				<td colspan="2" class="gr gt small">System Activation
-				</td>
+				<td colspan="3"></td>
 			</tr>
 			<tr>
-				<td></td>
 				<td class="gr"></td>
 				<td class="gr gt b">Armed</td>
 				<td class="gr gt b">Unarmed</td>
 			</tr>
 			<tr class="">
-				<td rowspan="3" class="levelBG gr gl gt gb small">Alert<br /> Level</td>
-				<td class="gr gt gb b alarmBG">Alarm</td>
+				<td class="gl gr gt gb b alarmBG">Alarm</td>
 				<td class="gr gt gb raiseAlarm">Raise Alarm</td>
 				<td class="gr gt gb">Record Video</td>
 			</tr>
 			<tr class="">
-				<td class="gr gb b recordBG">Record</td>
+				<td class="gl gr gb b recordBG">Record</td>
 				<td class="gr gb">Record Video</td>
 				<td class="gr gb">Record Video</td>
 			</tr>
 			<tr class="">
-				<td class="gr gb b ignoreBG">Ignore</td>
+				<td class="gl gr gb b ignoreBG">Ignore</td>
 				<td class="gr gb">Do Nothing</td>
 				<td class="gr gb">Do Nothing</td>
 			</tr>

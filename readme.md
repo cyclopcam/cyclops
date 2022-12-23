@@ -2,8 +2,7 @@
 
 _Only tested on Ubuntu 22.04_
 
-> sudo apt install libavformat-dev libswscale-dev gcc g++ pkg-config
-> libturbojpeg0-dev wireguard wireguard-tools
+    sudo apt install libavformat-dev libswscale-dev ffmpeg gcc g++ pkg-config libturbojpeg0-dev wireguard wireguard-tools
 
 ## Dev environment
 

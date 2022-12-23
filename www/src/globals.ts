@@ -16,6 +16,8 @@ export class Globals {
 
 	isUsingProxy = window.location.origin.startsWith("https://proxy");
 
+	isFirstVideoPlay = true;
+
 	cameras: CameraInfo[] = [];
 	networkError = ""; // Most recent network error, typically shown in the top/bottom bar
 	isLoggedIn = false; // Only valid after isSystemInfoLoadFinished = true

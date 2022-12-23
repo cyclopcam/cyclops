@@ -136,6 +136,8 @@ func (s *Stream) Listen(address string) error {
 	s.H264Track = h264track
 	s.Log.Infof("Connected to %v, track %v", camHost, h264TrackID)
 
+	recvID := int64(0)
+
 	client.OnPacketRTP = func(ctx *gortsplib.ClientOnPacketRTPCtx) {
 		if ctx.TrackID != h264TrackID || len(ctx.H264NALUs) == 0 {
 			return
@@ -170,6 +172,8 @@ func (s *Stream) Listen(address string) error {
 		// A typical iframe packet from a 320x240 camera is around 100 bytes!
 		// A keyframe is between 10 and 20 KB.
 		cloned := videox.ClonePacket(ctx, now)
+		cloned.RecvID = recvID
+		recvID++
 
 		// Obtain the sinks lock, so that we can't send packets after a Close message has been sent.
 		s.sinksLock.Lock()

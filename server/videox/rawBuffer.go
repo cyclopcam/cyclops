@@ -35,6 +35,7 @@ type NALU struct {
 // This thing probably wants a better name...
 // Maybe VideoPacket?
 type DecodedPacket struct {
+	RecvID       int64     // Arbitrary monotonically increasing ID. Used to detect dropped packets, or other issues like that.
 	RecvTime     time.Time // Wall time when the packet was received. This is obviously subject to network jitter etc, so not a substitute for PTS
 	H264NALUs    []NALU
 	H264PTS      time.Duration
@@ -98,6 +99,7 @@ func (n *NALU) Type() h264.NALUType {
 // Deep clone of packet buffer
 func (p *DecodedPacket) Clone() *DecodedPacket {
 	c := &DecodedPacket{
+		RecvID:       p.RecvID,
 		RecvTime:     p.RecvTime,
 		H264PTS:      p.H264PTS,
 		PTSEqualsDTS: p.PTSEqualsDTS,

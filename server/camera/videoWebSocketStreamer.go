@@ -271,6 +271,7 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 		}
 
 		binary.Write(&buf, binary.LittleEndian, flags)
+		binary.Write(&buf, binary.LittleEndian, uint32(pkt.RecvID))
 		for _, n := range pkt.H264NALUs {
 			if n.PrefixLen == 0 {
 				buf.Write([]byte{0, 0, 1})
