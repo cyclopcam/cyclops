@@ -68,7 +68,7 @@ type Recording struct {
 	FormatHD       string                 `json:"formatHD" gorm:"default:null"`             // Only valid value is "mp4"
 	FormatLD       string                 `json:"formatLD" gorm:"default:null"`             // Only valid value is "mp4"
 	Labels         *dbh.JSONField[Labels] `json:"labels,omitempty" gorm:"default:null"`     // If labels is defined, then OntologyID is also defined
-	UseForTraining int                    `json:"useForTraining" gorm:"default:null"`       // If 1, then this recording will be used for training
+	UseForTraining bool                   `json:"useForTraining" gorm:"default:null"`       // If 1, then this recording will be used for training
 	OntologyID     int64                  `json:"ontologyID,omitempty" gorm:"default:null"` // Labels reference indices in Ontology, which is why we need to store a reference to the Ontology
 	Bytes          int64                  `json:"bytes"`                                    // Total storage of videos + thumbnails
 	DimensionsHD   string                 `json:"dimensionsHD" gorm:"default:null"`         // "Width,Height" of HD video

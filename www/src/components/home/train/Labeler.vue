@@ -135,6 +135,7 @@ async function onSave() {
 	props.recording.labels.videoTags.push(ontology().tags.indexOf(videoTag.value));
 	props.recording.labels.cropStart = Math.round(cropStart.value * 100) / 100;
 	props.recording.labels.cropEnd = Math.round(cropEnd.value * 100) / 100;
+	props.recording.useForTraining = useVideo.value;
 
 	let r = await props.recording.saveLabels();
 	if (!r.ok) {
