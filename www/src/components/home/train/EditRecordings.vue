@@ -120,11 +120,8 @@ onMounted(async () => {
 		</div>
 
 		<div class="recordings">
-			<!--
-			<recording-item :player-cookie="playerCookie" @click="$emit('recordNew')" />
-			-->
 			<recording-item v-for="rec of recordings" :player-cookie="playerCookie" :recording="rec"
-				:selection="selection" @play-inline="onPlayInline" @delete="onDelete(rec)"
+				:ontologies="ontologies" :selection="selection" @play-inline="onPlayInline" @delete="onDelete(rec)"
 				@open-labeler="onOpenLabeler(rec)" />
 		</div>
 

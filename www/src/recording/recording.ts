@@ -94,6 +94,7 @@ export enum OntologyLevel {
 	Ignore = "ignore", // Do not record
 }
 
+// This is just here for sorting
 export function severity(level: OntologyLevel): number {
 	switch (level) {
 		case OntologyLevel.Alarm:

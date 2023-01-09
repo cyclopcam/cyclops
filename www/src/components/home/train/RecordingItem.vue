@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Recording } from '@/recording/recording';
+import type { Ontology, OntologyTag, Recording } from '@/recording/recording';
 import { onMounted, ref } from 'vue';
 import Play from '@/icons/play-circle.svg';
 import Burger from '@/icons/more-vertical.svg';
@@ -7,11 +7,13 @@ import SvgButton from '@/components/widgets/SvgButton.vue';
 import { dateTimeShort, fetchOrErr, randomString } from '@/util/util';
 import Menue from '../../core/Menue.vue';
 import { globals } from '@/globals';
+import { tagColorClasses } from './tagStyles';
 import SelectButton from '../../core/SelectButton.vue';
 
 let props = defineProps<{
 	playerCookie: string, // Used to ensure that there is only one RecordingItem playing a video at a time
 	recording: Recording,
+	ontologies: Ontology[],
 	selection?: Set<number>,
 	playAtStartup?: boolean,
 }>()
@@ -27,12 +29,36 @@ let burgerItems = [
 	//{ action: "zang", title: "Delete" },
 ]
 
+function ontology(): Ontology | null {
+	//if (!props.ontologies)
+	//	return null;
+	return props.ontologies.find(o => o.id === props.recording.ontologyID) || null;
+}
+
 function showPlayer(): boolean {
 	return myCookie.value === props.playerCookie;
 }
 
+function videoTag(): OntologyTag | null {
+	let o = ontology();
+	if (!o) {
+		return null;
+	}
+	if (props.recording.labels && props.recording.labels.videoTags.length === 1) {
+		let tagIdx = props.recording.labels.videoTags[0];
+		if (tagIdx >= 0 && tagIdx < o.tags.length) {
+			return o.tags[tagIdx];
+		}
+	}
+	return null;
+}
+
 function labelTxt(): string {
-	return 'unlabeled';
+	let vt = videoTag();
+	if (!vt) {
+		return 'unlabeled';
+	}
+	return vt.name
 }
 
 function showInlinePlayer() {
@@ -67,6 +93,11 @@ function onSelect(v: boolean) {
 	}
 }
 
+function labelBtnClasses(): any {
+	let vt = videoTag();
+	return Object.assign({ labelTxt: true, shadow5LHover: true }, tagColorClasses(vt));
+}
+
 onMounted(() => {
 	if (props.playAtStartup) {
 		showInlinePlayer();
@@ -94,7 +125,7 @@ onMounted(() => {
 			<div style="font-size:12px">
 				{{ startDate() }}
 			</div>
-			<div class="labelTxt shadow5LHover" @click="$emit('openLabeler')">
+			<div :class="labelBtnClasses()" @click="$emit('openLabeler')">
 				{{ labelTxt() }}
 			</div>
 			<select-button v-if="selection" :model-value="selection.has(recording.id)" @update:model-value="onSelect" />
@@ -104,6 +135,7 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 @import '@/assets/vars.scss';
+@import './tag.scss';
 
 .recording {
 	position: relative;
@@ -139,10 +171,11 @@ onMounted(() => {
 .labelTxt {
 	user-select: none;
 	font-size: 12px;
-	border: solid 1px #ddd;
-	padding: 3px 5px;
+	border-style: solid;
+	border-width: 1px;
+	padding: 3px 6px;
 	border-radius: 3px;
-	background-color: rgba(200, 200, 200, 0.2);
+	//background-color: rgba(200, 200, 200, 0.2);
 	max-width: 80px;
 	overflow-x: hidden;
 	text-overflow: ellipsis;

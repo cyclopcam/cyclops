@@ -1,0 +1,10 @@
+FIRST: Inside RecordingItem.vue, in "function ontology(): Ontology | null",
+props.ontologies should never be null. Or.. we should handle that case.. if the parent control is still loading those.
+TS: When editing a recording, we don't load the existing label data.
+Then...
+After editing a recording, the Edit Recording view is not properly updated.
+Specifically, the "unlabeled"/"alarm" whatever.. labelling button is out of date.
+Finally...
+Also.. after making a new recording, I think it is missing ontologyID.
+the workflow after making a new recording is horrible. If the user saves the record,
+we should jump immediately into labelling mode.
