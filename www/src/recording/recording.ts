@@ -4,18 +4,16 @@ import type { OrError } from "@/util/util";
 export class Recording {
 	id = 0;
 	startTime = new Date();
-	ontology: Ontology | null = null;
+	ontologyID: number | null = null;
 	labels: Labels | null = null;
 	useForTraining = false;
 
-	static fromJSON(j: any, idToOntology: { [key: number]: Ontology } | null): Recording {
+	static fromJSON(j: any): Recording {
 		let r = new Recording();
 		r.id = j.id;
 		r.startTime = new Date(j.startTime);
 		r.useForTraining = j.useForTraining ?? false;
-		if (idToOntology) {
-			r.ontology = idToOntology[j.ontologyID] || null;
-		}
+		r.ontologyID = j.ontologyID;
 		if (j.labels) {
 			r.labels = new Labels();
 			r.labels.videoTags = j.labels.videoTags;
@@ -27,23 +25,35 @@ export class Recording {
 		return {
 			id: this.id,
 			startTime: this.startTime.getTime(),
-			ontologyID: this.ontology?.id,
+			ontologyID: this.ontologyID,
 			labels: this.labels,
 			useForTraining: this.useForTraining,
 		};
 	}
 
-	static async fetch(ontologies?: Ontology[], id?: number): Promise<OrError<Recording[]>> {
-		if (!ontologies) {
-			let ontologiesFetch = await Ontology.fetch();
-			if (!ontologiesFetch.ok) {
-				return ontologiesFetch;
-			}
-			ontologies = ontologiesFetch.value;
+	static async fetch(id: number): Promise<OrError<Recording>> {
+		let r = await this.fetchList(id);
+		if (!r.ok) {
+			return r;
 		}
-		let idToOntology = Object.fromEntries(ontologies.map((x) => [x.id, x]));
+		if (r.value.length == 0) {
+			return { ok: false, err: "Recording not found" };
+		}
+		return { ok: true, value: r.value[0] };
+	}
 
-		// Fetch recordings
+	static async fetchAll(): Promise<OrError<Recording[]>> {
+		let r = await fetchOrErr("/api/record/getRecordings");
+		if (!r.ok) {
+			return { ok: false, err: r.error };
+		}
+		let recordings = ((await r.r.json()) as any[]).map((x) => Recording.fromJSON(x));
+
+		return { ok: true, value: recordings };
+	}
+
+	// Fetch either all, or just one recording
+	static async fetchList(id?: number): Promise<OrError<Recording[]>> {
 		let params: any = {};
 		if (id) {
 			params["id"] = id;
@@ -52,7 +62,7 @@ export class Recording {
 		if (!r.ok) {
 			return { ok: false, err: r.error };
 		}
-		let recordings = ((await r.r.json()) as any[]).map((x) => Recording.fromJSON(x, idToOntology));
+		let recordings = ((await r.r.json()) as any[]).map((x) => Recording.fromJSON(x));
 
 		return { ok: true, value: recordings };
 	}

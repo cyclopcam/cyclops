@@ -6,7 +6,7 @@ import RecordingItem from "./RecordingItem.vue";
 import Buttin from "../../core/Buttin.vue";
 import Trash from '@/icons/trash-2.svg';
 import LabelerDialog from './LabelerDialog.vue';
-import { pushRoute, router } from "@/router/routes";
+import { pushRoute } from "@/router/routes";
 
 let props = defineProps<{
 	id?: string, // ID of video to edit (comes in via route)
@@ -21,10 +21,10 @@ let selection = reactive(new Set<number>()); // Every update will probably cause
 let labelRecording = ref(null as Recording | null); // Recording that we are busy labelling
 let latestOntology = ref(new Ontology());
 
-let ontologies: Ontology[] = [];
+let ontologies = ref([] as Ontology[]);
 
 async function getRecordings() {
-	let r = await Recording.fetch();
+	let r = await Recording.fetchAll();
 	if (!r.ok) {
 		globals.networkError = r.err;
 		return;
@@ -36,16 +36,13 @@ async function getRecordings() {
 }
 
 async function getRecording(id: number): Promise<Recording | null> {
-	let r = await Recording.fetch(ontologies, id);
+	let r = await Recording.fetch(id);
 	if (!r.ok) {
 		globals.networkError = r.err;
 		return null;
 	}
 	globals.networkError = '';
-	if (r.value.length !== 1) {
-		return null;
-	}
-	return r.value[0];
+	return r.value;
 }
 
 async function getOntologies() {
@@ -54,9 +51,9 @@ async function getOntologies() {
 		globals.networkError = r.err;
 		return;
 	}
-	ontologies = r.value;
+	ontologies.value = r.value;
 	// We expect the server to ensure that there's always at least one ontology record
-	let latest = Ontology.latest(ontologies);
+	let latest = Ontology.latest(ontologies.value);
 	if (latest) {
 		latestOntology.value = latest;
 	}
@@ -131,8 +128,8 @@ onMounted(async () => {
 				@open-labeler="onOpenLabeler(rec)" />
 		</div>
 
-		<labeler-dialog v-if="labelRecording" :initial-recording="labelRecording" :latest-ontology="latestOntology"
-			@close="labelRecording = null" />
+		<labeler-dialog v-if="labelRecording" :initial-recording="labelRecording" :ontologies="ontologies"
+			:latest-ontology="latestOntology" @close="labelRecording = null" />
 	</div>
 </template>
 

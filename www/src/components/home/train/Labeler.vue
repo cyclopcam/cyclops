@@ -15,6 +15,7 @@ import { pushRoute } from "@/router/routes";
 
 let props = defineProps<{
 	recording: Recording,
+	ontologies: Ontology[],
 	latestOntology: Ontology,
 }>()
 
@@ -41,8 +42,13 @@ function videoURL(): string {
 }
 
 function ontology(): Ontology {
-	if (props.recording.ontology) {
-		return props.recording.ontology;
+	if (props.recording.ontologyID) {
+		let o = props.ontologies.find(o => o.id === props.recording.ontologyID);
+		if (o) {
+			return o;
+		} else {
+			console.error(`Ontology ${props.recording.ontologyID} not found}`);
+		}
 	}
 	return props.latestOntology;
 }
@@ -136,6 +142,7 @@ async function onSave() {
 	props.recording.labels.cropStart = Math.round(cropStart.value * 100) / 100;
 	props.recording.labels.cropEnd = Math.round(cropEnd.value * 100) / 100;
 	props.recording.useForTraining = useVideo.value;
+	props.recording.ontologyID = ontology().id;
 
 	let r = await props.recording.saveLabels();
 	if (!r.ok) {

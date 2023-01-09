@@ -5,6 +5,7 @@ import Labeler from './Labeler.vue';
 
 let props = defineProps<{
 	initialRecording: Recording,
+	ontologies: Ontology[],
 	latestOntology: Ontology,
 }>()
 let emits = defineEmits(['close']);
@@ -12,7 +13,7 @@ let emits = defineEmits(['close']);
 
 <template>
 	<modal tint="rgba(0,0,0,0.8)" :fullscreen="true" @close="$emit('close')">
-		<labeler :recording="initialRecording" :latest-ontology="latestOntology" />
+		<labeler :recording="initialRecording" :ontologies="ontologies" :latest-ontology="latestOntology" />
 	</modal>
 </template>
 

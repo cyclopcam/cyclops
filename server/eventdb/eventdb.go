@@ -228,7 +228,7 @@ func (e *EventDB) Count() (int64, error) {
 }
 
 func (e *EventDB) SetRecordingLabels(rec *Recording) error {
-	return e.db.Model(&rec).Select("use_for_training", "labels").Updates(rec).Error
+	return e.db.Model(&rec).Select("use_for_training", "labels", "ontology_id").Updates(rec).Error
 }
 
 func (e *EventDB) GetOntologies() ([]Ontology, error) {

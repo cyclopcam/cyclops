@@ -1,4 +1,0 @@
-In TS:
-Saving labels to the server is working (except that ontology_id is not yet being saved).
-I think I need to take ontology out of class Recording, and rather store ontologyID.
-Once that's done, we should be able to load existing labels from the server.
