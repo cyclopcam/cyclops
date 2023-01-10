@@ -1,7 +1,10 @@
-FIRST: Inside RecordingItem.vue, in "function ontology(): Ontology | null",
-props.ontologies should never be null. Or.. we should handle that case.. if the parent control is still loading those.
-TS: When editing a recording, we don't load the existing label data.
-Then...
+The back button doesn't work nicely when labelling a recording.
+Perhaps the Label control should know what "Cancel"/"Save" should do.
+It can either:
+
+1. Pop a route off the stack (if labelling an existing recording)
+2. Return to the Editor (if labelling a new recording)
+
 After editing a recording, the Edit Recording view is not properly updated.
 Specifically, the "unlabeled"/"alarm" whatever.. labelling button is out of date.
 Finally...

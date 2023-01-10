@@ -71,7 +71,7 @@ export const router = createRouter({
 							component: TrainEditRecordings,
 						},
 						{
-							path: "edit/:id",
+							path: "label/:id",
 							props: true,
 							name: "rtTrainLabelRecording",
 							component: TrainEditRecordings,

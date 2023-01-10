@@ -15,8 +15,7 @@ export class Recording {
 		r.useForTraining = j.useForTraining ?? false;
 		r.ontologyID = j.ontologyID;
 		if (j.labels) {
-			r.labels = new Labels();
-			r.labels.videoTags = j.labels.videoTags;
+			r.labels = Labels.fromJSON(j.labels);
 		}
 		return r;
 	}
@@ -26,7 +25,7 @@ export class Recording {
 			id: this.id,
 			startTime: this.startTime.getTime(),
 			ontologyID: this.ontologyID,
-			labels: this.labels,
+			labels: this.labels?.toJSON(),
 			useForTraining: this.useForTraining,
 		};
 	}
@@ -78,12 +77,20 @@ export class Labels {
 	cropStart: number = 0; // video crop start time in seconds
 	cropEnd: number = 0; // video crop end time in seconds
 
-	fromJSON(j: any): Labels {
+	static fromJSON(j: any): Labels {
 		let labels = new Labels();
 		labels.videoTags = j.videoTags;
 		labels.cropStart = j.cropStart;
 		labels.cropEnd = j.cropEnd;
 		return labels;
+	}
+
+	toJSON(): any {
+		return {
+			videoTags: this.videoTags,
+			cropStart: this.cropStart,
+			cropEnd: this.cropEnd,
+		};
 	}
 }
 

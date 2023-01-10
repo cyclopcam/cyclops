@@ -7,7 +7,7 @@ import Cropper from '../../core/Cropper.vue';
 import Tag from './Tag.vue';
 import InfoBubble from '../../widgets/InfoBubble.vue';
 import LevelsExplainer from './LevelsExplainer.vue';
-import { pushRoute } from "@/router/routes";
+//import { pushRoute } from "@/router/routes";
 
 // It was too painful to make this a true top-level route,
 // so I moved it back to a child component, where we bring
@@ -18,6 +18,8 @@ let props = defineProps<{
 	ontologies: Ontology[],
 	latestOntology: Ontology,
 }>()
+
+let emits = defineEmits(['close']);
 
 const defaultDuration = 1.0; // use 1.0 instead of 0 so we don't have to worry about div/0
 
@@ -67,6 +69,10 @@ enum Steps {
 }
 
 function step(): Steps {
+	if (!isFreshLabel.value) {
+		return Steps.Done;
+	}
+
 	if (videoTag.value.name === "") {
 		return Steps.Event;
 	}
@@ -109,15 +115,16 @@ function onLoadVideoData() {
 
 function onLoadVideoMetadata() {
 	let el = videoElement();
-	//console.log("onLoadVideoMetadata", el.duration);
+	//console.log("onLoadVideoMetadata", el.duration, cropStart.value, cropEnd.value);
 	if (!isNaN(el.duration)) {
 		duration.value = el.duration;
-		cropStart.value = el.duration / 4;
-		cropEnd.value = el.duration * 3 / 4;
 		seekPosition.value = 0;
+		if (!haveCrop.value) {
+			cropStart.value = el.duration / 4;
+			cropEnd.value = el.duration * 3 / 4;
+			console.log("reset crops to ", cropStart.value, cropEnd.value);
+		}
 		onSeek(0);
-		//seekPosition.value = el.duration / 2;
-		//seekPosition.value = el.duration;
 	}
 }
 
@@ -133,10 +140,16 @@ function onTagSelect(tag: OntologyTag) {
 }
 
 function onCancel() {
-	pushRoute({ name: 'rtTrainEditRecordings' });
+	//pushRoute({ name: 'rtTrainEditRecordings' });
+	emits('close');
+}
+
+function canSave(): boolean {
+	return step() >= Steps.Done || !isFreshLabel.value;
 }
 
 async function onSave() {
+	//console.log("Labeler onSave");
 	props.recording.labels = new Labels();
 	props.recording.labels.videoTags.push(ontology().tags.indexOf(videoTag.value));
 	props.recording.labels.cropStart = Math.round(cropStart.value * 100) / 100;
@@ -148,12 +161,31 @@ async function onSave() {
 	if (!r.ok) {
 		error.value = r.error;
 	} else {
-		pushRoute({ name: 'rtTrainEditRecordings' });
+		//pushRoute({ name: 'rtTrainEditRecordings' });
+		emits('close');
 	}
+}
+
+function loadLabels() {
+	//console.log("loadLabels", props.recording.labels);
+	let labels = props.recording.labels;
+	let o = ontology();
+	if (!labels || !o) {
+		return;
+	}
+	isFreshLabel.value = false;
+	if (labels.videoTags.length > 0) {
+		videoTag.value = o.tags[labels.videoTags[0]];
+	}
+	haveCrop.value = true;
+	cropStart.value = labels.cropStart;
+	cropEnd.value = labels.cropEnd;
+	useVideo.value = props.recording.useForTraining;
 }
 
 onMounted(async () => {
 	//console.log("duration", videoElement().duration);
+	loadLabels();
 })
 
 </script>
@@ -200,8 +232,7 @@ onMounted(async () => {
 			<div class="bottomPanel">
 				<!-- <svg-button :icon="Back" size="30px" @click="onBack" /> -->
 				<button @click="onCancel">Cancel</button>
-				<div
-					:class="{ finish: true, unavailable: step() < Steps.Done, available: step() >= Steps.Done, nextStep: step() === Steps.Done }">
+				<div :class="{ finish: true, unavailable: !canSave(), available: canSave(), nextStep: canSave() }">
 					<!-- <svg-button :icon="Next" size="40px" @click="onDone" /> -->
 					<button class="focalButton" @click="onSave">Save</button>
 				</div>

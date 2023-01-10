@@ -3,7 +3,7 @@
 // Cropper is used to build the video cropper
 
 import { clamp } from '@/util/util';
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 
 // all units are seconds
 
@@ -31,11 +31,14 @@ let seekDownClientX = ref(0);
 let pixelsPerSecond = ref(0);
 let paddingPx = ref(1);
 
+//watch(() => props.duration, updateMeasurements);
+
 function updateMeasurements(): any {
 	let containerR = (container.value! as HTMLElement).getBoundingClientRect();
 	let dotR = (dotStart.value! as HTMLElement).getBoundingClientRect();
 	dotWidthPx.value = dotR.width;
 	pixelsPerSecond.value = (containerR.width - paddingPx.value * 2) / props.duration;
+	//console.log("cropper", containerR.width, dotR.width, pixelsPerSecond.value, props.duration);
 }
 
 function dotStyle(dot: Dots): any {
@@ -176,7 +179,7 @@ onMounted(() => {
 		</div>
 	</div>
 </template>
-		
+
 <style lang="scss" scoped>
 @import '@/assets/vars.scss';
 
@@ -233,4 +236,3 @@ $radius: 5px;
 	border-bottom-right-radius: $radius;
 }
 </style>
-		

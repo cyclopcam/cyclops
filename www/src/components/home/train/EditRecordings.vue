@@ -8,6 +8,16 @@ import Trash from '@/icons/trash-2.svg';
 import LabelerDialog from './LabelerDialog.vue';
 import { pushRoute } from "@/router/routes";
 
+// NOTE: The state control of EditRecordings is a bit tricky, because it basically has two modes:
+// 1. Edit recordings
+// 2. Label <a specific> recording
+// These two states are reflected in the two routes rtTrainEditRecordings and rtTrainLabelRecording.
+// We need to be careful to keep all of this in sync. For example, when the user finishes labelling
+// of a recording, then we must change our route from /label/123 to /edit.
+// My initial design was to make the 'label' mode a separate top-level page, but that was quite
+// unpleasant, due to code duplication, so that's why we've got this hybrid page.
+// There's probably a cleaner way to do this.
+
 let props = defineProps<{
 	id?: string, // ID of video to edit (comes in via route)
 }>()
@@ -20,7 +30,6 @@ let playerCookie = ref(''); // ensures that only one RecordingItem is playing at
 let selection = reactive(new Set<number>()); // Every update will probably cause all RecordingItems to get re-rendered, so this might not scale well
 let labelRecording = ref(null as Recording | null); // Recording that we are busy labelling
 let latestOntology = ref(new Ontology());
-
 let ontologies = ref([] as Ontology[]);
 
 async function getRecordings() {
@@ -32,6 +41,7 @@ async function getRecordings() {
 	globals.networkError = '';
 	r.value.sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
 	recordings.value = r.value;
+	recordings.value = r.value.map(x => reactive(x));
 	haveRecordings.value = true;
 }
 
@@ -42,7 +52,7 @@ async function getRecording(id: number): Promise<Recording | null> {
 		return null;
 	}
 	globals.networkError = '';
-	return r.value;
+	return reactive(r.value);
 }
 
 async function getOntologies() {
@@ -80,17 +90,26 @@ async function onLabelIDChanged(id: number) {
 		if (rec) {
 			labelRecording.value = rec;
 		} else {
-			// just navigate to manage page, to avoid useless paths in our history
+			// just navigate to management page, to avoid useless paths in our history
+			labelRecording.value = null;
 			pushRoute({ name: 'rtTrainEditRecordings' });
 		}
 	} else {
-		console.log("labelRecording.value = null");
+		//console.log("labelRecording.value = null");
 		labelRecording.value = null;
 	}
 }
 
+function onEditFinished() {
+	// Update the Recording object inside 'recordings', with the latest edited Recording object
+	let idx = recordings.value.findIndex(x => x.id === labelRecording.value!.id);
+	recordings.value[idx] = labelRecording.value!;
+	labelRecording.value = null;
+	pushRoute({ name: 'rtTrainEditRecordings' });
+}
+
 watch(() => props.id, (newVal) => {
-	console.log("watch changed", newVal);
+	//console.log("watch changed props.id", newVal);
 	let id = parseInt(newVal ?? '');
 	onLabelIDChanged(id);
 	if (!haveRecordings.value) {
@@ -101,6 +120,8 @@ watch(() => props.id, (newVal) => {
 })
 
 onMounted(async () => {
+	//console.log("EditRecordings onMounted");
+
 	await getOntologies();
 
 	if (props.id) {
@@ -126,7 +147,7 @@ onMounted(async () => {
 		</div>
 
 		<labeler-dialog v-if="labelRecording" :initial-recording="labelRecording" :ontologies="ontologies"
-			:latest-ontology="latestOntology" @close="labelRecording = null" />
+			:latest-ontology="latestOntology" @close="onEditFinished" />
 	</div>
 </template>
 

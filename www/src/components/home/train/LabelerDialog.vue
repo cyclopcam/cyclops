@@ -12,8 +12,9 @@ let emits = defineEmits(['close']);
 </script>
 
 <template>
-	<modal tint="rgba(0,0,0,0.8)" :fullscreen="true" @close="$emit('close')">
-		<labeler :recording="initialRecording" :ontologies="ontologies" :latest-ontology="latestOntology" />
+	<modal tint="rgba(0,0,0,0.8)" :fullscreen="true" @close="emits('close')">
+		<labeler :recording="initialRecording" :ontologies="ontologies" :latest-ontology="latestOntology"
+			@close="emits('close')" />
 	</modal>
 </template>
 

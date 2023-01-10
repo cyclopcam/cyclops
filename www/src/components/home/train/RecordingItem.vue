@@ -40,6 +40,7 @@ function showPlayer(): boolean {
 }
 
 function videoTag(): OntologyTag | null {
+	//console.log("RecordingItem videoTag()");
 	let o = ontology();
 	if (!o) {
 		return null;
