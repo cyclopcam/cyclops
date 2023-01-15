@@ -219,6 +219,14 @@ func (e *EventDB) GetRecordings() ([]Recording, error) {
 	return recordings, nil
 }
 
+func (e *EventDB) GetRecordingsForTraining() ([]Recording, error) {
+	recordings := []Recording{}
+	if err := e.db.Where("record_type IN (?,?) AND use_for_training = 1", RecordTypeLogical, RecordTypeSimple).Find(&recordings).Error; err != nil {
+		return nil, err
+	}
+	return recordings, nil
+}
+
 func (e *EventDB) Count() (int64, error) {
 	n := int64(0)
 	if err := e.db.Model(&Recording{}).Where("record_type IN (?,?)", RecordTypeLogical, RecordTypeSimple).Count(&n).Error; err != nil {
@@ -229,6 +237,14 @@ func (e *EventDB) Count() (int64, error) {
 
 func (e *EventDB) SetRecordingLabels(rec *Recording) error {
 	return e.db.Model(&rec).Select("use_for_training", "labels", "ontology_id").Updates(rec).Error
+}
+
+func (e *EventDB) GetOntology(id int64) (*Ontology, error) {
+	ontology := Ontology{}
+	if err := e.db.First(&ontology, id).Error; err != nil {
+		return nil, err
+	}
+	return &ontology, nil
 }
 
 func (e *EventDB) GetOntologies() ([]Ontology, error) {
@@ -322,6 +338,7 @@ func (e *EventDB) PruneUnusedOntologies(keep []int64) error {
 }
 
 // Return the complete path to the specified video or image file
+// For example, eventDB.FullPath(recording.VideoFilenameLD())
 func (e *EventDB) FullPath(videoOrImagePath string) string {
 	return filepath.Join(e.Root, videoOrImagePath)
 }

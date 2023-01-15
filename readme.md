@@ -36,6 +36,22 @@ example, to launch the server, use this script
 `scripts/server --ip 192.168.1.10`, if your own IP is `192.168.1.10`, and the
 cameras on your LAN are on the `192.168.1.x` network.
 
+### Accessing the server API
+
+Although BASIC authentication is very useful for debugging, it is an inherently
+slow authentication mechanism, and because of this we disable it for most APIs.
+
+In order to debug the server API from curl or similar tools, the easiest method
+is to acquire a bearer token, and use that token for subsequent requests.
+
+Example:
+
+```sh
+$ curl -X POST -u USERNAME:PASSWORD http://localhost:8080/api/auth/login?loginMode=BearerToken
+$ {"bearerToken":"h1cPWbUyCKBeEPc8NgW8Fj4q+TpgRUIuvezTr0NFV80="}
+$ curl -H "Authorization: Bearer h1cPWbUyCKBeEPc8NgW8Fj4q+TpgRUIuvezTr0NFV80=" -o training.zip http://localhost:8080/api/train/getDataset
+```
+
 # Other Topics
 
 ### Seeking through videos

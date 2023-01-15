@@ -1,13 +1,14 @@
+Issues with recording UX (ignoring for now.. while I try get _some_ kind of AI thing going):
 The back button doesn't work nicely when labelling a recording.
 Perhaps the Label control should know what "Cancel"/"Save" should do.
 It can either:
 
-1. Pop a route off the stack (if labelling an existing recording)
-2. Return to the Editor (if labelling a new recording)
+    1. Pop a route off the stack (if labelling an existing recording)
+    2. Return to the Editor (if labelling a new recording)
 
-After editing a recording, the Edit Recording view is not properly updated.
-Specifically, the "unlabeled"/"alarm" whatever.. labelling button is out of date.
-Finally...
-Also.. after making a new recording, I think it is missing ontologyID.
-the workflow after making a new recording is horrible. If the user saves the record,
-we should jump immediately into labelling mode.
+    After editing a recording, the Edit Recording view is not properly updated.
+    Specifically, the "unlabeled"/"alarm" whatever.. labelling button is out of date.
+    Finally...
+    Also.. after making a new recording, I think it is missing ontologyID.
+    the workflow after making a new recording is horrible. If the user saves the record,
+    we should jump immediately into labelling mode.

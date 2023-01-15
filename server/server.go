@@ -16,6 +16,7 @@ import (
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/eventdb"
+	"github.com/bmharper/cyclops/server/train"
 	"github.com/bmharper/cyclops/server/util"
 	"github.com/bmharper/cyclops/server/vpn"
 	"github.com/gorilla/websocket"
@@ -42,6 +43,7 @@ type Server struct {
 	configDB        *configdb.ConfigDB
 	permanentEvents *eventdb.EventDB // Where we store our permanent videos
 	recentEvents    *eventdb.EventDB // Where we store our recent event videos
+	train           *train.Trainer
 	wsUpgrader      websocket.Upgrader
 
 	vpnLock sync.Mutex
@@ -111,6 +113,9 @@ func NewServer(configDBFilename string, serverFlags int) (*Server, error) {
 			return nil, err
 		}
 	}
+
+	s.train = train.NewTrainer(s.Log, s.permanentEvents)
+
 	if err := s.SetupHTTP(); err != nil {
 		return nil, err
 	}
