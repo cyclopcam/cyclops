@@ -110,6 +110,7 @@ func (s *Server) SetupHTTP() error {
 	protected("v", "GET", "/api/record/count", s.httpRecordCount)
 	protected("v", "POST", "/api/record/delete/:id", s.httpRecordDeleteRecording)
 	protected("v", "GET", "/api/record/getOntologies", s.httpRecordGetOntologies)
+	protected("v", "GET", "/api/record/getLatestOntology", s.httpRecordGetLatestOntology)
 	protected("v", "POST", "/api/record/setOntology", s.httpRecordSetOntology)
 	protected("v", "GET", "/api/record/thumbnail/:id", s.httpRecordGetThumbnail)
 	protected("v", "GET|HEAD", "/api/record/video/:resolution/:id", s.httpRecordGetVideo)

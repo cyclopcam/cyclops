@@ -2,13 +2,13 @@
 import { CameraInfo } from '@/camera/camera';
 import { globals } from '@/globals';
 import CameraItem from '@/components/home/CameraItem.vue';
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import RedDot from "@/icons/red-dot.svg";
 import Stop from "@/icons/stop.svg";
 import Buttin from "../../core/Buttin.vue";
 import { fetchOrErr } from '@/util/util';
 import RecordingItem from './RecordingItem.vue';
-import { Recording } from '@/recording/recording';
+import { Ontology, Recording } from '@/recording/recording';
 
 let minRecordingSeconds = 5;
 let maxRecordingSeconds = 45; // SYNC-MAX-TRAIN-RECORD-TIME
@@ -28,8 +28,9 @@ let startedAt = ref(new Date());
 let timeNow = ref(new Date());
 let startError = ref("");
 let recorderID = 0;
-//let lastRecordingID = ref(0);
 let newRecording = ref(new Recording());
+let ontologies = ref([] as Ontology[]);
+let latestOntology = ref(new Ontology());
 
 function cameras(): CameraInfo[] {
 	return globals.cameras;
@@ -61,7 +62,7 @@ async function stopRecording() {
 		globals.networkError = r.error;
 		return;
 	}
-	newRecording.value = Recording.fromJSON(await r.r.json(), null);
+	newRecording.value = Recording.fromJSON(await r.r.json());
 	state.value = States.PostRecord;
 	playLive.value = false;
 }
@@ -97,6 +98,10 @@ function status(): string {
 	return `${Math.round(elapsed)} seconds`;
 }
 
+onMounted(async () => {
+	await Ontology.fetchIntoReactive(ontologies, latestOntology);
+})
+
 </script>
 
 <template>
@@ -108,7 +113,8 @@ function status(): string {
 					@play="onPlay(cam)" class="cameraItemPicker" />
 			</div>
 			<div style="margin: 15px; font-size: 14px">
-				Recordings can be anywhere from {{ minRecordingSeconds
+				Recordings can be anywhere from {{
+					minRecordingSeconds
 				}}
 				to {{ maxRecordingSeconds }} seconds long.
 			</div>
@@ -124,7 +130,8 @@ function status(): string {
 							Create a video of yourself performing a suspicious activity, or anything else
 							that you want the system to learn.
 						</li>
-						<li>Recordings can be anywhere from {{ minRecordingSeconds
+						<li>Recordings can be anywhere from {{
+							minRecordingSeconds
 						}}
 							to {{ maxRecordingSeconds }} seconds long.
 						</li>
@@ -143,7 +150,7 @@ function status(): string {
 			</div>
 			<div v-else-if="state === States.PostRecord" class="flexColumnCenter recordingBlock">
 				<recording-item v-if="newRecording.id !== 0" player-cookie="12345" :recording="newRecording"
-					:play-at-startup="true" />
+					:ontologies="ontologies" :play-at-startup="true" />
 				<div class="flex saveOrDiscard">
 					<buttin @click="discardRecording()" :danger="true">Discard</buttin>
 					<div class="dangerSpacer" />

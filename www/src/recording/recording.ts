@@ -1,5 +1,7 @@
+import type { Ref } from "vue";
 import { encodeQuery, fetchOrErr, type FetchResult } from "@/util/util";
 import type { OrError } from "@/util/util";
+import { globals } from "@/globals";
 
 export class Recording {
 	id = 0;
@@ -174,6 +176,15 @@ export class Ontology {
 		return { ok: true, value: onto };
 	}
 
+	static async fetchLatest(): Promise<OrError<Ontology>> {
+		let r = await fetchOrErr("/api/record/getLatestOntology");
+		if (!r.ok) {
+			return { ok: false, err: r.error };
+		}
+		let onto = Ontology.fromJSON((await r.r.json()));
+		return { ok: true, value: onto };
+	}
+
 	static latest(list: Ontology[]): Ontology | null {
 		if (list.length === 0) {
 			return null;
@@ -187,5 +198,21 @@ export class Ontology {
 			}
 		}
 		return best;
+	}
+
+	// Fetch the list of ontologies, and populate the two parameters with the result.
+	// On failure, set the global networkError.
+	static fetchIntoReactive(ontologies: Ref<Ontology[]>, latestOntology: Ref<Ontology>) {
+		Ontology.fetch().then((r) => {
+			if (!r.ok) {
+				globals.networkError = r.err;
+				return;
+			}
+			ontologies.value = r.value;
+			// We expect the server to ensure that there's always at least one ontology record
+			let latest = Ontology.latest(r.value);
+			if (latest)
+				latestOntology.value = latest;
+		});
 	}
 }

@@ -55,20 +55,6 @@ async function getRecording(id: number): Promise<Recording | null> {
 	return reactive(r.value);
 }
 
-async function getOntologies() {
-	let r = await Ontology.fetch();
-	if (!r.ok) {
-		globals.networkError = r.err;
-		return;
-	}
-	ontologies.value = r.value;
-	// We expect the server to ensure that there's always at least one ontology record
-	let latest = Ontology.latest(ontologies.value);
-	if (latest) {
-		latestOntology.value = latest;
-	}
-}
-
 function onPlayInline(cookie: string) {
 	playerCookie.value = cookie;
 }
@@ -122,7 +108,7 @@ watch(() => props.id, (newVal) => {
 onMounted(async () => {
 	//console.log("EditRecordings onMounted");
 
-	await getOntologies();
+	await Ontology.fetchIntoReactive(ontologies, latestOntology);
 
 	if (props.id) {
 		await onLabelIDChanged(parseInt(props.id));

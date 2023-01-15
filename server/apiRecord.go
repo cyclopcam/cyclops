@@ -192,6 +192,12 @@ func (s *Server) httpRecordGetOntologies(w http.ResponseWriter, r *http.Request,
 	www.SendJSON(w, ontologies)
 }
 
+func (s *Server) httpRecordGetLatestOntology(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	latest, err := s.permanentEvents.GetLatestOntology()
+	www.Check(err)
+	www.SendJSON(w, latest)
+}
+
 func (s *Server) httpRecordSetOntology(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	spec := eventdb.OntologyDefinition{}
 	www.ReadJSON(w, r, &spec, 1024*1024)
