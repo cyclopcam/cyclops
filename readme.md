@@ -8,6 +8,12 @@ _Only tested on Ubuntu 22.04_
 
 -   Install Go
 -   Install the apt packages mentioned above
+-   Build ncnn (make sure you have done `git submodule update --init`)
+    -   `cd ncnn`
+    -   `mkdir build`
+    -   `cd build`
+    -   `cmake ..`
+    -   `make -j`
 -   Install nvm
 -   Use `nvm install v18.2.0` (The version is possibly not important, but this
     is the exact version I used when creating this document)

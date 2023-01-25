@@ -4,6 +4,8 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
+                "${workspaceFolder}/ncnn/build/src",
+                "${workspaceFolder}/ncnn/src",
                 "${vcpkgRoot}/x64-linux/include"
             ],
             "defines": [],
