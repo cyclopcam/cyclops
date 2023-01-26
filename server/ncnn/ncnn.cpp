@@ -2,16 +2,25 @@
 #include "layer.h"
 #include "net.h"
 
-//struct NcnnDetector {
-//	ncnn::Net Net;
-//};
-typedef ncnn::Net NcnnDetector;
+enum DetectorTypes {
+	YOLOV7,
+};
+
+struct NcnnDetector {
+	DetectorTypes Type;
+	ncnn::Net     Net;
+};
 
 extern "C" {
 
 NcnnDetector* CreateDetector(const char* type, const char* param, const char* bin) {
-	auto det = new NcnnDetector();
-	//det->load_model()
+	if (strcmp(type, "yolov7") != 0) {
+		return nullptr;
+	}
+	auto det  = new NcnnDetector();
+	det->Type = YOLOV7;
+	det->Net.load_param(param);
+	det->Net.load_model(bin);
 	return det;
 }
 
