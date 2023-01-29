@@ -1,5 +1,12 @@
 {
 	"files.exclude": {
 		"scripts/proxy/tmp": true
+	},
+	"files.associations": {
+		"Dockerfile-*": "dockerfile",
+		"functional": "cpp",
+		"new": "cpp",
+		"tuple": "cpp",
+		"type_traits": "cpp"
 	}
 }

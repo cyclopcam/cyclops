@@ -11,3 +11,4 @@ node_modules
 /android/app/build
 /scripts/proxy/tmp
 /bin
+/ncnn/build

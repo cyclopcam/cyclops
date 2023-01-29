@@ -13,7 +13,8 @@ _Only tested on Ubuntu 22.04_
     -   `mkdir build`
     -   `cd build`
     -   `cmake ..`
-    -   `make -j`
+    -   `make -j` (if you have sufficient RAM ...)
+    -   `make -j2` (... for a Rpi4 with 4GB RAM)
 -   Install nvm
 -   Use `nvm install v18.2.0` (The version is possibly not important, but this
     is the exact version I used when creating this document)
