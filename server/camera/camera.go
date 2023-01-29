@@ -103,12 +103,7 @@ func (c *Camera) LatestImage(contentType string) []byte {
 	if img == nil {
 		return nil
 	}
-	img2, err := cimg.FromImage(img, true)
-	if err != nil {
-		c.Log.Errorf("Failed to wrap decoded image into cimg: %v", err)
-		return nil
-	}
-	buf, err := cimg.Compress(img2, cimg.MakeCompressParams(cimg.Sampling(cimg.Sampling420), 85, cimg.Flags(0)))
+	buf, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling(cimg.Sampling420), 85, cimg.Flags(0)))
 	if err != nil {
 		c.Log.Errorf("Failed to compress image: %v", err)
 		return nil

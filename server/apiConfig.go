@@ -169,17 +169,12 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 	for {
 		img := cam.LowDecoder.LastImage()
 		if img != nil {
-			im, err := cimg.FromImage(img, true)
+			jpg, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, 85, 0))
 			if err != nil {
-				c.WriteJSON(message{Error: "Failed to decode image: " + err.Error()})
-			} else {
-				jpg, err := cimg.Compress(im, cimg.MakeCompressParams(cimg.Sampling420, 85, 0))
-				if err != nil {
-					c.WriteJSON(message{Error: "Failed to compress image to JPEG: " + err.Error()})
-				}
-				c.WriteMessage(websocket.BinaryMessage, jpg)
-				success = true
+				c.WriteJSON(message{Error: "Failed to compress image to JPEG: " + err.Error()})
 			}
+			c.WriteMessage(websocket.BinaryMessage, jpg)
+			success = true
 			break
 		} else if time.Now().Sub(start) > 7*time.Second {
 			c.WriteJSON(message{Error: "Timeout waiting for keyframe"})

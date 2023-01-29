@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"image"
 	"os"
 	"path/filepath"
 	"time"
@@ -360,15 +359,11 @@ func (e *EventDB) saveThumbnailFromVideo(buf *videox.RawBuffer, targetFilename s
 	return e.SaveThumbnail(img, targetFilename)
 }
 
-func (e *EventDB) SaveThumbnail(img image.Image, targetFilename string) error {
-	im, err := cimg.FromImage(img, true)
-	if err != nil {
-		return err
+func (e *EventDB) SaveThumbnail(img *cimg.Image, targetFilename string) error {
+	if img.Width > MaxThumbnailWidth {
+		img = cimg.ResizeNew(img, MaxThumbnailWidth, (MaxThumbnailWidth*img.Height)/img.Width)
 	}
-	if im.Width > MaxThumbnailWidth {
-		im = cimg.ResizeNew(im, MaxThumbnailWidth, (MaxThumbnailWidth*im.Height)/im.Width)
-	}
-	b, err := cimg.Compress(im, cimg.MakeCompressParams(cimg.Sampling420, 80, 0))
+	b, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, 80, 0))
 	if err != nil {
 		return err
 	}

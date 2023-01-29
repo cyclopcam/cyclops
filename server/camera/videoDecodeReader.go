@@ -2,11 +2,11 @@ package camera
 
 import (
 	"fmt"
-	"image"
 	"sync"
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
+	"github.com/bmharper/cimg/v2"
 	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/bmharper/cyclops/server/videox"
 )
@@ -16,7 +16,8 @@ import (
 // This memcpy might be a substantial waste if you're decoding
 // a high res stream, and only need access to the latest frame
 // occasionally. Such a scenario might be better suited by
-// a blocking call which waits for a new frame to be decoded.
+// a blocking call which waits for a new frame to be decoded,
+// depending upon the acceptable latency.
 type VideoDecodeReader struct {
 	Log     log.Log
 	TrackID int
@@ -28,7 +29,7 @@ type VideoDecodeReader struct {
 	ready    bool
 
 	lastImgLock sync.Mutex
-	lastImg     image.Image
+	lastImg     *cimg.Image
 }
 
 func NewVideoDecodeReader() *VideoDecodeReader {
@@ -69,7 +70,7 @@ func (r *VideoDecodeReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	return r.incoming, nil
 }
 
-func (r *VideoDecodeReader) LastImage() image.Image {
+func (r *VideoDecodeReader) LastImage() *cimg.Image {
 	r.lastImgLock.Lock()
 	defer r.lastImgLock.Unlock()
 	return r.lastImg
@@ -103,7 +104,7 @@ func (r *VideoDecodeReader) OnPacketRTP(packet *videox.DecodedPacket) {
 	// send SPS+PPS+IDR as a single packet.
 	// That's why we join all NALUs into a single packet and send that to avcodec.
 
-	// convert H264 NALUs to RGBA frames
+	// convert H264 NALUs to RGB frames
 	img, err := r.Decoder.Decode(packet)
 	if err != nil {
 		r.Log.Errorf("Failed to decode H264 NALU: %v", err)
@@ -120,16 +121,14 @@ func (r *VideoDecodeReader) OnPacketRTP(packet *videox.DecodedPacket) {
 	//r.Log.Infof("[Packet %v] Decoded frame with size %v", r.nPackets, img.Bounds().Max)
 }
 
-func (r *VideoDecodeReader) cloneIntoLastImg(latest image.Image) {
+func (r *VideoDecodeReader) cloneIntoLastImg(latest *cimg.Image) {
 	r.lastImgLock.Lock()
-	if r.lastImg == nil || !r.lastImg.Bounds().Eq(latest.Bounds()) {
-		r.lastImg = image.NewRGBA(latest.Bounds())
+	if r.lastImg == nil ||
+		r.lastImg.Width != latest.Width ||
+		r.lastImg.Height != latest.Height ||
+		r.lastImg.Format != latest.Format {
+		r.lastImg = cimg.NewImage(latest.Width, latest.Height, latest.Format)
 	}
-	src := latest.(*image.RGBA)
-	dst := r.lastImg.(*image.RGBA)
-	h := src.Rect.Dy()
-	for i := 0; i < h; i++ {
-		copy(dst.Pix[i*dst.Stride:(i+1)*dst.Stride], src.Pix[i*src.Stride:(i+1)*src.Stride])
-	}
+	r.lastImg.CopyImage(latest, 0, 0)
 	r.lastImgLock.Unlock()
 }

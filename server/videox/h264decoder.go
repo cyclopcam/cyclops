@@ -3,10 +3,10 @@ package videox
 import (
 	"errors"
 	"fmt"
-	"image"
 	"unsafe"
 
 	"github.com/aler9/gortsplib/pkg/h264"
+	"github.com/bmharper/cimg/v2"
 )
 
 // #cgo pkg-config: libavcodec libavutil libswscale
@@ -110,8 +110,10 @@ func (d *H264Decoder) Close() {
 //}
 
 // WARNING: The image returned is only valid while the decoder is still alive,
-// and it will be clobbered by the subsequent Decode()
-func (d *H264Decoder) Decode(packet *DecodedPacket) (image.Image, error) {
+// and it will be clobbered by the subsequent Decode().
+// The pixels in the returned image are not a garbage-collected Go slice.
+// They point directly into the libavcodec decode buffer.
+func (d *H264Decoder) Decode(packet *DecodedPacket) (*cimg.Image, error) {
 	if err := d.sendPacket(packet.EncodeToAnnexBPacket()); err != nil {
 		// sendPacket failure is not fatal
 		// We should log it or something.
@@ -149,7 +151,7 @@ func (d *H264Decoder) Decode(packet *DecodedPacket) (image.Image, error) {
 		}
 
 		d.dstFrame = C.av_frame_alloc()
-		d.dstFrame.format = C.AV_PIX_FMT_RGBA
+		d.dstFrame.format = C.AV_PIX_FMT_RGB24
 		d.dstFrame.width = d.srcFrame.width
 		d.dstFrame.height = d.srcFrame.height
 		d.dstFrame.color_range = C.AVCOL_RANGE_JPEG
@@ -177,14 +179,7 @@ func (d *H264Decoder) Decode(packet *DecodedPacket) (image.Image, error) {
 
 	//fmt.Printf("Got frame %v x %v -> %v x %v\n", d.srcFrame.width, d.srcFrame.height, d.dstFrame.width, d.dstFrame.height)
 
-	// embed frame into an image.Image
-	return &image.RGBA{
-		Pix:    d.dstFramePtr,
-		Stride: 4 * (int)(d.dstFrame.width),
-		Rect: image.Rectangle{
-			Max: image.Point{(int)(d.dstFrame.width), (int)(d.dstFrame.height)},
-		},
-	}, nil
+	return cimg.WrapImage(int(d.dstFrame.width), int(d.dstFrame.height), cimg.PixelFormatRGB, d.dstFramePtr), nil
 }
 
 func (d *H264Decoder) Width() int {
@@ -221,7 +216,7 @@ func (d *H264Decoder) sendPacket(packet []byte) error {
 // This was built for extracting a thumbnail during a long recording.
 // Obviously this is quite expensive, because you're creating a decoder
 // for just a single frame.
-func DecodeSinglePacketToImage(packet *DecodedPacket) (image.Image, error) {
+func DecodeSinglePacketToImage(packet *DecodedPacket) (*cimg.Image, error) {
 	decoder, err := NewH264Decoder()
 	if err != nil {
 		return nil, err
@@ -231,5 +226,5 @@ func DecodeSinglePacketToImage(packet *DecodedPacket) (image.Image, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cloneImage(img), nil
+	return img.Clone(), nil
 }

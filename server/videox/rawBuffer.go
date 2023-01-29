@@ -3,7 +3,6 @@ package videox
 import (
 	"errors"
 	"fmt"
-	"image"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
+	"github.com/bmharper/cimg/v2"
 	"github.com/bmharper/cyclops/pkg/gen"
 	"github.com/bmharper/cyclops/pkg/log"
 )
@@ -380,7 +380,7 @@ func (r *RawBuffer) ResetPTS() {
 
 // Decode the center-most keyframe
 // This is O(1), assuming no errors or funny business like no keyframes.
-func (r *RawBuffer) ExtractThumbnail() (image.Image, error) {
+func (r *RawBuffer) ExtractThumbnail() (*cimg.Image, error) {
 	decoder, err := NewH264Decoder()
 	if err != nil {
 		return nil, err
@@ -402,7 +402,7 @@ func (r *RawBuffer) ExtractThumbnail() (image.Image, error) {
 		//fmt.Printf("%v: %v\n", i, r.Packets[i].Summary())
 		img, _ := decoder.Decode(r.Packets[i])
 		if img != nil {
-			return cloneImage(img), nil
+			return img.Clone(), nil
 		}
 	}
 	return nil, errors.New("No thumbnail available")
