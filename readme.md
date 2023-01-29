@@ -2,7 +2,7 @@
 
 _Only tested on Ubuntu 22.04_
 
-    sudo apt install libavformat-dev libswscale-dev ffmpeg gcc g++ pkg-config libturbojpeg0-dev wireguard wireguard-tools
+    sudo apt install libavformat-dev libswscale-dev ffmpeg cmake gcc g++ pkg-config libturbojpeg0-dev wireguard wireguard-tools
 
 ## Dev environment
 
@@ -12,7 +12,7 @@ _Only tested on Ubuntu 22.04_
     -   `cd ncnn`
     -   `mkdir build`
     -   `cd build`
-    -   `cmake ..`
+    -   `cmake -DNCNN_SIMPLEOCV=1 ..`
     -   `make -j` (if you have sufficient RAM ...)
     -   `make -j2` (... for a Rpi4 with 4GB RAM)
 -   Install nvm
