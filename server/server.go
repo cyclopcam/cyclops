@@ -16,6 +16,7 @@ import (
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/eventdb"
+	"github.com/bmharper/cyclops/server/monitor"
 	"github.com/bmharper/cyclops/server/train"
 	"github.com/bmharper/cyclops/server/util"
 	"github.com/bmharper/cyclops/server/vpn"
@@ -45,6 +46,7 @@ type Server struct {
 	recentEvents    *eventdb.EventDB // Where we store our recent event videos
 	train           *train.Trainer
 	wsUpgrader      websocket.Upgrader
+	monitor         *monitor.Monitor
 
 	vpnLock sync.Mutex
 	vpn     *vpn.VPN
@@ -109,10 +111,20 @@ func NewServer(configDBFilename string, serverFlags int) (*Server, error) {
 		configOK = false
 	}
 	if configOK {
-		if err := s.LoadCamerasFromConfig(); err != nil {
+		if err := s.loadCamerasFromConfig(); err != nil {
 			return nil, err
 		}
 	}
+
+	monitor, err := monitor.NewMonitor(s.Log)
+	if err != nil {
+		return nil, err
+	}
+	s.monitor = monitor
+
+	s.camerasLock.Lock()
+	s.monitor.SetCameras(s.cameras)
+	s.camerasLock.Unlock()
 
 	s.train = train.NewTrainer(s.Log, s.permanentEvents)
 
@@ -171,15 +183,17 @@ func (s *Server) Shutdown(restart bool) {
 	// Remove our signal handler (we'll re-enable it again if we restart)
 	signal.Stop(s.signalIn)
 
+	s.monitor.Close()
+
 	waitCameras := &sync.WaitGroup{}
 
-	// CloseAllCameras() should close all WebSockets, by virtue of the Streams closing, which sends
+	// closeAllCameras() should close all WebSockets, by virtue of the Streams closing, which sends
 	// a message to the websocket thread.
 	// This is relevant because calling Shutdown() on our http server will not do anything to upgraded
 	// connections (this is explicit in the http server docs).
 	// NOTE: there is also RegisterOnShutdown.. which might be useful
 	s.Log.Infof("Closing cameras")
-	s.CloseAllCameras(waitCameras)
+	s.closeAllCameras(waitCameras)
 
 	s.Log.Infof("Closing HTTP server")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -233,9 +247,14 @@ func (s *Server) AddCamera(cam *camera.Camera) {
 	defer s.camerasLock.Unlock()
 	s.cameras = append(s.cameras, cam)
 	s.cameraFromID[cam.ID] = cam
+
+	if s.monitor != nil {
+		// Monitor is nil during startup, but not nil if a Camera is newly configured and added to the system.
+		s.monitor.SetCameras(gen.CopySlice(s.cameras))
+	}
 }
 
-func (s *Server) CloseAllCameras(wg *sync.WaitGroup) {
+func (s *Server) closeAllCameras(wg *sync.WaitGroup) {
 	s.camerasLock.Lock()
 	defer s.camerasLock.Unlock()
 	for _, cam := range s.cameras {
@@ -276,8 +295,7 @@ func (s *Server) LoadConfigVariables() error {
 }
 
 // Loads cameras from config, but does not start them yet
-func (s *Server) LoadCamerasFromConfig() error {
-	s.CloseAllCameras(nil)
+func (s *Server) loadCamerasFromConfig() error {
 	cams := []configdb.Camera{}
 	if err := s.configDB.DB.Find(&cams).Error; err != nil {
 		return err

@@ -10,6 +10,7 @@ package ncnn
 import "C"
 
 import (
+	"fmt"
 	"unsafe"
 
 	"github.com/bmharper/cyclops/server/nn"
@@ -19,28 +20,31 @@ type Detector struct {
 	detector C.NcnnDetector
 }
 
-func NewDetector(modelType, params, bin string) *Detector {
+func NewDetector(modelType, params, bin string) (*Detector, error) {
 	cModelType := C.CString(modelType)
 	cParams := C.CString(params)
 	cBin := C.CString(bin)
-	detector := &Detector{
-		detector: C.CreateDetector(cModelType, cParams, cBin),
-	}
+	cdet := C.CreateDetector(cModelType, cParams, cBin)
 	C.free(unsafe.Pointer(cModelType))
 	C.free(unsafe.Pointer(cParams))
 	C.free(unsafe.Pointer(cBin))
-	return detector
+	if cdet == nil {
+		return nil, fmt.Errorf("Failed to create NN detector (%v, '%v', '%v')", modelType, params, bin)
+	}
+	return &Detector{
+		detector: cdet,
+	}, nil
 }
 
 func (d *Detector) Close() {
 	C.DeleteDetector(d.detector)
 }
 
-func (d *Detector) DetectObjects(nchan int, rgba []byte, width, height int) ([]nn.Detection, error) {
+func (d *Detector) DetectObjects(nchan int, image []byte, width, height int) ([]nn.Detection, error) {
 	detections := make([]C.Detection, 100)
 	nDetections := C.int(0)
 	C.DetectObjects(d.detector,
-		C.int(nchan), (*C.uchar)(unsafe.Pointer(&rgba[0])), C.int(width), C.int(height), C.int(width*nchan),
+		C.int(nchan), (*C.uchar)(unsafe.Pointer(&image[0])), C.int(width), C.int(height), C.int(width*nchan),
 		C.int(len(detections)), (*C.Detection)(unsafe.Pointer(&detections[0])), &nDetections)
 	result := make([]nn.Detection, nDetections)
 

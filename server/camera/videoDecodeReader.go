@@ -70,10 +70,14 @@ func (r *VideoDecodeReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	return r.incoming, nil
 }
 
+// Return a copy of the most recently decoded frame (or nil, if there is none available yet)
 func (r *VideoDecodeReader) LastImage() *cimg.Image {
 	r.lastImgLock.Lock()
 	defer r.lastImgLock.Unlock()
-	return r.lastImg
+	if r.lastImg == nil {
+		return nil
+	}
+	return r.lastImg.Clone()
 }
 
 func (r *VideoDecodeReader) Close() {

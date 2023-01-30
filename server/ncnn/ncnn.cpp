@@ -23,8 +23,12 @@ NcnnDetector* CreateDetector(const char* type, const char* param, const char* bi
 	}
 	auto det  = new NcnnDetector();
 	det->Type = YOLOV7;
-	det->Net.load_param(param);
-	det->Net.load_model(bin);
+	int r1    = det->Net.load_param(param);
+	int r2    = det->Net.load_model(bin);
+	if (r1 == -1 || r2 == -1) {
+		delete det;
+		return nullptr;
+	}
 	return det;
 }
 

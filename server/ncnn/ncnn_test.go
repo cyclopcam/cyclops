@@ -38,7 +38,7 @@ func loadImage(name string) *cimg.Image {
 }
 
 func TestHello(t *testing.T) {
-	detector := ncnn.NewDetector("yolov7", filepath.Join(modelsDir(), "yolov7-tiny.param"), filepath.Join(modelsDir(), "yolov7-tiny.bin"))
+	detector, _ := ncnn.NewDetector("yolov7", filepath.Join(modelsDir(), "yolov7-tiny.param"), filepath.Join(modelsDir(), "yolov7-tiny.bin"))
 	defer detector.Close()
 	img := loadImage("driveway001-man.jpg")
 	detections, _ := detector.DetectObjects(img.NChan(), img.Pixels, img.Width, img.Height)

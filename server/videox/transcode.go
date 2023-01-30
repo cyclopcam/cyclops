@@ -11,11 +11,11 @@ func TranscodeSeekable(srcFilename, dstFilename string) error {
 		"ffmpeg",
 		"-i",
 		srcFilename,
-		"-y",
-		"-g",
-		"3",
-		"-crf",
-		"25",
+		"-y",   // overwrite output file
+		"-g",   // keyframe interval
+		"3",    // keyframe every 3 frames
+		"-crf", // constant rate factor
+		"25",   // 0-51, 0 is lossless, 51 is worst quality
 		dstFilename,
 	}
 	ffmpeg, err := exec.LookPath("ffmpeg")
