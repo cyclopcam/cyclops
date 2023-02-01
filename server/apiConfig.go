@@ -167,7 +167,7 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 	success := false
 	start := time.Now()
 	for {
-		img := cam.LowDecoder.LastImage()
+		img, _ := cam.LowDecoder.LastImageCopy()
 		if img != nil {
 			jpg, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, 85, 0))
 			if err != nil {

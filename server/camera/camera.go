@@ -99,7 +99,7 @@ func (c *Camera) Close(wg *sync.WaitGroup) {
 }
 
 func (c *Camera) LatestImage(contentType string) []byte {
-	img := c.LowDecoder.LastImage()
+	img, _ := c.LowDecoder.LastImageCopy()
 	if img == nil {
 		return nil
 	}

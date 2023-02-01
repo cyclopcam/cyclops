@@ -30,6 +30,7 @@ type VideoDecodeReader struct {
 
 	lastImgLock sync.Mutex
 	lastImg     *cimg.Image
+	lastImgID   int64 // If zero, then no frames decoded. The first decoded frame is 1, and it increases with each new frame
 }
 
 func NewVideoDecodeReader() *VideoDecodeReader {
@@ -70,14 +71,24 @@ func (r *VideoDecodeReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	return r.incoming, nil
 }
 
-// Return a copy of the most recently decoded frame (or nil, if there is none available yet)
-func (r *VideoDecodeReader) LastImage() *cimg.Image {
+// Return image, id of last image if it's different to the given id
+func (r *VideoDecodeReader) GetLastImageIfDifferent(ifNotEqualTo int64) (*cimg.Image, int64) {
+	r.lastImgLock.Lock()
+	defer r.lastImgLock.Unlock()
+	if r.lastImg == nil || r.lastImgID == ifNotEqualTo {
+		return nil, 0
+	}
+	return r.lastImg.Clone(), r.lastImgID
+}
+
+// Return a copy of the most recently decoded frame (or nil, if there is none available yet), and the frame ID
+func (r *VideoDecodeReader) LastImageCopy() (*cimg.Image, int64) {
 	r.lastImgLock.Lock()
 	defer r.lastImgLock.Unlock()
 	if r.lastImg == nil {
-		return nil
+		return nil, 0
 	}
-	return r.lastImg.Clone()
+	return r.lastImg.Clone(), r.lastImgID
 }
 
 func (r *VideoDecodeReader) Close() {
@@ -134,5 +145,6 @@ func (r *VideoDecodeReader) cloneIntoLastImg(latest *cimg.Image) {
 		r.lastImg = cimg.NewImage(latest.Width, latest.Height, latest.Format)
 	}
 	r.lastImg.CopyImage(latest, 0, 0)
+	r.lastImgID++
 	r.lastImgLock.Unlock()
 }
