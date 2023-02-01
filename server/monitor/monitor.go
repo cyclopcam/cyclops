@@ -143,8 +143,10 @@ func (m *Monitor) loop() {
 		cameraStates[mcam] = &looperCameraState{}
 	}
 
-	// maintain camera index outside of main loop, so that we're not
-	// biased towards processing the frames of the first cameras
+	// Maintain camera index outside of main loop, so that we're not
+	// biased towards processing the frames of the first camera(s).
+	// I still need to figure out how to boost priority for cameras
+	// that have likely activity in them.
 	icam := uint(0)
 
 	lastStats := time.Now()
@@ -190,7 +192,10 @@ func (m *Monitor) loop() {
 			time.Sleep(5 * time.Millisecond)
 		}
 
-		interval := 3 * math.Pow(1.1, float64(nStats))
+		interval := 5 * math.Pow(1.05, float64(nStats))
+		if interval > 5*60 {
+			interval = 5 * 60
+		}
 		if time.Now().Sub(lastStats) > time.Duration(interval)*time.Second {
 			nStats++
 			totalFrames, totalProcessed := looperStats(cameraStates)
