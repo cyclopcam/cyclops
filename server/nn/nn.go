@@ -3,17 +3,17 @@ package nn
 // nn is a Neural Network interface layer
 
 type Rect struct {
-	X      int
-	Y      int
-	Width  int
-	Height int
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
 // Detection is an object that a neural network has found in an image
 type Detection struct {
-	Class      int
-	Confidence float32
-	Box        Rect
+	Class      int     `json:"class"`
+	Confidence float32 `json:"confidence"`
+	Box        Rect    `json:"box"`
 }
 
 // ObjectDetector is given an image, and returns zero or more detected objects

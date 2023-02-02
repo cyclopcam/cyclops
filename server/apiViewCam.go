@@ -1,10 +1,12 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/bmharper/cimg/v2"
 	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
@@ -80,13 +82,29 @@ func (s *Server) httpCamGetLatestImage(w http.ResponseWriter, r *http.Request, p
 	www.CacheNever(w)
 
 	contentType := "image/jpeg"
-	img := cam.LatestImage(contentType)
-	if img == nil {
-		www.PanicBadRequestf("No image available yet")
+	var encodedImg []byte
+
+	// First try to get latest frame that has had NN detections run on it
+	img, detections, err := s.monitor.LatestFrame(cam.ID)
+	if err == nil {
+		encodedImg, err = cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, 85, 0))
+		www.Check(err)
+		js, err := json.Marshal(detections)
+		www.Check(err)
+		// We must send Content-Type before X-Detections
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("X-Detections", string(js))
+	} else {
+		// Fall back to latest frame without NN detections
+		s.Log.Infof("httpCamGetLatestImage fallback on camera %v (%v)", cam.ID, err)
+		encodedImg = cam.LatestImage(contentType)
+		if encodedImg == nil {
+			www.PanicBadRequestf("No image available yet")
+		}
+		w.Header().Set("Content-Type", contentType)
 	}
 
-	w.Header().Set("Content-Type", contentType)
-	w.Write(img)
+	w.Write(encodedImg)
 }
 
 // Fetch a high res MP4 of the camera's recent footage

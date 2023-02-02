@@ -1,7 +1,9 @@
 package monitor
 
 import (
+	"fmt"
 	"math"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,20 +25,34 @@ type Monitor struct {
 	numNNThreads        int                   // Number of NN threads
 	nnThreadStopWG      sync.WaitGroup        // Wait for all NN threads to exit
 	looperStopped       chan bool             // When looperStop channel is closed, then the looped has stopped
-	cameras             []*monitorCamera      // Cameras that we're monitoring
 	nnFrameTime         time.Duration         // Average time for the neural network to process a frame
 	nnThreadQueue       chan monitorQueueItem // Queue of images to be processed by the neural network
 	avgTimeNSPerFrameNN atomic.Int64          // Average time (ns) per frame, for just the neural network (time inside a thread)
 
-	//isPaused  atomic.Int32
+	camerasLock sync.Mutex       // Guards access to cameras
+	cameras     []*monitorCamera // Cameras that we're monitoring
+}
+
+type DetectionResult struct {
+	Objects []nn.Detection `json:"objects"`
 }
 
 type monitorCamera struct {
 	camera *camera.Camera
 
-	lock    sync.Mutex
-	lastImg *cimg.Image    // Guarded by 'lock' mutex. If objects is not nil, then this is the image that was used to generate the objects.
-	objects []nn.Detection // Guarded by 'lock' mutex
+	// Guards access to lastImg and objects
+	lock sync.Mutex
+
+	// Guarded by 'lock' mutex.
+	// If objects is not nil, then this is the image that was used to generate the objects.
+	// lastImg is garbage collected - it will not get reused for subsequent frames.
+	// In other words, it is safe to lock the mutex, read the lastImg pointer, unlock the mutex,
+	// and then use that pointer indefinitely thereafter.
+	lastImg *cimg.Image
+
+	// Guarded by 'lock' mutex.
+	// Same comment applies to objects as to lastImg, in the sense that the contents of objects is immutable.
+	objects []nn.Detection
 }
 
 type monitorQueueItem struct {
@@ -59,8 +75,13 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	// Once we signal mustStopNNThreads, we fill the queue with dummy jobs, so that the NN threads
 	// can wake up from their channel receive operation, and exit.
 	// If the queue size was too small, then this would deadlock.
-	nThreads := 1
+
+	// On a Raspberry Pi 4, a single NN thread is best. But on my larger desktops, more threads helps.
+	// I haven't looked into ncnn's threading strategy yet.
+	nThreads := int(math.Max(1, float64(runtime.NumCPU())/4))
 	queueSize := nThreads * 3
+
+	logger.Infof("Starting %v NN detection threads", nThreads)
 
 	m := &Monitor{
 		Log:           logger,
@@ -71,7 +92,7 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	for i := 0; i < m.numNNThreads; i++ {
 		go m.nnThread()
 	}
-	m.start()
+	m.startLooper()
 	return m, nil
 }
 
@@ -97,6 +118,31 @@ func (m *Monitor) Close() {
 	m.Log.Infof("Monitor is closed")
 }
 
+// Return the most recent frame and detection result for a camera
+func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *DetectionResult, error) {
+	cam := m.cameraByID(cameraID)
+	if cam == nil {
+		return nil, nil, fmt.Errorf("Camera %v not found", cameraID)
+	}
+	cam.lock.Lock()
+	defer cam.lock.Unlock()
+	if cam.lastImg == nil {
+		return nil, nil, fmt.Errorf("No image available for camera %v", cameraID)
+	}
+	return cam.lastImg, &DetectionResult{Objects: cam.objects}, nil
+}
+
+func (m *Monitor) cameraByID(cameraID int64) *monitorCamera {
+	m.camerasLock.Lock()
+	defer m.camerasLock.Unlock()
+	for _, cam := range m.cameras {
+		if cam.camera.ID == cameraID {
+			return cam
+		}
+	}
+	return nil
+}
+
 // Stop listening to cameras
 func (m *Monitor) stopLooper() {
 	m.mustStopLooper.Store(true)
@@ -104,7 +150,7 @@ func (m *Monitor) stopLooper() {
 }
 
 // Start/Restart looper
-func (m *Monitor) start() {
+func (m *Monitor) startLooper() {
 	m.mustStopLooper.Store(false)
 	m.looperStopped = make(chan bool)
 	go m.loop()
@@ -113,22 +159,29 @@ func (m *Monitor) start() {
 // Set cameras and start monitoring
 func (m *Monitor) SetCameras(cameras []*camera.Camera) {
 	m.stopLooper()
-	m.cameras = nil
+
+	newCameras := []*monitorCamera{}
 	for _, cam := range cameras {
-		m.cameras = append(m.cameras, &monitorCamera{
+		newCameras = append(newCameras, &monitorCamera{
 			camera: cam,
 		})
 	}
-	m.start()
+
+	m.camerasLock.Lock()
+	m.cameras = newCameras
+	m.camerasLock.Unlock()
+
+	m.startLooper()
 }
 
 type looperCameraState struct {
-	lastID             int64
+	mcam               *monitorCamera
+	lastFrameID        int64 // Last frame we've seen from this camera
 	numFramesTotal     int64 // Number of frames from this camera that we've seen
 	numFramesProcessed int64 // Number of frames from this camera that we've analyzed
 }
 
-func looperStats(cameraStates map[*monitorCamera]*looperCameraState) (totalFrames int64, totalProcessed int64) {
+func looperStats(cameraStates []*looperCameraState) (totalFrames, totalProcessed int64) {
 	for _, state := range cameraStates {
 		totalFrames += state.numFramesTotal
 		totalProcessed += state.numFramesProcessed
@@ -138,10 +191,16 @@ func looperStats(cameraStates map[*monitorCamera]*looperCameraState) (totalFrame
 
 // Loop runs until Close()
 func (m *Monitor) loop() {
-	cameraStates := map[*monitorCamera]*looperCameraState{}
+	// Make our own private copy of cameras.
+	// If the list of cameras changes, then SetCameras() will stop and restart the looper.
+	m.camerasLock.Lock()
+	looperCameras := []*looperCameraState{}
 	for _, mcam := range m.cameras {
-		cameraStates[mcam] = &looperCameraState{}
+		looperCameras = append(looperCameras, &looperCameraState{
+			mcam: mcam,
+		})
 	}
+	m.camerasLock.Unlock()
 
 	// Maintain camera index outside of main loop, so that we're not
 	// biased towards processing the frames of the first camera(s).
@@ -150,10 +209,11 @@ func (m *Monitor) loop() {
 	icam := uint(0)
 
 	lastStats := time.Now()
+
 	nStats := 0
 	for !m.mustStopLooper.Load() {
 		idle := true
-		for i := 0; i < len(m.cameras); i++ {
+		for i := 0; i < len(looperCameras); i++ {
 			if m.mustStopLooper.Load() {
 				break
 			}
@@ -163,21 +223,21 @@ func (m *Monitor) loop() {
 
 			// It's vital that this incrementing happens after the queue check above,
 			// otherwise you don't get round robin behaviour.
-			icam = (icam + 1) % uint(len(m.cameras))
-			mcam := m.cameras[icam]
-			camState := cameraStates[mcam]
+			icam = (icam + 1) % uint(len(looperCameras))
+			camState := looperCameras[icam]
+			mcam := camState.mcam
 
 			//m.Log.Infof("%v", icam)
-			img, imgID := mcam.camera.LowDecoder.GetLastImageIfDifferent(camState.lastID)
+			img, imgID := mcam.camera.LowDecoder.GetLastImageIfDifferent(camState.lastFrameID)
 			if img != nil {
-				if camState.lastID == 0 {
+				if camState.lastFrameID == 0 {
 					camState.numFramesTotal++
 				} else {
-					camState.numFramesTotal += imgID - camState.lastID
+					camState.numFramesTotal += imgID - camState.lastFrameID
 				}
 				//m.Log.Infof("Got image %d from camera %s (%v / %v)", imgID, mcam.camera.Name, camState.numFramesProcessed, camState.numFramesTotal)
 				camState.numFramesProcessed++
-				camState.lastID = imgID
+				camState.lastFrameID = imgID
 				idle = false
 				m.nnThreadQueue <- monitorQueueItem{
 					camera: mcam,
@@ -192,13 +252,13 @@ func (m *Monitor) loop() {
 			time.Sleep(5 * time.Millisecond)
 		}
 
-		interval := 5 * math.Pow(1.05, float64(nStats))
+		interval := 3 * math.Pow(1.05, float64(nStats))
 		if interval > 5*60 {
 			interval = 5 * 60
 		}
 		if time.Now().Sub(lastStats) > time.Duration(interval)*time.Second {
 			nStats++
-			totalFrames, totalProcessed := looperStats(cameraStates)
+			totalFrames, totalProcessed := looperStats(looperCameras)
 			m.Log.Infof("%.0f%% frames analyzed by NN (%.1f ms per frame, per thread)", 100*float64(totalProcessed)/float64(totalFrames), float64(m.avgTimeNSPerFrameNN.Load())/1e6)
 			lastStats = time.Now()
 		}
@@ -236,20 +296,3 @@ func (m *Monitor) nnThread() {
 
 	m.nnThreadStopWG.Done()
 }
-
-/*
-// Pause any monitoring activity.
-// Pause/Unpause is a counter, so for every call to Pause(), you must make an equivalent call to Unpause().
-func (m *Monitor) Pause() {
-	m.isPaused.Add(1)
-}
-
-// Reverse the action of one or more calls to Pause().
-// Every call to Pause() must be matched by a call to Unpause().
-func (m *Monitor) Unpause() {
-	nv := m.isPaused.Add(-1)
-	if nv < 0 {
-		m.Log.Errorf("Monitor isPaused is negative. This is a bug")
-	}
-}
-*/
