@@ -38,9 +38,22 @@ if [ ! -f /etc/systemd/system/cyclops-kernelwg.service ]; then
 	sudo systemctl enable cyclops-kernelwg
 fi
 
+# Stop services
 sudo systemctl stop cyclops
 sudo systemctl stop cyclops-kernelwg
+
+# Copy binaries
 sudo cp bin/kernelwg /usr/local/bin/cyclops-kernelwg
 sudo cp bin/cyclops /usr/local/bin/cyclops
+
+# Copy NN models
+sudo -u cyclops mkdir -p /var/lib/cyclops/models
+sudo -u cyclops cp models/* /var/lib/cyclops/models/
+
+# Start services
 sudo systemctl start cyclops-kernelwg
 sudo systemctl start cyclops
+
+# Show status of main service
+sudo systemctl status cyclops
+

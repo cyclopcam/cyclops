@@ -166,7 +166,12 @@ function parseVideoFrame(data: ArrayBuffer): parsedPacket {
 	// OK.. interesting.. I left my system on play for a long time (eg 1 hour), and when I came back,
 	// the camera was playing daytime, although it was already night time outside. So *somewhere*, we are
 	// adding a gigantic buffer. I haven't figured out how to figure out where that is.
-	normalDuration *= 0.9;
+	normalDuration *= 0.95;
+
+	// Try various things to reduce the motion to photons latency. The latency is right now is about 1
+	// second, and it's very obvious when you see your neural network detection box walk ahead of your body.
+	//if (nVideoPackets % 10 === 0)
+	//	backlog = true;
 
 	// during backlog catchup, we leave duration undefined, which causes the player to catch up
 	// as fast as it can (which is precisely what we want).

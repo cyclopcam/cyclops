@@ -3,7 +3,10 @@ package monitor
 import (
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -66,7 +69,25 @@ type monitorQueueItem struct {
 }
 
 func NewMonitor(logger log.Log) (*Monitor, error) {
-	detector, err := ncnn.NewDetector("yolov7", "models/yolov7-tiny.param", "models/yolov7-tiny.bin")
+	tryPaths := []string{"models", "/var/lib/cyclops/models"}
+	basePath := ""
+	for _, tryPath := range tryPaths {
+		abs, err := filepath.Abs(tryPath)
+		if err != nil {
+			logger.Warnf("Unable to resolve model path candidate '%v' to an absolute path: %v", tryPath, err)
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(abs, "yolov7-tiny.param")); err == nil {
+			basePath = abs
+			break
+		}
+	}
+	if basePath == "" {
+		return nil, fmt.Errorf("Could not find models directory. Searched in [%v]", strings.Join(tryPaths, ", "))
+	}
+	logger.Infof("Loading NN models from '%v'", basePath)
+
+	detector, err := ncnn.NewDetector("yolov7", filepath.Join(basePath, "yolov7-tiny.param"), filepath.Join(basePath, "yolov7-tiny.bin"))
 	//detector, err := ncnn.NewDetector("yolov7", "/home/ben/dev/cyclops/models/yolov7-tiny.param", "/home/ben/dev/cyclops/models/yolov7-tiny.bin")
 	if err != nil {
 		return nil, err
