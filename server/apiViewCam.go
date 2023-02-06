@@ -142,15 +142,20 @@ func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, para
 
 	s.Log.Infof("httpCamStreamVideo websocket upgrading")
 
-	c, err := s.wsUpgrader.Upgrade(w, r, nil)
+	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.Log.Errorf("httpCamStreamVideo websocket upgrade failed: %v", err)
 		return
 	}
-	defer c.Close()
+	defer conn.Close()
 
 	s.Log.Infof("httpCamStreamVideo starting")
 
-	streamer := camera.NewVideoWebSocketStreamer(cam.Name, s.Log)
-	streamer.Run(c, stream, backlog)
+	newDetections := s.monitor.AddWatcher(cam.ID)
+
+	camera.RunVideoWebSocketStreamer(cam.Name, s.Log, conn, stream, backlog, newDetections)
+
+	s.monitor.RemoveWatcher(newDetections)
+
+	s.Log.Infof("httpCamStreamVideo done")
 }

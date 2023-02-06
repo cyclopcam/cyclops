@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bmharper/cimg/v2"
+	"github.com/bmharper/cyclops/pkg/gen"
 	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/ncnn"
@@ -31,10 +32,14 @@ type Monitor struct {
 
 	camerasLock sync.Mutex       // Guards access to cameras
 	cameras     []*monitorCamera // Cameras that we're monitoring
+
+	watchersLock sync.RWMutex // Guards access to watchers
+	watchers     []watcher    // Channels to send detection results to
 }
 
-type DetectionResult struct {
-	Objects []nn.Detection `json:"objects"`
+type watcher struct {
+	cameraID int64
+	ch       chan *nn.DetectionResult
 }
 
 type monitorCamera struct {
@@ -52,7 +57,7 @@ type monitorCamera struct {
 
 	// Guarded by 'lock' mutex.
 	// Same comment applies to objects as to lastImg, in the sense that the contents of objects is immutable.
-	objects []nn.Detection
+	lastDetection *nn.DetectionResult
 }
 
 type monitorQueueItem struct {
@@ -119,7 +124,7 @@ func (m *Monitor) Close() {
 }
 
 // Return the most recent frame and detection result for a camera
-func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *DetectionResult, error) {
+func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *nn.DetectionResult, error) {
 	cam := m.cameraByID(cameraID)
 	if cam == nil {
 		return nil, nil, fmt.Errorf("Camera %v not found", cameraID)
@@ -129,7 +134,37 @@ func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *DetectionResult, er
 	if cam.lastImg == nil {
 		return nil, nil, fmt.Errorf("No image available for camera %v", cameraID)
 	}
-	return cam.lastImg, &DetectionResult{Objects: cam.objects}, nil
+
+	return cam.lastImg, cam.lastDetection, nil
+}
+
+// Register to receive detection results.
+// You must be careful to ensure that your receiver always processes a result
+// immediately, and keeps the channel drained. If you don't do this, then
+// the monitor will freeze, and obviously that's a really bad thing to happen
+// to a security system.
+func (m *Monitor) AddWatcher(cameraID int64) chan *nn.DetectionResult {
+	m.watchersLock.Lock()
+	defer m.watchersLock.Unlock()
+	ch := make(chan *nn.DetectionResult, 100)
+	m.watchers = append(m.watchers, watcher{
+		cameraID: cameraID,
+		ch:       ch,
+	})
+	return ch
+}
+
+// Unregister from detection results
+func (m *Monitor) RemoveWatcher(ch chan *nn.DetectionResult) {
+	m.watchersLock.Lock()
+	defer m.watchersLock.Unlock()
+	for i, w := range m.watchers {
+		if w.ch == ch {
+			m.watchers = gen.DeleteFromSliceUnordered(m.watchers, i)
+			return
+		}
+	}
+	m.Log.Warnf("Monitor.RemoveWatcher failed to find channel")
 }
 
 func (m *Monitor) cameraByID(cameraID int64) *monitorCamera {
@@ -287,10 +322,27 @@ func (m *Monitor) nnThread() {
 			}
 		} else {
 			//m.Log.Infof("Camera %v detected %v objects", mcam.camera.ID, len(objects))
+			result := &nn.DetectionResult{
+				CameraID:    item.camera.camera.ID,
+				ImageWidth:  img.Width,
+				ImageHeight: img.Height,
+				Objects:     objects,
+			}
 			item.camera.lock.Lock()
-			item.camera.objects = objects
+			item.camera.lastDetection = result
 			item.camera.lastImg = img
 			item.camera.lock.Unlock()
+
+			m.watchersLock.RLock()
+			for _, watcher := range m.watchers {
+				if watcher.cameraID == item.camera.camera.ID {
+					if len(watcher.ch) >= cap(watcher.ch)*9/10 {
+						m.Log.Warnf("NN detection watcher on camera %v is falling behind", watcher.cameraID)
+					}
+					watcher.ch <- result
+				}
+			}
+			m.watchersLock.RUnlock()
 		}
 	}
 

@@ -4,6 +4,7 @@ import { encodeQuery } from "@/util/util";
 import { globals } from "@/globals";
 import JMuxer from "jmuxer";
 import { onMounted, onUnmounted, watch, ref } from "vue";
+import { DetectionResult, COCOClasses } from "@/camera/nn";
 
 /*
 
@@ -57,6 +58,24 @@ to color. That may have something to do with it. Also, I once saw a JMuxer
 "missing frames" event. I'm beginning to wonder if my "backlog" mechanism is
 the true culprit here.
 
+Poster Image
+------------
+Once a <video> element has received the first frame, then it will stop using the poster image,
+and instead use the first video frame for its poster. We don't want this. We want to keep
+updating our poster image every few seconds, even if the video is paused.
+
+Since we always show our own overlay for a poster image, why do we even bother
+setting the "poster" attribute on the <video> element? The reason is because 
+without this, when we first hit play, then the video element will become white.
+With a poster image, it continues to display the poster image until the video
+stream starts playing.
+
+Liveness Canvas
+---------------
+In some situations on Android, frames will be decoded, but the WebView will not
+update itself. The workaround is to draw a 1x1 pixel canvas on top of the video
+element, and draw to this canvas every time we receive a frame.
+
 */
 
 let props = defineProps<{
@@ -69,24 +88,25 @@ let emits = defineEmits(['click']);
 
 let posterUrlCacheBreaker = ref(Math.round(Math.random() * 1e9));
 
-// Once a <video> element has received the first frame, then it will stop using the poster image,
-// and instead use the first video frame for its poster. We don't want this. We want to keep
-// updating our poster image every few seconds, even if the video is paused.
-let showOverlay = ref(false);
+let showPosterImageInOverlay = ref(true);
 
-let showCanvas = ref(true);
-let canvas = ref(null);
+let showLivenessCanvas = ref(true);
+let livenessCanvas = ref(null);
+
+let overlayCanvas = ref(null);
 
 let muxer: JMuxer | null = null;
 let ws: WebSocket | null = null;
 let backlogDone = false;
-let nPackets = 0;
+let nVideoPackets = 0;
 let nBytes = 0;
 let lastRecvID = 0;
 let firstPacketTime = 0;
 let isPaused = false;
 let posterURLUpdateFrequencyMS = 5 * 1000; // When the page is active, we update our poster URL every X seconds
 let posterURLTimerID: any = 0;
+//let lastDetection = new Map<number, DetectionResult>(); // key is camera ID
+let lastDetection = new DetectionResult();
 
 // SYNC-WEBSOCKET-COMMANDS
 enum WSMessage {
@@ -100,12 +120,12 @@ interface parsedPacket {
 	duration?: number
 }
 
-function parse(data: ArrayBuffer): parsedPacket {
+function parseVideoFrame(data: ArrayBuffer): parsedPacket {
 	let input = new Uint8Array(data);
 	let dv = new DataView(input.buffer);
 
 	let now = new Date().getTime();
-	if (nPackets === 0) {
+	if (nVideoPackets === 0) {
 		firstPacketTime = now;
 	}
 
@@ -125,16 +145,16 @@ function parse(data: ArrayBuffer): parsedPacket {
 	}
 
 	nBytes += input.length;
-	nPackets++;
+	nVideoPackets++;
 
 	if (!backlog && !backlogDone) {
 		let bytesPerSecond = 1000 * nBytes / (now - firstPacketTime);
-		console.log(`backlogDone in ${now - firstPacketTime} ms. ${nBytes} bytes over ${nPackets} packets which is ${bytesPerSecond} bytes/second`);
+		console.log(`backlogDone in ${now - firstPacketTime} ms. ${nBytes} bytes over ${nVideoPackets} packets which is ${bytesPerSecond} bytes/second`);
 		backlogDone = true;
 	}
 
-	if (logPacketCount && nPackets % 30 === 0) {
-		console.log(`${props.camera.name} received ${nPackets} packets`);
+	if (logPacketCount && nVideoPackets % 30 === 0) {
+		console.log(`${props.camera.name} received ${nVideoPackets} packets`);
 	}
 
 	// It is better to inject a little bit of frame duration (as opposed to leaving it undefined),
@@ -159,6 +179,15 @@ function parse(data: ArrayBuffer): parsedPacket {
 		duration: backlog ? undefined : normalDuration,
 		//duration: undefined,
 	};
+}
+
+function parseStringMessage(msg: string) {
+	let j = JSON.parse(msg);
+	if (j.type === "detection") {
+		let detection = DetectionResult.fromJSON(j.detection);
+		lastDetection = detection;
+		updateOverlay();
+	}
 }
 
 function videoElementID(): string {
@@ -186,7 +215,8 @@ function createMuxer(onReady: () => void): JMuxer {
 function play() {
 	let isPlaying = muxer !== null;
 	console.log("play(). isPlaying: " + (isPlaying ? "yes" : "no"));
-	showOverlay.value = false;
+	showPosterImageInOverlay.value = false;
+	updateOverlay();
 	if (isPlaying)
 		return;
 
@@ -253,15 +283,19 @@ function play() {
 			return;
 		}
 		if (muxer) {
-			let data = parse(event.data);
-			muxer.feed(data);
-			if (globals.isFirstVideoPlay && phase === 0) {
-				firstPackets.push(data);
+			if (typeof event.data === "string") {
+				parseStringMessage(event.data);
+			} else {
+				let data = parseVideoFrame(event.data);
+				muxer.feed(data);
+				if (globals.isFirstVideoPlay && phase === 0) {
+					firstPackets.push(data);
+				}
+				if (showLivenessCanvas.value) {
+					invalidateLivenessCanvas();
+				}
+				nVideoPackets++;
 			}
-			if (showCanvas.value) {
-				invalidateCanvas();
-			}
-			nPackets++;
 		}
 	});
 
@@ -270,8 +304,8 @@ function play() {
 	});
 }
 
-function invalidateCanvas() {
-	let can = canvas.value! as HTMLCanvasElement;
+function invalidateLivenessCanvas() {
+	let can = livenessCanvas.value! as HTMLCanvasElement;
 	can.width = 1;
 	can.height = 1;
 	let cx = can.getContext('2d')!;
@@ -297,7 +331,7 @@ function onPlay() {
 function onPause() {
 	console.log("onPause");
 
-	showOverlay.value = true;
+	showPosterImageInOverlay.value = true;
 	resetPosterURL();
 
 	//stop();
@@ -308,7 +342,7 @@ function onPause() {
 function stop() {
 	console.log("Player.vue stop");
 
-	showOverlay.value = true;
+	showPosterImageInOverlay.value = true;
 	resetPosterURL();
 
 	isPaused = false;
@@ -381,6 +415,7 @@ watch(() => props.play, (newVal, oldVal) => {
 
 function resetPosterURL() {
 	posterUrlCacheBreaker.value = Math.round(Math.random() * 1e9);
+	updateOverlay();
 }
 
 function posterURLUpdateTimer() {
@@ -389,6 +424,52 @@ function posterURLUpdateTimer() {
 	}
 	//console.log(`posterURLUpdateTimer ${props.camera.id}`);
 	posterURLTimerID = setTimeout(posterURLUpdateTimer, posterURLUpdateFrequencyMS);
+}
+
+async function updateOverlay() {
+	let can = overlayCanvas.value! as HTMLCanvasElement;
+	let dpr = window.devicePixelRatio;
+	can.width = can.clientWidth * dpr;
+	can.height = can.clientHeight * dpr;
+	//console.log(`updateOverlay ${can.width}x${can.height}`);
+
+	let cx = can.getContext('2d')!;
+
+	if (showPosterImageInOverlay.value) {
+		let r = await fetch(posterURL());
+		if (!r.ok)
+			return;
+		let blob = await r.blob();
+		let image = await createImageBitmap(blob);
+		cx.drawImage(image, 0, 0, can.width, can.height);
+
+		let jDetections = r.headers.get("X-Detections");
+		if (jDetections) {
+			lastDetection = DetectionResult.fromJSON(JSON.parse(jDetections));
+		}
+		//console.log("detections", r.headers.get("X-Detections"));
+	}
+
+	if (lastDetection.cameraID === props.camera.id) {
+		let sx = can.width / lastDetection.imageWidth;
+		let sy = can.height / lastDetection.imageHeight;
+		cx.strokeStyle = "#f00";
+		cx.lineWidth = 2;
+		for (let d of lastDetection.objects) {
+			cx.strokeRect(d.box.x * sx, d.box.y * sy, d.box.width * sx, d.box.height * sy);
+			cx.font = '16px sans-serif';
+			cx.fillStyle = '#fff';
+			cx.textAlign = 'left';
+			cx.fillText(COCOClasses[d.class], d.box.x * sx, d.box.y * sy)
+		}
+	}
+
+	//cx.beginPath();
+	//cx.lineWidth = 2;
+	//cx.strokeStyle = '#0d0';
+	//cx.moveTo(10, 10);
+	//cx.lineTo(80, 30);
+	//cx.stroke();
 }
 
 onUnmounted(() => {
@@ -407,8 +488,9 @@ onMounted(() => {
 	<div class="container">
 		<video class="video" :id="'vplayer-camera-' + camera.id" autoplay :poster="posterURL()" @play="onPlay"
 			@pause="onPause" @click="onClick" :style="videoStyle()" />
-		<img v-if="showOverlay" class="overlay" :src="posterURL()" :style="imgStyle()" />
-		<canvas v-if="showCanvas" ref="canvas" class="canvas" />
+		<!-- <img v-if="showOverlay" class="overlay" :src="posterURL()" :style="imgStyle()" /> -->
+		<canvas ref="overlayCanvas" class="overlay" :style="imgStyle()" />
+		<canvas v-if="showLivenessCanvas" ref="livenessCanvas" class="livenessCanvas" />
 	</div>
 </template>
 
@@ -438,7 +520,7 @@ onMounted(() => {
 	height: 100%;
 }
 
-.canvas {
+.livenessCanvas {
 	pointer-events: none;
 	position: absolute;
 	top: 0;

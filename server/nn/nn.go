@@ -16,6 +16,13 @@ type Detection struct {
 	Box        Rect    `json:"box"`
 }
 
+type DetectionResult struct {
+	CameraID    int64       `json:"cameraID"`
+	ImageWidth  int         `json:"imageWidth"`
+	ImageHeight int         `json:"imageHeight"`
+	Objects     []Detection `json:"objects"`
+}
+
 // ObjectDetector is given an image, and returns zero or more detected objects
 type ObjectDetector interface {
 	// Close closes the detector (you MUST call this when finished, because it's a C++ object underneath)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/bmharper/cyclops/pkg/log"
+	"github.com/bmharper/cyclops/server/nn"
 	"github.com/bmharper/cyclops/server/videox"
 	"github.com/gorilla/websocket"
 )
@@ -25,6 +26,21 @@ const (
 // SYNC-WEBSOCKET-JSON-MSG
 type webSocketJSON struct {
 	Command string `json:"command"`
+}
+
+// Queued data that must be sent over the websocket
+// Either videoFrame or detectionResult will be non-nil
+type webSocketSendPacket struct {
+	videoFrame *videox.DecodedPacket
+	detection  *nn.DetectionResult
+}
+
+// When we send a message on the websocket, it's either a BINARY frame, in which case
+// it's a video packet. Or it's a TEXT frame, in which case it's this.
+// SYNC-CAMERA-WEBSOCKET-STRING-MESSAGE
+type webSocketSendStringMessage struct {
+	Type      string              `json:"type"` // Only type of message of "detection"
+	Detection *nn.DetectionResult `json:"detection"`
 }
 
 // Number of packets (should be closely correlated with number of frames) that we will buffer
@@ -45,7 +61,8 @@ type VideoWebSocketStreamer struct {
 	closed          atomic.Bool
 	paused          atomic.Bool
 	fromWebSocket   chan webSocketMsg
-	sendQueue       chan *videox.DecodedPacket
+	sendQueue       chan webSocketSendPacket
+	detections      chan *nn.DetectionResult
 	lastDropMsg     time.Time
 	nPacketsDropped int64
 	nPacketsSent    int64
@@ -54,16 +71,20 @@ type VideoWebSocketStreamer struct {
 	logPacketCount  bool
 }
 
-func NewVideoWebSocketStreamer(cameraName string, logger log.Log) *VideoWebSocketStreamer {
+func RunVideoWebSocketStreamer(cameraName string, logger log.Log, conn *websocket.Conn, stream *Stream, backlog *VideoDumpReader, detections chan *nn.DetectionResult) {
 	streamerID := atomic.AddInt64(&nextWebSocketStreamerID, 1)
-	return &VideoWebSocketStreamer{
+
+	streamer := &VideoWebSocketStreamer{
 		incoming:       make(StreamSinkChan, StreamSinkChanDefaultBufferSize),
 		streamerID:     streamerID,
 		log:            log.NewPrefixLogger(logger, fmt.Sprintf("Camera %v WebSocket %v", cameraName, streamerID)),
-		sendQueue:      make(chan *videox.DecodedPacket, WebSocketSendBufferSize),
+		sendQueue:      make(chan webSocketSendPacket, WebSocketSendBufferSize),
+		detections:     detections,
 		debug:          false,
 		logPacketCount: false, // SYNC-LOG-PACKET-COUNT
 	}
+
+	streamer.run(conn, stream, backlog)
 }
 
 func (s *VideoWebSocketStreamer) OnConnect(stream *Stream) (StreamSinkChan, error) {
@@ -97,11 +118,24 @@ func (s *VideoWebSocketStreamer) onPacketRTP(packet *videox.DecodedPacket) {
 			s.log.Infof("Sent %v/%v packets", s.nPacketsSent, s.nPacketsDropped+s.nPacketsSent)
 			s.lastLogTime = now
 		}
-		s.sendQueue <- packet
+		s.sendQueue <- webSocketSendPacket{
+			videoFrame: packet,
+		}
 	}
 }
 
-func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream, backlog *VideoDumpReader) {
+func (s *VideoWebSocketStreamer) onDetection(detection *nn.DetectionResult) {
+	// We really don't want to block on a full channel here, because that would cause
+	// the NN monitor system to block.
+	if len(s.sendQueue) >= WebSocketSendBufferSize*3/4 {
+		return
+	}
+	s.sendQueue <- webSocketSendPacket{
+		detection: detection,
+	}
+}
+
+func (s *VideoWebSocketStreamer) run(conn *websocket.Conn, stream *Stream, backlog *VideoDumpReader) {
 	s.trackID = stream.H264TrackID
 
 	if s.debug {
@@ -152,6 +186,10 @@ func (s *VideoWebSocketStreamer) Run(conn *websocket.Conn, stream *Stream, backl
 			case webSocketMsgResume:
 				s.paused.Store(false)
 			}
+		case detection := <-s.detections:
+			if !s.paused.Load() {
+				s.onDetection(detection)
+			}
 		}
 	}
 	if s.debug {
@@ -187,7 +225,9 @@ func (s *VideoWebSocketStreamer) sendBacklog(backlog *VideoDumpReader) {
 		_, packet, _ := backlog.Buffer.Peek(i)
 		cloned := packet.Clone()
 		cloned.IsBacklog = true
-		s.sendQueue <- cloned
+		s.sendQueue <- webSocketSendPacket{
+			videoFrame: cloned,
+		}
 	}
 
 	if s.debug {
@@ -250,38 +290,46 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 			// because the main loop will just drop RTSP packets when paused.
 			continue
 		}
-		if !sentIDR && pkt.IsIFrame() {
-			// Don't send any IFrames until we've sent a keyframe
-			continue
-		}
-		if pkt.HasType(h264.NALUTypeIDR) {
-			sentIDR = true
-		}
-
-		buf := bytes.Buffer{}
-		//pts := float64(pkt.H264PTS.Microseconds())
-		//binary.Write(&buf, binary.LittleEndian, pts)
-		//foo1 := uint32(123)
-		//foo2 := uint32(456)
-		//binary.Write(&buf, binary.LittleEndian, foo1)
-		//binary.Write(&buf, binary.LittleEndian, foo2)
-		flags := uint32(0)
-		if pkt.IsBacklog {
-			flags |= 1
-		}
-
-		binary.Write(&buf, binary.LittleEndian, flags)
-		binary.Write(&buf, binary.LittleEndian, uint32(pkt.RecvID))
-		for _, n := range pkt.H264NALUs {
-			if n.PrefixLen == 0 {
-				buf.Write([]byte{0, 0, 1})
+		if pkt.videoFrame != nil {
+			frame := pkt.videoFrame
+			if !sentIDR && frame.IsIFrame() {
+				// Don't send any IFrames until we've sent a keyframe
+				continue
 			}
-			buf.Write(n.Payload)
-		}
-		final := buf.Bytes()
-		//s.log.Infof("Sending packet: %v", final[:5])
-		if err := conn.WriteMessage(websocket.BinaryMessage, final); err != nil {
-			s.log.Infof("Error writing to websocket %v: %v", s.streamerID, err)
+			if frame.HasType(h264.NALUTypeIDR) {
+				sentIDR = true
+			}
+
+			buf := bytes.Buffer{}
+			flags := uint32(0)
+			if frame.IsBacklog {
+				flags |= 1
+			}
+
+			binary.Write(&buf, binary.LittleEndian, flags)
+			binary.Write(&buf, binary.LittleEndian, uint32(frame.RecvID))
+			for _, n := range frame.H264NALUs {
+				if n.PrefixLen == 0 {
+					buf.Write([]byte{0, 0, 1})
+				}
+				buf.Write(n.Payload)
+			}
+			final := buf.Bytes()
+			//s.log.Infof("Sending packet: %v", final[:5])
+			if err := conn.WriteMessage(websocket.BinaryMessage, final); err != nil {
+				s.log.Infof("Error writing to websocket %v: %v", s.streamerID, err)
+			}
+		} else {
+			out := webSocketSendStringMessage{
+				Type:      "detection",
+				Detection: pkt.detection,
+			}
+			j, err := json.Marshal(&out)
+			if err != nil {
+				s.log.Errorf("Failed to marshal websocket string message: %v", err)
+			} else {
+				conn.WriteMessage(websocket.TextMessage, j)
+			}
 		}
 	}
 }
