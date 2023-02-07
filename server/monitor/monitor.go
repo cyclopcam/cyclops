@@ -358,9 +358,11 @@ func (m *Monitor) nnThread() {
 			for _, watcher := range m.watchers {
 				if watcher.cameraID == item.camera.camera.ID {
 					if len(watcher.ch) >= cap(watcher.ch)*9/10 {
-						m.Log.Warnf("NN detection watcher on camera %v is falling behind", watcher.cameraID)
+						// This should never happen. But as a safeguard against a monitor deadlock, we choose to drop frames.
+						m.Log.Warnf("NN detection watcher on camera %v is falling behind. I am going to drop frames.", watcher.cameraID)
+					} else {
+						watcher.ch <- result
 					}
-					watcher.ch <- result
 				}
 			}
 			m.watchersLock.RUnlock()
