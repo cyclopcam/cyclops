@@ -17,6 +17,7 @@ import (
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/eventdb"
 	"github.com/bmharper/cyclops/server/monitor"
+	"github.com/bmharper/cyclops/server/perfstats"
 	"github.com/bmharper/cyclops/server/train"
 	"github.com/bmharper/cyclops/server/util"
 	"github.com/bmharper/cyclops/server/vpn"
@@ -177,6 +178,9 @@ func (s *Server) Shutdown(restart bool) {
 	} else {
 		s.Log.Infof("Shutdown")
 	}
+
+	s.Log.Infof("PerfStats: %v", perfstats.Stats.String())
+
 	close(s.ShutdownStarted)
 	s.MustRestart = restart
 

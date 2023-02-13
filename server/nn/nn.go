@@ -31,6 +31,17 @@ type ObjectDetector interface {
 	DetectObjects(nchan int, image []byte, width, height int) ([]Detection, error)
 }
 
+const (
+	COCOPerson     = 0
+	COCOBicycle    = 1
+	COCOCar        = 2
+	COCOMotorcycle = 3
+	COCOAirplane   = 4
+	COCOBus        = 5
+	COCOTrain      = 6
+	COCOTruck      = 7
+)
+
 // COCO classes
 var COCOClasses = []string{
 	"person",

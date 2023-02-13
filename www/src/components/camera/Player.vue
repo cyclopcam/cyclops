@@ -141,7 +141,7 @@ function parseVideoFrame(data: ArrayBuffer): parsedPacket {
 	let logPacketCount = false; // SYNC-LOG-PACKET-COUNT
 
 	if (lastRecvID !== 0 && recvID !== lastRecvID + 1) {
-		console.log(`recvID ${recvID} !== lastRecvID ${lastRecvID} + 1`);
+		console.log(`recvID ${recvID} !== lastRecvID ${lastRecvID} + 1 (normal when resuming playback after pause)`);
 	}
 
 	nBytes += input.length;
@@ -325,6 +325,9 @@ function onClick() {
 
 function onPlay() {
 	console.log("video element onPlay event");
+
+	// For resuming play when our browser tab has been deactivated, and then reactivated.
+	showPosterImageInOverlay.value = false;
 
 	//play();
 	if (isPaused) {

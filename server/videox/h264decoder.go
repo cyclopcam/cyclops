@@ -3,10 +3,12 @@ package videox
 import (
 	"errors"
 	"fmt"
+	"time"
 	"unsafe"
 
 	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/bmharper/cimg/v2"
+	"github.com/bmharper/cyclops/server/perfstats"
 )
 
 // #cgo pkg-config: libavcodec libavutil libswscale
@@ -171,11 +173,13 @@ func (d *H264Decoder) Decode(packet *DecodedPacket) (*cimg.Image, error) {
 	}
 
 	// convert frame from YUV420 to RGB
+	start := time.Now()
 	res = C.sws_scale(d.swsCtx, frameData(d.srcFrame), frameLineSize(d.srcFrame),
 		0, d.srcFrame.height, frameData(d.dstFrame), frameLineSize(d.dstFrame))
 	if res < 0 {
 		return nil, fmt.Errorf("sws_scale() error %v", res)
 	}
+	perfstats.Update(&perfstats.Stats.YUV420ToRGB_NanosecondsPerKibiPixel, (time.Since(start).Nanoseconds()*1024)/(int64(d.srcFrame.width*d.srcFrame.height)))
 
 	//fmt.Printf("Got frame %v x %v -> %v x %v\n", d.srcFrame.width, d.srcFrame.height, d.dstFrame.width, d.dstFrame.height)
 

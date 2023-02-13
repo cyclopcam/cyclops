@@ -24,6 +24,7 @@ import (
 type Monitor struct {
 	Log                 log.Log
 	detector            nn.ObjectDetector
+	enabled             bool                  // If false, then we don't run the looper
 	mustStopLooper      atomic.Bool           // True if stopLooper() has been called
 	mustStopNNThreads   atomic.Bool           // NN threads must exit
 	numNNThreads        int                   // Number of NN threads
@@ -114,11 +115,14 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 		detector:      detector,
 		nnThreadQueue: make(chan monitorQueueItem, queueSize),
 		numNNThreads:  nThreads,
+		enabled:       true,
 	}
 	for i := 0; i < m.numNNThreads; i++ {
 		go m.nnThread()
 	}
-	m.startLooper()
+	if m.enabled {
+		m.startLooper()
+	}
 	return m, nil
 }
 
@@ -127,7 +131,9 @@ func (m *Monitor) Close() {
 	m.Log.Infof("Monitor shutting down")
 
 	// Stop reading images from cameras
-	m.stopLooper()
+	if m.enabled {
+		m.stopLooper()
+	}
 
 	// Stop NN threads
 	m.Log.Infof("Monitor waiting for NN threads")
@@ -214,7 +220,9 @@ func (m *Monitor) startLooper() {
 
 // Set cameras and start monitoring
 func (m *Monitor) SetCameras(cameras []*camera.Camera) {
-	m.stopLooper()
+	if m.enabled {
+		m.stopLooper()
+	}
 
 	newCameras := []*monitorCamera{}
 	for _, cam := range cameras {
@@ -227,7 +235,9 @@ func (m *Monitor) SetCameras(cameras []*camera.Camera) {
 	m.cameras = newCameras
 	m.camerasLock.Unlock()
 
-	m.startLooper()
+	if m.enabled {
+		m.startLooper()
+	}
 }
 
 type looperCameraState struct {
