@@ -3,12 +3,12 @@ package videox
 import (
 	"errors"
 	"fmt"
-	"time"
+	"os"
 	"unsafe"
 
 	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/bmharper/cimg/v2"
-	"github.com/bmharper/cyclops/server/perfstats"
+	"github.com/bmharper/cyclops/pkg/accel"
 )
 
 // #cgo pkg-config: libavcodec libavutil libswscale
@@ -111,11 +111,20 @@ func (d *H264Decoder) Close() {
 //	return d.sendPacket(nalu)
 //}
 
+// Decode the packet and return a copy of the YUV image.
+func (d *H264Decoder) Decode(packet *DecodedPacket) (*accel.YUVImage, error) {
+	img, err := d.DecodeDeepRef(packet)
+	if err != nil {
+		return nil, err
+	}
+	return img.Clone(), nil
+}
+
 // WARNING: The image returned is only valid while the decoder is still alive,
 // and it will be clobbered by the subsequent Decode().
 // The pixels in the returned image are not a garbage-collected Go slice.
 // They point directly into the libavcodec decode buffer.
-func (d *H264Decoder) Decode(packet *DecodedPacket) (*cimg.Image, error) {
+func (d *H264Decoder) DecodeDeepRef(packet *DecodedPacket) (*accel.YUVImage, error) {
 	if err := d.sendPacket(packet.EncodeToAnnexBPacket()); err != nil {
 		// sendPacket failure is not fatal
 		// We should log it or something.
@@ -142,48 +151,79 @@ func (d *H264Decoder) Decode(packet *DecodedPacket) (*cimg.Image, error) {
 		return nil, fmt.Errorf("avcodec_receive_frame error %w", WrapAvErr(res))
 	}
 
-	// if frame size has changed, allocate needed objects
-	if d.dstFrame == nil || d.dstFrame.width != d.srcFrame.width || d.dstFrame.height != d.srcFrame.height {
-		if d.dstFrame != nil {
-			C.av_frame_free(&d.dstFrame)
+	deepRef := makeYUV420ImageDeepUnsafeReference(d.srcFrame)
+	return &deepRef, nil
+
+	// The code below all works, and was originally used when we decoded to RGB.
+	// Subsequently, it became clear that it was more useful to get a YUV image out,
+	// because then we have a gray channel already crafted for us, which we can use
+	// for things like simple motion detection.
+	// In addition, we skip the small, but not zero cost, of converting to RGB for
+	// frames that nobody will ever see. At least, this is true for the case where
+	// your computer is unable to run the neural network on every single frame.
+
+	/*
+		useLibSimdForYUVtoRGB := true
+
+		if useLibSimdForYUVtoRGB {
+			width := int(d.srcFrame.width)
+			height := int(d.srcFrame.height)
+			strideY := int(d.srcFrame.linesize[0])
+			strideU := int(d.srcFrame.linesize[1])
+			strideV := int(d.srcFrame.linesize[2])
+			rawY := unsafe.Slice((*byte)(d.srcFrame.data[0]), strideY)
+			rawU := unsafe.Slice((*byte)(d.srcFrame.data[1]), strideU)
+			rawV := unsafe.Slice((*byte)(d.srcFrame.data[2]), strideV)
+			img := cimg.NewImage(width, height, cimg.PixelFormatRGB)
+			start := time.Now()
+			accel.YUV420pToRGB(width, height, rawY, rawU, rawV, strideY, strideU, strideV, img.Stride, img.Pixels)
+			perfstats.Update(&perfstats.Stats.YUV420ToRGB_NanosecondsPerKibiPixel, (time.Since(start).Nanoseconds()*1024)/(int64(d.srcFrame.width*d.srcFrame.height)))
+			return img, nil
+		} else {
+			// if frame size has changed, allocate needed objects
+			if d.dstFrame == nil || d.dstFrame.width != d.srcFrame.width || d.dstFrame.height != d.srcFrame.height {
+				if d.dstFrame != nil {
+					C.av_frame_free(&d.dstFrame)
+				}
+
+				if d.swsCtx != nil {
+					C.sws_freeContext(d.swsCtx)
+				}
+
+				d.dstFrame = C.av_frame_alloc()
+				d.dstFrame.format = C.AV_PIX_FMT_RGB24
+				d.dstFrame.width = d.srcFrame.width
+				d.dstFrame.height = d.srcFrame.height
+				d.dstFrame.color_range = C.AVCOL_RANGE_JPEG
+				res = C.av_frame_get_buffer(d.dstFrame, 1)
+				if res < 0 {
+					return nil, fmt.Errorf("av_frame_get_buffer() error %v", res)
+				}
+
+				d.swsCtx = C.sws_getContext(d.srcFrame.width, d.srcFrame.height, C.AV_PIX_FMT_YUV420P,
+					d.dstFrame.width, d.dstFrame.height, (int32)(d.dstFrame.format), C.SWS_BILINEAR, nil, nil, nil)
+				if d.swsCtx == nil {
+					return nil, fmt.Errorf("sws_getContext() error")
+				}
+
+				dstFrameSize := C.av_image_get_buffer_size((int32)(d.dstFrame.format), d.dstFrame.width, d.dstFrame.height, 1)
+				d.dstFramePtr = (*[1 << 30]uint8)(unsafe.Pointer(d.dstFrame.data[0]))[:dstFrameSize:dstFrameSize]
+			}
+
+			//dumpYUV420pFrame(d.srcFrame)
+
+			// convert frame from YUV420 to RGB
+			start := time.Now()
+			res = C.sws_scale(d.swsCtx, frameData(d.srcFrame), frameLineSize(d.srcFrame),
+				0, d.srcFrame.height, frameData(d.dstFrame), frameLineSize(d.dstFrame))
+			if res < 0 {
+				return nil, fmt.Errorf("sws_scale() error %v", res)
+			}
+			perfstats.Update(&perfstats.Stats.YUV420ToRGB_NanosecondsPerKibiPixel, (time.Since(start).Nanoseconds()*1024)/(int64(d.srcFrame.width*d.srcFrame.height)))
+			//fmt.Printf("Got frame %v x %v -> %v x %v\n", d.srcFrame.width, d.srcFrame.height, d.dstFrame.width, d.dstFrame.height)
+			return cimg.WrapImage(int(d.dstFrame.width), int(d.dstFrame.height), cimg.PixelFormatRGB, d.dstFramePtr), nil
 		}
-
-		if d.swsCtx != nil {
-			C.sws_freeContext(d.swsCtx)
-		}
-
-		d.dstFrame = C.av_frame_alloc()
-		d.dstFrame.format = C.AV_PIX_FMT_RGB24
-		d.dstFrame.width = d.srcFrame.width
-		d.dstFrame.height = d.srcFrame.height
-		d.dstFrame.color_range = C.AVCOL_RANGE_JPEG
-		res = C.av_frame_get_buffer(d.dstFrame, 1)
-		if res < 0 {
-			return nil, fmt.Errorf("av_frame_get_buffer() error %v", res)
-		}
-
-		d.swsCtx = C.sws_getContext(d.srcFrame.width, d.srcFrame.height, C.AV_PIX_FMT_YUV420P,
-			d.dstFrame.width, d.dstFrame.height, (int32)(d.dstFrame.format), C.SWS_BILINEAR, nil, nil, nil)
-		if d.swsCtx == nil {
-			return nil, fmt.Errorf("sws_getContext() error")
-		}
-
-		dstFrameSize := C.av_image_get_buffer_size((int32)(d.dstFrame.format), d.dstFrame.width, d.dstFrame.height, 1)
-		d.dstFramePtr = (*[1 << 30]uint8)(unsafe.Pointer(d.dstFrame.data[0]))[:dstFrameSize:dstFrameSize]
-	}
-
-	// convert frame from YUV420 to RGB
-	start := time.Now()
-	res = C.sws_scale(d.swsCtx, frameData(d.srcFrame), frameLineSize(d.srcFrame),
-		0, d.srcFrame.height, frameData(d.dstFrame), frameLineSize(d.dstFrame))
-	if res < 0 {
-		return nil, fmt.Errorf("sws_scale() error %v", res)
-	}
-	perfstats.Update(&perfstats.Stats.YUV420ToRGB_NanosecondsPerKibiPixel, (time.Since(start).Nanoseconds()*1024)/(int64(d.srcFrame.width*d.srcFrame.height)))
-
-	//fmt.Printf("Got frame %v x %v -> %v x %v\n", d.srcFrame.width, d.srcFrame.height, d.dstFrame.width, d.dstFrame.height)
-
-	return cimg.WrapImage(int(d.dstFrame.width), int(d.dstFrame.height), cimg.PixelFormatRGB, d.dstFramePtr), nil
+	*/
 }
 
 func (d *H264Decoder) Width() int {
@@ -230,5 +270,40 @@ func DecodeSinglePacketToImage(packet *DecodedPacket) (*cimg.Image, error) {
 	if err != nil {
 		return nil, err
 	}
-	return img.Clone(), nil
+	return img.ToCImageRGB(), nil
+}
+
+// Create a deep (and unsafe) reference to the YUV 420 frame from ffmpeg.
+func makeYUV420ImageDeepUnsafeReference(frame *C.AVFrame) accel.YUVImage {
+	width := int(frame.width)
+	height := int(frame.height)
+	strideY := int(frame.linesize[0])
+	strideU := int(frame.linesize[1])
+	strideV := int(frame.linesize[2])
+	rawY := unsafe.Slice((*byte)(frame.data[0]), strideY*height)
+	rawU := unsafe.Slice((*byte)(frame.data[1]), strideU*height/2)
+	rawV := unsafe.Slice((*byte)(frame.data[2]), strideV*height/2)
+	return accel.YUVImage{
+		Width:  width,
+		Height: height,
+		Y:      rawY,
+		U:      rawU,
+		V:      rawV,
+	}
+}
+
+func makeYUVImageCopy(frame *C.AVFrame) *accel.YUVImage {
+	ref := makeYUV420ImageDeepUnsafeReference(frame)
+	return ref.Clone()
+}
+
+func dumpYUV420pFrame(frame *C.AVFrame) {
+	fmt.Printf("%v\n", frame)
+
+	dump, _ := os.Create("testdata/yuv/dump.y")
+	dump.Write(unsafe.Slice((*byte)(frame.data[0]), int(frame.linesize[0]*frame.height)))
+	dump, _ = os.Create("testdata/yuv/dump.u")
+	dump.Write(unsafe.Slice((*byte)(frame.data[1]), int(frame.linesize[1]*frame.height/2)))
+	dump, _ = os.Create("testdata/yuv/dump.v")
+	dump.Write(unsafe.Slice((*byte)(frame.data[2]), int(frame.linesize[2]*frame.height/2)))
 }

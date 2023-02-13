@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bmharper/cimg/v2"
+	"github.com/bmharper/cyclops/pkg/accel"
 	"github.com/bmharper/cyclops/pkg/gen"
 	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/bmharper/cyclops/server/camera"
@@ -66,7 +67,7 @@ type monitorCamera struct {
 
 type monitorQueueItem struct {
 	camera *monitorCamera
-	image  *cimg.Image
+	image  *accel.YUVImage
 }
 
 func NewMonitor(logger log.Log) (*Monitor, error) {
@@ -335,15 +336,20 @@ func (m *Monitor) loop() {
 // An NN processing thread
 func (m *Monitor) nnThread() {
 	lastErrAt := time.Time{}
+	var rgb *cimg.Image
 
 	for {
 		item, ok := <-m.nnThreadQueue
 		if !ok || m.mustStopNNThreads.Load() {
 			break
 		}
-		img := item.image
+		yuv := item.image
+		if rgb == nil || rgb.Width != yuv.Width || rgb.Height != yuv.Height {
+			rgb = cimg.NewImage(yuv.Width, yuv.Height, cimg.PixelFormatRGB)
+		}
+		yuv.CopyToCImageRGB(rgb)
 		start := time.Now()
-		objects, err := m.detector.DetectObjects(img.NChan(), img.Pixels, img.Width, img.Height)
+		objects, err := m.detector.DetectObjects(rgb.NChan(), rgb.Pixels, rgb.Width, rgb.Height)
 		duration := time.Now().Sub(start)
 		m.avgTimeNSPerFrameNN.Store((99*m.avgTimeNSPerFrameNN.Load() + duration.Nanoseconds()) / 100)
 		if err != nil {
@@ -355,13 +361,13 @@ func (m *Monitor) nnThread() {
 			//m.Log.Infof("Camera %v detected %v objects", mcam.camera.ID, len(objects))
 			result := &nn.DetectionResult{
 				CameraID:    item.camera.camera.ID,
-				ImageWidth:  img.Width,
-				ImageHeight: img.Height,
+				ImageWidth:  yuv.Width,
+				ImageHeight: yuv.Height,
 				Objects:     objects,
 			}
 			item.camera.lock.Lock()
 			item.camera.lastDetection = result
-			item.camera.lastImg = img
+			item.camera.lastImg = rgb
 			item.camera.lock.Unlock()
 
 			m.watchersLock.RLock()

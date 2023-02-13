@@ -6,7 +6,7 @@ import (
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
-	"github.com/bmharper/cimg/v2"
+	"github.com/bmharper/cyclops/pkg/accel"
 	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/bmharper/cyclops/server/videox"
 )
@@ -29,8 +29,9 @@ type VideoDecodeReader struct {
 	ready    bool
 
 	lastImgLock sync.Mutex
-	lastImg     *cimg.Image
-	lastImgID   int64 // If zero, then no frames decoded. The first decoded frame is 1, and it increases with each new frame
+	//lastImg     *cimg.Image
+	lastImg   *accel.YUVImage
+	lastImgID int64 // If zero, then no frames decoded. The first decoded frame is 1, and it increases with each new frame
 }
 
 func NewVideoDecodeReader() *VideoDecodeReader {
@@ -72,7 +73,7 @@ func (r *VideoDecodeReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 }
 
 // Return image, id of last image if it's different to the given id
-func (r *VideoDecodeReader) GetLastImageIfDifferent(ifNotEqualTo int64) (*cimg.Image, int64) {
+func (r *VideoDecodeReader) GetLastImageIfDifferent(ifNotEqualTo int64) (*accel.YUVImage, int64) {
 	r.lastImgLock.Lock()
 	defer r.lastImgLock.Unlock()
 	if r.lastImg == nil || r.lastImgID == ifNotEqualTo {
@@ -82,7 +83,7 @@ func (r *VideoDecodeReader) GetLastImageIfDifferent(ifNotEqualTo int64) (*cimg.I
 }
 
 // Return a copy of the most recently decoded frame (or nil, if there is none available yet), and the frame ID
-func (r *VideoDecodeReader) LastImageCopy() (*cimg.Image, int64) {
+func (r *VideoDecodeReader) LastImageCopy() (*accel.YUVImage, int64) {
 	r.lastImgLock.Lock()
 	defer r.lastImgLock.Unlock()
 	if r.lastImg == nil {
@@ -120,7 +121,7 @@ func (r *VideoDecodeReader) OnPacketRTP(packet *videox.DecodedPacket) {
 	// That's why we join all NALUs into a single packet and send that to avcodec.
 
 	// convert H264 NALUs to RGB frames
-	img, err := r.Decoder.Decode(packet)
+	img, err := r.Decoder.DecodeDeepRef(packet)
 	if err != nil {
 		r.Log.Errorf("Failed to decode H264 NALU: %v", err)
 		return
@@ -136,15 +137,15 @@ func (r *VideoDecodeReader) OnPacketRTP(packet *videox.DecodedPacket) {
 	//r.Log.Infof("[Packet %v] Decoded frame with size %v", r.nPackets, img.Bounds().Max)
 }
 
-func (r *VideoDecodeReader) cloneIntoLastImg(latest *cimg.Image) {
+func (r *VideoDecodeReader) cloneIntoLastImg(latest *accel.YUVImage) {
 	r.lastImgLock.Lock()
 	if r.lastImg == nil ||
 		r.lastImg.Width != latest.Width ||
-		r.lastImg.Height != latest.Height ||
-		r.lastImg.Format != latest.Format {
-		r.lastImg = cimg.NewImage(latest.Width, latest.Height, latest.Format)
+		r.lastImg.Height != latest.Height {
+		r.lastImg = latest.Clone()
+	} else {
+		r.lastImg.CopyFrom(latest)
 	}
-	r.lastImg.CopyImage(latest, 0, 0)
 	r.lastImgID++
 	r.lastImgLock.Unlock()
 }

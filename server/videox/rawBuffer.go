@@ -402,7 +402,7 @@ func (r *RawBuffer) ExtractThumbnail() (*cimg.Image, error) {
 		//fmt.Printf("%v: %v\n", i, r.Packets[i].Summary())
 		img, _ := decoder.Decode(r.Packets[i])
 		if img != nil {
-			return img.Clone(), nil
+			return img.ToCImageRGB(), nil
 		}
 	}
 	return nil, errors.New("No thumbnail available")

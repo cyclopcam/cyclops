@@ -103,7 +103,8 @@ func (c *Camera) LatestImage(contentType string) []byte {
 	if img == nil {
 		return nil
 	}
-	buf, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling(cimg.Sampling420), 85, cimg.Flags(0)))
+	// Yes, this is stupid going from YUV to RGB, to YUV, to JPEG.
+	buf, err := cimg.Compress(img.ToCImageRGB(), cimg.MakeCompressParams(cimg.Sampling(cimg.Sampling420), 85, cimg.Flags(0)))
 	if err != nil {
 		c.Log.Errorf("Failed to compress image: %v", err)
 		return nil

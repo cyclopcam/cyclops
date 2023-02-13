@@ -6,6 +6,7 @@
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/ncnn/build/src",
                 "${workspaceFolder}/ncnn/src",
+                "${workspaceFolder}/Simd/src",
                 "${vcpkgRoot}/x64-linux/include"
             ],
             "defines": [],

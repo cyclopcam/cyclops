@@ -7,3 +7,6 @@
 [submodule "testdata"]
 	path = testdata
 	url = https://github.com/cyclopcam/testdata.git
+[submodule "Simd"]
+	path = Simd
+	url = https://github.com/ermig1979/Simd.git

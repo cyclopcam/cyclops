@@ -16,11 +16,13 @@ Ryzen 5900X 3.7 Ghz
 YUV420ToRGB 320x240 frame: 0.0227 ms
 
 Raspberry Pi 4
-YUV420ToRGB 320x240 frame: 0.5466 ms
+YUV420ToRGB 320x240 frame: 0.5466 ms  (ffmpeg swscale)
+YUV420ToRGB 320x240 frame: 0.3920 ms  (Simd library)
 
 To get ms per second, we multiply by 10 * 4 = 40 (for 10 frames per second, and 4 cameras).
 0.0227 * 40 =  1 ms overhead per second, to decode YUV to RGB (Ryzen 5900X).
 0.5466 * 40 = 22 ms overhead per second, to decode YUV to RGB (Raspberry Pi).
+	BUT.. if we have 4 cores, then we should think of it as 22/4 = 5.5ms decode overhead, or 0.5% of runtime.
 
 */
 

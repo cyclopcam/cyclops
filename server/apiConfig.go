@@ -169,7 +169,8 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 	for {
 		img, _ := cam.LowDecoder.LastImageCopy()
 		if img != nil {
-			jpg, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, 85, 0))
+			// Yes, this is stupid going from YUV to RGB, to YUV, to JPEG.
+			jpg, err := cimg.Compress(img.ToCImageRGB(), cimg.MakeCompressParams(cimg.Sampling420, 85, 0))
 			if err != nil {
 				c.WriteJSON(message{Error: "Failed to compress image to JPEG: " + err.Error()})
 			}
