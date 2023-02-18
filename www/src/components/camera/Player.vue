@@ -427,7 +427,7 @@ function resetPosterURL() {
 }
 
 function posterURLUpdateTimer() {
-	if (document.visibilityState === "visible") {
+	if (document.visibilityState === "visible" && showPosterImageInOverlay.value) {
 		resetPosterURL();
 	}
 	//console.log(`posterURLUpdateTimer ${props.camera.id}`);

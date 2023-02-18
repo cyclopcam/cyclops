@@ -20,20 +20,33 @@ import (
 	"github.com/bmharper/cyclops/server/nn"
 )
 
-// monitor runs our neural networks on the camera streams
+/* monitor runs our neural networks on the camera streams
+
+We process camera frames in phases:
+1. Read frames from cameras (frameReader)
+2. Process frames with neural networks (nnThread)
+3. Analyze results from neural networks (analyzer)
+
+We connect these phases with channels.
+
+*/
 
 type Monitor struct {
 	Log                 log.Log
 	detector            nn.ObjectDetector
-	enabled             bool                  // If false, then we don't run the looper
-	mustStopLooper      atomic.Bool           // True if stopLooper() has been called
-	mustStopNNThreads   atomic.Bool           // NN threads must exit
-	numNNThreads        int                   // Number of NN threads
-	nnThreadStopWG      sync.WaitGroup        // Wait for all NN threads to exit
-	looperStopped       chan bool             // When looperStop channel is closed, then the looped has stopped
-	nnFrameTime         time.Duration         // Average time for the neural network to process a frame
-	nnThreadQueue       chan monitorQueueItem // Queue of images to be processed by the neural network
-	avgTimeNSPerFrameNN atomic.Int64          // Average time (ns) per frame, for just the neural network (time inside a thread)
+	enabled             bool                   // If false, then we don't run the frame reader
+	mustStopFrameReader atomic.Bool            // True if stopFrameReader() has been called
+	mustStopNNThreads   atomic.Bool            // NN threads must exit
+	analyzerQueue       chan analyzerQueueItem // Analyzer work queue. When closed, analyzer must exit.
+	analyzerStopped     chan bool              // Analyzer thread has exited
+	numNNThreads        int                    // Number of NN threads
+	nnThreadStopWG      sync.WaitGroup         // Wait for all NN threads to exit
+	frameReaderStopped  chan bool              // When frameReaderStopped channel is closed, then the frame reader has stopped
+	nnFrameTime         time.Duration          // Average time for the neural network to process a frame
+	nnThreadQueue       chan monitorQueueItem  // Queue of images to be processed by the neural network
+	avgTimeNSPerFrameNN atomic.Int64           // Average time (ns) per frame, for just the neural network (time inside a thread)
+	cocoClassFilter     map[int]bool           // COCO classes that we're interested in
+	analyzerSettings    analyzerSettings       // Analyzer settings
 
 	camerasLock sync.Mutex       // Guards access to cameras
 	cameras     []*monitorCamera // Cameras that we're monitoring
@@ -54,7 +67,7 @@ type monitorCamera struct {
 	lock sync.Mutex
 
 	// Guarded by 'lock' mutex.
-	// If objects is not nil, then this is the image that was used to generate the objects.
+	// If lastDetection is not nil, then this is the image that was used to generate the objects.
 	// lastImg is garbage collected - it will not get reused for subsequent frames.
 	// In other words, it is safe to lock the mutex, read the lastImg pointer, unlock the mutex,
 	// and then use that pointer indefinitely thereafter.
@@ -63,11 +76,21 @@ type monitorCamera struct {
 	// Guarded by 'lock' mutex.
 	// Same comment applies to objects as to lastImg, in the sense that the contents of objects is immutable.
 	lastDetection *nn.DetectionResult
+
+	// Guared by 'lock' mutex.
+	// Can be nil.
+	// Same comment applies to objects as to lastImg, in the sense that the contents of objects is immutable.
+	analyzerState *AnalysisResult
 }
 
 type monitorQueueItem struct {
 	camera *monitorCamera
 	image  *accel.YUVImage
+}
+
+type analyzerQueueItem struct {
+	camera    *monitorCamera
+	detection *nn.DetectionResult
 }
 
 func NewMonitor(logger log.Log) (*Monitor, error) {
@@ -95,35 +118,53 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 		return nil, err
 	}
 
-	// queueSize should be at least equal to nThreads, otherwise we'll never reach full utilization.
-	// But perhaps we can use queueSize as a throttle, to optimize the number of active threads.
+	// nnQueueSize should be at least equal to nnThreads, otherwise we'll never reach full utilization.
+	// But perhaps we can use nnQueueSize as a throttle, to optimize the number of active threads.
 	// It's not clear yet how many threads is optimal.
 	// One more important point:
-	// queueSize must be at least twice the size of nThreads, so that our exit mechanism can work.
+	// queueSize must be at least twice the size of nnThreads, so that our exit mechanism can work.
 	// Once we signal mustStopNNThreads, we fill the queue with dummy jobs, so that the NN threads
 	// can wake up from their channel receive operation, and exit.
 	// If the queue size was too small, then this would deadlock.
 
 	// On a Raspberry Pi 4, a single NN thread is best. But on my larger desktops, more threads helps.
 	// I haven't looked into ncnn's threading strategy yet.
-	nThreads := int(math.Max(1, float64(runtime.NumCPU())/4))
-	queueSize := nThreads * 3
+	nnThreads := int(math.Max(1, float64(runtime.NumCPU())/4))
+	nnQueueSize := nnThreads * 3
 
-	logger.Infof("Starting %v NN detection threads", nThreads)
+	// No idea what a good number is here. I expect analysis to be much
+	// faster to run than NN, so provided this queue is large enough to
+	// prevent bumps, it shouldn't matter too much.
+	analysisQueueSize := 20
+
+	logger.Infof("Starting %v NN detection threads", nnThreads)
 
 	m := &Monitor{
-		Log:           logger,
-		detector:      detector,
-		nnThreadQueue: make(chan monitorQueueItem, queueSize),
-		numNNThreads:  nThreads,
-		enabled:       true,
+		Log:             logger,
+		detector:        detector,
+		nnThreadQueue:   make(chan monitorQueueItem, nnQueueSize),
+		analyzerQueue:   make(chan analyzerQueueItem, analysisQueueSize),
+		analyzerStopped: make(chan bool),
+		numNNThreads:    nnThreads,
+		cocoClassFilter: cocoFilter(),
+		analyzerSettings: analyzerSettings{
+			positionHistorySize:       30,   // at 10 fps, 30 frames = 3 seconds
+			maxAnalyzeObjectsPerFrame: 20,   // We have O(n^2) analysis functions, so we need to keep this small.
+			minDistanceForObject:      0.05, // 5% of the frame width (0.05 * 320 = 16 pixels)
+			minDiscreetPositions:      10,
+			objectForgetTime:          5 * time.Second,
+			verbose:                   true,
+		},
+		enabled: true,
 	}
 	for i := 0; i < m.numNNThreads; i++ {
 		go m.nnThread()
 	}
 	if m.enabled {
-		m.startLooper()
+		m.startFrameReader()
 	}
+	go m.analyzer()
+
 	return m, nil
 }
 
@@ -133,7 +174,7 @@ func (m *Monitor) Close() {
 
 	// Stop reading images from cameras
 	if m.enabled {
-		m.stopLooper()
+		m.stopFrameReader()
 	}
 
 	// Stop NN threads
@@ -145,6 +186,10 @@ func (m *Monitor) Close() {
 	}
 	m.nnThreadStopWG.Wait()
 
+	// Stop analyzer
+	m.Log.Infof("Monitor waiting for analyzer")
+	close(m.analyzerQueue)
+
 	// Close the C++ object
 	m.detector.Close()
 
@@ -152,18 +197,18 @@ func (m *Monitor) Close() {
 }
 
 // Return the most recent frame and detection result for a camera
-func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *nn.DetectionResult, error) {
+func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *nn.DetectionResult, *AnalysisResult, error) {
 	cam := m.cameraByID(cameraID)
 	if cam == nil {
-		return nil, nil, fmt.Errorf("Camera %v not found", cameraID)
+		return nil, nil, nil, fmt.Errorf("Camera %v not found", cameraID)
 	}
 	cam.lock.Lock()
 	defer cam.lock.Unlock()
 	if cam.lastImg == nil {
-		return nil, nil, fmt.Errorf("No image available for camera %v", cameraID)
+		return nil, nil, nil, fmt.Errorf("No image available for camera %v", cameraID)
 	}
 
-	return cam.lastImg, cam.lastDetection, nil
+	return cam.lastImg, cam.lastDetection, cam.analyzerState, nil
 }
 
 // Register to receive detection results.
@@ -195,6 +240,15 @@ func (m *Monitor) RemoveWatcher(ch chan *nn.DetectionResult) {
 	m.Log.Warnf("Monitor.RemoveWatcher failed to find channel")
 }
 
+func cocoFilter() map[int]bool {
+	classes := []int{nn.COCOPerson, nn.COCOBicycle, nn.COCOCar, nn.COCOBus, nn.COCOMotorcycle, nn.COCOTruck}
+	r := map[int]bool{}
+	for _, c := range classes {
+		r[c] = true
+	}
+	return r
+}
+
 func (m *Monitor) cameraByID(cameraID int64) *monitorCamera {
 	m.camerasLock.Lock()
 	defer m.camerasLock.Unlock()
@@ -207,22 +261,22 @@ func (m *Monitor) cameraByID(cameraID int64) *monitorCamera {
 }
 
 // Stop listening to cameras
-func (m *Monitor) stopLooper() {
-	m.mustStopLooper.Store(true)
-	<-m.looperStopped
+func (m *Monitor) stopFrameReader() {
+	m.mustStopFrameReader.Store(true)
+	<-m.frameReaderStopped
 }
 
-// Start/Restart looper
-func (m *Monitor) startLooper() {
-	m.mustStopLooper.Store(false)
-	m.looperStopped = make(chan bool)
-	go m.loop()
+// Start/Restart frame reader
+func (m *Monitor) startFrameReader() {
+	m.mustStopFrameReader.Store(false)
+	m.frameReaderStopped = make(chan bool)
+	go m.readFrames()
 }
 
 // Set cameras and start monitoring
 func (m *Monitor) SetCameras(cameras []*camera.Camera) {
 	if m.enabled {
-		m.stopLooper()
+		m.stopFrameReader()
 	}
 
 	newCameras := []*monitorCamera{}
@@ -237,18 +291,18 @@ func (m *Monitor) SetCameras(cameras []*camera.Camera) {
 	m.camerasLock.Unlock()
 
 	if m.enabled {
-		m.startLooper()
+		m.startFrameReader()
 	}
 }
 
-type looperCameraState struct {
+type frameReaderCameraState struct {
 	mcam               *monitorCamera
 	lastFrameID        int64 // Last frame we've seen from this camera
 	numFramesTotal     int64 // Number of frames from this camera that we've seen
 	numFramesProcessed int64 // Number of frames from this camera that we've analyzed
 }
 
-func looperStats(cameraStates []*looperCameraState) (totalFrames, totalProcessed int64) {
+func frameReaderStats(cameraStates []*frameReaderCameraState) (totalFrames, totalProcessed int64) {
 	for _, state := range cameraStates {
 		totalFrames += state.numFramesTotal
 		totalProcessed += state.numFramesProcessed
@@ -256,14 +310,14 @@ func looperStats(cameraStates []*looperCameraState) (totalFrames, totalProcessed
 	return
 }
 
-// Loop runs until Close()
-func (m *Monitor) loop() {
+// Read camera frames and send them off for analysis
+func (m *Monitor) readFrames() {
 	// Make our own private copy of cameras.
-	// If the list of cameras changes, then SetCameras() will stop and restart the looper.
+	// If the list of cameras changes, then SetCameras() will stop and restart this function
 	m.camerasLock.Lock()
-	looperCameras := []*looperCameraState{}
+	looperCameras := []*frameReaderCameraState{}
 	for _, mcam := range m.cameras {
-		looperCameras = append(looperCameras, &looperCameraState{
+		looperCameras = append(looperCameras, &frameReaderCameraState{
 			mcam: mcam,
 		})
 	}
@@ -278,10 +332,10 @@ func (m *Monitor) loop() {
 	lastStats := time.Now()
 
 	nStats := 0
-	for !m.mustStopLooper.Load() {
+	for !m.mustStopFrameReader.Load() {
 		idle := true
 		for i := 0; i < len(looperCameras); i++ {
-			if m.mustStopLooper.Load() {
+			if m.mustStopFrameReader.Load() {
 				break
 			}
 			if len(m.nnThreadQueue) >= 2*cap(m.nnThreadQueue)/3 {
@@ -312,25 +366,25 @@ func (m *Monitor) loop() {
 				}
 			}
 		}
-		if m.mustStopLooper.Load() {
+		if m.mustStopFrameReader.Load() {
 			break
 		}
 		if idle {
 			time.Sleep(5 * time.Millisecond)
 		}
 
-		interval := 3 * math.Pow(1.05, float64(nStats))
+		interval := 10 * math.Pow(1.5, float64(nStats))
 		if interval > 5*60 {
 			interval = 5 * 60
 		}
 		if time.Now().Sub(lastStats) > time.Duration(interval)*time.Second {
 			nStats++
-			totalFrames, totalProcessed := looperStats(looperCameras)
+			totalFrames, totalProcessed := frameReaderStats(looperCameras)
 			m.Log.Infof("%.0f%% frames analyzed by NN (%.1f ms per frame, per thread)", 100*float64(totalProcessed)/float64(totalFrames), float64(m.avgTimeNSPerFrameNN.Load())/1e6)
 			lastStats = time.Now()
 		}
 	}
-	close(m.looperStopped)
+	close(m.frameReaderStopped)
 }
 
 // An NN processing thread
@@ -347,8 +401,8 @@ func (m *Monitor) nnThread() {
 		if rgb == nil || rgb.Width != yuv.Width || rgb.Height != yuv.Height {
 			rgb = cimg.NewImage(yuv.Width, yuv.Height, cimg.PixelFormatRGB)
 		}
-		yuv.CopyToCImageRGB(rgb)
 		start := time.Now()
+		yuv.CopyToCImageRGB(rgb)
 		objects, err := m.detector.DetectObjects(rgb.NChan(), rgb.Pixels, rgb.Width, rgb.Height)
 		duration := time.Now().Sub(start)
 		m.avgTimeNSPerFrameNN.Store((99*m.avgTimeNSPerFrameNN.Load() + duration.Nanoseconds()) / 100)
@@ -369,6 +423,15 @@ func (m *Monitor) nnThread() {
 			item.camera.lastDetection = result
 			item.camera.lastImg = rgb
 			item.camera.lock.Unlock()
+
+			if len(m.analyzerQueue) >= cap(m.analyzerQueue)*9/10 {
+				m.Log.Warnf("NN analyzer queue is falling behind - dropping frames")
+			} else {
+				m.analyzerQueue <- analyzerQueueItem{
+					camera:    item.camera,
+					detection: result,
+				}
+			}
 
 			m.watchersLock.RLock()
 			for _, watcher := range m.watchers {

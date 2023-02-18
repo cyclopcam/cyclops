@@ -85,15 +85,18 @@ func (s *Server) httpCamGetLatestImage(w http.ResponseWriter, r *http.Request, p
 	var encodedImg []byte
 
 	// First try to get latest frame that has had NN detections run on it
-	img, detections, err := s.monitor.LatestFrame(cam.ID)
+	img, detections, analysis, err := s.monitor.LatestFrame(cam.ID)
 	if err == nil {
 		encodedImg, err = cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, 85, 0))
 		www.Check(err)
-		js, err := json.Marshal(detections)
+		jsDet, err := json.Marshal(detections)
 		www.Check(err)
-		// We must send Content-Type before X-Detections
+		jsAna, err := json.Marshal(analysis)
+		www.Check(err)
+		// We must send Content-Type before X-Detections or X-Analysis... not sure if that's browser or Go HTTP infra, but it's a thing.
 		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("X-Detections", string(js))
+		w.Header().Set("X-Detections", string(jsDet))
+		w.Header().Set("X-Analysis", string(jsAna))
 	} else {
 		// Fall back to latest frame without NN detections
 		s.Log.Infof("httpCamGetLatestImage fallback on camera %v (%v)", cam.ID, err)
