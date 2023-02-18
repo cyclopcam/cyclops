@@ -47,6 +47,7 @@ type Monitor struct {
 	avgTimeNSPerFrameNN atomic.Int64           // Average time (ns) per frame, for just the neural network (time inside a thread)
 	cocoClassFilter     map[int]bool           // COCO classes that we're interested in
 	analyzerSettings    analyzerSettings       // Analyzer settings
+	nextTrackedObjectID atomic.Int64           // Next ID to assign to a tracked object
 
 	camerasLock sync.Mutex       // Guards access to cameras
 	cameras     []*monitorCamera // Cameras that we're monitoring
@@ -57,7 +58,7 @@ type Monitor struct {
 
 type watcher struct {
 	cameraID int64
-	ch       chan *nn.DetectionResult
+	ch       chan *AnalysisState
 }
 
 type monitorCamera struct {
@@ -80,7 +81,7 @@ type monitorCamera struct {
 	// Guared by 'lock' mutex.
 	// Can be nil.
 	// Same comment applies to objects as to lastImg, in the sense that the contents of objects is immutable.
-	analyzerState *AnalysisResult
+	analyzerState *AnalysisState
 }
 
 type monitorQueueItem struct {
@@ -197,7 +198,7 @@ func (m *Monitor) Close() {
 }
 
 // Return the most recent frame and detection result for a camera
-func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *nn.DetectionResult, *AnalysisResult, error) {
+func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *nn.DetectionResult, *AnalysisState, error) {
 	cam := m.cameraByID(cameraID)
 	if cam == nil {
 		return nil, nil, nil, fmt.Errorf("Camera %v not found", cameraID)
@@ -216,10 +217,10 @@ func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *nn.DetectionResult,
 // immediately, and keeps the channel drained. If you don't do this, then
 // the monitor will freeze, and obviously that's a really bad thing to happen
 // to a security system.
-func (m *Monitor) AddWatcher(cameraID int64) chan *nn.DetectionResult {
+func (m *Monitor) AddWatcher(cameraID int64) chan *AnalysisState {
 	m.watchersLock.Lock()
 	defer m.watchersLock.Unlock()
-	ch := make(chan *nn.DetectionResult, 100)
+	ch := make(chan *AnalysisState, 100)
 	m.watchers = append(m.watchers, watcher{
 		cameraID: cameraID,
 		ch:       ch,
@@ -228,7 +229,7 @@ func (m *Monitor) AddWatcher(cameraID int64) chan *nn.DetectionResult {
 }
 
 // Unregister from detection results
-func (m *Monitor) RemoveWatcher(ch chan *nn.DetectionResult) {
+func (m *Monitor) RemoveWatcher(ch chan *AnalysisState) {
 	m.watchersLock.Lock()
 	defer m.watchersLock.Unlock()
 	for i, w := range m.watchers {
@@ -238,6 +239,21 @@ func (m *Monitor) RemoveWatcher(ch chan *nn.DetectionResult) {
 		}
 	}
 	m.Log.Warnf("Monitor.RemoveWatcher failed to find channel")
+}
+
+func (m *Monitor) sendToWatchers(state *AnalysisState) {
+	m.watchersLock.RLock()
+	for _, watcher := range m.watchers {
+		if watcher.cameraID == state.CameraID {
+			if len(watcher.ch) >= cap(watcher.ch)*9/10 {
+				// This should never happen. But as a safeguard against a monitor deadlock, we choose to drop frames.
+				m.Log.Warnf("Monitor watcher on camera %v is falling behind. I am going to drop frames.", watcher.cameraID)
+			} else {
+				watcher.ch <- state
+			}
+		}
+	}
+	m.watchersLock.RUnlock()
 }
 
 func cocoFilter() map[int]bool {
@@ -432,19 +448,6 @@ func (m *Monitor) nnThread() {
 					detection: result,
 				}
 			}
-
-			m.watchersLock.RLock()
-			for _, watcher := range m.watchers {
-				if watcher.cameraID == item.camera.camera.ID {
-					if len(watcher.ch) >= cap(watcher.ch)*9/10 {
-						// This should never happen. But as a safeguard against a monitor deadlock, we choose to drop frames.
-						m.Log.Warnf("NN detection watcher on camera %v is falling behind. I am going to drop frames.", watcher.cameraID)
-					} else {
-						watcher.ch <- result
-					}
-				}
-			}
-			m.watchersLock.RUnlock()
 		}
 	}
 

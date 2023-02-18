@@ -4,7 +4,7 @@ import { encodeQuery } from "@/util/util";
 import { globals } from "@/globals";
 import JMuxer from "jmuxer";
 import { onMounted, onUnmounted, watch, ref } from "vue";
-import { DetectionResult, COCOClasses } from "@/camera/nn";
+import { AnalysisState, DetectionResult, COCOClasses } from "@/camera/nn";
 
 /*
 
@@ -83,6 +83,7 @@ let props = defineProps<{
 	play: boolean,
 	round?: boolean,
 	size?: string,
+	allowRecord?: boolean,
 }>()
 let emits = defineEmits(['click']);
 
@@ -106,7 +107,7 @@ let isPaused = false;
 let posterURLUpdateFrequencyMS = 5 * 1000; // When the page is active, we update our poster URL every X seconds
 let posterURLTimerID: any = 0;
 //let lastDetection = new Map<number, DetectionResult>(); // key is camera ID
-let lastDetection = new DetectionResult();
+let lastDetection = new AnalysisState();
 
 // SYNC-WEBSOCKET-COMMANDS
 enum WSMessage {
@@ -170,8 +171,8 @@ function parseVideoFrame(data: ArrayBuffer): parsedPacket {
 
 	// Try various things to reduce the motion to photons latency. The latency is right now is about 1
 	// second, and it's very obvious when you see your neural network detection box walk ahead of your body.
-	//if (nVideoPackets % 10 === 0)
-	//	backlog = true;
+	if (nVideoPackets % 3 === 0)
+		backlog = true;
 
 	// during backlog catchup, we leave duration undefined, which causes the player to catch up
 	// as fast as it can (which is precisely what we want).
@@ -189,10 +190,14 @@ function parseVideoFrame(data: ArrayBuffer): parsedPacket {
 function parseStringMessage(msg: string) {
 	let j = JSON.parse(msg);
 	if (j.type === "detection") {
-		let detection = DetectionResult.fromJSON(j.detection);
+		let detection = AnalysisState.fromJSON(j.detection);
 		lastDetection = detection;
 		updateOverlay();
 	}
+}
+
+function canShowRecord(): boolean {
+	return props.allowRecord ?? true;
 }
 
 function videoElementID(): string {
@@ -434,6 +439,44 @@ function posterURLUpdateTimer() {
 	posterURLTimerID = setTimeout(posterURLUpdateTimer, posterURLUpdateFrequencyMS);
 }
 
+function drawRawNNObjects(can: HTMLCanvasElement, cx: CanvasRenderingContext2D, detection: DetectionResult) {
+	let sx = can.width / detection.imageWidth;
+	let sy = can.height / detection.imageHeight;
+	for (let d of detection.objects) {
+		cx.lineWidth = 2;
+		cx.strokeStyle = "#0c0";
+		cx.font = '18px sans-serif';
+		cx.strokeRect(d.box.x * sx, d.box.y * sy, d.box.width * sx, d.box.height * sy);
+		cx.fillStyle = '#fff';
+		cx.textAlign = 'left';
+		cx.textBaseline = 'top';
+		cx.fillText(COCOClasses[d.class], d.box.x * sx, d.box.y * sy);
+	}
+}
+
+function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingContext2D, detection: AnalysisState) {
+	if (!detection.input)
+		return;
+	let sx = can.width / detection.input.imageWidth;
+	let sy = can.height / detection.input.imageHeight;
+	for (let d of detection.objects) {
+		if (d.genuine) {
+			cx.lineWidth = 4;
+			cx.strokeStyle = "#f00";
+			cx.font = 'bold 18px sans-serif';
+		} else {
+			cx.lineWidth = 2;
+			cx.strokeStyle = "#fc0";
+			cx.font = '18px sans-serif';
+		}
+		cx.strokeRect(d.box.x * sx, d.box.y * sy, d.box.width * sx, d.box.height * sy);
+		cx.fillStyle = '#fff';
+		cx.textAlign = 'left';
+		cx.textBaseline = 'top';
+		cx.fillText(COCOClasses[d.class] + ' ' + d.id, d.box.x * sx, d.box.y * sy);
+	}
+}
+
 async function updateOverlay() {
 	let can = overlayCanvas.value! as HTMLCanvasElement;
 	let dpr = window.devicePixelRatio;
@@ -451,33 +494,17 @@ async function updateOverlay() {
 		let image = await createImageBitmap(blob);
 		cx.drawImage(image, 0, 0, can.width, can.height);
 
-		let jDetections = r.headers.get("X-Detections");
+		let jDetections = r.headers.get("X-Analysis");
 		if (jDetections) {
-			lastDetection = DetectionResult.fromJSON(JSON.parse(jDetections));
+			lastDetection = AnalysisState.fromJSON(JSON.parse(jDetections));
 		}
 		//console.log("detections", r.headers.get("X-Detections"));
 	}
 
-	if (lastDetection.cameraID === props.camera.id) {
-		let sx = can.width / lastDetection.imageWidth;
-		let sy = can.height / lastDetection.imageHeight;
-		cx.strokeStyle = "#f00";
-		cx.lineWidth = 2;
-		for (let d of lastDetection.objects) {
-			cx.strokeRect(d.box.x * sx, d.box.y * sy, d.box.width * sx, d.box.height * sy);
-			cx.font = '16px sans-serif';
-			cx.fillStyle = '#fff';
-			cx.textAlign = 'left';
-			cx.fillText(COCOClasses[d.class], d.box.x * sx, d.box.y * sy)
-		}
+	if (lastDetection.cameraID === props.camera.id && lastDetection.input) {
+		drawAnalyzedObjects(can, cx, lastDetection);
+		//drawRawNNObjects(can, cx, lastDetection.input);
 	}
-
-	//cx.beginPath();
-	//cx.lineWidth = 2;
-	//cx.strokeStyle = '#0d0';
-	//cx.moveTo(10, 10);
-	//cx.lineTo(80, 30);
-	//cx.stroke();
 }
 
 onUnmounted(() => {

@@ -11,6 +11,7 @@ import (
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/defs"
+	"github.com/bmharper/cyclops/server/streamer"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -156,7 +157,7 @@ func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, para
 
 	newDetections := s.monitor.AddWatcher(cam.ID)
 
-	camera.RunVideoWebSocketStreamer(cam.Name, s.Log, conn, stream, backlog, newDetections)
+	streamer.RunVideoWebSocketStreamer(cam.Name, s.Log, conn, stream, backlog, newDetections)
 
 	s.monitor.RemoveWatcher(newDetections)
 

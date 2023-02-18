@@ -9,6 +9,9 @@ import (
 	"github.com/bmharper/ringbuffer"
 )
 
+// Useful while debugging; include all classes (not just person, car, etc)
+const includeAllClasses = true
+
 type analyzerSettings struct {
 	positionHistorySize       int           // Keep a ring buffer of the last N positions of each object
 	maxAnalyzeObjectsPerFrame int           // Maximum number of objects to analyze per frame
@@ -24,8 +27,9 @@ type timeAndPosition struct {
 	detection nn.Detection
 }
 
-// An object that we're tracking
+// Internal state of an object that we're tracking
 type trackedObject struct {
+	id             int64 // every new tracked object gets a unique id
 	firstDetection nn.Detection
 	cameraWidth    int
 	cameraHeight   int
@@ -34,7 +38,7 @@ type trackedObject struct {
 	genuine        bool // True if we're convinced this is a genuine detection
 }
 
-// State of the analyzer for a single camera
+// Internal state of the analyzer for a single camera
 type analyzerCameraState struct {
 	cameraID int64
 	camera   *monitorCamera
@@ -42,14 +46,21 @@ type analyzerCameraState struct {
 	lastSeen time.Time
 }
 
+// An object that was detected by the Object Detector, and is now being tracked by a post-process
+// SYNC-TRACKED-OBJECT
 type TrackedObject struct {
+	ID      int64   `json:"id"`
 	Class   int     `json:"class"`
 	Box     nn.Rect `json:"box"`
 	Genuine bool    `json:"genuine"`
 }
 
-type AnalysisResult struct {
-	Objects []TrackedObject `json:"objects"`
+// Result of post-process analysis on the Object Detection neural network output
+// SYNC-ANALYSIS-STATE
+type AnalysisState struct {
+	CameraID int64               `json:"cameraID"`
+	Input    *nn.DetectionResult `json:"input"`
+	Objects  []TrackedObject     `json:"objects"`
 }
 
 func (t *trackedObject) mostRecent() timeAndPosition {
@@ -114,14 +125,16 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 
 	// Discard detections of classes that we're not interested in
 	shortList := make([]int, 0, 100)
-	//for i, det := range item.detection.Objects {
-	//	if m.cocoClassFilter[det.Class] {
-	//		shortList = append(shortList, i)
-	//	}
-	//}
-	// While debugging, include all classes
-	for i := range item.detection.Objects {
-		shortList = append(shortList, i)
+	if includeAllClasses {
+		for i := range item.detection.Objects {
+			shortList = append(shortList, i)
+		}
+	} else {
+		for i, det := range item.detection.Objects {
+			if m.cocoClassFilter[det.Class] {
+				shortList = append(shortList, i)
+			}
+		}
 	}
 
 	// Sort from largest to smallest, and retain only the top N
@@ -156,7 +169,9 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 			// Add a new object
 			bestJ = len(cam.tracked)
 			previousHasMatch = append(previousHasMatch, true) // keep the slice length the same
+			objectID := m.nextTrackedObjectID.Add(1)
 			cam.tracked = append(cam.tracked, &trackedObject{
+				id:             objectID,
 				firstDetection: det,
 				history:        ringbuffer.NewRingP[timeAndPosition](positionHistorySize),
 				cameraWidth:    item.detection.ImageWidth,
@@ -200,11 +215,14 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 
 	// Publish results so that live feed can display them in the app.
 	// This is useful for debugging the analyzer.
-	result := &AnalysisResult{
-		Objects: make([]TrackedObject, 0), // non-nil, so that we always get an array in our JSON output
+	result := &AnalysisState{
+		CameraID: cam.cameraID,
+		Objects:  make([]TrackedObject, 0), // non-nil, so that we always get an array in our JSON output
+		Input:    item.detection,
 	}
 	for _, tracked := range cam.tracked {
 		obj := TrackedObject{
+			ID:      tracked.id,
 			Class:   tracked.firstDetection.Class,
 			Box:     tracked.mostRecent().detection.Box,
 			Genuine: tracked.genuine,
@@ -214,6 +232,8 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	cam.camera.lock.Lock()
 	cam.camera.analyzerState = result
 	cam.camera.lock.Unlock()
+
+	m.sendToWatchers(result)
 }
 
 // Decide what to do with an object that has disappeared

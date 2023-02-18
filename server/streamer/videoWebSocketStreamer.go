@@ -1,4 +1,4 @@
-package camera
+package streamer
 
 import (
 	"bytes"
@@ -10,7 +10,8 @@ import (
 
 	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/server/nn"
+	"github.com/bmharper/cyclops/server/camera"
+	"github.com/bmharper/cyclops/server/monitor"
 	"github.com/bmharper/cyclops/server/videox"
 	"github.com/gorilla/websocket"
 )
@@ -32,15 +33,15 @@ type webSocketJSON struct {
 // Either videoFrame or detectionResult will be non-nil
 type webSocketSendPacket struct {
 	videoFrame *videox.DecodedPacket
-	detection  *nn.DetectionResult
+	detection  *monitor.AnalysisState
 }
 
 // When we send a message on the websocket, it's either a BINARY frame, in which case
 // it's a video packet. Or it's a TEXT frame, in which case it's this.
 // SYNC-CAMERA-WEBSOCKET-STRING-MESSAGE
 type webSocketSendStringMessage struct {
-	Type      string              `json:"type"` // Only type of message of "detection"
-	Detection *nn.DetectionResult `json:"detection"`
+	Type      string                 `json:"type"` // Only type of message of "detection"
+	Detection *monitor.AnalysisState `json:"detection"`
 }
 
 // Number of packets (should be closely correlated with number of frames) that we will buffer
@@ -56,13 +57,13 @@ var nextWebSocketStreamerID int64
 type VideoWebSocketStreamer struct {
 	log             log.Log
 	streamerID      int64 // Intended to aid in logging/debugging
-	incoming        StreamSinkChan
+	incoming        camera.StreamSinkChan
 	trackID         int
 	closed          atomic.Bool
 	paused          atomic.Bool
 	fromWebSocket   chan webSocketMsg
 	sendQueue       chan webSocketSendPacket
-	detections      chan *nn.DetectionResult
+	detections      chan *monitor.AnalysisState
 	lastDropMsg     time.Time
 	nPacketsDropped int64
 	nPacketsSent    int64
@@ -71,11 +72,11 @@ type VideoWebSocketStreamer struct {
 	logPacketCount  bool
 }
 
-func RunVideoWebSocketStreamer(cameraName string, logger log.Log, conn *websocket.Conn, stream *Stream, backlog *VideoDumpReader, detections chan *nn.DetectionResult) {
+func RunVideoWebSocketStreamer(cameraName string, logger log.Log, conn *websocket.Conn, stream *camera.Stream, backlog *camera.VideoDumpReader, detections chan *monitor.AnalysisState) {
 	streamerID := atomic.AddInt64(&nextWebSocketStreamerID, 1)
 
 	streamer := &VideoWebSocketStreamer{
-		incoming:       make(StreamSinkChan, StreamSinkChanDefaultBufferSize),
+		incoming:       make(camera.StreamSinkChan, camera.StreamSinkChanDefaultBufferSize),
 		streamerID:     streamerID,
 		log:            log.NewPrefixLogger(logger, fmt.Sprintf("Camera %v WebSocket %v", cameraName, streamerID)),
 		sendQueue:      make(chan webSocketSendPacket, WebSocketSendBufferSize),
@@ -87,7 +88,7 @@ func RunVideoWebSocketStreamer(cameraName string, logger log.Log, conn *websocke
 	streamer.run(conn, stream, backlog)
 }
 
-func (s *VideoWebSocketStreamer) OnConnect(stream *Stream) (StreamSinkChan, error) {
+func (s *VideoWebSocketStreamer) OnConnect(stream *camera.Stream) (camera.StreamSinkChan, error) {
 	s.trackID = stream.H264TrackID
 	if s.debug {
 		s.log.Infof("OnConnect trackID:%v", s.trackID)
@@ -124,7 +125,7 @@ func (s *VideoWebSocketStreamer) onPacketRTP(packet *videox.DecodedPacket) {
 	}
 }
 
-func (s *VideoWebSocketStreamer) onDetection(detection *nn.DetectionResult) {
+func (s *VideoWebSocketStreamer) onDetection(detection *monitor.AnalysisState) {
 	// We really don't want to block on a full channel here, because that would cause
 	// the NN monitor system to block.
 	if len(s.sendQueue) >= WebSocketSendBufferSize*3/4 {
@@ -135,7 +136,7 @@ func (s *VideoWebSocketStreamer) onDetection(detection *nn.DetectionResult) {
 	}
 }
 
-func (s *VideoWebSocketStreamer) run(conn *websocket.Conn, stream *Stream, backlog *VideoDumpReader) {
+func (s *VideoWebSocketStreamer) run(conn *websocket.Conn, stream *camera.Stream, backlog *camera.VideoDumpReader) {
 	s.trackID = stream.H264TrackID
 
 	if s.debug {
@@ -166,10 +167,10 @@ func (s *VideoWebSocketStreamer) run(conn *websocket.Conn, stream *Stream, backl
 		select {
 		case msg := <-s.incoming:
 			switch msg.Type {
-			case StreamMsgTypeClose:
+			case camera.StreamMsgTypeClose:
 				s.log.Infof("Run StreamMsgTypeClose")
 				s.closed.Store(true)
-			case StreamMsgTypePacket:
+			case camera.StreamMsgTypePacket:
 				if !s.paused.Load() {
 					s.onPacketRTP(msg.Packet)
 				}
@@ -203,7 +204,7 @@ func (s *VideoWebSocketStreamer) run(conn *websocket.Conn, stream *Stream, backl
 	}
 }
 
-func (s *VideoWebSocketStreamer) sendBacklog(backlog *VideoDumpReader) {
+func (s *VideoWebSocketStreamer) sendBacklog(backlog *camera.VideoDumpReader) {
 	s.log.Infof("Sending backlog of frames")
 	backlog.BufferLock.Lock()
 	defer backlog.BufferLock.Unlock()
