@@ -30,6 +30,7 @@ func main() {
 	disableVPN := parser.Flag("", "novpn", &argparse.Options{Help: "Disable VPN", Default: false})
 	hotReloadWWW := parser.Flag("", "hot", &argparse.Options{Help: "Hot reload www instead of embedding into binary", Default: false})
 	ownIPStr := parser.String("", "ip", &argparse.Options{Help: "IP address of this machine (for network scanning)", Default: ""}) // eg for dev time, and server is running inside a NAT'ed VM such as WSL.
+	privateKey := parser.String("", "privatekey", &argparse.Options{Help: "Change private key of system (e.g. for recreating a system while maintaining a prior identity)", Default: ""})
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
@@ -55,7 +56,7 @@ func main() {
 		if *hotReloadWWW {
 			flags |= server.ServerFlagHotReloadWWW
 		}
-		srv, err := server.NewServer(*configFile, flags)
+		srv, err := server.NewServer(*configFile, flags, *privateKey)
 		if err != nil {
 			fmt.Printf("%v\n", err)
 			os.Exit(1)

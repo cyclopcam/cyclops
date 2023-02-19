@@ -9,6 +9,27 @@ import (
 	"github.com/bmharper/ringbuffer"
 )
 
+/*
+YOLOv7-tiny will often produce two overlapping boxes for a single thing.
+We don't make any attempt to filter that out, but hope instead that we can
+move toward larger models.
+
+AutoRecorder:
+The job of the auto recorder is to record video samples of interesting events.
+An interest event includes an item of interest (primarily a person, but perhaps
+also a car or bicycle). That item of interest has a certain trajectory through
+the frame. The trajectory is simply a 2D path. We don't need too many instances
+of similar trajectories, so once we have a few samples of a given kind, we can
+stop collecting more of the same.
+But this makes me wonder if this approach really works. Most people don't actually
+want to simulate breaking into their own yards. It's a big thing to ask of some
+people, and even the athletic ones might not cover cases, especially unpleasant ones,
+that involve damaging their walls, plants, or are dangerous.
+I'm looking at my own cameras, and thinking that good old polygon zones are probably
+the right solution.
+
+*/
+
 // Useful while debugging; include all classes (not just person, car, etc)
 const includeAllClasses = true
 

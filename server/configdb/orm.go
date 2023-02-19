@@ -32,7 +32,7 @@ type Variable struct {
 
 type Key struct {
 	Name  string `gorm:"primaryKey"`
-	Value []byte
+	Value string // normal (not URL-safe) base64 encoded (same as Wireguard)
 }
 
 // UserPermissions are single characters that are present in the user's Permissions field

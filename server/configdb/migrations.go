@@ -4,6 +4,7 @@ import (
 	"github.com/BurntSushi/migration"
 	"github.com/bmharper/cyclops/pkg/dbh"
 	"github.com/bmharper/cyclops/pkg/log"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 func Migrations(log log.Log) []migration.Migrator {
@@ -68,18 +69,20 @@ func Migrations(log log.Log) []migration.Migrator {
 		CREATE TABLE key(name TEXT PRIMARY KEY, value BLOB NOT NULL);
 	`))
 
-//	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
-//		`
-//		CREATE TABLE connection(
-//			public_key BLOB PRIMARY KEY,
-//			user_id INT NOT NULL,
-//			device_type TEXT NOT NULL,
-//			created_at INT NOT NULL,
-//			last_used_at INT NOT NULL
-//		);
-//
-//		ALTER TABLE session ADD COLUMN connection_public_key BLOB;
-//	`))
+	// This was really just a POC migration.. nobody was using the system except for me.
+	migs = append(migs, dbh.MakeMigrationFromFunc(log, &idx, func(tx migration.LimitedTx) error {
+		mainKeyBin := []byte{}
+		tx.QueryRow("SELECT value FROM key WHERE name = ?", KeyMain).Scan(&mainKeyBin)
+		tx.Exec("DROP TABLE key")
+		tx.Exec("CREATE TABLE key(name TEXT PRIMARY KEY, value TEXT NOT NULL)")
+		if len(mainKeyBin) == 32 {
+			k := wgtypes.Key{}
+			copy(k[:], mainKeyBin)
+			_, err := tx.Exec("INSERT INTO key(name, value) VALUES (?, ?)", KeyMain, k.String())
+			return err
+		}
+		return nil
+	}))
 
 	return migs
 }

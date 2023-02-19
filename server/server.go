@@ -68,7 +68,7 @@ const (
 )
 
 // Create a new server, load config, start cameras, and listen on HTTP
-func NewServer(configDBFilename string, serverFlags int) (*Server, error) {
+func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey string) (*Server, error) {
 	log, err := log.NewLog()
 	if err != nil {
 		return nil, err
@@ -83,7 +83,7 @@ func NewServer(configDBFilename string, serverFlags int) (*Server, error) {
 		recorders:        map[int64]*recorder{},
 		nextRecorderID:   1,
 	}
-	if cfg, err := configdb.NewConfigDB(s.Log, configDBFilename); err != nil {
+	if cfg, err := configdb.NewConfigDB(s.Log, configDBFilename, explicitPrivateKey); err != nil {
 		return nil, err
 	} else {
 		s.configDB = cfg

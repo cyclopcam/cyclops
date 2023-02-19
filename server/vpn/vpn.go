@@ -147,10 +147,14 @@ func (v *VPN) validateAndSaveDeviceDetails(resp *kernel.MsgGetDeviceResponse) er
 	if subtle.ConstantTimeCompare(resp.PrivateKey[:], v.privateKey[:]) == 0 {
 		color := "\033[0;32m"
 		reset := " \033[0m"
-		v.Log.Infof("%vInstructions:%v", color, reset)
+		v.Log.Infof("%vEither cause a new key to be created, by deleting your cyclops wireguard interface:%v", color, reset)
 		v.Log.Infof("%v1. sudo wg-quick down cyclops%v", color, reset)
 		v.Log.Infof("%v2. sudo rm /etc/wireguard/cyclops.conf%v", color, reset)
 		v.Log.Infof("%v3. Try starting cyclops again%v", color, reset)
+		v.Log.Infof("%vOR reuse your existing wireguard key:%v", color, reset)
+		v.Log.Infof("%v1. sudo cat /etc/wireguard/cyclops.conf%v", color, reset)
+		v.Log.Infof("%v2. Use the private key displayed in the console, and run cyclops once with --privatekey <key>%v", color, reset)
+		v.Log.Infof("%v3. Start cyclops regularly again%v", color, reset)
 		return fmt.Errorf("Wireguard device has a different key. Follow instructions in the logs.")
 	}
 	v.deviceIP = resp.Address
