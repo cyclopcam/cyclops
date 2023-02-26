@@ -13,6 +13,7 @@ import (
 
 	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/bmharper/cyclops/proxy/kernel"
+	"github.com/coreos/go-systemd/daemon"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -431,6 +432,9 @@ func main() {
 		logger.Errorf("Error listening: %v", err)
 		os.Exit(1)
 	}
+
+	// Tell systemd that we're alive, so that the cyclops service can start up
+	daemon.SdNotify(false, daemon.SdNotifyReady)
 
 	//ln.SetUnlinkOnClose(true)
 

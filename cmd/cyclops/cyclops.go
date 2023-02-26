@@ -8,6 +8,7 @@ import (
 
 	"github.com/akamensky/argparse"
 	"github.com/bmharper/cyclops/server"
+	"github.com/coreos/go-systemd/daemon"
 )
 
 func check(err error) {
@@ -65,6 +66,10 @@ func main() {
 			srv.OwnIP = ownIP
 		}
 		srv.ListenForInterruptSignal()
+
+		// Tell systemd that we're alive
+		daemon.SdNotify(false, daemon.SdNotifyReady)
+
 		check(srv.StartAllCameras())
 
 		srv.RunBackgroundRecorderLoop()

@@ -1,9 +1,10 @@
 [Unit]
 Description=Cyclops
-After=network.target network-online.target
-Requires=network-online.target
+After=cyclops-kernelwg.service
+Requires=cyclops-kernelwg.service
  
 [Service]
+Type=notify
 User=cyclops
 Group=cyclops
 ExecStart=/usr/local/bin/cyclops --config /var/lib/cyclops/config.sqlite

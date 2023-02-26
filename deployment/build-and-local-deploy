@@ -24,23 +24,21 @@ cd www && npm install && npm run build && cd ..
 go build -o bin/kernelwg cmd/kernelwg/*.go
 go build -o bin/cyclops cmd/cyclops/cyclops.go
 
-if [ ! -f /etc/systemd/system/cyclops.service ]; then
-	echo Creating cyclops service
-	sudo cp deployment/services/cyclops.service /etc/systemd/system
-	sudo systemctl daemon-reload
-	sudo systemctl enable cyclops
+if [ -f /etc/systemd/system/cyclops.service ]; then
+	sudo systemctl stop cyclops
 fi
 
-if [ ! -f /etc/systemd/system/cyclops-kernelwg.service ]; then
-	echo Creating cyclops-kernelwg service
-	sudo cp deployment/services/cyclops-kernelwg.service /etc/systemd/system
-	sudo systemctl daemon-reload
-	sudo systemctl enable cyclops-kernelwg
+if [ -f /etc/systemd/system/cyclops-kernelwg.service ]; then
+	sudo systemctl stop cyclops-kernelwg
 fi
 
-# Stop services
-sudo systemctl stop cyclops
-sudo systemctl stop cyclops-kernelwg
+# Always update .service files to latest
+sudo cp deployment/services/cyclops.service /etc/systemd/system
+sudo cp deployment/services/cyclops-kernelwg.service /etc/systemd/system
+
+sudo systemctl daemon-reload
+sudo systemctl enable cyclops
+sudo systemctl enable cyclops-kernelwg
 
 # Copy binaries
 sudo cp bin/kernelwg /usr/local/bin/cyclops-kernelwg
@@ -51,7 +49,8 @@ sudo -u cyclops mkdir -p /var/lib/cyclops/models
 sudo -u cyclops cp models/* /var/lib/cyclops/models/
 
 # Start services
-sudo systemctl start cyclops-kernelwg
+# We don't need to start cyclops-kernelwg explicitly, because it's
+# a dependency of cyclops, and systemd will start it automatically.
 sudo systemctl start cyclops
 
 # Show status of main service
