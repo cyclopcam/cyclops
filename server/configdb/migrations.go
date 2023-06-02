@@ -84,5 +84,19 @@ func Migrations(log log.Log) []migration.Migrator {
 		return nil
 	}))
 
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		ALTER TABLE record_instruction RENAME TO old;
+		ALTER TABLE old ADD COLUMN resolution TEXT NOT NULL DEFAULT 'LD';
+		CREATE TABLE record_instruction(
+			id INTEGER PRIMARY KEY,
+			start_at INT NOT NULL,
+			finish_at INT NOT NULL,
+			resolution TEXT NOT NULL
+		);
+		INSERT INTO record_instruction SELECT id, start_at, finish_at, resolution FROM old;
+		DROP TABLE old;
+	`))
+
 	return migs
 }

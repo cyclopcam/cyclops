@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bmharper/cyclops/pkg/dbh"
 	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/server/camera"
@@ -140,6 +141,22 @@ func (s *Server) deleteRecorderAfterDelay(recorderID int64, delay time.Duration)
 		delete(s.recorders, recorderID)
 		s.recordersLock.Unlock()
 	}()
+}
+
+// This is just a hack to start the background recorder.
+// Built to send some footage to a friend.
+func (s *Server) httpRecordQuick(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	seconds := www.RequiredQueryInt(r, "seconds")
+	res, err := defs.ParseResolution(www.RequiredQueryValue(r, "resolution"))
+	www.Check(err)
+	start := time.Now()
+	ins := configdb.RecordInstruction{
+		StartAt:    dbh.MakeIntTime(start),
+		FinishAt:   dbh.MakeIntTime(start.Add(time.Duration(seconds) * time.Second)),
+		Resolution: string(res),
+	}
+	www.Check(s.configDB.DB.Create(&ins).Error)
+	www.SendOK(w)
 }
 
 func (s *Server) httpRecordStart(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {

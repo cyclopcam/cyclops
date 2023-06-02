@@ -35,7 +35,7 @@ export class Context {
 	validate: () => boolean;
 
 	inputWidth = ref("180px");
-	inputColor = ref("#000");
+	inputColor = ref("#555");
 	name = ""; // Name of the form. Used for persistent state (eg showPassword)
 	submitTitle = ref("Next"); // Title of the submit button
 

@@ -62,8 +62,9 @@ type Session struct {
 
 type RecordInstruction struct {
 	BaseModel
-	StartAt  dbh.IntTime `json:"startAt"`
-	FinishAt dbh.IntTime `json:"finishAt"`
+	StartAt    dbh.IntTime `json:"startAt"`
+	FinishAt   dbh.IntTime `json:"finishAt"`
+	Resolution string      `json:"resolution" gorm:"default:null"` // One of defs.Resolution (LD or HD)
 }
 
 func IsValidPermission(p string) bool {

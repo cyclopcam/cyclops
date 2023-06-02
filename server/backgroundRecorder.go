@@ -106,7 +106,7 @@ func (s *Server) startStopBackgroundRecorders() error {
 			instructionID: ins.ID,
 			startAt:       ins.StartAt.Get(),
 		}
-		if err := bg.startBackgroundRecorder(s); err != nil {
+		if err := bg.startBackgroundRecorder(s, defs.Resolution(ins.Resolution)); err != nil {
 			s.Log.Errorf("Failed to start background recorder: %v", err)
 		} else {
 			s.backgroundRecorders = append(s.backgroundRecorders, bg)
@@ -125,14 +125,15 @@ func (s *Server) startStopBackgroundRecorders() error {
 }
 
 type backgroundStream struct {
-	server *Server
-	log    log.Log
-	parent *backgroundRecorder
-	camera *camera.Camera
-	stream *camera.Stream
-	sink   camera.StreamSinkChan
-	width  int
-	height int
+	server     *Server
+	log        log.Log
+	parent     *backgroundRecorder
+	camera     *camera.Camera
+	stream     *camera.Stream
+	sink       camera.StreamSinkChan
+	resolution defs.Resolution
+	width      int
+	height     int
 
 	// encoderLock locks ALL of the items in this group
 	encoderLock   sync.Mutex
@@ -193,7 +194,7 @@ func (bg *backgroundStream) OnPacketRTP(packet *videox.DecodedPacket) {
 		}
 
 		recording, err := bg.server.permanentEvents.CreateRecording(
-			bg.parent.topRecording.ID, eventdb.RecordTypePhysical, eventdb.RecordingOriginBackground, time.Now(), bg.camera.ID, defs.ResLD, bg.width, bg.height)
+			bg.parent.topRecording.ID, eventdb.RecordTypePhysical, eventdb.RecordingOriginBackground, time.Now(), bg.camera.ID, bg.resolution, bg.width, bg.height)
 		if err != nil {
 			bg.log.Errorf("CreateRecording failed: %v", err)
 			return
@@ -206,7 +207,7 @@ func (bg *backgroundStream) OnPacketRTP(packet *videox.DecodedPacket) {
 			}
 		}()
 
-		videoFilename := bg.server.permanentEvents.FullPath(recording.VideoFilename(defs.ResLD))
+		videoFilename := bg.server.permanentEvents.FullPath(recording.VideoFilename(bg.resolution))
 		thumbnailFilename := bg.server.permanentEvents.FullPath(recording.ThumbnailFilename())
 		os.MkdirAll(filepath.Dir(videoFilename), 0770)
 		if err := bg.server.permanentEvents.SaveThumbnail(img, thumbnailFilename); err != nil {
@@ -276,14 +277,17 @@ func (bg *backgroundStream) finishVideoNoLock() {
 }
 
 // Record until we see 'bg.stop' or a server shutdown
-func (bg *backgroundRecorder) startBackgroundRecorder(s *Server) error {
-	cameras := s.Cameras()
+func (bg *backgroundRecorder) startBackgroundRecorder(s *Server, resolution defs.Resolution) error {
+	cameras := s.LiveCameras.Cameras()
 
 	s.Log.Infof("Start BG recorder %v (start at %v)", bg.instructionID, bg.startAt)
 
 	// Before starting, make sure that everything looks ready
 	for _, cam := range cameras {
-		stream := cam.GetStream(defs.ResLD)
+		stream := cam.GetStream(resolution)
+		if stream == nil {
+			return fmt.Errorf("Stream '%v' not found in camera %v", resolution, cam.Name)
+		}
 		info := stream.Info()
 		if info == nil {
 			return fmt.Errorf("Width and height are unknown on camera %v", cam.Name)
@@ -309,7 +313,7 @@ func (bg *backgroundRecorder) startBackgroundRecorder(s *Server) error {
 	}
 	startAt := time.Now()
 
-	topRecording, err := s.permanentEvents.CreateRecording(0, eventdb.RecordTypeLogical, eventdb.RecordingOriginBackground, startAt, 0, defs.ResLD, 0, 0)
+	topRecording, err := s.permanentEvents.CreateRecording(0, eventdb.RecordTypeLogical, eventdb.RecordingOriginBackground, startAt, 0, resolution, 0, 0)
 	if err != nil {
 		return err
 	}
@@ -317,14 +321,15 @@ func (bg *backgroundRecorder) startBackgroundRecorder(s *Server) error {
 
 	// Connect stream sinks to all cameras
 	for _, cam := range cameras {
-		stream := cam.GetStream(defs.ResLD)
+		stream := cam.GetStream(resolution)
 		bgs := &backgroundStream{
-			server: s,
-			log:    log.NewPrefixLogger(s.Log, fmt.Sprintf("BG Recorder %v: %v", bg.instructionID, cam.Name)),
-			parent: bg,
-			camera: cam,
-			stream: stream,
-			sink:   make(camera.StreamSinkChan, 5),
+			server:     s,
+			log:        log.NewPrefixLogger(s.Log, fmt.Sprintf("BG Recorder %v: (%v) %v", bg.instructionID, resolution, cam.Name)),
+			parent:     bg,
+			camera:     cam,
+			stream:     stream,
+			sink:       make(camera.StreamSinkChan, 5),
+			resolution: resolution,
 		}
 		if err := stream.ConnectSinkAndRun(bgs); err != nil {
 			return err

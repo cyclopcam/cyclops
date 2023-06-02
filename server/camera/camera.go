@@ -54,6 +54,7 @@ func NewCamera(log log.Log, cam configdb.Camera, ringBufferSizeBytes int) (*Came
 	low := NewStream(log, cam.Name, "low")
 
 	return &Camera{
+		ID:         cam.ID,
 		Name:       cam.Name,
 		Log:        log,
 		LowStream:  low,

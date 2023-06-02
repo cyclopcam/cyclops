@@ -15,9 +15,14 @@ let emits = defineEmits(['update:modelValue']);
 
 let showDrop = ref(false);
 
-function rollupStyle(): any {
+function rootStyle(): any {
 	return {
 		"width": props.ctx.inputWidth.value,
+	};
+}
+
+function rollupStyle(): any {
+	return {
 	};
 }
 
@@ -29,15 +34,18 @@ function onPick(option: string) {
 </script>
 
 <template>
-	<div class="formItem">
+	<div class="formItem" :style="rootStyle()">
 		<slot name="label">
-			<div v-if="label" class="label">
+			<div v-if="label" class="label boldLabel">
 				{{ label }}
 			</div>
 		</slot>
-		<div @click="showDrop = true" class="rollup" :style="rollupStyle()">
-			{{ modelValue }}
-			<div class="rollupDown"></div>
+		<div style="display: flex">
+			<div @click="showDrop = true" class="rollup formIndent" :style="rollupStyle()">
+				{{ modelValue }}
+				<div class="rollupDown"></div>
+			</div>
+			<div style="height:1px; width:25px" />
 		</div>
 		<modal v-if="showDrop" @close="showDrop = false" position="previous" relative="under" :same-width="true">
 			<div class="dropContainer shadow15">
@@ -57,12 +65,14 @@ $rad: 5px;
 	user-select: none;
 	cursor: pointer;
 	display: flex;
+	align-items: center;
 	justify-content: space-between;
 	border-bottom: $formBorderBottom;
 	font-size: $formInputFontSize;
 }
 
 .rollupDown {
+	margin-left: 10px;
 	width: 16px;
 	height: 16px;
 	background-image: url('@/icons/chevron-down.svg');

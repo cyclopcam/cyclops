@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch, nextTick } from 'vue';
 import { computed } from '@vue/reactivity';
 import type * as forms from './forms';
 
@@ -22,13 +22,58 @@ let input = ref(null);
 
 let isEmpty = computed(() => props.modelValue === null || props.modelValue.trim() === '');
 
+let allowAutoComplete = computed(() => (props.autocomplete ?? "on") !== "off");
+
+let isFakePassword = computed(() => props.password && !props.ctx.showPasswords.value && !allowAutoComplete.value);
+
 let type = computed(() => {
-	if (props.password && !props.ctx.showPasswords.value)
+	if (props.password && !props.ctx.showPasswords.value && allowAutoComplete.value)
 		return "password";
 	return "text";
 });
 
+let inputValue = computed(() => {
+	if (isFakePassword.value)
+		return "********";
+	return props.modelValue ?? "";
+});
+
+//let placeholderValue = computed(() => {
+//	if (props.ctx.showPasswords.value)
+//		return "";
+//	else
+//		return props.placeholder;
+//});
+
+//watch(props.ctx.showPasswords, (newValue: boolean) => {
+//	if (props.password && newValue) {
+//		console.log("overriding to " + props.modelValue);
+//		setTimeout(() => {
+//			(input.value! as HTMLInputElement).value = props.modelValue ?? "";
+//		}, 300);
+//	}
+//});
+
+function showHidePasswords(ev: MouseEvent) {
+	props.ctx.showPasswords.value = !props.ctx.showPasswords.value;
+}
+
 function onInput(event: any) {
+	// mmkay.. this is crazy. If the form element is a password, then the first time we click on the element,
+	// the browser simulates an INPUT event and set the value to the password that it has guessed for this
+	// element. We don't want that! We actually KNOW the password, and we just want it shown here. So what
+	// we're doing here, is ignoring that first injected INPUT event.
+	// Some more context -- this is fired when we click on our "eye" icon to show the password, and this
+	// INPUT event is fired BEFORE the click event on the eye.
+	//if (!props.ctx.showPasswords.value && props.password) {
+	//	console.log("form-text onInput: " + event.target.value + " IGNORED");
+	//	return;
+	//}
+	// OMG... this happens all the time.. the browser just REALLY REALLY wants to mess with this.
+	// so annoying.
+	// OK.. I'm just going to stop using "password" input boxes, because this is just insane.
+	// Long story short -- I just stopped using password input boxes, and fake it by using "*******"
+	//console.log("form-text onInput: " + event.target.value);
 	emit('update:modelValue', event.target.value);
 }
 
@@ -60,6 +105,10 @@ function inputStyle(): any {
 }
 
 onMounted(() => {
+	if (props.password) {
+		console.log("fakePassword", isFakePassword.value);
+		console.log("allowAutoComplete", allowAutoComplete.value);
+	}
 	if (props.focus)
 		(input.value! as any).focus();
 })
@@ -67,9 +116,9 @@ onMounted(() => {
 </script>
 
 <template>
-	<div class="flexColumn formItem" :style="{ width: props.ctx.inputWidth.value }">
+	<div class="flexColumn formItem formText" :style="{ width: props.ctx.inputWidth.value }">
 		<slot name="label">
-			<div v-if="label" :class="{ label: true, boldLabel: !!bigLabel }">
+			<div v-if="label" :class="{ label: true, boldLabel: true }">
 				{{ label }}
 			</div>
 		</slot>
@@ -79,20 +128,19 @@ onMounted(() => {
 			</div>
 		</slot>
 		<div class="flexRowBaseline">
-			<div class="flexRowCenter" :style="{ display: 'flex', position: 'relative', width: '100%' }">
-				<input ref="input" :value="modelValue" @input="onInput($event)" :placeholder="placeholder" :type="type"
+			<div class="flexRowCenter formIndent" :style="{ display: 'flex', position: 'relative', width: '100%' }">
+				<input ref="input" :value="inputValue" @input="onInput($event)" :placeholder="placeholder" :type="type"
 					:autocomplete="autocomplete" :style="inputStyle()" @keypress="onKeyPress" />
 				<div v-if="password" class="flexCenter" style="position: absolute; right: 6px; cursor: pointer"
-					@click="ctx.showPasswords.value = !ctx.showPasswords.value">
+					@click="showHidePasswords">
 					<svg v-if="!ctx.showPasswords.value" width="20" height="20" viewBox="0 0 24 24" fill="none"
 						stroke="#aaa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
 						class="feather feather-eye">
 						<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
 						<circle cx="12" cy="12" r="3"></circle>
 					</svg>
-					<svg v-if="ctx.showPasswords.value" width="20" height="20" viewBox="0 0 24 24" fill="none"
-						stroke="#aaa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-						class="feather feather-eye-off">
+					<svg v-if="ctx.showPasswords.value" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aaa"
+						stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye-off">
 						<path
 							d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24">
 						</path>
@@ -105,10 +153,10 @@ onMounted(() => {
 					<circle cx="5" cy="5" r="3" fill="#d00" />
 				</svg>
 				<!--
-				<svg v-else-if="props.ctx.showRequiredDots && required && !isEmpty" width="10" height="10">
-					<circle cx="5" cy="5" r="1.5" fill="#222" />
-				</svg>
-				-->
+																																																																																						<svg v-else-if="props.ctx.showRequiredDots && required && !isEmpty" width="10" height="10">
+																																																																																							<circle cx="5" cy="5" r="1.5" fill="#222" />
+																																																																																						</svg>
+																																																																																						-->
 			</div>
 		</div>
 		<div v-if="showError()" class="errorLabel">
@@ -120,6 +168,10 @@ onMounted(() => {
 <style lang="scss" scoped>
 @import '@/assets/vars.scss';
 @import '@/components/form/forms.scss';
+
+.formText {
+	box-sizing: border-box;
+}
 
 input {
 	border: none;

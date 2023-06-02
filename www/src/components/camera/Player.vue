@@ -74,7 +74,8 @@ Liveness Canvas
 ---------------
 In some situations on Android, frames will be decoded, but the WebView will not
 update itself. The workaround is to draw a 1x1 pixel canvas on top of the video
-element, and draw to this canvas every time we receive a frame.
+element, and draw to this canvas every time we receive a frame. This happens so
+often of my Xiaomi Redmit Note 9 Pro, that I always enable the liveness canvas.
 
 */
 
@@ -167,12 +168,21 @@ function parseVideoFrame(data: ArrayBuffer): parsedPacket {
 	// OK.. interesting.. I left my system on play for a long time (eg 1 hour), and when I came back,
 	// the camera was playing daytime, although it was already night time outside. So *somewhere*, we are
 	// adding a gigantic buffer. I haven't figured out how to figure out where that is.
-	normalDuration *= 0.95;
+	// OK.. I think that the above situation was a case mentioned in the comments at the top of this file.
+	// In other words, the player was still receiving frames, but not presenting them. It buffered them
+	// all up, and when the view was made visible again, it started playing them, and obviously they
+	// were way behind realtime by that stage. I fixed this by pausing the stream when the view is
+	// hidden.
+	normalDuration *= 0.99;
 
 	// Try various things to reduce the motion to photons latency. The latency is right now is about 1
 	// second, and it's very obvious when you see your neural network detection box walk ahead of your body.
-	if (nVideoPackets % 3 === 0)
-		backlog = true;
+	// Setting duration=undefined to every frame doesn't improve the situation. You get a ton of jank, but
+	// latency is still around 2 seconds.
+
+	//if (nVideoPackets % 3 === 0)
+	//	backlog = true;
+	//backlog = true;
 
 	// during backlog catchup, we leave duration undefined, which causes the player to catch up
 	// as fast as it can (which is precisely what we want).
@@ -479,6 +489,9 @@ function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingContext2
 
 async function updateOverlay() {
 	let can = overlayCanvas.value! as HTMLCanvasElement;
+	if (!can) {
+		return;
+	}
 	let dpr = window.devicePixelRatio;
 	can.width = can.clientWidth * dpr;
 	can.height = can.clientHeight * dpr;

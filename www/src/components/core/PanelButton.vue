@@ -7,7 +7,12 @@ let props = defineProps<{
 	mode?: string, // list (default), solo. (list = column of buttons, solo = a single button on it's own)
 	icon?: string,
 	iconSize?: string,
+	iconTweakX?: number, // Micro tweaks for different icon visual center-points
 }>()
+
+const defaultIconLeftMargin = 5;
+const defaultIconRightMargin = 15;
+const defaultIconSize = '30px';
 
 function isList(): boolean {
 	return props.mode !== 'solo';
@@ -18,13 +23,19 @@ function isSolo(): boolean {
 }
 
 function onClick() {
-	pushRoute({ name: props.routeTarget });
+	if (props.routeTarget.includes('/')) {
+		pushRoute({ path: props.routeTarget });
+	} else {
+		pushRoute({ name: props.routeTarget });
+	}
 }
 
 function iconStyle(): any {
 	return {
-		width: props.iconSize ?? '24px',
-		height: props.iconSize ?? '24px',
+		width: props.iconSize ?? defaultIconSize,
+		height: props.iconSize ?? defaultIconSize,
+		"margin-left": (props.iconTweakX ?? 0) + defaultIconLeftMargin + 'px',
+		"margin-right": defaultIconRightMargin - (props.iconTweakX ?? 0) + 'px',
 	}
 }
 
@@ -32,8 +43,9 @@ function iconStyle(): any {
 
 <template>
 	<div :class="{ panelButton: true, list: isList(), solo: isSolo(), shadow5LHover: isSolo() }" @click="onClick">
-		<img v-if='icon' :src="icon" class="icon" :style="iconStyle()" />
-		<div v-else style='width:10px' />
+		<div class="iconContainer">
+			<img v-if='icon' :src="icon" class="icon" :style="iconStyle()" />
+		</div>
 		<div class="inner">
 			<slot />
 			<img :src="right" />
@@ -45,7 +57,8 @@ function iconStyle(): any {
 @import '@/assets/vars.scss';
 
 .panelButton {
-	padding: 15px 10px 15px 5px;
+	padding: 5px 10px 5px 5px;
+	height: 60px;
 
 	@media (max-width: $mobileCutoff) {
 		padding-left: 15px;
@@ -69,10 +82,19 @@ function iconStyle(): any {
 	align-items: center;
 	justify-content: space-between;
 	flex-grow: 1;
+	font-weight: 500;
+}
+
+.iconContainer {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 70px;
+	margin-right: 10px;
 }
 
 .icon {
-	margin-left: 5px;
-	margin-right: 15px;
+	border-radius: 3px;
+	object-fit: cover;
 }
 </style>

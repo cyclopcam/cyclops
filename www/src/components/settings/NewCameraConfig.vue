@@ -102,20 +102,17 @@ onMounted(() => {
 				<form-dropdown :ctx="ctx" label="Model" v-model="model" placeholder="model" :required="true"
 					:options="constants.cameraModels" />
 				<div class="spacer" />
-				<form-text :ctx="ctx" label="Username" v-model="username" placeholder="username"
-					autocomplete="username" />
+				<form-text :ctx="ctx" label="Username" v-model="username" placeholder="username" autocomplete="username" />
 				<div class="spacer" />
 				<form-text :ctx="ctx" label="Password" v-model="password" placeholder="password" :password="true" />
 				<div class="spacer" />
-				<form-text :ctx="ctx" label="Camera Name" v-model="name" placeholder="camera name"
-					:required="testGood" />
+				<form-text :ctx="ctx" label="Camera Name" v-model="name" placeholder="camera name" :required="testGood" />
 				<div class="spacer" />
 			</div>
 			<div style="width: 30px" />
 			<div class="flexColumnCenter">
 				<div style="height: 15px" />
-				<img ref="preview" class="preview shadow5L"
-					:style="{ visibility: havePreview ? 'visible' : 'hidden' }" />
+				<img ref="preview" class="preview shadow5L" :style="{ visibility: havePreview ? 'visible' : 'hidden' }" />
 				<div v-if="testGood" style="margin: 10px 5px; color: #080">Success!</div>
 			</div>
 		</div>

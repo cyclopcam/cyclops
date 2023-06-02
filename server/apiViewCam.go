@@ -25,7 +25,7 @@ func parseResolutionOrPanic(res string) defs.Resolution {
 
 func (s *Server) getCameraFromIDOrPanic(idStr string) *camera.Camera {
 	id, _ := strconv.ParseInt(idStr, 10, 64)
-	cam := s.CameraFromID(id)
+	cam := s.LiveCameras.CameraFromID(id)
 	if cam == nil {
 		www.PanicBadRequestf("Invalid camera ID '%v'", idStr)
 	}

@@ -1,3 +1,5 @@
+import { encodeQuery } from "@/util/util";
+
 export enum Permissions {
 	Admin = "a",
 	Viewer = "v",
@@ -89,5 +91,13 @@ export class CameraRecord {
 		c.highResURLSuffix = this.highResURLSuffix;
 		c.lowResURLSuffix = this.lowResURLSuffix;
 		return c;
+	}
+
+	posterURL(cacheBreaker?: string): string {
+		if (cacheBreaker !== undefined) {
+			return "/api/camera/latestImage/" + this.id + "?" + encodeQuery({ cacheBreaker: cacheBreaker });
+		} else {
+			return "/api/camera/latestImage/" + this.id;
+		}
 	}
 }

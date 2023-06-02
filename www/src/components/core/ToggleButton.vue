@@ -26,8 +26,7 @@ function onClick() {
 </script>
 
 <template>
-	<div :class="{ flexCenter: true, flexColumn: true, toggleButton: true, toggleSelected: isSelected }"
-		@click="onClick">
+	<div :class="{ flexCenter: true, flexColumn: true, toggleButton: true, toggleSelected: isSelected }" @click="onClick">
 		<img :src="icon" :class="{ imgSelected: isSelected }" />
 		<div :class="{ title: true, titleSelected: isSelected }">{{ title }}</div>
 	</div>
@@ -46,7 +45,6 @@ function onClick() {
 
 .toggleButton:hover {
 	border-color: #aad;
-	;
 }
 
 .title {
@@ -55,7 +53,7 @@ function onClick() {
 }
 
 .toggleSelected {
-	background-color: $toggleColor;
+	background-color: $toggleColorMute;
 }
 
 .imgSelected {

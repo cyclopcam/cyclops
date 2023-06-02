@@ -123,7 +123,7 @@ button:enabled:active {
 }
 
 button:disabled {
-	color: #777;
+	color: #999;
 	cursor: not-allowed;
 }
 
@@ -150,8 +150,8 @@ $focalBrightness: 65%;
 	border: 1px solid hsl($focalHue, 86%, $focalBrightness * 0.65);
 }
 .focalButton:disabled {
-	background: linear-gradient(180deg, hsl($focalHue, 33%, 57%) 0%, hsl($focalHue, 20%, 54%) 47%, hsl($focalHue, 18%, 44%) 100%);
-	border: 1px solid hsl($focalHue, 24%, $focalBrightness * 0.65);
+	background: linear-gradient(180deg, hsl($focalHue, 30%, 70%) 0%, hsl($focalHue, 18%, 65%) 47%, hsl($focalHue, 15%, 55%) 100%);
+	border: 1px solid hsl($focalHue, 20%, $focalBrightness * 0.7);
 	color: #ddd;
 }
 

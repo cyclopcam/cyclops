@@ -128,7 +128,13 @@ func (c *ConfigDB) MustGetUserID(w http.ResponseWriter, r *http.Request) int64 {
 
 // Returns the user or nil
 func (c *ConfigDB) GetUser(r *http.Request) *User {
-	userID := c.GetUserID(r, false)
+	//userID := c.GetUserID(r, false)
+	// Initially I had c.GetUserID(r, false), so that one couldn't spam a server with
+	// BASIC auth requests, which end up consuming a lot of power (scrypt). However,
+	// I've subsequently decided that all servers should be behind a wireguard endpoint
+	// anyway, so this is no longer a concern.
+	// It's just so damn useful to be able to 'curl' your API with "-u username:password".
+	userID := c.GetUserID(r, true)
 	if userID == 0 {
 		return nil
 	}

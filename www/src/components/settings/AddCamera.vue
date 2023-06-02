@@ -6,13 +6,6 @@ import { encodeQuery, fetchOrErr } from '@/util/util';
 import Error from '../core/Error.vue';
 import Buttin from '../core/Buttin.vue';
 import ScannedCamera from './ScannedCamera.vue';
-import ConfigureCameraButton from './ConfigureCameraButton.vue';
-import Separator from '../core/separator.vue';
-import PanelButton from "../core/PanelButton.vue";
-import Panel from "../core/Panel.vue";
-import video from "@/icons/video.svg";
-import addIcon from "@/icons/plus-circle.svg";
-import { router } from '@/router/routes';
 
 let props = defineProps({
 	isInitialSetup: {
@@ -30,13 +23,12 @@ let busyScanning = ref(false);
 let numTotalScans = ref(0);
 let numExplicitScans = 0;
 let expanded = ref(null as CameraRecord | null);
-let sureContinue = ref("");
 
 onMounted(async () => {
 	fetchExisting();
-	if (props.isInitialSetup) {
-		scan(false);
-	}
+	//if (props.isInitialSetup) {
+	//	scan(false);
+	//}
 })
 
 async function onScanAgain() {
@@ -77,14 +69,6 @@ function onAddCamera(cam: CameraRecord) {
 	expanded.value = null;
 }
 
-function onContinue() {
-	if (sureContinue.value === '' && configured.value.length === 0) {
-		sureContinue.value = "You haven't added any cameras yet. Are you sure you want to continue?"
-		return;
-	}
-	emits('finished');
-}
-
 function isConfigured(cam: CameraRecord): boolean {
 	for (let c of configured.value) {
 		if (c.host === cam.host) {
@@ -94,28 +78,12 @@ function isConfigured(cam: CameraRecord): boolean {
 	return false;
 }
 
-// TODO: Figure out how to detect if we have a child route, and also how to react to route changes.
-// Only show <router-view /> if we have a child route, and if we do have a child route, don't
-// show the rest of us.
-// Actually wait.. all the rest of us is simply the legacy Add Camera initial setup stuff, so I
-// guess we're either showing a panel, or a child.
-onMounted(() => {
-});
-
 </script>
 
 <template>
 	<div>
-		<router-view />
+		<div>Add Camera</div>
 		<error v-if="error">{{ error }}</error>
-		<div class="existing">
-			<panel>
-				<panel-button v-for="camera of configured" :icon="video" icon-size="18px"
-					route-target="rtSettingsCameras">{{ camera.name }}</panel-button>
-				<panel-button route-target="rtSettingsCamerasAdd" :icon="addIcon" icon-size="18px" :icon-tweak-x="-1">Add
-					Camera</panel-button>
-			</panel>
-		</div>
 		<div v-if="numTotalScans !== 0" class="scanned">
 			<p style="margin-bottom: 30px">The following devices were found on your network</p>
 			<div v-for="camera of scanned">
@@ -132,13 +100,6 @@ onMounted(() => {
 		<div v-else>
 			<div class="flex" style="justify-content: flex-end; margin: 25px 0px;">
 				<buttin :busy="busyScanning" @click="onScanAgain">Scan Local Network</buttin>
-			</div>
-		</div>
-		<div v-if="isInitialSetup">
-			<separator />
-			<div class="flex" style="justify-content: flex-end; align-items: center">
-				<div v-if="sureContinue" style="color: #d80; max-width: 260px; margin-right: 20px">{{ sureContinue }}</div>
-				<button @click="onContinue">{{ sureContinue ? "Yes, Continue" : "Continue" }}</button>
 			</div>
 		</div>
 	</div>

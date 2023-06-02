@@ -67,10 +67,12 @@ func main() {
 		}
 		srv.ListenForInterruptSignal()
 
-		// Tell systemd that we're alive
+		// Tell systemd that we're alive.
+		// We might also want to implement a liveness ping.
+		// See this article for more details: https://vincent.bernat.ch/en/blog/2017-systemd-golang
 		daemon.SdNotify(false, daemon.SdNotifyReady)
 
-		check(srv.StartAllCameras())
+		check(srv.LiveCameras.StartAllCameras())
 
 		srv.RunBackgroundRecorderLoop()
 

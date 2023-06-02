@@ -11,9 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bmharper/cyclops/pkg/gen"
 	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/eventdb"
 	"github.com/bmharper/cyclops/server/monitor"
@@ -35,10 +33,10 @@ type Server struct {
 	OwnIP            net.IP     // If not nil, overrides the IP address used when scanning the LAN for cameras
 	HotReloadWWW     bool       // Don't embed the 'www' directory into our binary, but load it from disk, and assume it's not immutable. This is for dev time on the 'www' source.
 
-	camerasLock  sync.Mutex
-	cameras      []*camera.Camera
-	cameraFromID map[int64]*camera.Camera
+	// Public Subsystems
+	LiveCameras *LiveCameras
 
+	// Private Subsystems
 	signalIn        chan os.Signal
 	httpServer      *http.Server
 	httpRouter      *httprouter.Router
@@ -79,7 +77,6 @@ func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey stri
 		ShutdownComplete: make(chan error, 1),
 		ShutdownStarted:  make(chan bool),
 		HotReloadWWW:     (serverFlags & ServerFlagHotReloadWWW) != 0,
-		cameraFromID:     map[int64]*camera.Camera{},
 		recorders:        map[int64]*recorder{},
 		nextRecorderID:   1,
 	}
@@ -99,6 +96,8 @@ func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey stri
 		}
 	}
 
+	s.LiveCameras = NewLiveCameras(s)
+
 	if err := s.configDB.GuessDefaultVariables(); err != nil {
 		log.Errorf("GuessDefaultVariables failed: %v", err)
 	}
@@ -112,7 +111,7 @@ func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey stri
 		configOK = false
 	}
 	if configOK {
-		if err := s.loadCamerasFromConfig(); err != nil {
+		if err := s.LiveCameras.loadCamerasFromConfig(); err != nil {
 			return nil, err
 		}
 	}
@@ -123,9 +122,7 @@ func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey stri
 	}
 	s.monitor = monitor
 
-	s.camerasLock.Lock()
-	s.monitor.SetCameras(s.cameras)
-	s.camerasLock.Unlock()
+	s.monitor.SetCameras(s.LiveCameras.Cameras())
 
 	s.train = train.NewTrainer(s.Log, s.permanentEvents)
 
@@ -197,7 +194,7 @@ func (s *Server) Shutdown(restart bool) {
 	// connections (this is explicit in the http server docs).
 	// NOTE: there is also RegisterOnShutdown.. which might be useful
 	s.Log.Infof("Closing cameras")
-	s.closeAllCameras(waitCameras)
+	s.LiveCameras.closeAllCameras(waitCameras)
 
 	s.Log.Infof("Closing HTTP server")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -233,41 +230,6 @@ func (s *Server) IsReady() error {
 	return nil
 }
 
-func (s *Server) CameraFromID(id int64) *camera.Camera {
-	s.camerasLock.Lock()
-	defer s.camerasLock.Unlock()
-	return s.cameraFromID[id]
-}
-
-func (s *Server) Cameras() []*camera.Camera {
-	s.camerasLock.Lock()
-	defer s.camerasLock.Unlock()
-	return gen.CopySlice(s.cameras)
-}
-
-// Add a newly configured, running camera
-func (s *Server) AddCamera(cam *camera.Camera) {
-	s.camerasLock.Lock()
-	defer s.camerasLock.Unlock()
-	s.cameras = append(s.cameras, cam)
-	s.cameraFromID[cam.ID] = cam
-
-	if s.monitor != nil {
-		// Monitor is nil during startup, but not nil if a Camera is newly configured and added to the system.
-		s.monitor.SetCameras(gen.CopySlice(s.cameras))
-	}
-}
-
-func (s *Server) closeAllCameras(wg *sync.WaitGroup) {
-	s.camerasLock.Lock()
-	defer s.camerasLock.Unlock()
-	for _, cam := range s.cameras {
-		cam.Close(wg)
-	}
-	s.cameras = []*camera.Camera{}
-	s.cameraFromID = map[int64]*camera.Camera{}
-}
-
 // Load state from 'variables'
 func (s *Server) LoadConfigVariables() error {
 	vars := []configdb.Variable{}
@@ -296,35 +258,4 @@ func (s *Server) LoadConfigVariables() error {
 		}
 	}
 	return nil
-}
-
-// Loads cameras from config, but does not start them yet
-func (s *Server) loadCamerasFromConfig() error {
-	cams := []configdb.Camera{}
-	if err := s.configDB.DB.Find(&cams).Error; err != nil {
-		return err
-	}
-	for _, cam := range cams {
-		if camera, err := camera.NewCamera(s.Log, cam, s.RingBufferSize); err != nil {
-			return err
-		} else {
-			camera.ID = cam.ID
-			s.AddCamera(camera)
-		}
-	}
-	return nil
-}
-
-// Start all cameras
-// If a camera fails to start, it is skipped, and other cameras are tried
-// Returns the first error
-func (s *Server) StartAllCameras() error {
-	var firstErr error
-	for _, cam := range s.cameras {
-		if err := cam.Start(); err != nil {
-			s.Log.Errorf("Error starting camera %v: %v", cam.Name, err)
-			firstErr = err
-		}
-	}
-	return firstErr
 }

@@ -8,9 +8,9 @@ import Train from "@/components/home/train/Train.vue";
 import TrainHome from "@/components/home/train/TrainHome.vue";
 import TrainRecord from "@/components/home/train/Recorder.vue";
 import TrainEditRecordings from "@/components/home/train/EditRecordings.vue";
-//import TrainLabeler from "@/components/home/train/Labeler.vue";
-import SettingsTop from "@/components/settings/SettingsTop.vue";
-import SetupCameras from "@/components/settings/SetupCameras.vue";
+import SettingsHome from "@/components/settings/SettingsHome.vue";
+import EditCamera from "@/components/settings/EditCamera.vue";
+import AddCamera from "@/components/settings/AddCamera.vue";
 import SystemVariables from "@/components/settings/SystemVariables.vue";
 import Empty from "@/components/home/Empty.vue";
 import BlankView from "@/views/Blank.vue";
@@ -30,18 +30,24 @@ export const router = createRouter({
 					children: [
 						{
 							path: "",
-							name: "rtSettingsTop",
-							component: SettingsTop,
-						},
-						{
-							path: "cameras",
-							name: "rtSettingsCameras",
-							component: SetupCameras,
+							name: "rtSettingsHome",
+							component: SettingsHome,
 						},
 						{
 							path: "system",
 							name: "rtSettingsSystem",
 							component: SystemVariables,
+						},
+						{
+							path: "camera/:id",
+							name: "rtSettingsEditCamera",
+							component: EditCamera,
+							props: true,
+						},
+						{
+							path: "addCamera",
+							name: "rtSettingsAddCamera",
+							component: AddCamera,
 						},
 					],
 				},
@@ -52,7 +58,7 @@ export const router = createRouter({
 				},
 				{
 					path: "train",
-					name: "rtTrain", // We never navigate to this, but it is used to show the TopBar toggle buton
+					name: "rtTrain", // We never navigate to this, but it is used to show the TopBar toggle button
 					component: Train,
 					children: [
 						{

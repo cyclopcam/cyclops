@@ -114,6 +114,7 @@ func (s *Stream) Listen(address string) error {
 	if err != nil {
 		if e, ok := err.(liberrors.ErrClientBadStatusCode); ok {
 			if e.Code == 401 {
+				//s.Log.Infof("Connection failed. Details: %v", e.Message)
 				return fmt.Errorf("Invalid username or password")
 			}
 		}

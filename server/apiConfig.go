@@ -13,6 +13,13 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+func (s *Server) httpConfigGetCamera(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	id := www.ParseID(params.ByName("cameraID"))
+	cam := configdb.Camera{}
+	www.Check(s.configDB.DB.First(&cam, id).Error)
+	www.SendJSON(w, &cam)
+}
+
 func (s *Server) httpConfigGetCameras(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	cams := []*configdb.Camera{}
 	www.Check(s.configDB.DB.Find(&cams).Error)
@@ -44,9 +51,41 @@ func (s *Server) httpConfigAddCamera(w http.ResponseWriter, r *http.Request, par
 
 	// Add to live system
 	camera.ID = cam.ID
-	s.AddCamera(camera)
+	s.LiveCameras.AddCamera(camera)
 
 	www.SendID(w, cam.ID)
+}
+
+func (s *Server) httpConfigChangeCamera(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	cam := configdb.Camera{}
+	www.ReadJSON(w, r, &cam, 1024*1024)
+
+	if s.LiveCameras.CameraFromID(cam.ID) == nil {
+		www.PanicBadRequestf("Camera ID %v not found", cam.ID)
+	}
+
+	// Create a new Camera object and open a connection
+	camera, err := camera.NewCamera(s.Log, cam, s.RingBufferSize)
+	www.Check(err)
+	err = camera.Start()
+	if err != nil {
+		camera.Close(nil)
+		www.Check(err)
+	}
+
+	// Update DB
+	if err := s.configDB.DB.Save(&cam).Error; err != nil {
+		camera.Close(nil)
+		www.PanicServerErrorf("Error saving camera config to DB: %v", err)
+	}
+
+	// Update live system
+	if err := s.LiveCameras.ReplaceCamera(camera); err != nil {
+		camera.Close(nil)
+		www.PanicServerErrorf("Error replacing camera: %v", err)
+	}
+
+	www.SendOK(w)
 }
 
 func (s *Server) httpConfigGetVariableDefinitions(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
@@ -131,6 +170,13 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 	//www.ReadJSON(w, r, &cfg, 1024*1024)
 	s.Log.Infof("httpConfigTestCamera starting")
 
+	timeoutSeconds := www.QueryInt(r, "timeout")
+	if timeoutSeconds >= 0 {
+		timeoutSeconds = 7
+	} else if timeoutSeconds > 30 {
+		timeoutSeconds = 30
+	}
+
 	c, err := s.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.Log.Errorf("httpConfigTestCamera websocket upgrade failed: %v", err)
@@ -177,7 +223,7 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 			c.WriteMessage(websocket.BinaryMessage, jpg)
 			success = true
 			break
-		} else if time.Now().Sub(start) > 7*time.Second {
+		} else if time.Now().Sub(start) > time.Duration(timeoutSeconds)*time.Second {
 			c.WriteJSON(message{Error: "Timeout waiting for keyframe"})
 			break
 		}

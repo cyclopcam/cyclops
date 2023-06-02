@@ -86,7 +86,7 @@ func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, param
 	if err := s.IsReady(); err != nil {
 		j.ReadyError = err.Error()
 	}
-	for _, cam := range s.Cameras() {
+	for _, cam := range s.LiveCameras.Cameras() {
 		j.Cameras = append(j.Cameras, toCamInfoJSON(cam))
 	}
 	www.SendJSON(w, &j)

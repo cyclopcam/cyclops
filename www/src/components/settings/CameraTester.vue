@@ -19,6 +19,7 @@ enum States {
 let preview = ref(null);
 let status = ref("Initializing");
 let state = ref(States.Testing);
+let isShrinking = ref(false);
 let ws: WebSocket | null = null;
 let imageBlob: Blob | null = null;
 
@@ -42,6 +43,13 @@ function onClose() {
 	}
 }
 
+function shrinkAndClose() {
+	isShrinking.value = true;
+	setTimeout(() => {
+		onClose();
+	}, 250); // keep this timeout in sync with the animation duration in the CSS
+}
+
 onMounted(() => {
 
 	let scheme = window.location.origin.startsWith("https") ? "wss://" : "ws://";
@@ -63,7 +71,8 @@ onMounted(() => {
 			if (msg.error) {
 				state.value = States.Error;
 				status.value = msg.error;
-				setTimeout(onClose, 200);
+				//setTimeout(onClose, 200);
+				setTimeout(shrinkAndClose, 300);
 			} else if (msg.status) {
 				status.value = msg.status;
 			}
@@ -77,7 +86,7 @@ onMounted(() => {
 			if (preview.value) {
 				(preview.value as HTMLImageElement).src = url;
 			}
-			setTimeout(onClose, 200);
+			setTimeout(shrinkAndClose, 300);
 		}
 	});
 
@@ -98,8 +107,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-	<modal tint="dark">
-		<div class="smallDialog flexColumnCenter">
+	<modal tint="mild">
+		<div :class="{ smallDialog: true, flexColumnCenter: true, shrinkModal: isShrinking }">
 			<h4 style="margin-top: 5px">Testing Camera Connection</h4>
 			<!--
 			<div class="preview flexCenter shadow5L">
@@ -107,7 +116,7 @@ onUnmounted(() => {
 			</div>
 			-->
 			<img ref="preview" class="preview shadow5L" />
-			<div :class="{ status: true, error: isError }">{{ status }}</div>
+			<div :class="{ status: true, error: isError, success: isSuccess }">{{ status }}</div>
 			<div class="flex" style="justify-content: flex-end">
 				<button @click="onClose">{{ isTesting ? 'Cancel' : 'Close' }}</button>
 			</div>
@@ -120,21 +129,43 @@ onUnmounted(() => {
 	padding: 20px;
 }
 
+@keyframes shrink {
+	0% {
+		transform: scale(1);
+	}
+
+	100% {
+		transform: scale(0);
+	}
+}
+
+.shrinkModal {
+	// keep this duration in sync with the timeout in the shrinkAndClose() function
+	animation: shrink 250ms ease-in-out forwards;
+}
+
 // I can't get rid of the border around this image!!! never seen this before....
 .preview {
-	width: 150px;
-	min-height: 100px;
+	width: 260px;
+	min-height: 160px;
 	border-radius: 3px;
 }
 
 .status {
 	text-align: center;
-	width: 240px;
+	width: 300px;
 	font-size: 14px;
 	margin: 20px 0px;
 }
 
 .error {
+	font-size: 16px;
 	color: #d00;
+}
+
+.success {
+	font-size: 18px;
+	font-weight: 600;
+	color: #0a0;
 }
 </style>
