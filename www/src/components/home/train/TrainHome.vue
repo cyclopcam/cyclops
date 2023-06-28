@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { globals } from "@/globals";
-import { pushRoute, router } from '@/router/routes';
+import { pushRoute } from "@/router/helpers";
 import { onMounted, ref } from 'vue';
 import PanelButton from '../../core/PanelButton.vue';
 import RedDot from "@/icons/red-dot.svg";
 import Film from "@/icons/film.svg";
 import Panel from "../../core/Panel.vue";
+import { useRouter } from "vue-router";
+
+const router = useRouter();
 
 let haveRecordingCount = ref(false);
 let recordingCount = ref(0);
 
 function onRecordNew() {
-	pushRoute({ name: "rtTrainRecord" });
+	pushRoute(router, { name: "rtTrainRecord" });
 }
 
 function showHelp(): boolean {
@@ -39,7 +42,7 @@ onMounted(async () => {
 			<panel-button :icon="RedDot" route-target="rtTrainRecord">New Recording</panel-button>
 			<panel-button :icon="Film" route-target="rtTrainEditRecordings">Edit Recordings <span
 					v-if="haveRecordingCount">({{
-					recordingCount
+						recordingCount
 					}})</span>
 			</panel-button>
 		</panel>

@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory, type RouteLocationRaw } from "vue-router";
+import { createRouter, createWebHistory } from "vue-router";
 import HomeView from "../views/HomeView.vue";
 import WelcomeView from "../views/WelcomeView.vue";
 import LoginView from "../views/LoginView.vue";
@@ -130,27 +130,5 @@ router.afterEach((to, from) => {
 	to.meta.transitionName = toDepth < fromDepth ? "slide-right" : "slide-left";
 });
 
-// We need to keep track of the history stack size, so that we can synchronously return "false"
-// from cyBack(), which will inform the host application that it must issue an Activity-level "back",
-// which will usually exit the program.
-// Vue router doesn't give us access to this state, which is why we need to keep track of it ourselves.
-export let routeStackSize = 0;
 
-export function replaceRoute(to: RouteLocationRaw) {
-	routeStackSize = 0;
-	router.replace(to);
-}
 
-export function pushRoute(to: RouteLocationRaw) {
-	routeStackSize++;
-	router.push(to);
-}
-
-export function popRoute(): boolean {
-	if (routeStackSize <= 0) {
-		return false;
-	}
-	routeStackSize--;
-	router.back();
-	return true;
-}

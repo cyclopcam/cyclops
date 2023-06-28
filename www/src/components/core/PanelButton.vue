@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { pushRoute, router } from '@/router/routes';
+import { pushRoute } from "@/router/helpers";
 import right from '@/icons/chevron-right.svg';
+import { useRouter } from "vue-router";
 
 let props = defineProps<{
 	routeTarget: string,
@@ -9,6 +10,8 @@ let props = defineProps<{
 	iconSize?: string,
 	iconTweakX?: number, // Micro tweaks for different icon visual center-points
 }>()
+
+const router = useRouter();
 
 const defaultIconLeftMargin = 5;
 const defaultIconRightMargin = 15;
@@ -24,9 +27,9 @@ function isSolo(): boolean {
 
 function onClick() {
 	if (props.routeTarget.includes('/')) {
-		pushRoute({ path: props.routeTarget });
+		pushRoute(router, { path: props.routeTarget });
 	} else {
-		pushRoute({ name: props.routeTarget });
+		pushRoute(router, { name: props.routeTarget });
 	}
 }
 

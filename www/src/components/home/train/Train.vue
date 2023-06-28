@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { pushRoute, router } from '@/router/routes';
+import { pushRoute } from "@/router/helpers";
 import { onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+
+const router = useRouter();
 
 function onRecordNew() {
-	pushRoute({ name: "rtTrainRecord" });
+	pushRoute(router, { name: "rtTrainRecord" });
 }
 
 onMounted(() => {

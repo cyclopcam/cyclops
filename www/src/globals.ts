@@ -1,6 +1,7 @@
 import { CameraInfo } from "./camera/camera";
 import { reactive } from "vue";
-import { replaceRoute, router } from "./router/routes";
+import { router } from "./router/routes";
+import { replaceRoute } from "./router/helpers";
 import { fetchOrErr, sleep, type FetchResult } from "./util/util";
 import type { SystemInfoJSON } from "./api/api";
 import { generateKeyPair, sharedKey } from "curve25519-js";
@@ -128,9 +129,9 @@ export class Globals {
 				this.isLoggedIn = false;
 				r = await (await fetch("/api/auth/hasAdmin")).json();
 				if (r) {
-					replaceRoute({ name: "rtLogin" });
+					replaceRoute(router, { name: "rtLogin" });
 				} else {
-					replaceRoute({ name: "rtWelcome" });
+					replaceRoute(router, { name: "rtWelcome" });
 				}
 			} else if (r.status === 200) {
 				this.isLoggedIn = true;
@@ -151,7 +152,7 @@ export class Globals {
 		}
 
 		if (root.cameras.length === 0) {
-			replaceRoute({ name: "rtWelcome" });
+			replaceRoute(router, { name: "rtWelcome" });
 		} else {
 			// This is supposed to be a catch-all place where we fetch data
 			// about all cameras in the system, regardless of how the user
@@ -162,7 +163,7 @@ export class Globals {
 
 			let current = router.currentRoute.value.name;
 			if (!current || current === "rtHome" || current === "rtLogin") {
-				replaceRoute({ name: "rtMonitor" });
+				replaceRoute(router, { name: "rtMonitor" });
 			}
 		}
 	}

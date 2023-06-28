@@ -71,6 +71,7 @@ func (s *LiveCameras) RemoveCamera(camID int64) {
 	if s.parent.monitor != nil {
 		s.parent.monitor.SetCameras(s.cameraListNoLock())
 	}
+	cam.Close(nil)
 }
 
 // Replace a running camera

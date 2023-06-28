@@ -88,6 +88,15 @@ func (s *Server) httpConfigChangeCamera(w http.ResponseWriter, r *http.Request, 
 	www.SendOK(w)
 }
 
+func (s *Server) httpConfigRemoveCamera(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	camID := www.ParseID(params.ByName("cameraID"))
+	cam := configdb.Camera{}
+	www.Check(s.configDB.DB.First(&cam, camID).Error)
+	s.LiveCameras.RemoveCamera(camID)
+	www.Check(s.configDB.DB.Delete(&cam).Error)
+	www.SendOK(w)
+}
+
 func (s *Server) httpConfigGetVariableDefinitions(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	www.SendJSON(w, configdb.AllVariables)
 }

@@ -100,6 +100,7 @@ func (s *Server) SetupHTTP() error {
 	protected("a", "GET", "/api/config/cameras", s.httpConfigGetCameras)
 	protected("a", "POST", "/api/config/addCamera", s.httpConfigAddCamera)
 	protected("a", "POST", "/api/config/changeCamera", s.httpConfigChangeCamera)
+	protected("a", "POST", "/api/config/removeCamera/:cameraID", s.httpConfigRemoveCamera)
 	protected("a", "GET", "/api/ws/config/testCamera", s.httpConfigTestCamera)
 	protected("a", "GET", "/api/config/getVariableDefinitions", s.httpConfigGetVariableDefinitions)
 	protected("a", "GET", "/api/config/getVariableValues", s.httpConfigGetVariableValues)

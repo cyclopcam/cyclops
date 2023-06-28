@@ -6,8 +6,11 @@ import { onMounted, ref } from 'vue';
 import { computed } from '@vue/reactivity';
 import SetupCameras from '../components/settings/SetupCameras.vue';
 import { globals } from '@/globals';
-import { replaceRoute } from "@/router/routes";
+import { replaceRoute } from "@/router/helpers";
 import SystemVariables from "../components/settings/SystemVariables.vue";
+import { useRouter } from 'vue-router';
+
+const router = useRouter();
 
 enum Stages {
 	SetupVPN = 0, // This is disabled.. but maybe someday we bring it back.
@@ -41,7 +44,7 @@ async function moveToNextStage() {
 		// we're done
 		globals.networkError = '';
 		await globals.loadCameras();
-		replaceRoute({ name: "rtMonitor" });
+		replaceRoute(router, { name: "rtMonitor" });
 		return;
 	}
 

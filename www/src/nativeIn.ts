@@ -2,11 +2,12 @@
 
 //import { setBearerToken } from "./auth";
 import { globals } from "./globals";
-import { popRoute } from "./router/routes";
+import { router } from "./router/routes";
+import { popRoute } from "./router/helpers";
 
 // Back/Forward in history
 (window as any).cyBack = () => {
-	if (!popRoute()) {
+	if (!popRoute(router)) {
 		console.log("cyBack (history stack is empty)");
 		return false;
 	}

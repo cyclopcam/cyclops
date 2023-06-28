@@ -11,7 +11,10 @@ import network from "@/icons/network.svg";
 import { globals } from "@/globals";
 import { computed } from "@vue/reactivity";
 import SvgButton from "@/components/widgets/SvgButton.vue";
-import { popRoute, router } from "@/router/routes";
+import { popRoute } from "@/router/helpers";
+import { useRouter } from "vue-router";
+
+const router = useRouter();
 
 let isUsingProxy = globals.isUsingProxy;
 
@@ -21,7 +24,7 @@ let error = computed(() => {
 
 function onBack() {
 	// We probably want to pop one up in the hierarchy, instead of going back.
-	popRoute();
+	popRoute(router);
 }
 
 function showBack(): boolean {
@@ -91,6 +94,7 @@ onMounted(() => {
 
 	// but now that we're on the bottom...
 	border-top: solid 1px #ccc;
+	//box-shadow: 0px -1px 5px rgba(0, 0, 0, 0.1);
 }
 
 .topbarInner {

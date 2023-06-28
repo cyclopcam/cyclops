@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CameraRecord } from '@/db/config/configdb';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { constants } from '@/constants';
 import CameraTester from './CameraTester.vue';
 import CameraPreview from './CameraPreview.vue';
@@ -8,8 +8,12 @@ import { addToRecentPasswords, addToRecentUsernames, recentPasswords, recentUser
 import { fetchOrErr } from '@/util/util';
 import WideText from '@/components/widewidgets/WideText.vue';
 import WideDropdown from '@/components/widewidgets/WideDropdown.vue';
+import WideButton from '@/components/widewidgets/WideButton.vue';
+import WideSection from '@/components/widewidgets/WideSection.vue';
+import WideSpacer from '@/components/widewidgets/WideSpacer.vue';
+import Confirm from '@/components/widgets/Confirm.vue';
 import { useRouter } from 'vue-router';
-import { pushRoute } from '@/router/routes';
+import { pushRoute } from "@/router/helpers";
 
 let props = defineProps<{
 	id: string, // either the ID or "new"
@@ -34,6 +38,7 @@ let testResultImageBlob = ref(null as Blob | null);
 
 let testBusy = ref(false);
 let testResult = ref(TestResult.Unknown);
+let showConfirmUnpair = ref(false);
 let error = ref('');
 
 // This is useful for development on the Edit Camera workflow, because it allows you
@@ -115,14 +120,14 @@ async function onSave() {
 			error.value = r.error;
 			return;
 		}
-		pushRoute({ name: "rtSettingsHome" });
+		pushRoute(router, { name: "rtSettingsHome" });
 	} else {
 		let r = await fetchOrErr('/api/config/changeCamera', { method: "POST", body: JSON.stringify(newCameraRecordFromLocalState().toJSON()) });
 		if (!r.ok) {
 			error.value = r.error;
 			return;
 		}
-		pushRoute({ name: "rtSettingsHome" });
+		pushRoute(router, { name: "rtSettingsHome" });
 	}
 }
 
@@ -142,6 +147,19 @@ function onTestFinished(result: CameraTestResult) {
 		testResult.value = TestResult.Success;
 		addToRecentUsernames(username.value);
 		addToRecentPasswords(password.value);
+	}
+}
+
+function onUnpair() {
+	showConfirmUnpair.value = true;
+}
+
+async function onUnpairConfirmed() {
+	showConfirmUnpair.value = false;
+	let r = await fetchOrErr('/api/config/addCamera', { method: "POST", body: JSON.stringify(newCameraRecordFromLocalState().toJSON()) });
+	if (!r.ok) {
+		error.value = r.error;
+		return;
 	}
 }
 
@@ -172,21 +190,28 @@ onMounted(async () => {
 		<wide-dropdown label="Model" v-model="model" :options="constants.cameraModels" />
 		<wide-text label="Username" v-model="username" />
 		<wide-text label="Password" v-model="password" :password="true" autocomplete="off" />
-		<!-- <div v-if="testResult === TestResult.Success" class="success">Connection Succeeded</div> -->
-		<div v-if="error" class="error">{{ error }}</div>
-		<div class="submit">
-			<button :class="{ focalButton: !canSave(), submitButtons: true }" :disabled="isTestDisabled()"
-				@click="onTest">Test
-				Settings</button>
-			<div style="width:10px" />
-			<button :class="{ focalButton: canSave(), submitButtons: true }" :disabled="!canSave()" @click="onSave">{{
-				saveButtonTitle()
-			}}</button>
-		</div>
-		<div class="previewContainer">
-			<camera-preview :camera="original" :image-blob="testResultImageBlob" />
-			<camera-tester v-if="testBusy" :camera="newCameraRecordFromLocalState()" @close="onTestFinished" />
-		</div>
+		<wide-section>
+			<!-- <div v-if="testResult === TestResult.Success" class="success">Connection Succeeded</div> -->
+			<div v-if="error" class="error">{{ error }}</div>
+			<div class="submit">
+				<button :class="{ focalButton: !canSave(), submitButtons: true }" :disabled="isTestDisabled()"
+					@click="onTest">Test
+					Settings</button>
+				<div style="width:10px" />
+				<button :class="{ focalButton: canSave(), submitButtons: true }" :disabled="!canSave()" @click="onSave">{{
+					saveButtonTitle()
+				}}</button>
+			</div>
+			<div class="previewContainer">
+				<camera-preview :camera="original" :image-blob="testResultImageBlob" />
+				<camera-tester v-if="testBusy" :camera="newCameraRecordFromLocalState()" @close="onTestFinished" />
+			</div>
+		</wide-section>
+		<wide-spacer />
+		<wide-button class="unpair" @click="onUnpair">Unpair Camera</wide-button>
+		<wide-spacer />
+		<confirm v-if="showConfirmUnpair" msg="Are you sure you want to delete this camera?" yesText="Remove Camera"
+			:danger='true' @cancel="showConfirmUnpair = false" @ok="onUnpairConfirmed" />
 	</div>
 </template>
 
@@ -216,12 +241,13 @@ onMounted(async () => {
 	display: flex;
 	flex-direction: row;
 	justify-content: center;
-	margin: 24px 16px 24px 16px;
+	margin: 16px 16px 24px 16px;
 }
 
 .submitButtons {
-	padding: 0.5em 0.8em;
-	font-weight: 500;
+	padding: 0.4em 0.7em;
+	font-size: 16px;
+	//font-weight: 500;
 }
 
 .success {
@@ -241,5 +267,12 @@ onMounted(async () => {
 .previewContainer {
 	display: flex;
 	justify-content: center;
+	margin-bottom: 16px;
+}
+
+.unpair {
+	color: #d00;
+	padding: 16px 12px;
+	//font-weight: 500;
 }
 </style>

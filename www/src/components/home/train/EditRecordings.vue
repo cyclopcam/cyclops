@@ -6,7 +6,8 @@ import RecordingItem from "./RecordingItem.vue";
 import Buttin from "../../core/Buttin.vue";
 import Trash from '@/icons/trash-2.svg';
 import LabelerDialog from './LabelerDialog.vue';
-import { pushRoute } from "@/router/routes";
+import { pushRoute } from "@/router/helpers";
+import { useRouter } from "vue-router";
 
 // NOTE: The state control of EditRecordings is a bit tricky, because it basically has two modes:
 // 1. Edit recordings
@@ -23,6 +24,8 @@ let props = defineProps<{
 }>()
 
 let emits = defineEmits(['recordNew']);
+
+const router = useRouter();
 
 let haveRecordings = ref(false);
 let recordings = ref([] as Recording[]);
@@ -67,7 +70,7 @@ function onDelete(rec: Recording) {
 }
 
 function onOpenLabeler(rec: Recording) {
-	pushRoute({ name: 'rtTrainLabelRecording', params: { id: rec.id } });
+	pushRoute(router, { name: 'rtTrainLabelRecording', params: { id: rec.id } });
 }
 
 async function onLabelIDChanged(id: number) {
@@ -78,7 +81,7 @@ async function onLabelIDChanged(id: number) {
 		} else {
 			// just navigate to management page, to avoid useless paths in our history
 			labelRecording.value = null;
-			pushRoute({ name: 'rtTrainEditRecordings' });
+			pushRoute(router, { name: 'rtTrainEditRecordings' });
 		}
 	} else {
 		//console.log("labelRecording.value = null");
@@ -91,7 +94,7 @@ function onEditFinished() {
 	let idx = recordings.value.findIndex(x => x.id === labelRecording.value!.id);
 	recordings.value[idx] = labelRecording.value!;
 	labelRecording.value = null;
-	pushRoute({ name: 'rtTrainEditRecordings' });
+	pushRoute(router, { name: 'rtTrainEditRecordings' });
 }
 
 watch(() => props.id, (newVal) => {

@@ -7,7 +7,6 @@ import Cropper from '../../core/Cropper.vue';
 import Tag from './Tag.vue';
 import InfoBubble from '../../widgets/InfoBubble.vue';
 import LevelsExplainer from './LevelsExplainer.vue';
-//import { pushRoute } from "@/router/routes";
 
 // It was too painful to make this a true top-level route,
 // so I moved it back to a child component, where we bring
@@ -140,7 +139,6 @@ function onTagSelect(tag: OntologyTag) {
 }
 
 function onCancel() {
-	//pushRoute({ name: 'rtTrainEditRecordings' });
 	emits('close');
 }
 
@@ -161,7 +159,6 @@ async function onSave() {
 	if (!r.ok) {
 		error.value = r.error;
 	} else {
-		//pushRoute({ name: 'rtTrainEditRecordings' });
 		emits('close');
 	}
 }
@@ -216,8 +213,8 @@ onMounted(async () => {
 			<div :class="{ cropContainer: true, unavailable: step() < Steps.Crop, available: step() >= Steps.Crop }">
 				<div :class="{ instruction: true, nextStep: step() === Steps.Crop }">
 					Crop the video to the precise moments when this occurs</div>
-				<cropper class="cropper" :duration="duration" :start="cropStart" :end="cropEnd"
-					@seek-start="onCropStart" @seek-end="onCropEnd" />
+				<cropper class="cropper" :duration="duration" :start="cropStart" :end="cropEnd" @seek-start="onCropStart"
+					@seek-end="onCropEnd" />
 				<div style="height:15px" />
 			</div>
 

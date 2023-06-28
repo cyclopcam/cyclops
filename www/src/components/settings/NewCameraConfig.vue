@@ -10,6 +10,8 @@ import CameraTester from './CameraTester.vue';
 import { addToRecentPasswords, addToRecentUsernames, recentPasswords, recentUsernames, type CameraTestResult } from './config';
 import { fetchOrErr } from '@/util/util';
 
+// THIS FILE IS DEPRECATED
+
 let props = defineProps<{
 	camera: CameraRecord
 }>();

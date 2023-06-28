@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CameraInfo } from '@/camera/camera';
-import Player from '../camera/Player.vue';
+import Player from '@/components/camera/Player.vue';
 
 let props = defineProps<{
 	camera: CameraInfo,

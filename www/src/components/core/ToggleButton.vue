@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from '@vue/reactivity';
-import { pushRoute, router } from '@/router/routes';
+import { pushRoute } from "@/router/helpers";
+import { useRouter } from 'vue-router';
 
 let props = defineProps<{
 	icon: string,
@@ -8,6 +9,8 @@ let props = defineProps<{
 	route: string, // Name of high-level route, such as rtTrain
 	routeTarget?: string, // Name of deep route, such as rtTrainEditRecordings. If not specified, same as route
 }>()
+
+const router = useRouter();
 
 let isSelected = computed(() => {
 	// look through the hierarchy of matched routes, so that we include parent routes,
@@ -21,7 +24,7 @@ let isSelected = computed(() => {
 });
 
 function onClick() {
-	pushRoute({ name: props.routeTarget ? props.routeTarget : props.route });
+	pushRoute(router, { name: props.routeTarget ? props.routeTarget : props.route });
 }
 </script>
 
