@@ -406,7 +406,14 @@ func (m *Monitor) readFrames() {
 // An NN processing thread
 func (m *Monitor) nnThread() {
 	lastErrAt := time.Time{}
-	var rgb *cimg.Image
+
+	// I was originally tempted to reuse the same RGB image across iterations
+	// of the loop (the 'rgb' variable). However, this doesn't actually help
+	// performance at all, since we need to store a unique lastImg inside the
+	// monitorCamera object.
+	// I mean.. it did perhaps help performance a tiny bit, but it introduced
+	// the bug of returning the incorrect lastImg for a camera (all cameras
+	// would share the same lastImg).
 
 	for {
 		item, ok := <-m.nnThreadQueue
@@ -414,9 +421,7 @@ func (m *Monitor) nnThread() {
 			break
 		}
 		yuv := item.image
-		if rgb == nil || rgb.Width != yuv.Width || rgb.Height != yuv.Height {
-			rgb = cimg.NewImage(yuv.Width, yuv.Height, cimg.PixelFormatRGB)
-		}
+		rgb := cimg.NewImage(yuv.Width, yuv.Height, cimg.PixelFormatRGB)
 		start := time.Now()
 		yuv.CopyToCImageRGB(rgb)
 		objects, err := m.detector.DetectObjects(rgb.NChan(), rgb.Pixels, rgb.Width, rgb.Height)
