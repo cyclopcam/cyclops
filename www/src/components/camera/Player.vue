@@ -493,9 +493,17 @@ async function updateOverlay() {
 		return;
 	}
 	let dpr = window.devicePixelRatio;
-	can.width = can.clientWidth * dpr;
-	can.height = can.clientHeight * dpr;
-	//console.log(`updateOverlay ${can.width}x${can.height}`);
+
+	// This function is async, so it's important that we don't clear the canvas
+	// until we're ready to paint.
+	let isCanvasReset = false;
+	let resetCanvasOnce = () => {
+		if (!isCanvasReset) {
+			can.width = can.clientWidth * dpr;
+			can.height = can.clientHeight * dpr;
+		}
+		isCanvasReset = true;
+	};
 
 	let cx = can.getContext('2d')!;
 
@@ -505,6 +513,7 @@ async function updateOverlay() {
 			return;
 		let blob = await r.blob();
 		let image = await createImageBitmap(blob);
+		resetCanvasOnce();
 		cx.drawImage(image, 0, 0, can.width, can.height);
 
 		let jDetections = r.headers.get("X-Analysis");
@@ -515,9 +524,12 @@ async function updateOverlay() {
 	}
 
 	if (lastDetection.cameraID === props.camera.id && lastDetection.input) {
+		resetCanvasOnce();
 		drawAnalyzedObjects(can, cx, lastDetection);
 		//drawRawNNObjects(can, cx, lastDetection.input);
 	}
+
+	//console.log(`updateOverlay ${can.width}x${can.height}`);
 }
 
 onUnmounted(() => {
