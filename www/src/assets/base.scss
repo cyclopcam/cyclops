@@ -411,3 +411,18 @@ $slideAmount: 100vw;
 .link:hover {
 	text-decoration: underline;
 }
+
+// Top-level object that holds a bunch of 'wide widget' items
+// When creating this class, the only reason I needed it was to make
+// the left/right transitions work nicely. Specifically, so that
+// while a new page was being animated in from the right, it would
+// have the same width that it would eventually have, once it landed
+// in its resting place. Without this, its layout changes the moment
+// the transition ends.
+.wideRoot {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	box-sizing: border-box;
+	//padding: 8px 20px;
+}

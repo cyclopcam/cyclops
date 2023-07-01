@@ -1,19 +1,29 @@
 <script setup lang="ts">
 
-//let props = defineProps<{
-//	//label: string,
-//}>()
+let props = defineProps<{
+	disabled?: boolean,
+	icon?: string,
+}>()
 
 let emit = defineEmits(['click']);
 
 function onClick() {
-	emit('click');
+	if (!props.disabled) {
+		emit('click');
+	}
+}
+
+function iconStyle(): any {
+	return {}
 }
 
 </script>
 
 <template>
-	<div class="widewidget widebutton" @click="onClick">
+	<div :class="{ widewidget: true, widebutton: true, centered: !icon }" @click="onClick">
+		<div v-if="icon" class="iconContainer">
+			<img :src="icon" class="icon" :style="iconStyle()" />
+		</div>
 		<slot />
 	</div>
 </template>
@@ -24,9 +34,19 @@ function onClick() {
 
 .widebutton {
 	display: flex;
-	justify-content: center;
 	align-items: center;
 	user-select: none;
 	cursor: pointer;
+	min-height: 56px;
+}
+
+.centered {
+	justify-content: center;
+}
+
+.iconContainer {
+	margin-right: 20px;
+	display: flex;
+	align-items: center;
 }
 </style>

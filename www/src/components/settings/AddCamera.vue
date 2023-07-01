@@ -3,9 +3,16 @@ import { CameraRecord } from '@/db/config/configdb';
 import { onMounted, ref } from 'vue';
 import NewCameraConfig from '@/components/settings/NewCameraConfig.vue';
 import { encodeQuery, fetchOrErr } from '@/util/util';
-import Error from '../core/Error.vue';
-import Buttin from '../core/Buttin.vue';
+import Error from '@/components/core/Error.vue';
+import Buttin from '@/components/core/Buttin.vue';
+import WideButton from '@/components/widewidgets/WideButton.vue';
 import ScannedCamera from './ScannedCamera.vue';
+import { useRouter } from 'vue-router';
+import { pushRoute } from "@/router/helpers";
+import TopologyStar3 from '@/icons/topology-star-3.svg';
+import TextPlus from '@/icons/text-plus.svg';
+
+const router = useRouter();
 
 let props = defineProps({
 	isInitialSetup: {
@@ -16,6 +23,14 @@ let props = defineProps({
 
 let emits = defineEmits(['finished']);
 
+enum Modes {
+	ScanOrManual,
+	Scanning,
+	ScanResults,
+	Details,
+}
+
+let mode = ref(Modes.ScanOrManual);
 let error = ref('');
 let configured = ref([] as CameraRecord[]); // cameras in the server DB
 let scanned = ref([] as CameraRecord[]); // scanned on the LAN, and NOT in the DB
@@ -78,11 +93,22 @@ function isConfigured(cam: CameraRecord): boolean {
 	return false;
 }
 
+function onManual() {
+	pushRoute(router, { name: 'rtSettingsEditCamera', params: { id: 'new' } });
+}
+
 </script>
 
 <template>
-	<div>
-		<div>Add Camera</div>
+	<div class="wideRoot">
+		<div v-if="mode === Modes.ScanOrManual">
+			<wide-button :icon="TopologyStar3">Scan local network for cameras</wide-button>
+			<wide-button :icon="TextPlus" @click="onManual">Enter camera details manually</wide-button>
+		</div>
+		<div v-else-if="mode === Modes.Details">
+		</div>
+		<!--
+		<div>Add Camera z</div>
 		<error v-if="error">{{ error }}</error>
 		<div v-if="numTotalScans !== 0" class="scanned">
 			<p style="margin-bottom: 30px">The following devices were found on your network</p>
@@ -102,6 +128,8 @@ function isConfigured(cam: CameraRecord): boolean {
 				<buttin :busy="busyScanning" @click="onScanAgain">Scan Local Network</buttin>
 			</div>
 		</div>
+		<buttin>I know the camera details</buttin>
+		-->
 	</div>
 </template>
 

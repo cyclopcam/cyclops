@@ -14,6 +14,7 @@ import WideSpacer from '@/components/widewidgets/WideSpacer.vue';
 import Confirm from '@/components/widgets/Confirm.vue';
 import { useRouter } from 'vue-router';
 import { pushRoute } from "@/router/helpers";
+import { globals } from '@/globals';
 
 let props = defineProps<{
 	id: string, // either the ID or "new"
@@ -38,7 +39,9 @@ let testResultImageBlob = ref(null as Blob | null);
 
 let testBusy = ref(false);
 let testResult = ref(TestResult.Unknown);
+let busySaving = ref(false);
 let showConfirmUnpair = ref(false);
+let unpairBusy = ref(false);
 let error = ref('');
 
 // This is useful for development on the Edit Camera workflow, because it allows you
@@ -83,7 +86,9 @@ function canSave(): boolean {
 }
 
 function saveButtonTitle(): string {
-	if (isNewCamera.value) {
+	if (busySaving.value) {
+		return "Saving...";
+	} else if (isNewCamera.value) {
 		return "Add Camera";
 	} else {
 		return "Save Changes";
@@ -115,14 +120,24 @@ function newCameraRecordFromLocalState(): CameraRecord {
 async function onSave() {
 	if (isNewCamera.value) {
 		// Add the camera to the system
+		busySaving.value = true;
 		let r = await fetchOrErr('/api/config/addCamera', { method: "POST", body: JSON.stringify(newCameraRecordFromLocalState().toJSON()) });
+		if (r.ok) {
+			await globals.loadCameras();
+		}
+		busySaving.value = false;
 		if (!r.ok) {
 			error.value = r.error;
 			return;
 		}
 		pushRoute(router, { name: "rtSettingsHome" });
 	} else {
+		busySaving.value = true;
 		let r = await fetchOrErr('/api/config/changeCamera', { method: "POST", body: JSON.stringify(newCameraRecordFromLocalState().toJSON()) });
+		if (r.ok) {
+			await globals.loadCameras();
+		}
+		busySaving.value = false;
 		if (!r.ok) {
 			error.value = r.error;
 			return;
@@ -156,11 +171,24 @@ function onUnpair() {
 
 async function onUnpairConfirmed() {
 	showConfirmUnpair.value = false;
-	let r = await fetchOrErr('/api/config/addCamera', { method: "POST", body: JSON.stringify(newCameraRecordFromLocalState().toJSON()) });
+	unpairBusy.value = true;
+	let r = await fetchOrErr(`/api/config/removeCamera/${props.id}`, { method: "POST" });
+	unpairBusy.value = false;
 	if (!r.ok) {
 		error.value = r.error;
 		return;
 	}
+	if (r.ok) {
+		await globals.loadCameras();
+	}
+	pushRoute(router, { name: "rtSettingsHome" });
+}
+
+function unpairTitle() {
+	if (unpairBusy.value) {
+		return "Unpair Busy...";
+	}
+	return "Unpair Camera";
 }
 
 onMounted(async () => {
@@ -184,7 +212,7 @@ onMounted(async () => {
 </script>
 
 <template>
-	<div class="editRoot">
+	<div class="wideRoot">
 		<wide-text label="Camera Name" v-model="name" />
 		<wide-text label="IP Address / Hostname" v-model="host" />
 		<wide-dropdown label="Model" v-model="model" :options="constants.cameraModels" />
@@ -198,32 +226,27 @@ onMounted(async () => {
 					@click="onTest">Test
 					Settings</button>
 				<div style="width:10px" />
-				<button :class="{ focalButton: canSave(), submitButtons: true }" :disabled="!canSave()" @click="onSave">{{
-					saveButtonTitle()
-				}}</button>
+				<button :class="{ focalButton: canSave(), submitButtons: true }" :disabled="!canSave() || busySaving"
+					@click="onSave">{{
+						saveButtonTitle()
+					}}</button>
 			</div>
-			<div class="previewContainer">
+			<div v-if="!isNewCamera || testResultImageBlob || testBusy" class="previewContainer">
 				<camera-preview :camera="original" :image-blob="testResultImageBlob" />
 				<camera-tester v-if="testBusy" :camera="newCameraRecordFromLocalState()" @close="onTestFinished" />
 			</div>
 		</wide-section>
-		<wide-spacer />
-		<wide-button class="unpair" @click="onUnpair">Unpair Camera</wide-button>
-		<wide-spacer />
-		<confirm v-if="showConfirmUnpair" msg="Are you sure you want to delete this camera?" yesText="Remove Camera"
+		<div v-if="!isNewCamera">
+			<wide-spacer />
+			<wide-button class="unpair" @click="onUnpair" :disabled="unpairBusy">{{ unpairTitle() }}</wide-button>
+			<wide-spacer />
+		</div>
+		<confirm v-if="showConfirmUnpair" msg="Are you sure you want to unlink this camera?" yesText="Remove Camera"
 			:danger='true' @cancel="showConfirmUnpair = false" @ok="onUnpairConfirmed" />
 	</div>
 </template>
 
 <style lang="scss" scoped>
-.editRoot {
-	display: flex;
-	flex-direction: column;
-	width: 100%;
-	box-sizing: border-box;
-	//padding: 8px 20px;
-}
-
 .spacer {
 	height: 10px;
 }

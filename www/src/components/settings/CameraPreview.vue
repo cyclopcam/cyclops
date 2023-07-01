@@ -29,6 +29,9 @@ let state = ref(State.Loading);
 watch(() => props.camera, () => {
 	loadImage();
 });
+watch(() => props.imageBlob, () => {
+	loadImage();
+});
 
 function drawImage() {
 	let can = canvas.value! as HTMLCanvasElement;

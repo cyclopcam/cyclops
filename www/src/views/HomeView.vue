@@ -7,7 +7,7 @@ import ModeBar from '../components/home/ModeBar.vue';
 		<div class="flexColumn view">
 			<router-view />
 		</div>
-		<mode-bar style="flex: 0 0 auto" />
+		<mode-bar class="modeBarInHome" />
 	</div>
 </template>
 
@@ -16,6 +16,10 @@ import ModeBar from '../components/home/ModeBar.vue';
 	height: 100%;
 	display: flex;
 	flex-direction: column;
+	// start new stacking context, so that mode-bar can have a positive z-index.
+	// We want the mode-bar to be above other content, so that when we animate pages
+	// during transitions, we don't draw over the mode bar.
+	z-index: 0;
 }
 
 .view {
@@ -23,5 +27,11 @@ import ModeBar from '../components/home/ModeBar.vue';
 	height: 1px;
 	flex: 1 1 auto;
 	overflow: auto;
+	z-index: 0; // lower than mode-bar
+}
+
+.modeBarInHome {
+	flex: 0 0 auto;
+	z-index: 1;
 }
 </style>

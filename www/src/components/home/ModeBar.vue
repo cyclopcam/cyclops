@@ -83,6 +83,8 @@ onMounted(() => {
 	flex-direction: column;
 	align-items: center;
 
+	background-color: #fff;
+
 	padding: 8px 4px 8px 4px;
 
 	@media (max-width: $mobileCutoff) {

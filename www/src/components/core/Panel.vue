@@ -17,6 +17,7 @@
 	//background-color: beige;
 	//gap: 10px;
 
+	// for desktop
 	width: 300px;
 	//border-left: solid 1px #ddd;
 	//border-right: solid 1px #ddd;
