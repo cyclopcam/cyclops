@@ -14,6 +14,7 @@ import (
 	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/bmharper/cyclops/server/eventdb"
+	"github.com/bmharper/cyclops/server/livecameras"
 	"github.com/bmharper/cyclops/server/monitor"
 	"github.com/bmharper/cyclops/server/perfstats"
 	"github.com/bmharper/cyclops/server/train"
@@ -34,7 +35,7 @@ type Server struct {
 	HotReloadWWW     bool       // Don't embed the 'www' directory into our binary, but load it from disk, and assume it's not immutable. This is for dev time on the 'www' source.
 
 	// Public Subsystems
-	LiveCameras *LiveCameras
+	LiveCameras *livecameras.LiveCameras
 
 	// Private Subsystems
 	signalIn        chan os.Signal
@@ -55,9 +56,6 @@ type Server struct {
 	nextRecorderID int64
 
 	backgroundRecorders []*backgroundRecorder
-
-	lastScannedCamerasLock sync.Mutex
-	lastScannedCameras     []*configdb.Camera
 }
 
 const (
@@ -96,8 +94,6 @@ func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey stri
 		}
 	}
 
-	s.LiveCameras = NewLiveCameras(s)
-
 	if err := s.configDB.GuessDefaultVariables(); err != nil {
 		log.Errorf("GuessDefaultVariables failed: %v", err)
 	}
@@ -105,15 +101,8 @@ func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey stri
 	// where we can accept new config. Otherwise, the system is bricked if the user enters
 	// invalid config.
 	// Also, when the system first starts up, it won't be configured at all.
-	configOK := true
 	if err := s.LoadConfigVariables(); err != nil {
 		log.Errorf("%v", err)
-		configOK = false
-	}
-	if configOK {
-		if err := s.LiveCameras.loadCamerasFromConfig(); err != nil {
-			return nil, err
-		}
 	}
 
 	monitor, err := monitor.NewMonitor(s.Log)
@@ -122,9 +111,12 @@ func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey stri
 	}
 	s.monitor = monitor
 
-	s.monitor.SetCameras(s.LiveCameras.Cameras())
-
 	s.train = train.NewTrainer(s.Log, s.permanentEvents)
+
+	s.LiveCameras = livecameras.NewLiveCameras(s.Log, s.configDB, s.ShutdownStarted, s.monitor, s.RingBufferSize)
+
+	// Cameras start connecting here
+	s.LiveCameras.Run()
 
 	if err := s.SetupHTTP(); err != nil {
 		return nil, err
@@ -178,36 +170,33 @@ func (s *Server) Shutdown(restart bool) {
 
 	s.Log.Infof("PerfStats: %v", perfstats.Stats.String())
 
-	close(s.ShutdownStarted)
 	s.MustRestart = restart
+
+	close(s.ShutdownStarted)
 
 	// Remove our signal handler (we'll re-enable it again if we restart)
 	signal.Stop(s.signalIn)
 
 	s.monitor.Close()
 
-	waitCameras := &sync.WaitGroup{}
-
-	// closeAllCameras() should close all WebSockets, by virtue of the Streams closing, which sends
+	// Closing cameras should close all WebSockets, by virtue of the Streams closing, which sends
 	// a message to the websocket thread.
 	// This is relevant because calling Shutdown() on our http server will not do anything to upgraded
 	// connections (this is explicit in the http server docs).
-	// NOTE: there is also RegisterOnShutdown.. which might be useful
-	s.Log.Infof("Closing cameras")
-	s.LiveCameras.closeAllCameras(waitCameras)
+	// NOTE: the http server also has RegisterOnShutdown.. which might be useful
 
 	s.Log.Infof("Closing HTTP server")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	err := s.httpServer.Shutdown(ctx)
 	defer cancel()
 
-	s.Log.Infof("Waiting for camera streams to close")
-	waitCameras.Wait()
+	s.Log.Infof("Waiting for cameras to close")
+	<-s.LiveCameras.ShutdownComplete
 
 	if err != nil {
-		s.Log.Infof("Shutdown complete")
-	} else {
 		s.Log.Warnf("Shutdown complete, with error: %v", err)
+	} else {
+		s.Log.Infof("Shutdown complete")
 	}
 	s.Log.Close()
 	s.ShutdownComplete <- err

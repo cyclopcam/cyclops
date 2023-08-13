@@ -36,8 +36,9 @@ Without better knowledge, I'm going with:
 
 // Any option, if left to the zero value, is ignored, and defaults are used instead.
 type ScanOptions struct {
-	Timeout time.Duration // Timeout on connecting to each host
-	OwnIP   net.IP        // The IP address of the local machine
+	Timeout    time.Duration // Timeout on connecting to each host
+	OwnIP      net.IP        // The IP address of the local machine
+	ExcludeIPs []net.IP      // A list of IP addresses to exclude from the scan
 }
 
 /*
@@ -64,7 +65,13 @@ func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
 		return nil, fmt.Errorf("Local IP address is not an IPv4 address")
 	}
 
-	nThreads := 50
+	excludeIPs := map[string]bool{}
+	for _, ip := range options.ExcludeIPs {
+		excludeIPs[ip.String()] = true
+	}
+	//fmt.Printf("excludeIPs: %v\n", excludeIPs)
+
+	nThreads := 100
 	workQueue := make(chan net.IP, 256)
 	resultQueue := make(chan *configdb.Camera, 256)
 	doneQueue := make(chan bool, nThreads)
@@ -72,9 +79,13 @@ func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
 	// assume address 1 is DHCP, and not used by a camera
 	//fmt.Printf("loading up work\n")
 	for i := 2; i < 255; i++ {
-		workQueue <- net.IPv4(ip4[0], ip4[1], ip4[2], byte(i))
+		//for i := 10; i < 40; i++ {
+		target := net.IPv4(ip4[0], ip4[1], ip4[2], byte(i))
+		if !excludeIPs[target.String()] {
+			workQueue <- target
+		}
 	}
-	//fmt.Printf("starting threads\n")
+	//fmt.Printf("Starting %v IP scanning threads, looking for %v addresses\n", nThreads, len(workQueue))
 	for i := 0; i < nThreads; i++ {
 		go func() {
 			done := false
@@ -115,7 +126,7 @@ func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
 }
 
 func tryToContactCamera(ip net.IP, options *ScanOptions) (camera.CameraModels, error) {
-	//fmt.Printf("Contacting %v...", ip)
+	//fmt.Printf("Contacting %v...\n", ip)
 
 	// 100ms has been sufficient on my home network with HikVision cameras and ethernet, but it might be too aggressive for some
 	timeout := 100 * time.Millisecond

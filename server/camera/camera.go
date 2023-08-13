@@ -17,6 +17,8 @@ type Camera struct {
 	ID         int64 // Same as ID in database
 	Name       string
 	Log        log.Log
+	CreatedAt  time.Time
+	Config     configdb.Camera
 	LowStream  *Stream
 	HighStream *Stream
 	HighDumper *VideoDumpReader
@@ -26,19 +28,19 @@ type Camera struct {
 	highResURL string
 }
 
-func NewCamera(log log.Log, cam configdb.Camera, ringBufferSizeBytes int) (*Camera, error) {
-	baseURL := "rtsp://" + cam.Username + ":" + cam.Password + "@" + cam.Host
-	if cam.Port == 0 {
+func NewCamera(log log.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Camera, error) {
+	baseURL := "rtsp://" + cfg.Username + ":" + cfg.Password + "@" + cfg.Host
+	if cfg.Port == 0 {
 		baseURL += ":554"
 	} else {
-		baseURL += fmt.Sprintf(":%v", cam.Port)
+		baseURL += fmt.Sprintf(":%v", cfg.Port)
 	}
 
-	lowResURL, err := URLForCamera(cam.Model, baseURL, cam.LowResURLSuffix, cam.HighResURLSuffix, false)
+	lowResURL, err := URLForCamera(cfg.Model, baseURL, cfg.LowResURLSuffix, cfg.HighResURLSuffix, false)
 	if err != nil {
 		return nil, err
 	}
-	highResURL, err := URLForCamera(cam.Model, baseURL, cam.LowResURLSuffix, cam.HighResURLSuffix, true)
+	highResURL, err := URLForCamera(cfg.Model, baseURL, cfg.LowResURLSuffix, cfg.HighResURLSuffix, true)
 	if err != nil {
 		return nil, err
 	}
@@ -50,13 +52,15 @@ func NewCamera(log log.Log, cam configdb.Camera, ringBufferSizeBytes int) (*Came
 	lowDumper := NewVideoDumpReader(3 * 1024 * 1024)
 
 	lowDecoder := NewVideoDecodeReader()
-	high := NewStream(log, cam.Name, "high")
-	low := NewStream(log, cam.Name, "low")
+	high := NewStream(log, cfg.Name, "high")
+	low := NewStream(log, cfg.Name, "low")
 
 	return &Camera{
-		ID:         cam.ID,
-		Name:       cam.Name,
+		ID:         cfg.ID,
+		Name:       cfg.Name,
 		Log:        log,
+		CreatedAt:  time.Now(),
+		Config:     cfg,
 		LowStream:  low,
 		HighStream: high,
 		HighDumper: highDumper,
@@ -97,6 +101,11 @@ func (c *Camera) Close(wg *sync.WaitGroup) {
 		c.HighStream.Close(wg)
 		c.HighStream = nil
 	}
+}
+
+// Return the time of the last packet received from the camera
+func (c *Camera) LastPacketAt() time.Time {
+	return c.LowDecoder.LastPacketAt()
 }
 
 func (c *Camera) LatestImage(contentType string) []byte {

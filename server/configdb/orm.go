@@ -15,14 +15,28 @@ type BaseModel struct {
 // SYNC-RECORD-CAMERA
 type Camera struct {
 	BaseModel
-	Model            string `json:"model"`                                // eg HikVision (actually CameraModels enum)
-	Name             string `json:"name"`                                 // Friendly name
-	Host             string `json:"host"`                                 // Hostname such as 192.168.1.33
-	Port             int    `json:"port" gorm:"default:null"`             // if 0, then default is 554
-	Username         string `json:"username"`                             // RTSP username
-	Password         string `json:"password"`                             // RTSP password
-	HighResURLSuffix string `json:"highResURLSuffix" gorm:"default:null"` // eg Streaming/Channels/101 for HikVision. Can leave blank if Model is a known type.
-	LowResURLSuffix  string `json:"lowResURLSuffix" gorm:"default:null"`  // eg Streaming/Channels/102 for HikVision. Can leave blank if Model is a known type.
+	Model            string      `json:"model"`                                // eg HikVision (actually CameraModels enum)
+	Name             string      `json:"name"`                                 // Friendly name
+	Host             string      `json:"host"`                                 // Hostname such as 192.168.1.33
+	Port             int         `json:"port" gorm:"default:null"`             // if 0, then default is 554
+	Username         string      `json:"username"`                             // RTSP username
+	Password         string      `json:"password"`                             // RTSP password
+	HighResURLSuffix string      `json:"highResURLSuffix" gorm:"default:null"` // eg Streaming/Channels/101 for HikVision. Can leave blank if Model is a known type.
+	LowResURLSuffix  string      `json:"lowResURLSuffix" gorm:"default:null"`  // eg Streaming/Channels/102 for HikVision. Can leave blank if Model is a known type.
+	CreatedAt        dbh.IntTime `json:"createdAt"`
+	UpdatedAt        dbh.IntTime `json:"updatedAt"`
+}
+
+// Compare the current camera config against the new camera config, and return
+// true if the connection details refer to the exact same camera host and config.
+func (c *Camera) EqualsConnection(newCam *Camera) bool {
+	return c.Model == newCam.Model &&
+		c.Host == newCam.Host &&
+		c.Port == newCam.Port &&
+		c.Username == newCam.Username &&
+		c.Password == newCam.Password &&
+		c.HighResURLSuffix == newCam.HighResURLSuffix &&
+		c.LowResURLSuffix == newCam.LowResURLSuffix
 }
 
 type Variable struct {

@@ -17,7 +17,7 @@ let showPassword = ref(false);
 let isFakePassword = computed(() => props.password && !showPassword.value);
 
 let inputValue = computed(() => {
-	if (isFakePassword.value)
+	if (isFakePassword.value && props.modelValue)
 		return "********";
 	return props.modelValue ?? "";
 });

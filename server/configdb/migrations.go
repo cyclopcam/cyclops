@@ -98,5 +98,12 @@ func Migrations(log log.Log) []migration.Migrator {
 		DROP TABLE old;
 	`))
 
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		ALTER TABLE camera ADD COLUMN created_at INT NOT NULL DEFAULT 0;
+		ALTER TABLE camera ADD COLUMN updated_at INT NOT NULL DEFAULT 0;
+		UPDATE camera SET created_at = strftime('%s') * 1000, updated_at = strftime('%s') * 1000;
+	`))
+
 	return migs
 }

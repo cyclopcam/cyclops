@@ -86,8 +86,16 @@ func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, param
 	if err := s.IsReady(); err != nil {
 		j.ReadyError = err.Error()
 	}
-	for _, cam := range s.LiveCameras.Cameras() {
-		j.Cameras = append(j.Cameras, toCamInfoJSON(cam))
+	cameras := []*configdb.Camera{}
+	www.Check(s.configDB.DB.Find(&cameras).Error)
+
+	for _, cfg := range cameras {
+		cam := s.LiveCameras.CameraFromID(cfg.ID)
+		if cam != nil {
+			j.Cameras = append(j.Cameras, liveToCamInfoJSON(cam))
+		} else {
+			j.Cameras = append(j.Cameras, cfgToCamInfoJSON(cfg))
+		}
 	}
 	www.SendJSON(w, &j)
 }

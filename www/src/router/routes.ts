@@ -10,6 +10,7 @@ import TrainRecord from "@/components/home/train/Recorder.vue";
 import TrainEditRecordings from "@/components/home/train/EditRecordings.vue";
 import SettingsHome from "@/components/settings/SettingsHome.vue";
 import EditCamera from "@/components/settings/EditCamera.vue";
+import ScanForCameras from "@/components/settings/ScanForCameras.vue";
 import AddCamera from "@/components/settings/AddCamera.vue";
 import SystemVariables from "@/components/settings/SystemVariables.vue";
 import Empty from "@/components/home/Empty.vue";
@@ -42,6 +43,12 @@ export const router = createRouter({
 							path: "camera/:id",
 							name: "rtSettingsEditCamera",
 							component: EditCamera,
+							props: true,
+						},
+						{
+							path: "scan",
+							name: "rtSettingsScanForCameras",
+							component: ScanForCameras,
 							props: true,
 						},
 						{
@@ -125,6 +132,8 @@ export const router = createRouter({
 
 router.afterEach((to, from) => {
 	//console.log("Route", router.currentRoute.value);
+
+	// Handle UI transitions (swipe left/right animations)
 	const toDepth = to.path.split("/").length;
 	const fromDepth = from.path.split("/").length;
 	to.meta.transitionName = toDepth < fromDepth ? "slide-right" : "slide-left";

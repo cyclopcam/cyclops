@@ -124,6 +124,7 @@ func (d *H264Decoder) Decode(packet *DecodedPacket) (*accel.YUVImage, error) {
 // and it will be clobbered by the subsequent Decode().
 // The pixels in the returned image are not a garbage-collected Go slice.
 // They point directly into the libavcodec decode buffer.
+// That's why the function name has the "DeepRef" suffix.
 func (d *H264Decoder) DecodeDeepRef(packet *DecodedPacket) (*accel.YUVImage, error) {
 	if err := d.sendPacket(packet.EncodeToAnnexBPacket()); err != nil {
 		// sendPacket failure is not fatal

@@ -212,7 +212,7 @@ func (s *Stream) Close(wg *sync.WaitGroup) {
 	if wg != nil {
 		// Every time a sink removes itself, we'll remove it from the wait group
 		s.closeWG = wg
-		s.Log.Debugf("Adding %v to Stream waitgroup", len(s.sinks))
+		s.Log.Debugf("Adding %v sinks to Stream waitgroup", len(s.sinks))
 		wg.Add(len(s.sinks))
 	}
 	for _, sink := range s.sinks {

@@ -72,13 +72,13 @@ func main() {
 		// See this article for more details: https://vincent.bernat.ch/en/blog/2017-systemd-golang
 		daemon.SdNotify(false, daemon.SdNotifyReady)
 
-		check(srv.LiveCameras.StartAllCameras())
-
 		srv.RunBackgroundRecorderLoop()
 
 		// SYNC-SERVER-PORT
 		err = srv.ListenHTTP(":8080")
-		fmt.Printf("Server exited: %v\n", err)
+		if err != nil {
+			fmt.Printf("ListenHTTP returned: %v\n", err)
+		}
 		err = <-srv.ShutdownComplete
 		//fmt.Printf("Server sent ShutdownComplete: %v\n", err)
 		if !srv.MustRestart {

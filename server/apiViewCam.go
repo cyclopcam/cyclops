@@ -60,7 +60,7 @@ func toStreamInfoJSON(s *camera.Stream) streamInfoJSON {
 	return r
 }
 
-func toCamInfoJSON(c *camera.Camera) *camInfoJSON {
+func liveToCamInfoJSON(c *camera.Camera) *camInfoJSON {
 	r := &camInfoJSON{
 		ID:   c.ID,
 		Name: c.Name,
@@ -70,9 +70,17 @@ func toCamInfoJSON(c *camera.Camera) *camInfoJSON {
 	return r
 }
 
+func cfgToCamInfoJSON(c *configdb.Camera) *camInfoJSON {
+	r := &camInfoJSON{
+		ID:   c.ID,
+		Name: c.Name,
+	}
+	return r
+}
+
 func (s *Server) httpCamGetInfo(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	cam := s.getCameraFromIDOrPanic(params.ByName("cameraID"))
-	www.SendJSON(w, toCamInfoJSON(cam))
+	www.SendJSON(w, liveToCamInfoJSON(cam))
 }
 
 // Fetch a low res JPG of the camera's last image.

@@ -291,6 +291,9 @@ func (m *Monitor) startFrameReader() {
 
 // Set cameras and start monitoring
 func (m *Monitor) SetCameras(cameras []*camera.Camera) {
+	// Stopping and starting the frame reader is the simplest solution to prevent
+	// race conditions, but we could probably make this process more seamless, and
+	// not have to stop the world whenever cameras are changed.
 	if m.enabled {
 		m.stopFrameReader()
 	}

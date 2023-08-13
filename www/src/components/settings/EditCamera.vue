@@ -4,7 +4,7 @@ import { computed, onMounted, ref } from 'vue';
 import { constants } from '@/constants';
 import CameraTester from './CameraTester.vue';
 import CameraPreview from './CameraPreview.vue';
-import { addToRecentPasswords, addToRecentUsernames, recentPasswords, recentUsernames, type CameraTestResult } from './config';
+import type { CameraTestResult } from './config';
 import { fetchOrErr } from '@/util/util';
 import WideText from '@/components/widewidgets/WideText.vue';
 import WideDropdown from '@/components/widewidgets/WideDropdown.vue';
@@ -18,6 +18,9 @@ import { globals } from '@/globals';
 
 let props = defineProps<{
 	id: string, // either the ID or "new"
+	host?: string, // when 'new', this is the host to pre-fill
+	model?: string, // when 'new', this is the model to pre-fill
+	returnToScan?: string, // Instruct us to return to the ScanForCameras page when we're done
 }>();
 
 let router = useRouter();
@@ -130,7 +133,13 @@ async function onSave() {
 			error.value = r.error;
 			return;
 		}
-		pushRoute(router, { name: "rtSettingsHome" });
+		globals.lastCameraUsername = username.value;
+		globals.lastCameraPassword = password.value;
+		if (props.returnToScan === '1') {
+			pushRoute(router, { name: "rtSettingsScanForCameras", params: { usePreviousScan: '1' } });
+		} else {
+			pushRoute(router, { name: "rtSettingsHome" });
+		}
 	} else {
 		busySaving.value = true;
 		let r = await fetchOrErr('/api/config/changeCamera', { method: "POST", body: JSON.stringify(newCameraRecordFromLocalState().toJSON()) });
@@ -160,8 +169,8 @@ function onTestFinished(result: CameraTestResult) {
 		testResultImageBlob.value = result.image;
 		error.value = '';
 		testResult.value = TestResult.Success;
-		addToRecentUsernames(username.value);
-		addToRecentPasswords(password.value);
+		//addToRecentUsernames(username.value);
+		//addToRecentPasswords(password.value);
 	}
 }
 
@@ -200,12 +209,37 @@ onMounted(async () => {
 			copyCameraRecordToLocalState(original.value);
 			lastGoodConfig.value = original.value.clone();
 		}
-		if (username.value === '' && recentUsernames.length !== 0) {
-			username.value = recentUsernames[recentUsernames.length - 1];
+		//if (username.value === '' && recentUsernames.length !== 0) {
+		//	username.value = recentUsernames[recentUsernames.length - 1];
+		//}
+		//if (password.value === '' && recentPasswords.length !== 0) {
+		//	password.value = recentPasswords[recentPasswords.length - 1];
+		//}
+	} else {
+		if (props.host) {
+			host.value = props.host;
 		}
-		if (password.value === '' && recentPasswords.length !== 0) {
-			password.value = recentPasswords[recentPasswords.length - 1];
+		if (props.model) {
+			model.value = props.model;
 		}
+		if (globals.lastCameraPassword) {
+			password.value = globals.lastCameraPassword;
+		}
+		if (globals.lastCameraUsername) {
+			username.value = globals.lastCameraUsername;
+		}
+
+		// Pick a camera name
+		let i = 1;
+		let newName = '';
+		while (true) {
+			newName = `Camera ${i}`;
+			if (!globals.cameras.find(c => c.name === newName)) {
+				break;
+			}
+			i++;
+		}
+		name.value = newName;
 	}
 })
 

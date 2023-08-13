@@ -41,6 +41,20 @@ export class Globals {
 	ownPrivateKey: Uint8Array;
 	ownPublicKey: Uint8Array;
 
+	// JSON result of our last successful network scan for cameras.
+	// This is a hack to preserve our most recent LAN scan, so that somebody can go through
+	// a bunch of cameras, adding them one by one, without having to re-scan the LAN after
+	// adding each camera. We can't store this data inside ScanForCameras.vue, because the
+	// component will be recreated each time we navigate to it. I call this a hack because
+	// this data ideally belongs somewhere else, but I can't think of a better place than
+	// here.
+	lastNetworkCameraScanJSON: any = null;
+
+	// Password of the most recently added camera.
+	// This is used to prefill the password when adding multiple cameras.
+	lastCameraPassword = "";
+	lastCameraUsername = ""; // Username of the most recently added camera.
+
 	//ownPublicKeyBase64: string;
 	//sharedTokenKey: Uint8Array | null = null;
 	//sharedNonce: Uint8Array;

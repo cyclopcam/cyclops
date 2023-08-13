@@ -3,6 +3,8 @@ package camera
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
@@ -24,9 +26,10 @@ type VideoDecodeReader struct {
 	Track   *gortsplib.TrackH264
 	Decoder *videox.H264Decoder
 
-	incoming StreamSinkChan
-	nPackets int64
-	ready    bool
+	incoming     StreamSinkChan
+	nPackets     int64
+	lastPacketAt atomic.Int64 // Time when last packet was received (unix nanoseconds)
+	ready        bool
 
 	lastImgLock sync.Mutex
 	//lastImg     *cimg.Image
@@ -82,6 +85,16 @@ func (r *VideoDecodeReader) GetLastImageIfDifferent(ifNotEqualTo int64) (*accel.
 	return r.lastImg.Clone(), r.lastImgID
 }
 
+// Return the time when the last packet was received
+func (r *VideoDecodeReader) LastPacketAt() time.Time {
+	t := r.lastPacketAt.Load()
+	if t == 0 {
+		return time.Time{}
+	} else {
+		return time.Unix(0, t)
+	}
+}
+
 // Return a copy of the most recently decoded frame (or nil, if there is none available yet), and the frame ID
 func (r *VideoDecodeReader) LastImageCopy() (*accel.YUVImage, int64) {
 	r.lastImgLock.Lock()
@@ -103,6 +116,8 @@ func (r *VideoDecodeReader) Close() {
 func (r *VideoDecodeReader) OnPacketRTP(packet *videox.DecodedPacket) {
 	r.nPackets++
 	//r.Log.Infof("[Packet %v] VideoDecodeReader", r.nPackets)
+
+	r.lastPacketAt.Store(time.Now().UnixNano())
 
 	if packet.HasType(h264.NALUTypeIDR) {
 		// we'll assume that we've seen SPS and PPS by now... but should perhaps wait for them too

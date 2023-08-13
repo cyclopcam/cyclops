@@ -1,10 +1,12 @@
 package server
 
 import (
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/bmharper/cimg/v2"
+	"github.com/bmharper/cyclops/pkg/dbh"
 	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
@@ -27,63 +29,40 @@ func (s *Server) httpConfigGetCameras(w http.ResponseWriter, r *http.Request, pa
 }
 
 func (s *Server) httpConfigAddCamera(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	cam := configdb.Camera{}
-	www.ReadJSON(w, r, &cam, 1024*1024)
-	cam.ID = 0
-
-	camera, err := camera.NewCamera(s.Log, cam, s.RingBufferSize)
-	www.Check(err)
-
-	// Make sure we can talk to the camera
-	err = camera.Start()
-	if err != nil {
-		camera.Close(nil)
-		www.Check(err)
-	}
+	cfg := configdb.Camera{}
+	www.ReadJSON(w, r, &cfg, 1024*1024)
+	cfg.ID = 0
 
 	// Add to DB
-	res := s.configDB.DB.Create(&cam)
+	now := dbh.MakeIntTime(time.Now())
+	cfg.CreatedAt = now
+	cfg.UpdatedAt = now
+	res := s.configDB.DB.Create(&cfg)
 	if res.Error != nil {
-		camera.Close(nil)
 		www.Check(res.Error)
 	}
-	s.Log.Infof("Added new camera to DB. Camera ID: %v", cam.ID)
+	s.Log.Infof("Added new camera to DB. Camera ID: %v", cfg.ID)
+	s.LiveCameras.CameraAdded(cfg.ID)
 
-	// Add to live system
-	camera.ID = cam.ID
-	s.LiveCameras.AddCamera(camera)
-
-	www.SendID(w, cam.ID)
+	www.SendID(w, cfg.ID)
 }
 
 func (s *Server) httpConfigChangeCamera(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	cam := configdb.Camera{}
-	www.ReadJSON(w, r, &cam, 1024*1024)
+	cfgNew := configdb.Camera{}
+	www.ReadJSON(w, r, &cfgNew, 1024*1024)
 
-	if s.LiveCameras.CameraFromID(cam.ID) == nil {
-		www.PanicBadRequestf("Camera ID %v not found", cam.ID)
-	}
+	cfgOld := configdb.Camera{}
+	www.Check(s.configDB.DB.First(&cfgOld, cfgNew.ID).Error)
 
-	// Create a new Camera object and open a connection
-	camera, err := camera.NewCamera(s.Log, cam, s.RingBufferSize)
-	www.Check(err)
-	err = camera.Start()
-	if err != nil {
-		camera.Close(nil)
-		www.Check(err)
-	}
+	cfgNew.CreatedAt = cfgOld.CreatedAt
+	cfgNew.UpdatedAt = dbh.MakeIntTime(time.Now())
 
 	// Update DB
-	if err := s.configDB.DB.Save(&cam).Error; err != nil {
-		camera.Close(nil)
+	if err := s.configDB.DB.Save(&cfgNew).Error; err != nil {
 		www.PanicServerErrorf("Error saving camera config to DB: %v", err)
 	}
 
-	// Update live system
-	if err := s.LiveCameras.ReplaceCamera(camera); err != nil {
-		camera.Close(nil)
-		www.PanicServerErrorf("Error replacing camera: %v", err)
-	}
+	s.LiveCameras.CameraChanged(cfgNew.ID)
 
 	www.SendOK(w)
 }
@@ -92,8 +71,8 @@ func (s *Server) httpConfigRemoveCamera(w http.ResponseWriter, r *http.Request, 
 	camID := www.ParseID(params.ByName("cameraID"))
 	cam := configdb.Camera{}
 	www.Check(s.configDB.DB.First(&cam, camID).Error)
-	s.LiveCameras.RemoveCamera(camID)
 	www.Check(s.configDB.DB.Delete(&cam).Error)
+	s.LiveCameras.CameraRemoved(camID)
 	www.SendOK(w)
 }
 
@@ -140,34 +119,33 @@ func (s *Server) httpConfigSetVariable(w http.ResponseWriter, r *http.Request, p
 }
 
 func (s *Server) httpConfigScanNetworkForCameras(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	cache := www.QueryValue(r, "cache")
 	timeoutMS := www.QueryInt(r, "timeout") // timeout in milliseconds
+	includeExisting := www.QueryInt(r, "includeExisting") == 1
 
-	s.lastScannedCamerasLock.Lock()
-	cacheSize := len(s.lastScannedCameras)
-	s.lastScannedCamerasLock.Unlock()
-
-	if cache == "nocache" || (cache == "" && cacheSize == 0) {
-		options := &scanner.ScanOptions{}
-		if timeoutMS != 0 {
-			options.Timeout = time.Millisecond * time.Duration(timeoutMS)
-		}
-		if s.OwnIP != nil {
-			options.OwnIP = s.OwnIP
-		}
-		cameras, err := scanner.ScanForLocalCameras(options)
-		if err != nil {
-			www.PanicServerError(err.Error())
-		}
-		s.Log.Infof("Network scanner found %v cameras", len(cameras))
-		s.lastScannedCamerasLock.Lock()
-		s.lastScannedCameras = cameras
-		s.lastScannedCamerasLock.Unlock()
+	options := &scanner.ScanOptions{}
+	if timeoutMS != 0 {
+		options.Timeout = time.Millisecond * time.Duration(timeoutMS)
 	}
+	if s.OwnIP != nil {
+		options.OwnIP = s.OwnIP
+	}
+	if !includeExisting {
+		existing := []configdb.Camera{}
+		s.configDB.DB.Find(&existing) // ignore errors
+		for _, cam := range existing {
+			// We could resolve Host -> IP here, but that would add latency, and I'm not sure this fringe feature is worth much attention
+			if ip := net.ParseIP(cam.Host); ip != nil {
+				options.ExcludeIPs = append(options.ExcludeIPs, ip)
+			}
+		}
+	}
+	cameras, err := scanner.ScanForLocalCameras(options)
+	if err != nil {
+		www.PanicServerError(err.Error())
+	}
+	s.Log.Infof("Network scanner found %v cameras", len(cameras))
 
-	s.lastScannedCamerasLock.Lock()
-	defer s.lastScannedCamerasLock.Unlock()
-	www.SendJSON(w, s.lastScannedCameras)
+	www.SendJSON(w, cameras)
 }
 
 // ConfigTestCamera is used by the front-end when adding a new camera
@@ -176,15 +154,11 @@ func (s *Server) httpConfigScanNetworkForCameras(w http.ResponseWriter, r *http.
 // is maybe 1 or 2 seconds latency (depending on camera's keyframe interval),
 // but I want to spark joy.
 func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	//www.ReadJSON(w, r, &cfg, 1024*1024)
 	s.Log.Infof("httpConfigTestCamera starting")
 
-	timeoutSeconds := www.QueryInt(r, "timeout")
-	if timeoutSeconds >= 0 {
-		timeoutSeconds = 7
-	} else if timeoutSeconds > 30 {
-		timeoutSeconds = 30
-	}
+	// My cameras are set to 3 seconds between keyframes, but sometimes it takes over 7 seconds before I receive the first
+	// keyframe. This is weird... it didn't used to be like this. Can't figure out what changed.
+	keyframeTimeout := 11 * time.Second
 
 	c, err := s.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -205,18 +179,24 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 		Image  string `json:"image"`
 	}
 
-	cam, err := camera.NewCamera(s.Log, cfg, 8*1024*1024)
+	// In case the previous test camera is the same as this one, close it.
+	// Cameras have a limited number of listeners, so it's not a good idea to open
+	// more connections to a camera than strictly necessary.
+	s.LiveCameras.CloseTestCamera()
+
+	cam, err := camera.NewCamera(s.Log, cfg, s.RingBufferSize)
 	if err != nil {
 		c.WriteJSON(message{Error: err.Error()})
 		return
 	}
-	defer cam.Close(nil)
+	// From here on out, we need to pay attention to Close() the camera at any failure point.
 	if err := cam.Start(); err != nil {
+		cam.Close(nil)
 		c.WriteJSON(message{Error: err.Error()})
 		return
 	}
 	if err := c.WriteJSON(message{Status: "Connected. Waiting for keyframe..."}); err != nil {
-		s.Log.Warnf("Tester failed to send Connected.. message to websocket: %v", err)
+		s.Log.Errorf("Tester failed to send Connected.. message to websocket: %v", err)
 	}
 
 	success := false
@@ -224,15 +204,22 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 	for {
 		img, _ := cam.LowDecoder.LastImageCopy()
 		if img != nil {
+			s.Log.Infof("Success connecting to camera %v after %v", cfg.Host, time.Since(start))
+			// Stash this camera, because the next call is extremely likely to be AddCamera(), which will re-use this
+			// already-connected camera, thereby shorterning the time it takes to add a camera to the system.
+			s.LiveCameras.SaveTestCamera(cfg, cam)
+
 			// Yes, this is stupid going from YUV to RGB, to YUV, to JPEG.
 			jpg, err := cimg.Compress(img.ToCImageRGB(), cimg.MakeCompressParams(cimg.Sampling420, 85, 0))
 			if err != nil {
 				c.WriteJSON(message{Error: "Failed to compress image to JPEG: " + err.Error()})
+			} else {
+				c.WriteMessage(websocket.BinaryMessage, jpg)
 			}
-			c.WriteMessage(websocket.BinaryMessage, jpg)
 			success = true
 			break
-		} else if time.Now().Sub(start) > time.Duration(timeoutSeconds)*time.Second {
+		} else if time.Now().Sub(start) > keyframeTimeout {
+			cam.Close(nil)
 			c.WriteJSON(message{Error: "Timeout waiting for keyframe"})
 			break
 		}
