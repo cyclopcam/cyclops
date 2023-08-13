@@ -6,6 +6,16 @@ import (
 	"github.com/bmharper/cyclops/pkg/dbh"
 )
 
+// GORM notes:
+// GORM's automatic created_at and updated_at functionality is weird. It will ignore
+// the Scan() and Value() of your custom time type (IntTime in our case), and instead
+// interpret the time however it wants. Since we want unix milliseconds, we have two
+// options: Either use autoCreateTime:false and autoUpdateTime:false, in which case
+// our IntTime will Scan() and Value() out to unix milliseconds. Or, we can use
+// autoCreateTime:milli and autoUpdateTime:milli, in which case we get the same
+// numbers in the database, but we have the advantage of GORM automatically injecting
+// the values for us. So we use the latter.
+
 // BaseModel is our base class for a GORM model.
 // The default GORM Model uses int, but we prefer int64
 type BaseModel struct {
@@ -23,8 +33,8 @@ type Camera struct {
 	Password         string      `json:"password"`                             // RTSP password
 	HighResURLSuffix string      `json:"highResURLSuffix" gorm:"default:null"` // eg Streaming/Channels/101 for HikVision. Can leave blank if Model is a known type.
 	LowResURLSuffix  string      `json:"lowResURLSuffix" gorm:"default:null"`  // eg Streaming/Channels/102 for HikVision. Can leave blank if Model is a known type.
-	CreatedAt        dbh.IntTime `json:"createdAt"`
-	UpdatedAt        dbh.IntTime `json:"updatedAt"`
+	CreatedAt        dbh.IntTime `json:"createdAt" gorm:"autoCreateTime:milli"`
+	UpdatedAt        dbh.IntTime `json:"updatedAt" gorm:"autoUpdateTime:milli"`
 }
 
 // Compare the current camera config against the new camera config, and return
@@ -68,7 +78,7 @@ type User struct {
 }
 
 type Session struct {
-	CreatedAt dbh.IntTime
+	CreatedAt dbh.IntTime `gorm:"autoCreateTime:milli"`
 	Key       []byte
 	UserID    int64
 	ExpiresAt dbh.IntTime `gorm:"default:null"`

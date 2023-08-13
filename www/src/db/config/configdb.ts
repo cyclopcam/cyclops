@@ -42,6 +42,8 @@ export class CameraRecord {
 	password = ""; // RTSP password
 	highResURLSuffix = ""; // eg Streaming/Channels/101 for HikVision. Can leave blank if Model is a known type.
 	lowResURLSuffix = ""; // eg Streaming/Channels/102 for HikVision. Can leave blank if Model is a known type.
+	createdAt = new Date();
+	updatedAt = new Date();
 
 	static fromJSON(j: any): CameraRecord {
 		let x = new CameraRecord();
@@ -54,6 +56,8 @@ export class CameraRecord {
 		x.password = j.password;
 		x.highResURLSuffix = j.highResURLSuffix;
 		x.lowResURLSuffix = j.lowResURLSuffix;
+		x.createdAt = new Date(j.createdAt);
+		x.updatedAt = new Date(j.updatedAt);
 		return x;
 	}
 
@@ -76,6 +80,8 @@ export class CameraRecord {
 			password: this.password,
 			highResURLSuffix: this.highResURLSuffix,
 			lowResURLSuffix: this.lowResURLSuffix,
+			createdAt: this.createdAt.getTime(),
+			updatedAt: this.updatedAt.getTime(),
 		};
 	}
 
@@ -90,6 +96,8 @@ export class CameraRecord {
 		c.password = this.password;
 		c.highResURLSuffix = this.highResURLSuffix;
 		c.lowResURLSuffix = this.lowResURLSuffix;
+		c.createdAt = this.createdAt;
+		c.updatedAt = this.updatedAt;
 		return c;
 	}
 

@@ -71,7 +71,7 @@ outer:
 		return
 	}
 
-	recording, err := s.permanentEvents.Save(defs.ResLD, eventdb.RecordingOriginExplicit, cam.ID, startAt, raw)
+	recording, err := s.permanentEvents.Save(defs.ResLD, eventdb.RecordingOriginExplicit, cam.ID(), startAt, raw)
 	if err != nil {
 		msg := fmt.Errorf("Failed to save recording: %v", err)
 		logger.Errorf("%v", msg)
@@ -104,7 +104,7 @@ func (s *Server) startRecorder(cam *camera.Camera) int64 {
 	s.recorders[id] = rec
 	s.recordersLock.Unlock()
 
-	s.Log.Infof("Recording %v started on camera %v", id, cam.Name)
+	s.Log.Infof("Recording %v started on camera %v", id, cam.Name())
 
 	go s.recorderFunc(cam, rec)
 

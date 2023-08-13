@@ -50,10 +50,10 @@ type LiveCameras struct {
 
 // Create a new LiveCameras object.
 // shutdown is a channel that the parent system will close when it wants us to shutdown.
-func NewLiveCameras(log log.Log, configDB *configdb.ConfigDB, shutdown chan bool, monitor *monitor.Monitor, ringBufferSize int) *LiveCameras {
+func NewLiveCameras(logger log.Log, configDB *configdb.ConfigDB, shutdown chan bool, monitor *monitor.Monitor, ringBufferSize int) *LiveCameras {
 	lc := &LiveCameras{
 		ShutdownComplete:       make(chan bool),
-		log:                    log,
+		log:                    log.NewPrefixLogger(logger, "LiveCameras:"),
 		configDB:               configDB,
 		shutdown:               shutdown,
 		monitor:                monitor,
@@ -100,20 +100,20 @@ func (s *LiveCameras) Cameras() []*camera.Camera {
 
 // Add a running camera
 func (s *LiveCameras) addCamera(cam *camera.Camera) {
-	s.log.Infof("Adding camera %v", cam.ID)
+	s.log.Infof("Adding camera %v", cam.ID())
 	s.camerasLock.Lock()
 	defer s.camerasLock.Unlock()
-	s.cameraFromID[cam.ID] = cam
+	s.cameraFromID[cam.ID()] = cam
 	s.monitor.SetCameras(s.cameraListNoLock())
 }
 
 // Remove a running camera
 // If the camera does not exist, then the function returns immediately
 func (s *LiveCameras) removeCamera(cam *camera.Camera) {
-	s.log.Infof("Removing camera %v", cam.ID)
+	s.log.Infof("Removing camera %v", cam.ID())
 	s.camerasLock.Lock()
 	defer s.camerasLock.Unlock()
-	delete(s.cameraFromID, cam.ID)
+	delete(s.cameraFromID, cam.ID())
 	s.monitor.SetCameras(s.cameraListNoLock())
 	cam.Close(nil)
 }
@@ -149,9 +149,9 @@ func (s *LiveCameras) runThread() {
 	for iter := 0; keepRunning; iter++ {
 		select {
 		case <-time.After(s.periodicWakeInterval):
-			s.startConfiguredCameras()
+			s.startStopConfiguredCameras()
 		case <-s.wake:
-			s.startConfiguredCameras()
+			s.startStopConfiguredCameras()
 		case <-s.shutdown:
 			// Note that we don't yet call Close(). This is just a legacy ordering thing,
 			// from the way that the main Server.Shutdown() was implemented. Conceptually, it should
@@ -178,7 +178,7 @@ func (s *LiveCameras) runThread() {
 }
 
 // This runs in the background every few seconds, invoked by the auto start thread.
-func (s *LiveCameras) startConfiguredCameras() {
+func (s *LiveCameras) startStopConfiguredCameras() {
 	// drain the wake channel, so that we can be responsive to any incoming wake messages
 	for len(s.wake) > 0 {
 		<-s.wake
@@ -203,11 +203,29 @@ func (s *LiveCameras) startConfiguredCameras() {
 	}
 	s.lastTestedCameraLock.Unlock()
 
+	// Close cameras that are no longer in our database
+	stopList := []*camera.Camera{}
+	cfgIDs := map[int64]bool{}
+	for _, cfg := range configs {
+		cfgIDs[cfg.ID] = true
+	}
+	for _, cam := range s.Cameras() {
+		if _, found := cfgIDs[cam.ID()]; !found {
+			stopList = append(stopList, cam)
+		}
+	}
+	for _, cam := range stopList {
+		s.log.Infof("Stopping camera %v (%v), because it's no longer configured", cam.ID(), cam.Name())
+		cam.Close(nil)
+		s.removeCamera(cam)
+	}
+
 	for _, cfg := range configs {
 		// Why abort if there is a wake message?
 		// Let's say we have a big system with 10 cameras, and a few of them are timing out and not connecting. Now maybe some of their IPs have changed.
 		// The user enters the correct IP, and hits Save. At that moment, we'll get a wake message. We want to abandon our previous loop that was
-		// going through all those invalid IPs, and immediately start the new camera. That's why we sort by most recently updated.
+		// going through all those invalid IPs, and immediately start the new camera. That's why we sort by most recently updated, and restart
+		// this function whenever we receive a wake message.
 		if s.isShuttingDown() || len(s.wake) > 0 {
 			break
 		}
@@ -230,6 +248,7 @@ func (s *LiveCameras) startConfiguredCameras() {
 			s.log.Infof("Success using last tested camera '%v'", s.lastTestedCameraConfig.Host)
 			cam = s.lastTestedCamera
 			s.lastTestedCamera = nil
+			cam.Config = *cfg // Update initial test config to final config in DB (which includes, at the very least, the camera ID)
 		}
 		s.lastTestedCameraLock.Unlock()
 

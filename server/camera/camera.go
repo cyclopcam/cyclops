@@ -14,11 +14,8 @@ import (
 
 // Camera represents a single physical camera, with two streams (high and low res)
 type Camera struct {
-	ID         int64 // Same as ID in database
-	Name       string
 	Log        log.Log
-	CreatedAt  time.Time
-	Config     configdb.Camera
+	Config     configdb.Camera // Copy from the config database, from the moment when the camera was created. Can be out of date if camera config has been modified since.
 	LowStream  *Stream
 	HighStream *Stream
 	HighDumper *VideoDumpReader
@@ -56,10 +53,7 @@ func NewCamera(log log.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Came
 	low := NewStream(log, cfg.Name, "low")
 
 	return &Camera{
-		ID:         cfg.ID,
-		Name:       cfg.Name,
 		Log:        log,
-		CreatedAt:  time.Now(),
 		Config:     cfg,
 		LowStream:  low,
 		HighStream: high,
@@ -69,6 +63,14 @@ func NewCamera(log log.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Came
 		lowResURL:  lowResURL,
 		highResURL: highResURL,
 	}, nil
+}
+
+func (c *Camera) ID() int64 {
+	return c.Config.ID
+}
+
+func (c *Camera) Name() string {
+	return c.Config.Name
 }
 
 func (c *Camera) Start() error {

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/bmharper/cimg/v2"
-	"github.com/bmharper/cyclops/pkg/dbh"
 	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/server/camera"
 	"github.com/bmharper/cyclops/server/configdb"
@@ -34,9 +33,6 @@ func (s *Server) httpConfigAddCamera(w http.ResponseWriter, r *http.Request, par
 	cfg.ID = 0
 
 	// Add to DB
-	now := dbh.MakeIntTime(time.Now())
-	cfg.CreatedAt = now
-	cfg.UpdatedAt = now
 	res := s.configDB.DB.Create(&cfg)
 	if res.Error != nil {
 		www.Check(res.Error)
@@ -55,7 +51,6 @@ func (s *Server) httpConfigChangeCamera(w http.ResponseWriter, r *http.Request, 
 	www.Check(s.configDB.DB.First(&cfgOld, cfgNew.ID).Error)
 
 	cfgNew.CreatedAt = cfgOld.CreatedAt
-	cfgNew.UpdatedAt = dbh.MakeIntTime(time.Now())
 
 	// Update DB
 	if err := s.configDB.DB.Save(&cfgNew).Error; err != nil {
@@ -72,6 +67,7 @@ func (s *Server) httpConfigRemoveCamera(w http.ResponseWriter, r *http.Request, 
 	cam := configdb.Camera{}
 	www.Check(s.configDB.DB.First(&cam, camID).Error)
 	www.Check(s.configDB.DB.Delete(&cam).Error)
+	s.Log.Infof("Removed camera %v (%v) from DB", camID, cam.Name)
 	s.LiveCameras.CameraRemoved(camID)
 	www.SendOK(w)
 }

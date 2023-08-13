@@ -194,7 +194,7 @@ func (bg *backgroundStream) OnPacketRTP(packet *videox.DecodedPacket) {
 		}
 
 		recording, err := bg.server.permanentEvents.CreateRecording(
-			bg.parent.topRecording.ID, eventdb.RecordTypePhysical, eventdb.RecordingOriginBackground, time.Now(), bg.camera.ID, bg.resolution, bg.width, bg.height)
+			bg.parent.topRecording.ID, eventdb.RecordTypePhysical, eventdb.RecordingOriginBackground, time.Now(), bg.camera.ID(), bg.resolution, bg.width, bg.height)
 		if err != nil {
 			bg.log.Errorf("CreateRecording failed: %v", err)
 			return
@@ -286,11 +286,11 @@ func (bg *backgroundRecorder) startBackgroundRecorder(s *Server, resolution defs
 	for _, cam := range cameras {
 		stream := cam.GetStream(resolution)
 		if stream == nil {
-			return fmt.Errorf("Stream '%v' not found in camera %v", resolution, cam.Name)
+			return fmt.Errorf("Stream '%v' not found in camera %v", resolution, cam.Name())
 		}
 		info := stream.Info()
 		if info == nil {
-			return fmt.Errorf("Width and height are unknown on camera %v", cam.Name)
+			return fmt.Errorf("Width and height are unknown on camera %v", cam.Name())
 		}
 	}
 
@@ -324,7 +324,7 @@ func (bg *backgroundRecorder) startBackgroundRecorder(s *Server, resolution defs
 		stream := cam.GetStream(resolution)
 		bgs := &backgroundStream{
 			server:     s,
-			log:        log.NewPrefixLogger(s.Log, fmt.Sprintf("BG Recorder %v: (%v) %v", bg.instructionID, resolution, cam.Name)),
+			log:        log.NewPrefixLogger(s.Log, fmt.Sprintf("BG Recorder %v: (%v) %v", bg.instructionID, resolution, cam.Name())),
 			parent:     bg,
 			camera:     cam,
 			stream:     stream,

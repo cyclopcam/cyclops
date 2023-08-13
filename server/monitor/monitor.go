@@ -269,7 +269,7 @@ func (m *Monitor) cameraByID(cameraID int64) *monitorCamera {
 	m.camerasLock.Lock()
 	defer m.camerasLock.Unlock()
 	for _, cam := range m.cameras {
-		if cam.camera.ID == cameraID {
+		if cam.camera.ID() == cameraID {
 			return cam
 		}
 	}
@@ -438,7 +438,7 @@ func (m *Monitor) nnThread() {
 		} else {
 			//m.Log.Infof("Camera %v detected %v objects", mcam.camera.ID, len(objects))
 			result := &nn.DetectionResult{
-				CameraID:    item.camera.camera.ID,
+				CameraID:    item.camera.camera.ID(),
 				ImageWidth:  yuv.Width,
 				ImageHeight: yuv.Height,
 				Objects:     objects,

@@ -168,7 +168,7 @@ type Labels struct {
 // labels which were considered when a recording was labeled.
 type Ontology struct {
 	BaseModel
-	CreatedAt  dbh.IntTime                        `json:"createdAt"`
+	CreatedAt  dbh.IntTime                        `json:"createdAt" gorm:"autoCreateTime:milli"`
 	Definition *dbh.JSONField[OntologyDefinition] `json:"definition,omitempty"`
 }
 

@@ -118,13 +118,13 @@ func (m *Monitor) analyzer() {
 		if !ok {
 			break
 		}
-		cam := camStates[item.camera.camera.ID]
+		cam := camStates[item.camera.camera.ID()]
 		if cam == nil {
 			cam = &analyzerCameraState{
-				cameraID: item.camera.camera.ID,
+				cameraID: item.camera.camera.ID(),
 				camera:   item.camera,
 			}
-			camStates[item.camera.camera.ID] = cam
+			camStates[item.camera.camera.ID()] = cam
 		}
 		m.analyzeFrame(cam, item)
 		cam.lastSeen = time.Now()

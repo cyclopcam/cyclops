@@ -62,8 +62,8 @@ func toStreamInfoJSON(s *camera.Stream) streamInfoJSON {
 
 func liveToCamInfoJSON(c *camera.Camera) *camInfoJSON {
 	r := &camInfoJSON{
-		ID:   c.ID,
-		Name: c.Name,
+		ID:   c.ID(),
+		Name: c.Name(),
 		LD:   toStreamInfoJSON(c.LowStream),
 		HD:   toStreamInfoJSON(c.HighStream),
 	}
@@ -94,7 +94,7 @@ func (s *Server) httpCamGetLatestImage(w http.ResponseWriter, r *http.Request, p
 	var encodedImg []byte
 
 	// First try to get latest frame that has had NN detections run on it
-	img, detections, analysis, err := s.monitor.LatestFrame(cam.ID)
+	img, detections, analysis, err := s.monitor.LatestFrame(cam.ID())
 	if err == nil {
 		encodedImg, err = cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, 85, 0))
 		www.Check(err)
@@ -108,7 +108,7 @@ func (s *Server) httpCamGetLatestImage(w http.ResponseWriter, r *http.Request, p
 		w.Header().Set("X-Analysis", string(jsAna))
 	} else {
 		// Fall back to latest frame without NN detections
-		s.Log.Infof("httpCamGetLatestImage fallback on camera %v (%v)", cam.ID, err)
+		s.Log.Infof("httpCamGetLatestImage fallback on camera %v (%v)", cam.ID(), err)
 		encodedImg = cam.LatestImage(contentType)
 		if encodedImg == nil {
 			www.PanicBadRequestf("No image available yet")
@@ -163,9 +163,9 @@ func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, para
 
 	s.Log.Infof("httpCamStreamVideo starting")
 
-	newDetections := s.monitor.AddWatcher(cam.ID)
+	newDetections := s.monitor.AddWatcher(cam.ID())
 
-	streamer.RunVideoWebSocketStreamer(cam.Name, s.Log, conn, stream, backlog, newDetections)
+	streamer.RunVideoWebSocketStreamer(cam.Name(), s.Log, conn, stream, backlog, newDetections)
 
 	s.monitor.RemoveWatcher(newDetections)
 
