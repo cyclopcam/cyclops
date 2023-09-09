@@ -154,7 +154,7 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 			minDistanceForObject:      0.05, // 5% of the frame width (0.05 * 320 = 16 pixels)
 			minDiscreetPositions:      10,
 			objectForgetTime:          5 * time.Second,
-			verbose:                   true,
+			verbose:                   false,
 		},
 		enabled: true,
 	}

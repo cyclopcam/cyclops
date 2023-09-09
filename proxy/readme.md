@@ -5,7 +5,7 @@ behind a NAT (eg inside a home).
 
 Servers add themselves to the proxy by issuing a call to /api/register. The only
 input is their Wireguard public key. We assign that server an IP in the 10.0.0.0
-subnet, and return the IP to the caller. The caller now knows to configure it's
+subnet, and return the IP to the caller. The caller now knows to configure its
 own Wireguard setup with that IP address.
 
 ## Root Access
@@ -87,4 +87,4 @@ cyclopskernelwg, and cyclopsproxy.
     the way through to the remote device. The best thing I can think of so far
     is this:
     -   Run an HTTP proxy server on the mobile device
-    -   Let that proxy do all of it's comms over a userspace wireguard channel
+    -   Let that proxy do all of its comms over a userspace wireguard channel

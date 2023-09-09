@@ -49,7 +49,7 @@ let error = ref('');
 
 // This is useful for development on the Edit Camera workflow, because it allows you
 // to change a trivial field and then go through the Test Camera.. Save Changes process.
-let nameChangeNeedsTest = true;
+let nameChangeNeedsTest = false;
 
 // The data from 'original' is all blank at this stage, but by making copies of each item, we get the same type inside the ref.
 let host = ref(original.value.host);
