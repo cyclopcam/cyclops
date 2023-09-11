@@ -1,15 +1,10 @@
 [Unit]
 Description=Cyclops
-After=cyclops-kernelwg.service
-Requires=cyclops-kernelwg.service
+After=network.target network-online.target
+Requires=network-online.target
  
 [Service]
-Type=notify
-User=cyclops
-Group=cyclops
-ExecStart=/usr/local/bin/cyclops --config /var/lib/cyclops/config.sqlite
-PrivateTmp=true
-ProtectSystem=full
+ExecStart=/usr/local/bin/cyclops --username cyclops --config /var/lib/cyclops/config.sqlite
 
 [Install]
 WantedBy=multi-user.target

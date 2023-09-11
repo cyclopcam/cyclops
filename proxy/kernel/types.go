@@ -33,6 +33,7 @@ type MsgType int
 const (
 	MsgTypeNone MsgType = iota
 	MsgTypeError
+	MsgTypeAuthenticate
 	MsgTypeIsDeviceAlive
 	MsgTypeGetDevice
 	MsgTypeGetDeviceResponse
@@ -48,6 +49,10 @@ const (
 
 type MsgError struct {
 	Error string
+}
+
+type MsgAuthenticate struct {
+	Secret string
 }
 
 type MsgGetDeviceResponse struct {

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strings"
 	"sync"
 	"time"
 )
@@ -18,41 +17,59 @@ import (
 type Client struct {
 	lock            sync.Mutex
 	conn            net.Conn
-	host            string
 	encoder         *gob.Encoder
 	decoder         *gob.Decoder
 	requestBuffer   bytes.Buffer
 	responseBuffer  bytes.Buffer
 	maxReadDuration time.Duration
+	clientSecret    string
 }
 
-func NewClient() *Client {
+func NewClient(secret string) *Client {
 	return &Client{
 		maxReadDuration: 10 * time.Second,
+		clientSecret:    secret,
 	}
 }
 
-func (c *Client) Connect(host string) error {
+func (c *Client) Connect() error {
 	c.lock.Lock()
-	defer c.lock.Unlock()
 
 	c.close()
-	c.host = host
-	return c.connect()
+	if err := c.connect(); err != nil {
+		c.lock.Unlock()
+		return err
+	}
+
+	c.lock.Unlock()
+
+	if err := c.Authenticate(); err != nil {
+		c.close()
+		return fmt.Errorf("Error authenticating: %w", err)
+	}
+	return nil
 }
 
 func (c *Client) connect() error {
-	proto := "tcp"
-	addr := c.host + ":666"
-	conn, err := net.Dial(proto, addr)
+	// max delay = 2 ^ 7 * 10ms = 1.28s
+	// max total delay ~= 2.5s
+	var conn net.Conn
+	var err error
+	for attempt := 0; attempt < 8; attempt++ {
+		//proto := "tcp"
+		//addr := c.host + ":666"
+		//conn, err := net.Dial(proto, addr)
 
-	//proto := "unix"
-	//addr := UnixSocketName
-	//conn, err := net.Dial(proto, addr)
-
+		proto := "unix"
+		addr := UnixSocketName
+		conn, err = net.Dial(proto, addr)
+		if err == nil {
+			break
+		}
+		time.Sleep((1 << attempt) * 10 * time.Millisecond)
+	}
 	if err != nil {
 		return err
-		//return fmt.Errorf("Failed to dial %v %v: %w", proto, addr, err) // This is just stuttering, the error already contains all this info
 	}
 	c.conn = conn
 	c.encoder = gob.NewEncoder(&c.requestBuffer)
@@ -84,43 +101,7 @@ func (c *Client) close() {
 }
 
 func (c *Client) do(requestType MsgType, request any, expectResponseType MsgType, response any) error {
-	// Loop 2x in case our pipe has broken, and we need to reconnect
-	var initialSendError error
-	for reconnectLoop := 0; reconnectLoop < 2; reconnectLoop++ {
-		err := c.doInternal(requestType, request, expectResponseType, response)
-		if err == nil {
-			return nil
-		}
-
-		// Error string example: "write tcp 127.0.0.1:58494->127.0.0.1:666: write: broken pipe"
-		// We could use errors.Is(err, syscall.EPIPE), but I'd rather not create a dependency on syscall,
-		// so that's why I'm using string matching.
-		if reconnectLoop == 0 {
-			initialSendError = err
-		}
-
-		if reconnectLoop == 0 && (errors.Is(err, io.EOF) || strings.Index(err.Error(), "broken pipe") != -1) {
-			// doInternal will try to reconnect
-			//fmt.Printf("do failed (%v). trying to reconnect\n", err)
-			c.close()
-			// loop for a 2nd try
-		} else {
-			// persistent failure
-			return fmt.Errorf("Error writing request. First error: %w. Error after reconnect: %v", initialSendError, err)
-		}
-	}
-
-	// unreachable
-	return nil
-}
-
-func (c *Client) doInternal(requestType MsgType, request any, expectResponseType MsgType, response any) error {
-	// automatically reconnect, if we know where to connect to
-	if c.conn == nil && c.host != "" {
-		if err := c.connect(); err != nil {
-			return err
-		}
-	} else if c.conn == nil && c.host == "" {
+	if c.conn == nil {
 		return ErrNotConnected
 	}
 
@@ -233,6 +214,16 @@ func (c *Client) IsDeviceAlive() error {
 	defer c.lock.Unlock()
 
 	return c.do(MsgTypeIsDeviceAlive, nil, MsgTypeNone, nil)
+}
+
+func (c *Client) Authenticate() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	msg := MsgAuthenticate{
+		Secret: c.clientSecret,
+	}
+	return c.do(MsgTypeAuthenticate, &msg, MsgTypeNone, nil)
 }
 
 func (c *Client) BringDeviceUp() error {

@@ -10,23 +10,17 @@ own Wireguard setup with that IP address.
 
 ## Root Access
 
-Controlling Wireguard requires root priviledges. In order to limit our attack
-surface, we do not run the proxy server as root. Instead, we run a companion
-program who's only job is to talk to Wireguard. This companion program lives in
-cmd/kernelwg. We use Go's GOB encoder to marshal data between proxy and
-kernelwg.
+Controlling Wireguard requires root privileges. In order to limit our attack
+surface, we use setuid + setgid to lower our privileges. However, before doing
+that, we launch a copy of ourselves as root. That root process is the one that
+performs the Wireguard manipulations. The two processes communicate via a unix
+domain socket. We use Go's GOB encoder to marshal data between them.
 
 ## Dev Env
 
 > scripts/proxy/compose
 
-(as root)
-
-> go run cmd/kernelwg/kernelwg.go
-
-(not as root)
-
-> go run cmd/proxy/proxy.go
+> go build -o bin/cyclopsproxy && sudo bin/cyclopsproxy
 
 You should now be able to hit the proxy, eg
 
@@ -67,15 +61,13 @@ psql -h localhost -U postgres
 ```
 
 ```
-go build -o bin/proxy cmd/proxy/proxy.go
-go build -o bin/kernelwg cmd/kernelwg/*.go
-scp bin/proxy ubuntu@proxy-cpt.cyclopcam.org:~/
-scp bin/kernelwg ubuntu@proxy-cpt.cyclopcam.org:~/
-ssh ubuntu@proxy-cpt.cyclopcam.org "sudo systemctl stop cyclopsproxy && sudo systemctl stop cyclopskernelwg && sudo cp /home/ubuntu/proxy /deploy && sudo cp /home/ubuntu/kernelwg /deploy && sudo systemctl start cyclopskernelwg && sudo systemctl start cyclopsproxy"
+go build -o bin/cyclopsproxy cmd/proxy/proxy.go
+scp bin/cyclopsproxy ubuntu@proxy-cpt.cyclopcam.org:~/
+ssh ubuntu@proxy-cpt.cyclopcam.org "sudo systemctl stop cyclopsproxy && sudo cp /home/ubuntu/cyclopsproxy /deploy && sudo systemctl start cyclopsproxy"
 ```
 
-Use deployment/proxy-services to create systemd services for caddy,
-cyclopskernelwg, and cyclopsproxy.
+Use deployment/proxy-services to create systemd services for caddy and
+cyclopsproxy.
 
 ## TODO
 
@@ -84,7 +76,10 @@ cyclopskernelwg, and cyclopsproxy.
 -   Require some kind of proof of work before adding a peer (eg Android App
     installation)
 -   Figure out a way to tunnel encrypted traffic end-to-end, from the app all
-    the way through to the remote device. The best thing I can think of so far
+    the way through to the remote server. The best thing I can think of so far
     is this:
     -   Run an HTTP proxy server on the mobile device
     -   Let that proxy do all of its comms over a userspace wireguard channel
+    -   UPDATE - The above idea is dead in the water, because you can only run
+        one VPN at a time on Android, and I don't want to force users to choose
+        between Cyclops and their existing VPN.

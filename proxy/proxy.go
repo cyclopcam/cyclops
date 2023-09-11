@@ -23,7 +23,6 @@ type Proxy struct {
 	wg                *wireGuard
 	httpServer        *http.Server
 	reverseProxy      *httputil.ReverseProxy
-	kernelwgHost      string
 	adminPasswordHash []byte
 
 	addPeerLock     sync.Mutex
@@ -36,10 +35,10 @@ type Proxy struct {
 }
 
 type ProxyConfig struct {
-	Log           log.Log
-	DB            dbh.DBConfig
-	KernelWGHost  string
-	AdminPassword string
+	Log            log.Log
+	DB             dbh.DBConfig
+	AdminPassword  string
+	KernelWGSecret string
 }
 
 func NewProxy() *Proxy {
@@ -51,7 +50,6 @@ func NewProxy() *Proxy {
 // Start the proxy server
 func (p *Proxy) Start(config ProxyConfig) error {
 	p.log = config.Log
-	p.kernelwgHost = config.KernelWGHost
 
 	if config.AdminPassword != "" {
 		h := sha256.Sum256([]byte(config.AdminPassword))
@@ -65,7 +63,7 @@ func (p *Proxy) Start(config ProxyConfig) error {
 	}
 	p.db = db
 
-	wg, err := newWireGuard(p)
+	wg, err := newWireGuard(p, config.KernelWGSecret)
 	if err != nil {
 		return fmt.Errorf("Error connecting to kernelwg: %w", err)
 	}

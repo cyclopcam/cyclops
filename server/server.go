@@ -64,7 +64,7 @@ const (
 )
 
 // Create a new server, load config, start cameras, and listen on HTTP
-func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey string) (*Server, error) {
+func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey, kernelWGSecret string) (*Server, error) {
 	log, err := log.NewLog()
 	if err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey stri
 
 	// Setup VPN and register with proxy
 	enableVPN := (serverFlags & ServerFlagDisableVPN) == 0
-	s.vpn = vpn.NewVPN(s.Log, s.configDB.PrivateKey, s.configDB.PublicKey, s.ShutdownStarted)
+	s.vpn = vpn.NewVPN(s.Log, s.configDB.PrivateKey, s.configDB.PublicKey, s.ShutdownStarted, kernelWGSecret)
 	if enableVPN {
 		if err := s.startVPN(); err != nil {
 			return nil, err

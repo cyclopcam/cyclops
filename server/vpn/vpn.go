@@ -34,12 +34,12 @@ type VPN struct {
 	hasRegistered   atomic.Bool
 }
 
-func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key, shutdownStarted chan bool) *VPN {
+func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key, shutdownStarted chan bool, wgkernelClientSecret string) *VPN {
 	v := &VPN{
 		Log:             log,
 		privateKey:      privateKey,
 		publicKey:       publicKey,
-		client:          kernel.NewClient(),
+		client:          kernel.NewClient(wgkernelClientSecret),
 		shutdownStarted: shutdownStarted,
 	}
 	return v
@@ -48,7 +48,7 @@ func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key, shutdownStarted chan
 // Connect to our Wireguard interface process
 func (v *VPN) ConnectKernelWG() error {
 	//v.testAutoReconnectToKernelWG()
-	return v.client.Connect("127.0.0.1")
+	return v.client.Connect()
 }
 
 // Start our Wireguard device, and save our public key

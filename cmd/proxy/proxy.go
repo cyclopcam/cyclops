@@ -1,9 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/akamensky/argparse"
 	"github.com/bmharper/cyclops/pkg/dbh"
+	"github.com/bmharper/cyclops/pkg/kernelwg"
 	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/bmharper/cyclops/proxy"
 )
@@ -15,6 +18,15 @@ func check(err error) {
 }
 
 func main() {
+	parser := argparse.NewParser("cyclopsproxy", "Tunnel into cyclops systems")
+	kernelWG := parser.Flag("", "kernelwg", &argparse.Options{Help: "Run the kernel-mode wireguard interface", Default: false})
+	username := parser.String("", "username", &argparse.Options{Help: "After launching as root, change identity to this user (for dropping privileges of the main process)", Default: ""})
+	err := parser.Parse(os.Args)
+	if err != nil {
+		fmt.Print(parser.Usage(err))
+		os.Exit(1)
+	}
+
 	logger, err := log.NewLog()
 	check(err)
 	logger = log.NewPrefixLogger(logger, "proxy")
@@ -30,12 +42,30 @@ func main() {
 		pgPassword = "lol"
 	}
 
-	kernelwgHost := os.Getenv("CYCLOPS_KERNELWG_HOST")
-	if kernelwgHost == "" {
-		kernelwgHost = "127.0.0.1"
+	adminPassword := os.Getenv("CYCLOPS_ADMIN_PASSWORD")
+
+	if *kernelWG {
+		// The main proxy process has launched us, and our role is to control the wireguard interface.
+		// We run with elevated permissions.
+		kernelwg.Main()
+		return
 	}
 
-	adminPassword := os.Getenv("CYCLOPS_ADMIN_PASSWORD")
+	// This is the secret that we use to authenticate ourselves to the kernel-mode wireguard interface.
+	kernelWGSecret := ""
+
+	// We are running as the HTTPS proxy server, and our first step is to launch the kernel-mode wireguard sub-process.
+	if err, kernelWGSecret = kernelwg.LaunchRootModeSubProcess(); err != nil {
+		fmt.Printf("Error launching root mode wireguard sub-process: %v\n", err)
+		os.Exit(1)
+	}
+	if *username == "" && os.Getenv("SUDO_USER") != "" {
+		*username = os.Getenv("SUDO_USER")
+	}
+	if err, _ = kernelwg.DropPrivileges(*username); err != nil {
+		fmt.Printf("Error dropping privileges to username '%v': %v\n", *username, err)
+		os.Exit(1)
+	}
 
 	p := proxy.NewProxy()
 
@@ -48,8 +78,8 @@ func main() {
 			Username: "postgres",
 			Password: pgPassword,
 		},
-		KernelWGHost:  kernelwgHost,
-		AdminPassword: adminPassword,
+		KernelWGSecret: kernelWGSecret,
+		AdminPassword:  adminPassword,
 	}
 
 	check(p.Start(cfg))

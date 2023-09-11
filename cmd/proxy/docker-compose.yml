@@ -1,27 +1,26 @@
 version: "3.2"
 services:
-  db:
-    image: "postgres:14.5-alpine"
-    ports:
-      - "127.0.0.1:5432:5432"
-    volumes:
-      - /deploy/proxydb:/var/lib/postgresql/data
-    environment:
-      POSTGRES_PASSWORD: PASSWORDS_PLEASE
-    command: "-c listen_addresses=*"
-  # I can't get the permissions for kernelwg correct. I just get "operation not permitted",
-  # so I'm running them outside of Docker.
-  #proxy:
-  #  image: "cyclops-proxy"
-  #  depends_on:
-  #    - db
-  #    - kernelwg
-  #  environment:
-  #    CYCLOPS_POSTGRES_HOST: db
-  #    CYCLOPS_POSTGRES_PASSWORD: PASSWORDS_PLEASE
-  #    CYCLOPS_KERNELWG_HOST: kernelwg
-  #kernelwg:
-  #  image: "cyclops-kernelwg"
-  #  user: root:root
-  #  expose:
-  #    - 666
+    db:
+        image: "postgres:14.5-alpine"
+        ports:
+            - "127.0.0.1:5432:5432"
+        volumes:
+            - /deploy/proxydb:/var/lib/postgresql/data
+        environment:
+            POSTGRES_PASSWORD: PASSWORDS_PLEASE
+        command: "-c listen_addresses=*"
+    # I can't get the permissions for the wireguard manipulation correct. I just get "operation not permitted",
+    # so I'm running them outside of Docker.
+    #proxy:
+    #  image: "cyclops-proxy"
+    #  depends_on:
+    #    - db
+    #    - kernelwg
+    #  environment:
+    #    CYCLOPS_POSTGRES_HOST: db
+    #    CYCLOPS_POSTGRES_PASSWORD: PASSWORDS_PLEASE
+    #kernelwg:
+    #  image: "cyclops-kernelwg"
+    #  user: root:root
+    #  expose:
+    #    - 666

@@ -21,38 +21,28 @@ if ! grep -q cyclops /etc/passwd; then
 fi
 
 cd www && npm install && npm run build && cd ..
-go build -o bin/kernelwg cmd/kernelwg/*.go
-go build -o bin/cyclops cmd/cyclops/cyclops.go
+go build -o bin/cyclops cmd/cyclops/*.go
 
 if [ -f /etc/systemd/system/cyclops.service ]; then
 	sudo systemctl stop cyclops
 fi
 
-if [ -f /etc/systemd/system/cyclops-kernelwg.service ]; then
-	sudo systemctl stop cyclops-kernelwg
-fi
-
-# Always update .service files to latest
+# Always update .service file to latest
 sudo cp deployment/services/cyclops.service /etc/systemd/system
-sudo cp deployment/services/cyclops-kernelwg.service /etc/systemd/system
 
 sudo systemctl daemon-reload
 sudo systemctl enable cyclops
-sudo systemctl enable cyclops-kernelwg
 
 # Copy binaries
-sudo cp bin/kernelwg /usr/local/bin/cyclops-kernelwg
 sudo cp bin/cyclops /usr/local/bin/cyclops
 
 # Copy NN models
 sudo -u cyclops mkdir -p /var/lib/cyclops/models
 sudo -u cyclops cp models/* /var/lib/cyclops/models/
 
-# Start services
-# We don't need to start cyclops-kernelwg explicitly, because it's
-# a dependency of cyclops, and systemd will start it automatically.
+# Start service
 sudo systemctl start cyclops
 
-# Show status of main service
+# Show status
 sudo systemctl status cyclops
 

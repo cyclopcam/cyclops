@@ -1,4 +1,4 @@
-package main
+package kernelwg
 
 import (
 	"bytes"
@@ -13,23 +13,33 @@ import (
 
 	"github.com/bmharper/cyclops/pkg/log"
 	"github.com/bmharper/cyclops/proxy/kernel"
-	"github.com/coreos/go-systemd/daemon"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// This is the name of our wireguard device, which is the same on the proxy server and on a camera server.
+// This is the name of our wireguard device, which is the same on the HTTPS proxy server and on a camera server.
 const WireguardDeviceName = "cyclops"
 const Debug = false
 
 type handler struct {
-	log            log.Log
-	conn           net.Conn
-	wg             *wgctrl.Client
-	requestBuffer  bytes.Buffer
-	responseBuffer bytes.Buffer
-	decoder        *gob.Decoder
-	encoder        *gob.Encoder
+	log             log.Log
+	conn            net.Conn
+	wg              *wgctrl.Client
+	requestBuffer   bytes.Buffer
+	responseBuffer  bytes.Buffer
+	decoder         *gob.Decoder
+	encoder         *gob.Encoder
+	isAuthenticated bool
+	clientSecret    string
+}
+
+func (h *handler) handleAuthenticate(request *kernel.MsgAuthenticate) error {
+	if request.Secret != h.clientSecret {
+		return errors.New("Invalid authentication secret")
+	}
+	h.isAuthenticated = true
+	h.log.Infof("Authentication OK")
+	return nil
 }
 
 func (h *handler) handleBringDeviceUp() error {
@@ -244,6 +254,8 @@ func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 	// Decode request, if any
 	var request any
 	switch msgType {
+	case kernel.MsgTypeAuthenticate:
+		request = &kernel.MsgAuthenticate{}
 	case kernel.MsgTypeCreatePeersInMemory:
 		request = &kernel.MsgCreatePeersInMemory{}
 	case kernel.MsgTypeRemovePeerInMemory:
@@ -264,27 +276,34 @@ func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 	respType := kernel.MsgTypeNone
 	var resp any
 	var err error
-	switch msgType {
-	case kernel.MsgTypeGetPeers:
-		respType = kernel.MsgTypeGetPeersResponse
-		resp, err = h.handleGetPeers()
-	case kernel.MsgTypeGetDevice:
-		respType = kernel.MsgTypeGetDeviceResponse
-		resp, err = h.handleGetDevice()
-	case kernel.MsgTypeCreatePeersInMemory:
-		err = h.handleCreatePeersInMemory(request.(*kernel.MsgCreatePeersInMemory))
-	case kernel.MsgTypeRemovePeerInMemory:
-		err = h.handleRemovePeerInMemory(request.(*kernel.MsgRemovePeerInMemory))
-	case kernel.MsgTypeCreateDeviceInConfigFile:
-		err = h.handleCreateDeviceInConfigFile(request.(*kernel.MsgCreateDeviceInConfigFile))
-	case kernel.MsgTypeSetProxyPeerInConfigFile:
-		err = h.handleSetProxyPeerInConfigFile(request.(*kernel.MsgSetProxyPeerInConfigFile))
-	case kernel.MsgTypeBringDeviceUp:
-		err = h.handleBringDeviceUp()
-	case kernel.MsgTypeIsDeviceAlive:
-		err = h.handleIsDeviceAlive()
-	default:
-		err = fmt.Errorf("Invalid request message %v", int(msgType))
+
+	if !h.isAuthenticated && msgType != kernel.MsgTypeAuthenticate {
+		err = errors.New("Not authenticated")
+	} else {
+		switch msgType {
+		case kernel.MsgTypeAuthenticate:
+			err = h.handleAuthenticate(request.(*kernel.MsgAuthenticate))
+		case kernel.MsgTypeGetPeers:
+			respType = kernel.MsgTypeGetPeersResponse
+			resp, err = h.handleGetPeers()
+		case kernel.MsgTypeGetDevice:
+			respType = kernel.MsgTypeGetDeviceResponse
+			resp, err = h.handleGetDevice()
+		case kernel.MsgTypeCreatePeersInMemory:
+			err = h.handleCreatePeersInMemory(request.(*kernel.MsgCreatePeersInMemory))
+		case kernel.MsgTypeRemovePeerInMemory:
+			err = h.handleRemovePeerInMemory(request.(*kernel.MsgRemovePeerInMemory))
+		case kernel.MsgTypeCreateDeviceInConfigFile:
+			err = h.handleCreateDeviceInConfigFile(request.(*kernel.MsgCreateDeviceInConfigFile))
+		case kernel.MsgTypeSetProxyPeerInConfigFile:
+			err = h.handleSetProxyPeerInConfigFile(request.(*kernel.MsgSetProxyPeerInConfigFile))
+		case kernel.MsgTypeBringDeviceUp:
+			err = h.handleBringDeviceUp()
+		case kernel.MsgTypeIsDeviceAlive:
+			err = h.handleIsDeviceAlive()
+		default:
+			err = fmt.Errorf("Invalid request message %v", int(msgType))
+		}
 	}
 	if err != nil {
 		// Send error response
@@ -326,7 +345,7 @@ func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 	return nil
 }
 
-func handleConnection(conn net.Conn, log log.Log) {
+func handleConnection(conn net.Conn, log log.Log, clientSecret string) {
 	wg, err := wgctrl.New()
 	if err != nil {
 		log.Errorf("Error creating wgctrl: %v", err)
@@ -335,9 +354,10 @@ func handleConnection(conn net.Conn, log log.Log) {
 	defer wg.Close()
 
 	h := &handler{
-		conn: conn,
-		log:  log,
-		wg:   wg,
+		conn:         conn,
+		log:          log,
+		wg:           wg,
+		clientSecret: clientSecret,
 	}
 	h.encoder = gob.NewEncoder(&h.responseBuffer)
 	h.decoder = gob.NewDecoder(&h.requestBuffer)
@@ -406,12 +426,20 @@ func verifyPermissions(logger log.Log) error {
 	return nil
 }
 
-func main() {
+func Main() {
 	logger, err := log.NewLog()
 	if err != nil {
 		panic(err)
 	}
 	logger = log.NewPrefixLogger(logger, "kernelwg")
+
+	clientSecret := os.Getenv("CYCLOPS_SOCKET_SECRET")
+	if clientSecret == "" {
+		logger.Criticalf("CYCLOPS_SOCKET_SECRET environment variable not set")
+		os.Exit(1)
+	}
+
+	logger.Infof("Verifying if we can inspect wireguard devices")
 
 	if err := verifyPermissions(logger); err != nil {
 		logger.Criticalf("%v", err)
@@ -419,34 +447,37 @@ func main() {
 	}
 	logger.Infof("Wireguard communication successful")
 
-	listenAddr := "127.0.0.1:666"
-	//listenAddr := net.UnixAddr{
-	//	Net:  "unix",
-	//	Name: kernel.UnixSocketName,
-	//}
+	//listenAddr := "127.0.0.1:666"
+	listenAddr := net.UnixAddr{
+		Net:  "unix",
+		Name: kernel.UnixSocketName,
+	}
 
 	logger.Infof("Listening on %v", listenAddr)
-	//ln, err := net.ListenUnix("unix", &listenAddr)
-	ln, err := net.Listen("tcp", listenAddr)
+	ln, err := net.ListenUnix("unix", &listenAddr)
+	//ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		logger.Errorf("Error listening: %v", err)
 		os.Exit(1)
 	}
 
 	// Tell systemd that we're alive, so that the cyclops service can start up
-	daemon.SdNotify(false, daemon.SdNotifyReady)
+	// (no longer necessary since all functionality has been integrated into a single executable,
+	//  with two different 'main' functions)
+	//daemon.SdNotify(false, daemon.SdNotifyReady)
 
-	//ln.SetUnlinkOnClose(true)
+	ln.SetUnlinkOnClose(true)
 
-	// Only connect to a single socket at a time
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			logger.Errorf("Error accepting connection: %v", err)
-		}
-		logger.Infof("Accept connection from %v", conn.RemoteAddr().String())
-		// Note that we do not do "go handleConnection", because our design is to be used by a single
-		// client, in half-duplex mode (i.e. synchronous request/response).
-		handleConnection(conn, logger)
+	// Only connect to a single socket at a time, and when it disconnects, we die
+	conn, err := ln.Accept()
+	if err != nil {
+		logger.Errorf("Error accepting connection: %v", err)
 	}
+	logger.Infof("Accept connection from %v", conn.RemoteAddr().String())
+
+	// Note that we do not do "go handleConnection", because our design is to be used by a single
+	// client, in half-duplex mode (i.e. synchronous request/response).
+	handleConnection(conn, logger, clientSecret)
+
+	logger.Infof("Exiting")
 }

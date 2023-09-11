@@ -32,9 +32,9 @@ type wireGuard struct {
 	client *kernel.Client
 }
 
-func newWireGuard(proxy *Proxy) (*wireGuard, error) {
-	client := kernel.NewClient()
-	if err := client.Connect(proxy.kernelwgHost); err != nil {
+func newWireGuard(proxy *Proxy, kernelWGSecret string) (*wireGuard, error) {
+	client := kernel.NewClient(kernelWGSecret)
+	if err := client.Connect(); err != nil {
 		return nil, err
 	}
 

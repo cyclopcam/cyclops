@@ -1,4 +1,4 @@
-package main
+package kernelwg
 
 import (
 	"bytes"
@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 )
+
+// Parse and write wireguard config file
 
 var regexpSection *regexp.Regexp
 var regexpValue *regexp.Regexp
