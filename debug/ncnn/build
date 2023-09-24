@@ -1,0 +1,42 @@
+#!/bin/bash
+
+SOURCE_DIR=server/ncnn
+OPT_FLAGS=-O3
+NCNN_LIB=ncnn
+AUX_CPP_FILES="$SOURCE_DIR/yolo.cpp $SOURCE_DIR/ncnn.cpp $SOURCE_DIR/ncnn_helpers.cpp"
+
+# Flags:
+# --debug: Disable optimizations and generate debug info
+# --lncnnd: Link to debug build of libncnn
+#           To build ncnn in debug mode: "cmake -DNCNN_SIMPLEOCV=1 -DCMAKE_BUILD_TYPE=Debug .."
+#
+# Also, if you want to test removal of all threading and OpenMP support inside ncnn:
+# cmake -DNCNN_SIMPLEOCV=1 -DNCNN_OPENMP=0 -DNCNN_THREADS=0 -DCMAKE_BUILD_TYPE=Release ..
+#
+# Regular CMake build for ncnn with OpenMP and threading enabled:
+# cmake -DNCNN_SIMPLEOCV=1 -DCMAKE_BUILD_TYPE=Release ..
+
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --debug)
+	  OPT_FLAGS="-O0 -g"
+      shift
+      ;;
+    --lncnnd)
+	  NCNN_LIB=ncnnd
+      shift
+      ;;
+    *)
+      echo "Unknown parameter: $1"
+      exit 1
+      ;;
+  esac
+done
+
+CC_FLAGS="$OPT_FLAGS -std=c++17 -fopenmp -Incnn/build/src -Incnn/src -I$SOURCE_DIR"
+LD_FLAGS="-Lncnn/build/src -lgomp -lstdc++ -l$NCNN_LIB"
+SOURCES="debug/ncnn/ncnn_test.cpp $AUX_CPP_FILES"
+
+g++ $CC_FLAGS -o ncnn_test $SOURCES $LD_FLAGS
+

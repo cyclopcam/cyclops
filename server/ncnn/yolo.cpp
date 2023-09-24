@@ -252,6 +252,7 @@ static void detect_yolov7(ModelTypes modelType, ncnn::Net& net, int nn_width, in
 	// and this is our expected usual case (i.e. we ship an NN that is just big enough to fit most
 	// of the low res camera streams - typically 320 x 240).
 	//ncnn::Mat in = ncnn::Mat::from_pixels_resize(bgr.data, ncnn::Mat::PIXEL_BGR2RGB, img_w, img_h, w, h);
+	// UPDATE: ncnn::Mat here is f32, so it is necessary to make a copy.
 	ncnn::Mat in;
 	if (in_img.channels() == 1)
 		in = ncnn::Mat::from_pixels_resize(in_img.data, ncnn::Mat::PIXEL_GRAY2RGB, img_w, img_h, resized_w, resized_h);
@@ -262,10 +263,23 @@ static void detect_yolov7(ModelTypes modelType, ncnn::Net& net, int nn_width, in
 	else
 		return;
 
+	// "in" is f32
+	//{
+	//	cv::Mat tmp(in.h, in.w, CV_8UC3);
+	//	in.to_pixels(tmp.data, ncnn::Mat::PIXEL_RGB);
+	//	cv::imwrite("in.jpg", tmp);
+	//}
+
 	int       wpad = nn_width - resized_w;
 	int       hpad = nn_height - resized_h;
 	ncnn::Mat in_pad;
 	ncnn::copy_make_border(in, in_pad, hpad / 2, hpad - hpad / 2, wpad / 2, wpad - wpad / 2, ncnn::BORDER_CONSTANT, 114.f);
+
+	//{
+	//	cv::Mat tmp(in_pad.h, in_pad.w, CV_8UC3);
+	//	in_pad.to_pixels(tmp.data, ncnn::Mat::PIXEL_RGB);
+	//	cv::imwrite("in_pad.jpg", tmp);
+	//}
 
 	const float norm_vals[3] = {1 / 255.f, 1 / 255.f, 1 / 255.f};
 	in_pad.substract_mean_normalize(0, norm_vals);

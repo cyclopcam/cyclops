@@ -1,24 +1,12 @@
+// Run 'build' from the project root to build this debug/analysis program
 
-// build & run:
-// Regular CMake build for ncnn with OpenMP enabled:
-// cmake -DNCNN_SIMPLEOCV=1 -DNCNN_OPENMP=1 -DCMAKE_BUILD_TYPE=Release ..
-//
-// cd cyclops/server/ncnn
-// g++ -O3 -std=c++17 -fopenmp -I. -I../../ncnn/build/src -I../../ncnn/src -L../../ncnn/build/src -o ncnn_test debug/ncnn_test.cpp yolo.cpp ncnn.cpp ncnn_helpers.cpp -lgomp -lstdc++ -lncnn
-// ./ncnn_test
-
-// For debugging, first configure the ncnn build with "cmake -DNCNN_SIMPLEOCV=1 -DCMAKE_BUILD_TYPE=Debug ..", and then:
-// (note that we link to ncnnd, instead of ncnn)
-// g++ -g -Og -std=c++17 -fopenmp -I. -I../../ncnn/build/src -I../../ncnn/src -L../../ncnn/build/src -o ncnn_test debug/ncnn_test.cpp yolo.cpp ncnn.cpp ncnn_helpers.cpp -lgomp -lstdc++ -lncnnd
-
-// With OpenMP disabled inside ncnn:
-// cmake -DNCNN_SIMPLEOCV=1 -DNCNN_OPENMP=0 -DNCNN_THREADS=0 -DCMAKE_BUILD_TYPE=Release ..
-// g++ -O3 -std=c++17 -fopenmp -I. -I../../ncnn/build/src -I../../ncnn/src -L../../ncnn/build/src -o ncnn_test debug/ncnn_test.cpp yolo.cpp ncnn.cpp ncnn_helpers.cpp -lgomp -lstdc++ -lncnn
-
+// ncnn includes
 #include "layer.h"
 #include "net.h"
 #include "simpleocv.h"
+//#include "stb_image_write.h"
 
+// Our own ncnn wrapper/helper
 #include "ncnn.h"
 
 #include <float.h>
@@ -33,6 +21,7 @@
 bool Benchmark   = false;
 bool QuitThreads = false;
 bool CSV         = Benchmark;
+bool DumpImages  = true;
 int  MinThreads  = 1;
 int  MaxThreads  = Benchmark ? 12 : 1;
 
@@ -67,14 +56,29 @@ double SecondsSince(int64_t ms) {
 	return (timeInMilliseconds() - ms) / 1000.0;
 }
 
-void RunDetection(NcnnDetector detector, const cv::Mat& img, bool benchmark) {
+void RunDetection(NcnnDetector detector, const cv::Mat& img, bool benchmark, const TestModel& tm) {
 	Detection dets[100];
 	int       numDetections = 0;
+	bool      draw          = DumpImages && !Benchmark;
+	cv::Mat   copy;
 	DetectObjects(detector, 3, img.data, img.cols, img.rows, img.cols * 3, 100, dets, &numDetections);
 	if (!benchmark) {
+		if (draw)
+			copy = img.clone();
+
 		for (int i = 0; i < numDetections; i++) {
-			auto& d = dets[i];
+			const auto& d = dets[i];
 			printf("  class %d, confidence %f, box (%d, %d, %d, %d)\n", d.Class, d.Confidence, d.Box.X, d.Box.Y, d.Box.Width, d.Box.Height);
+			if (draw) {
+				cv::rectangle(copy, cv::Rect(d.Box.X, d.Box.Y, d.Box.Width, d.Box.Height), cv::Scalar(0, 255, 0), 2);
+			}
+		}
+
+		if (draw) {
+			char fn[256];
+			sprintf(fn, "%s-detection.jpg", tm.Name.c_str());
+			//stbi_write_jpg(fn, img.cols, img.rows, 3, img.data, 95);
+			cv::imwrite(fn, copy);
 		}
 	}
 }
@@ -97,7 +101,7 @@ void DetectionThread(std::mutex* lock, std::vector<cv::Mat*>* queue, std::atomic
 		queue->pop_back();
 		lock->unlock();
 		//printf("Running detection\n");
-		RunDetection(detector, *img, Benchmark);
+		RunDetection(detector, *img, Benchmark, tm);
 		numResults->fetch_add(1);
 	}
 
@@ -105,7 +109,7 @@ void DetectionThread(std::mutex* lock, std::vector<cv::Mat*>* queue, std::atomic
 }
 
 int main(int argc, char** argv) {
-	const char* imagepath = "../../testdata/driveway001-man.jpg";
+	const char* imagepath = "testdata/driveway001-man.jpg";
 	cv::Mat     m         = cv::imread(imagepath, 1);
 	if (m.empty()) {
 		fprintf(stderr, "cv::imread %s failed\n", imagepath);
@@ -113,9 +117,9 @@ int main(int argc, char** argv) {
 	}
 
 	std::vector<TestModel> testModels = {
-	    {"yolov7t", "yolov7", "../../models/yolov7-tiny.param", "../../models/yolov7-tiny.bin", 320, 320},
-	    {"yolov8n", "yolov8", "../../models/yolov8n.param", "../../models/yolov8n.bin", 320, 256},
-	    {"yolov8s", "yolov8", "../../models/yolov8s.param", "../../models/yolov8s.bin", 320, 256},
+	    //{"yolov7t", "yolov7", "models/yolov7-tiny.param", "models/yolov7-tiny.bin", 320, 320},
+	    //{"yolov8n", "yolov8", "models/yolov8n.param", "models/yolov8n.bin", 320, 256},
+	    {"yolov8s", "yolov8", "models/yolov8s.param", "models/yolov8s.bin", 320, 256},
 	};
 
 	if (CSV) {
@@ -154,7 +158,7 @@ int main(int argc, char** argv) {
 			// Measure the speed of a single run, so that we can figure out how many iterations to perform
 			if (Benchmark) {
 				auto detector = CreateDetector(tm.ModelType.c_str(), tm.ParamFile.c_str(), tm.BinFile.c_str(), tm.Width, tm.Height);
-				RunDetection(detector, m, true);
+				RunDetection(detector, m, true, tm);
 				DeleteDetector(detector);
 			}
 

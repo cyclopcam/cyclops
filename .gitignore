@@ -1,7 +1,9 @@
 *.mp4
+/*.jpg
 /dump
 /enc
 /cyclops
 /wasm
 /bin
+/ncnn_test
 img.jpg
