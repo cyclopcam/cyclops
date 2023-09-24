@@ -113,7 +113,8 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	}
 	logger.Infof("Loading NN models from '%v'", basePath)
 
-	detector, err := ncnn.NewDetector("yolov7", filepath.Join(basePath, "yolov7-tiny.param"), filepath.Join(basePath, "yolov7-tiny.bin"))
+	detector, err := ncnn.NewDetector("yolov8", filepath.Join(basePath, "yolov8s.param"), filepath.Join(basePath, "yolov8s.bin"), 320, 256)
+	//detector, err := ncnn.NewDetector("yolov7", filepath.Join(basePath, "yolov7-tiny.param"), filepath.Join(basePath, "yolov7-tiny.bin"), 320, 256)
 	//detector, err := ncnn.NewDetector("yolov7", "/home/ben/dev/cyclops/models/yolov7-tiny.param", "/home/ben/dev/cyclops/models/yolov7-tiny.bin")
 	if err != nil {
 		return nil, err
@@ -129,7 +130,8 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	// If the queue size was too small, then this would deadlock.
 
 	// On a Raspberry Pi 4, a single NN thread is best. But on my larger desktops, more threads helps.
-	// I haven't looked into ncnn's threading strategy yet.
+	// I have some numbers in a spreadsheet. Basically, on a Pi, we want to have all cores processing
+	// a single image at a time. But on desktop CPUs, we want one core per image.
 	nnThreads := int(math.Max(1, float64(runtime.NumCPU())/4))
 	nnQueueSize := nnThreads * 3
 

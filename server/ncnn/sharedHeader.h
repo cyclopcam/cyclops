@@ -1,5 +1,10 @@
 // This header is shared by the C definitions exported to Go, and the internal C++ code.
 
+enum ModelTypes {
+	YOLOv7,
+	YOLOv8,
+};
+
 typedef struct _Rect {
 	int X;
 	int Y;

@@ -31,10 +31,9 @@ _Only tested on Ubuntu 22.04_
 -   First run of `go run cmd/cyclops/cyclops.go` takes a few minutes on RPi4,
     mostly due to single-threaded build of `github.com/mattn/go-sqlite3`
 
-Once setup, you should be able to run the server and the interface:
+Once setup, you should be able to run the server and the UI:
 
--   `sudo bin/kernelwg`
--   `go run cmd/cyclops/cyclops.go`
+-   `go run cmd/cyclops/cyclops.go --novpn`
 -   `npm run dev -- --host` (from the `www` directory). The `-- --host` allows
     you to connect from external devices.
 -   `npm run dev -- --host` (from the `appui` directory, for working on the

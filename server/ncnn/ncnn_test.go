@@ -37,13 +37,39 @@ func loadImage(name string) *cimg.Image {
 	return img.ToRGB()
 }
 
-func TestHello(t *testing.T) {
-	detector, _ := ncnn.NewDetector("yolov7", filepath.Join(modelsDir(), "yolov7-tiny.param"), filepath.Join(modelsDir(), "yolov7-tiny.bin"))
+func TestYoloV7(t *testing.T) {
+	testModel(t, "yolov7", "yolov7-tiny", 320, 256)
+}
+
+func TestYoloV8n(t *testing.T) {
+	testModel(t, "yolov8", "yolov8n", 320, 256)
+}
+
+func TestYoloV8s(t *testing.T) {
+	testModel(t, "yolov8", "yolov8s", 320, 256)
+}
+
+func testModel(t *testing.T, modelType, modelFilename string, width, height int) {
+	detector, _ := ncnn.NewDetector(modelType, filepath.Join(modelsDir(), modelFilename+".param"), filepath.Join(modelsDir(), modelFilename+".bin"), width, height)
 	defer detector.Close()
 	img := loadImage("driveway001-man.jpg")
 	detections, _ := detector.DetectObjects(img.NChan(), img.Pixels, img.Width, img.Height)
 	t.Logf("num detections: %v", len(detections))
 	for _, det := range detections {
 		t.Logf("det: %v", det)
+	}
+}
+
+func BenchmarkYoloV7Tiny(b *testing.B) {
+	benchmarkModel(b, "yolov7", "yolov7-tiny", 320, 256)
+}
+
+func benchmarkModel(b *testing.B, modelType, modelFilename string, width, height int) {
+	detector, _ := ncnn.NewDetector(modelType, filepath.Join(modelsDir(), modelFilename+".param"), filepath.Join(modelsDir(), modelFilename+".bin"), width, height)
+	defer detector.Close()
+	img := loadImage("driveway001-man.jpg")
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		detector.DetectObjects(img.NChan(), img.Pixels, img.Width, img.Height)
 	}
 }

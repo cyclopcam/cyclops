@@ -1,0 +1,1 @@
+void Transpose(const ncnn::Mat& in, ncnn::Mat& out, ncnn::Allocator* allocator);

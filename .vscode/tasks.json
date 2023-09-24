@@ -1,0 +1,38 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cppbuild",
+			"label": "Build ncnn_test debug C++",
+			"command": "g++",
+			"args": [
+				"-g",
+				"-Og",
+				"-std=c++17",
+				"-fopenmp",
+				"-I.",
+				"-I../../ncnn/build/src",
+				"-I../../ncnn/src",
+				"-L../../ncnn/build/src",
+				"-o",
+				"ncnn_test",
+				"debug/ncnn_test.cpp",
+				"yolo.cpp",
+				"ncnn.cpp",
+				"-lgomp",
+				"-lstdc++",
+				"-lncnnd"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}/server/ncnn"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		}
+	]
+}

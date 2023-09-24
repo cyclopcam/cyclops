@@ -1,6 +1,6 @@
 package ncnn
 
-// ncnn is a wrapper around https://github.com/Tencent/ncnn
+// package ncnn is a wrapper around https://github.com/Tencent/ncnn
 
 // #cgo CPPFLAGS: -fopenmp -I${SRCDIR}/../../ncnn/build/src -I${SRCDIR}/../../ncnn/src
 // #cgo LDFLAGS: -L${SRCDIR}/../../ncnn/build/src -lncnn -lgomp
@@ -20,11 +20,11 @@ type Detector struct {
 	detector C.NcnnDetector
 }
 
-func NewDetector(modelType, params, bin string) (*Detector, error) {
+func NewDetector(modelType, params, bin string, width, height int) (*Detector, error) {
 	cModelType := C.CString(modelType)
 	cParams := C.CString(params)
 	cBin := C.CString(bin)
-	cdet := C.CreateDetector(cModelType, cParams, cBin)
+	cdet := C.CreateDetector(cModelType, cParams, cBin, C.int(width), C.int(height))
 	C.free(unsafe.Pointer(cModelType))
 	C.free(unsafe.Pointer(cParams))
 	C.free(unsafe.Pointer(cBin))
