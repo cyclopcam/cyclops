@@ -5,5 +5,5 @@
 /cyclops
 /wasm
 /bin
-/ncnn_test
+/ncnn_*
 img.jpg

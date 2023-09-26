@@ -16,11 +16,16 @@ require (
 	github.com/asticode/go-astits v1.10.0
 	github.com/bmharper/cimg/v2 v2.0.4
 	github.com/bmharper/ringbuffer v1.1.2
+	github.com/chewxy/math32 v1.10.1
+	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
+	github.com/go-chi/httprate v0.7.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/lib/pq v1.10.2
 	github.com/mattn/go-sqlite3 v1.14.14
 	github.com/stretchr/testify v1.7.2
+	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d
+	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20220916014741-473347a5e6e3
 	gorm.io/driver/postgres v1.3.8
 	gorm.io/driver/sqlite v1.3.5
 	gorm.io/gorm v1.23.7
@@ -30,8 +35,6 @@ require (
 	cloud.google.com/go v0.81.0 // indirect
 	github.com/asticode/go-astikit v0.20.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
-	github.com/chewxy/math32 v1.10.1 // indirect
-	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsoprea/go-exif/v3 v3.0.0-20210625224831-a6301f85c82b // indirect
 	github.com/dsoprea/go-iptc v0.0.0-20200610044640-bc9ca208b413 // indirect
@@ -39,7 +42,6 @@ require (
 	github.com/dsoprea/go-logging v0.0.0-20200710184922-b02d349568dd // indirect
 	github.com/dsoprea/go-photoshop-info-format v0.0.0-20200610045659-121dd752914d // indirect
 	github.com/dsoprea/go-utility/v2 v2.0.0-20200717064901-2fccff4aa15e // indirect
-	github.com/go-chi/httprate v0.7.0 // indirect
 	github.com/go-errors/errors v1.4.1 // indirect
 	github.com/go-xmlfmt/xmlfmt v0.0.0-20191208150333-d5b6f63a941b // indirect
 	github.com/golang/geo v0.0.0-20210211234256-740aa86cb551 // indirect
@@ -69,7 +71,6 @@ require (
 	github.com/pion/sdp/v3 v3.0.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go.opencensus.io v0.23.0 // indirect
-	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
 	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
 	golang.org/x/mod v0.4.1 // indirect
 	golang.org/x/net v0.0.0-20220526153639-5463443f8c37 // indirect
@@ -80,7 +81,6 @@ require (
 	golang.org/x/tools v0.1.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20220407013110-ef5c587f782d // indirect
-	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20220916014741-473347a5e6e3 // indirect
 	google.golang.org/api v0.46.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20210517163617-5e0236093d7a // indirect

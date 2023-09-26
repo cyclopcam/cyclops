@@ -3,7 +3,8 @@
 SOURCE_DIR=server/ncnn
 OPT_FLAGS=-O3
 NCNN_LIB=ncnn
-AUX_CPP_FILES="$SOURCE_DIR/yolo.cpp $SOURCE_DIR/ncnn.cpp $SOURCE_DIR/ncnn_helpers.cpp"
+AUX_BENCH_CPP_FILES="$SOURCE_DIR/yolo.cpp $SOURCE_DIR/ncnn.cpp $SOURCE_DIR/ncnn_helpers.cpp"
+AUX_UNIT_CPP_FILES="$SOURCE_DIR/ncnn_helpers.cpp"
 
 # Flags:
 # --debug: Disable optimizations and generate debug info
@@ -36,7 +37,9 @@ done
 
 CC_FLAGS="$OPT_FLAGS -std=c++17 -fopenmp -Incnn/build/src -Incnn/src -I$SOURCE_DIR"
 LD_FLAGS="-Lncnn/build/src -lgomp -lstdc++ -l$NCNN_LIB"
-SOURCES="debug/ncnn/ncnn_test.cpp $AUX_CPP_FILES"
+BENCH_SOURCES="debug/ncnn/ncnn_bench.cpp $AUX_BENCH_CPP_FILES"
+UNIT_SOURCES="debug/ncnn/ncnn_unit.cpp $AUX_UNIT_CPP_FILES"
 
-g++ $CC_FLAGS -o ncnn_test $SOURCES $LD_FLAGS
+g++ $CC_FLAGS -o ncnn_bench $BENCH_SOURCES $LD_FLAGS
+g++ $CC_FLAGS -o ncnn_unit $UNIT_SOURCES $LD_FLAGS
 

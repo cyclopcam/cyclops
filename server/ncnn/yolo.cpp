@@ -183,7 +183,7 @@ static void generate_proposals(const ncnn::Mat& anchors, int stride, const ncnn:
 	}
 }
 
-static void detect_yolov7(ModelTypes modelType, ncnn::Net& net, int nn_width, int nn_height, float prob_threshold, float nms_threshold, const cv::Mat& in_img, std::vector<Object>& objects) {
+static void detect_yolov7_8(ModelTypes modelType, ncnn::Net& net, int nn_width, int nn_height, float prob_threshold, float nms_threshold, const cv::Mat& in_img, std::vector<Object>& objects) {
 	// yolov7.opt.use_vulkan_compute = true;
 	// yolov7.opt.use_bf16_storage = true;
 
@@ -476,7 +476,7 @@ static void detect_yolov7(ModelTypes modelType, ncnn::Net& net, int nn_width, in
 
 void DetectYOLO(ModelTypes modelType, ncnn::Net& net, int nn_width, int nn_height, float prob_threshold, float nms_threshold, const cv::Mat& img, std::vector<Detection>& objects) {
 	std::vector<Object> obj;
-	detect_yolov7(modelType, net, nn_width, nn_height, prob_threshold, nms_threshold, img, obj);
+	detect_yolov7_8(modelType, net, nn_width, nn_height, prob_threshold, nms_threshold, img, obj);
 	//fprintf(stderr, "obj.size = %d\n", (int) obj.size());
 
 	for (const auto& o : obj) {

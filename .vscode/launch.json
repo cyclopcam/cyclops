@@ -61,10 +61,34 @@
 			]
 		},
 		{
-			"name": "ncnn_test C++",
+			"name": "ncnn_bench C++",
 			"type": "cppdbg",
 			"request": "launch",
-			"program": "${workspaceFolder}/ncnn_test",
+			"program": "${workspaceFolder}/ncnn_bench",
+			"args": [],
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}",
+			"environment": [],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				},
+				{
+					"description": "Set Disassembly Flavor to Intel",
+					"text": "-gdb-set disassembly-flavor intel",
+					"ignoreFailures": true
+				}
+			]
+		},
+		{
+			"name": "ncnn_unit C++",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/ncnn_unit",
 			"args": [],
 			"stopAtEntry": false,
 			"cwd": "${workspaceFolder}",

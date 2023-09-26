@@ -1,4 +1,5 @@
-// Run 'build' from the project root to build this debug/analysis program
+// Run 'build' from the project root to build this debug/analysis program.
+// In addition to a benchmarking tool, this also helps verify object detection output.
 
 // ncnn includes
 #include "layer.h"
@@ -18,12 +19,14 @@
 #include <thread>
 #include <atomic>
 
-bool Benchmark   = false;
-bool QuitThreads = false;
-bool CSV         = Benchmark;
-bool DumpImages  = true;
-int  MinThreads  = 1;
-int  MaxThreads  = Benchmark ? 12 : 1;
+bool Benchmark  = true;
+bool CSV        = Benchmark;
+bool DumpImages = !Benchmark;
+int  MinThreads = 1;
+//int  MaxThreads = Benchmark ? 12 : 1;
+int MaxThreads = 1;
+
+bool QuitThreadsSignal = false;
 
 struct TestModel {
 	std::string Name;
@@ -61,7 +64,9 @@ void RunDetection(NcnnDetector detector, const cv::Mat& img, bool benchmark, con
 	int       numDetections = 0;
 	bool      draw          = DumpImages && !Benchmark;
 	cv::Mat   copy;
-	DetectObjects(detector, 3, img.data, img.cols, img.rows, img.cols * 3, 100, dets, &numDetections);
+	float     minProb      = 0.5f;
+	float     nmsThreshold = 0.45f;
+	DetectObjects(detector, 3, img.data, img.cols, img.rows, img.cols * 3, minProb, nmsThreshold, 100, dets, &numDetections);
 	if (!benchmark) {
 		if (draw)
 			copy = img.clone();
@@ -87,7 +92,7 @@ void DetectionThread(std::mutex* lock, std::vector<cv::Mat*>* queue, std::atomic
 	auto detector = CreateDetector(tm.ModelType.c_str(), tm.ParamFile.c_str(), tm.BinFile.c_str(), tm.Width, tm.Height);
 
 	while (true) {
-		if (QuitThreads) {
+		if (QuitThreadsSignal) {
 			//printf("Thread quitting\n");
 			break;
 		}
@@ -144,7 +149,7 @@ int main(int argc, char** argv) {
 			if (!CSV)
 				printf("Testing %s\n", tm.Name.c_str());
 
-			QuitThreads = false;
+			QuitThreadsSignal = false;
 			std::vector<std::thread> threads;
 			std::mutex               queueLock;
 			std::vector<cv::Mat*>    queue;
@@ -187,7 +192,7 @@ int main(int argc, char** argv) {
 					break;
 			}
 			//printf("All done\n");
-			QuitThreads = true;
+			QuitThreadsSignal = true;
 
 			for (int i = 0; i < nThreads; i++) {
 				threads[i].join();

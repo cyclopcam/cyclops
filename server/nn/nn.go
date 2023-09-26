@@ -16,12 +16,24 @@ type DetectionResult struct {
 	Objects     []Detection `json:"objects"`
 }
 
+type DetectionParams struct {
+	ProbabilityThreshold float32 // Value between 0 and 1. Lower values will find more objects. Zero value will use the default.
+	NmsThreshold         float32 // Value between 0 and 1. Lower values will merge more objects together into one. Zero value will use the default.
+}
+
+func DefaultDetectionParams() *DetectionParams {
+	return &DetectionParams{
+		ProbabilityThreshold: 0.5,
+		NmsThreshold:         0.45,
+	}
+}
+
 // ObjectDetector is given an image, and returns zero or more detected objects
 type ObjectDetector interface {
 	// Close closes the detector (you MUST call this when finished, because it's a C++ object underneath)
 	Close()
 	// DetectObjects returns a list of objects detected in the image
-	DetectObjects(nchan int, image []byte, width, height int) ([]Detection, error)
+	DetectObjects(nchan int, image []byte, width, height int, params *DetectionParams) ([]Detection, error)
 }
 
 const (

@@ -53,7 +53,7 @@ func testModel(t *testing.T, modelType, modelFilename string, width, height int)
 	detector, _ := ncnn.NewDetector(modelType, filepath.Join(modelsDir(), modelFilename+".param"), filepath.Join(modelsDir(), modelFilename+".bin"), width, height)
 	defer detector.Close()
 	img := loadImage("driveway001-man.jpg")
-	detections, _ := detector.DetectObjects(img.NChan(), img.Pixels, img.Width, img.Height)
+	detections, _ := detector.DetectObjects(img.NChan(), img.Pixels, img.Width, img.Height, nil)
 	t.Logf("num detections: %v", len(detections))
 	for _, det := range detections {
 		t.Logf("det: %v", det)
@@ -70,6 +70,6 @@ func benchmarkModel(b *testing.B, modelType, modelFilename string, width, height
 	img := loadImage("driveway001-man.jpg")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		detector.DetectObjects(img.NChan(), img.Pixels, img.Width, img.Height)
+		detector.DetectObjects(img.NChan(), img.Pixels, img.Width, img.Height, nil)
 	}
 }

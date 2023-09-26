@@ -4,6 +4,21 @@
 
 set -e
 
+SKIP_WWW=0
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --skip-www)
+	  SKIP_WWW=1
+	  shift
+	  ;;
+    *)
+      echo "Unknown parameter: $1"
+      exit 1
+      ;;
+  esac
+done
+
 if ! grep -q cyclops /etc/group; then
 	echo Creating cyclops group
 	sudo groupadd --system cyclops
@@ -20,7 +35,11 @@ if ! grep -q cyclops /etc/passwd; then
 		cyclops
 fi
 
-cd www && npm install && npm run build && cd ..
+if [ $SKIP_WWW -eq 0 ]; then
+	echo Building www
+	cd www && npm install && npm run build && cd ..
+fi
+
 go build -o bin/cyclops cmd/cyclops/*.go
 
 if [ -f /etc/systemd/system/cyclops.service ]; then

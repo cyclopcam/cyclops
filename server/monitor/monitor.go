@@ -429,7 +429,7 @@ func (m *Monitor) nnThread() {
 		rgb := cimg.NewImage(yuv.Width, yuv.Height, cimg.PixelFormatRGB)
 		start := time.Now()
 		yuv.CopyToCImageRGB(rgb)
-		objects, err := m.detector.DetectObjects(rgb.NChan(), rgb.Pixels, rgb.Width, rgb.Height)
+		objects, err := m.detector.DetectObjects(rgb.NChan(), rgb.Pixels, rgb.Width, rgb.Height, nil)
 		duration := time.Now().Sub(start)
 		m.avgTimeNSPerFrameNN.Store((99*m.avgTimeNSPerFrameNN.Load() + duration.Nanoseconds()) / 100)
 		if err != nil {

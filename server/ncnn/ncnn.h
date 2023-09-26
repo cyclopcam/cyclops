@@ -11,7 +11,8 @@ typedef void* NcnnDetector;
 
 NcnnDetector CreateDetector(const char* type, const char* param, const char* bin, int width, int height);
 void         DeleteDetector(NcnnDetector detector);
-void         DetectObjects(NcnnDetector detector, int nchan, const uint8_t* img, int width, int height, int stride, int maxDetections, Detection* detections, int* numDetections);
+void         DetectObjects(NcnnDetector detector, int nchan, const uint8_t* img, int width, int height, int stride,
+                           float minProbability, float nmsThreshold, int maxDetections, Detection* detections, int* numDetections);
 
 #ifdef __cplusplus
 }

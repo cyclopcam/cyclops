@@ -40,11 +40,15 @@ func (d *Detector) Close() {
 	C.DeleteDetector(d.detector)
 }
 
-func (d *Detector) DetectObjects(nchan int, image []byte, width, height int) ([]nn.Detection, error) {
+func (d *Detector) DetectObjects(nchan int, image []byte, width, height int, params *nn.DetectionParams) ([]nn.Detection, error) {
+	if params == nil {
+		params = nn.DefaultDetectionParams()
+	}
 	detections := make([]C.Detection, 100)
 	nDetections := C.int(0)
 	C.DetectObjects(d.detector,
 		C.int(nchan), (*C.uchar)(unsafe.Pointer(&image[0])), C.int(width), C.int(height), C.int(width*nchan),
+		C.float(params.ProbabilityThreshold), C.float(params.NmsThreshold),
 		C.int(len(detections)), (*C.Detection)(unsafe.Pointer(&detections[0])), &nDetections)
 	result := make([]nn.Detection, nDetections)
 
