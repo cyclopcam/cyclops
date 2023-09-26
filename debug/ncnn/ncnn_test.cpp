@@ -109,16 +109,18 @@ void DetectionThread(std::mutex* lock, std::vector<cv::Mat*>* queue, std::atomic
 }
 
 int main(int argc, char** argv) {
-	const char* imagepath = "testdata/driveway001-man.jpg";
-	cv::Mat     m         = cv::imread(imagepath, 1);
+	//const char* imagepath = "testdata/driveway001-man.jpg";
+	const char* imagepath = "testdata/porch003-man.jpg";
+	//const char* imagepath = "testdata/man-pos-2-0.jpg";
+	cv::Mat m = cv::imread(imagepath, 1);
 	if (m.empty()) {
 		fprintf(stderr, "cv::imread %s failed\n", imagepath);
 		return -1;
 	}
 
 	std::vector<TestModel> testModels = {
-	    //{"yolov7t", "yolov7", "models/yolov7-tiny.param", "models/yolov7-tiny.bin", 320, 320},
-	    //{"yolov8n", "yolov8", "models/yolov8n.param", "models/yolov8n.bin", 320, 256},
+	    {"yolov7t", "yolov7", "models/yolov7-tiny.param", "models/yolov7-tiny.bin", 320, 320},
+	    {"yolov8n", "yolov8", "models/yolov8n.param", "models/yolov8n.bin", 320, 256},
 	    {"yolov8s", "yolov8", "models/yolov8s.param", "models/yolov8s.bin", 320, 256},
 	};
 

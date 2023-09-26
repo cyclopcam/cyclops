@@ -392,8 +392,8 @@ static void detect_yolov7(ModelTypes modelType, ncnn::Net& net, int nn_width, in
 				Object obj;
 				obj.label       = maxProbCls;
 				obj.prob        = maxProb;
-				obj.rect.x      = prob[0];
-				obj.rect.y      = prob[1];
+				obj.rect.x      = prob[0] - prob[2] / 2;
+				obj.rect.y      = prob[1] - prob[3] / 2;
 				obj.rect.width  = prob[2];
 				obj.rect.height = prob[3];
 				proposals.push_back(obj);
@@ -447,8 +447,13 @@ static void detect_yolov7(ModelTypes modelType, ncnn::Net& net, int nn_width, in
 
 	objects.resize(count);
 
+	//printf("scale: %f, wpad: %d, hpad: %d\n", scale, wpad, hpad);
+
 	for (int i = 0; i < count; i++) {
-		objects[i] = proposals[picked[i]];
+		objects[i]      = proposals[picked[i]];
+		const auto& obj = objects[i];
+
+		//printf("object %d, class %d (%.1f%%) %f,%f,%f,%f\n", i, obj.label, obj.prob * 100, obj.rect.x, obj.rect.y, obj.rect.width, obj.rect.height);
 
 		// adjust offset to original unpadded
 		float x0 = (objects[i].rect.x - (wpad / 2)) / scale;
