@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bmharper/cyclops/pkg/dbh"
-	"github.com/bmharper/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/cyclops/pkg/log"
 	"gorm.io/gorm"
 )
 

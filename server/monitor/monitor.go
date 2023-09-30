@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/bmharper/cimg/v2"
-	"github.com/bmharper/cyclops/pkg/accel"
-	"github.com/bmharper/cyclops/pkg/gen"
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/server/camera"
-	"github.com/bmharper/cyclops/server/ncnn"
-	"github.com/bmharper/cyclops/server/nn"
+	"github.com/cyclopcam/cyclops/pkg/accel"
+	"github.com/cyclopcam/cyclops/pkg/gen"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/server/camera"
+	"github.com/cyclopcam/cyclops/server/ncnn"
+	"github.com/cyclopcam/cyclops/server/nn"
 )
 
 /* monitor runs our neural networks on the camera streams

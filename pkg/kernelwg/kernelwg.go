@@ -11,8 +11,8 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/proxy/kernel"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/proxy/kernel"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )

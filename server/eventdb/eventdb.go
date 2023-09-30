@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/bmharper/cimg/v2"
-	"github.com/bmharper/cyclops/pkg/dbh"
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/server/defs"
-	"github.com/bmharper/cyclops/server/videox"
+	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/server/defs"
+	"github.com/cyclopcam/cyclops/server/videox"
 	"gorm.io/gorm"
 )
 

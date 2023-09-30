@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 
 	"github.com/akamensky/argparse"
-	"github.com/bmharper/cyclops/pkg/kernelwg"
-	"github.com/bmharper/cyclops/server"
 	"github.com/coreos/go-systemd/daemon"
+	"github.com/cyclopcam/cyclops/pkg/kernelwg"
+	"github.com/cyclopcam/cyclops/server"
 )
 
 func check(err error) {

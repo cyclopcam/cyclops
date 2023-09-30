@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/server/camera"
-	"github.com/bmharper/cyclops/server/configdb"
-	"github.com/bmharper/cyclops/server/monitor"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/server/camera"
+	"github.com/cyclopcam/cyclops/server/configdb"
+	"github.com/cyclopcam/cyclops/server/monitor"
 )
 
 // LiveCameras manages the list of running cameras.

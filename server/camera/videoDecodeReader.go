@@ -8,9 +8,9 @@ import (
 
 	"github.com/aler9/gortsplib"
 	"github.com/aler9/gortsplib/pkg/h264"
-	"github.com/bmharper/cyclops/pkg/accel"
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/server/videox"
+	"github.com/cyclopcam/cyclops/pkg/accel"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/server/videox"
 )
 
 // VideoDecodeReader decodes the video stream and emits frames

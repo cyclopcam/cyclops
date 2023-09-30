@@ -1,6 +1,6 @@
-module github.com/bmharper/cyclops
+module github.com/cyclopcam/cyclops
 
-go 1.18
+go 1.21
 
 //replace github.com/go-chi/httprate => ../httprate
 

@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bmharper/cyclops/pkg/pwdhash"
-	"github.com/bmharper/cyclops/pkg/www"
-	"github.com/bmharper/cyclops/server/configdb"
+	"github.com/cyclopcam/cyclops/pkg/pwdhash"
+	"github.com/cyclopcam/cyclops/pkg/www"
+	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/julienschmidt/httprouter"
 )
 

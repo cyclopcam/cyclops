@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bmharper/cyclops/arc/server/auth"
-	"github.com/bmharper/cyclops/pkg/staticfiles"
-	"github.com/bmharper/cyclops/pkg/www"
+	"github.com/cyclopcam/cyclops/arc/server/auth"
+	"github.com/cyclopcam/cyclops/pkg/staticfiles"
+	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/julienschmidt/httprouter"
 )
 

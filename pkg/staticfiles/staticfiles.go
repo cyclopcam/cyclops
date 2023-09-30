@@ -17,8 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/pkg/www"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/www"
 )
 
 var reWebpackAsset *regexp.Regexp

@@ -9,8 +9,8 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/bmharper/cyclops/arc/server/auth"
-	"github.com/bmharper/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/arc/server/auth"
+	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/julienschmidt/httprouter"
 	"gorm.io/gorm"
 )

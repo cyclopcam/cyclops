@@ -8,7 +8,7 @@ import (
 
 	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/bmharper/cimg/v2"
-	"github.com/bmharper/cyclops/pkg/accel"
+	"github.com/cyclopcam/cyclops/pkg/accel"
 )
 
 // #cgo pkg-config: libavcodec libavutil libswscale

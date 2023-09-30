@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bmharper/cyclops/pkg/www"
+	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/julienschmidt/httprouter"
 )
 

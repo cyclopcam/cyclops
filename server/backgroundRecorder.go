@@ -9,14 +9,14 @@ import (
 	"time"
 
 	"github.com/aler9/gortsplib/pkg/h264"
-	"github.com/bmharper/cyclops/pkg/dbh"
-	"github.com/bmharper/cyclops/pkg/gen"
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/server/camera"
-	"github.com/bmharper/cyclops/server/configdb"
-	"github.com/bmharper/cyclops/server/defs"
-	"github.com/bmharper/cyclops/server/eventdb"
-	"github.com/bmharper/cyclops/server/videox"
+	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/cyclops/pkg/gen"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/server/camera"
+	"github.com/cyclopcam/cyclops/server/configdb"
+	"github.com/cyclopcam/cyclops/server/defs"
+	"github.com/cyclopcam/cyclops/server/eventdb"
+	"github.com/cyclopcam/cyclops/server/videox"
 )
 
 // When doing long recordings, we split video files into chunks of approximately this size

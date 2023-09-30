@@ -5,10 +5,10 @@ import (
 	"os"
 
 	"github.com/akamensky/argparse"
-	"github.com/bmharper/cyclops/pkg/dbh"
-	"github.com/bmharper/cyclops/pkg/kernelwg"
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/proxy"
+	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/cyclops/pkg/kernelwg"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/proxy"
 )
 
 func check(err error) {

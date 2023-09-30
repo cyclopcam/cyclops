@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/aler9/gortsplib/pkg/h264"
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/server/camera"
-	"github.com/bmharper/cyclops/server/monitor"
-	"github.com/bmharper/cyclops/server/videox"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/server/camera"
+	"github.com/cyclopcam/cyclops/server/monitor"
+	"github.com/cyclopcam/cyclops/server/videox"
 	"github.com/gorilla/websocket"
 )
 

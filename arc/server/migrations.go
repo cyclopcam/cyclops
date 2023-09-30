@@ -4,11 +4,11 @@ import (
 	"time"
 
 	"github.com/BurntSushi/migration"
-	"github.com/bmharper/cyclops/arc/server/model"
-	"github.com/bmharper/cyclops/pkg/dbh"
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/pkg/pwdhash"
-	"github.com/bmharper/cyclops/pkg/rando"
+	"github.com/cyclopcam/cyclops/arc/server/model"
+	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/pwdhash"
+	"github.com/cyclopcam/cyclops/pkg/rando"
 	"gorm.io/gorm"
 )
 

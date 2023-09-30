@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/akamensky/argparse"
-	"github.com/bmharper/cyclops/arc/server"
+	"github.com/cyclopcam/cyclops/arc/server"
 )
 
 func main() {

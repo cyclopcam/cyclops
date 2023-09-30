@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/server/eventdb"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/server/eventdb"
 )
 
 // Trainer manages the training of the model.

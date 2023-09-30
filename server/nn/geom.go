@@ -1,8 +1,8 @@
 package nn
 
 import (
-	"github.com/bmharper/cyclops/pkg/gen"
 	"github.com/chewxy/math32"
+	"github.com/cyclopcam/cyclops/pkg/gen"
 )
 
 type Point struct {

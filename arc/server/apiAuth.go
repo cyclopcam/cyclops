@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bmharper/cyclops/arc/server/auth"
-	"github.com/bmharper/cyclops/pkg/www"
+	"github.com/cyclopcam/cyclops/arc/server/auth"
+	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/julienschmidt/httprouter"
 )
 

@@ -11,9 +11,9 @@ import (
 
 	"embed"
 
-	"github.com/bmharper/cyclops/pkg/staticfiles"
-	"github.com/bmharper/cyclops/pkg/www"
-	"github.com/bmharper/cyclops/server/configdb"
+	"github.com/cyclopcam/cyclops/pkg/staticfiles"
+	"github.com/cyclopcam/cyclops/pkg/www"
+	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/go-chi/httprate"
 	"github.com/julienschmidt/httprouter"
 )

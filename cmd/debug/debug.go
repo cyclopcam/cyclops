@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/bmharper/cyclops/server/scanner"
+	"github.com/cyclopcam/cyclops/server/scanner"
 )
 
 func main() {

@@ -8,10 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/pkg/requests"
-	"github.com/bmharper/cyclops/proxy/kernel"
-	"github.com/bmharper/cyclops/proxy/proxymsg"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/requests"
+	"github.com/cyclopcam/cyclops/proxy/kernel"
+	"github.com/cyclopcam/cyclops/proxy/proxymsg"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 

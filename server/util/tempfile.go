@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bmharper/cyclops/pkg/gen"
-	"github.com/bmharper/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/gen"
+	"github.com/cyclopcam/cyclops/pkg/log"
 )
 
 // TempFiles assigns temporary filenames, and automatically deletes old temporary files.

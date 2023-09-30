@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/bmharper/cyclops/server/nn"
 	"github.com/bmharper/ringbuffer"
+	"github.com/cyclopcam/cyclops/server/nn"
 )
 
 /*

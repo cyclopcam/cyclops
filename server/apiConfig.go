@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/bmharper/cimg/v2"
-	"github.com/bmharper/cyclops/pkg/www"
-	"github.com/bmharper/cyclops/server/camera"
-	"github.com/bmharper/cyclops/server/configdb"
-	"github.com/bmharper/cyclops/server/scanner"
+	"github.com/cyclopcam/cyclops/pkg/www"
+	"github.com/cyclopcam/cyclops/server/camera"
+	"github.com/cyclopcam/cyclops/server/configdb"
+	"github.com/cyclopcam/cyclops/server/scanner"
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
 )

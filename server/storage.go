@@ -1,9 +1,9 @@
 package server
 
 import (
-	"github.com/bmharper/cyclops/pkg/log"
-	"github.com/bmharper/cyclops/server/eventdb"
-	"github.com/bmharper/cyclops/server/util"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/server/eventdb"
+	"github.com/cyclopcam/cyclops/server/util"
 )
 
 func (s *Server) SetPermanentStoragePath(root string) error {

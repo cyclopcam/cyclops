@@ -2,7 +2,7 @@ package accel
 
 import (
 	"github.com/bmharper/cimg/v2"
-	"github.com/bmharper/cyclops/pkg/gen"
+	"github.com/cyclopcam/cyclops/pkg/gen"
 )
 
 // Planar YUV 420 image

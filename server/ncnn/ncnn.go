@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/bmharper/cyclops/server/nn"
+	"github.com/cyclopcam/cyclops/server/nn"
 )
 
 type Detector struct {

@@ -2,8 +2,8 @@ package eventdb
 
 import (
 	"github.com/BurntSushi/migration"
-	"github.com/bmharper/cyclops/pkg/dbh"
-	"github.com/bmharper/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/cyclops/pkg/log"
 )
 
 func Migrations(log log.Log) []migration.Migrator {

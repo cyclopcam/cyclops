@@ -9,9 +9,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/bmharper/cyclops/pkg/gen"
-	"github.com/bmharper/cyclops/server/camera"
-	"github.com/bmharper/cyclops/server/configdb"
+	"github.com/cyclopcam/cyclops/pkg/gen"
+	"github.com/cyclopcam/cyclops/server/camera"
+	"github.com/cyclopcam/cyclops/server/configdb"
 )
 
 /*

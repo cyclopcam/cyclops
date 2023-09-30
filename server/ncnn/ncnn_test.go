@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/bmharper/cimg/v2"
-	"github.com/bmharper/cyclops/server/ncnn"
+	"github.com/cyclopcam/cyclops/server/ncnn"
 )
 
 func projectRootDir() string {
