@@ -1,0 +1,3 @@
+#!/bin/bash
+cd arc/www
+npm run dev -- --host
