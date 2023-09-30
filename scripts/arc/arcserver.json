@@ -1,0 +1,9 @@
+{
+	"db": {
+		"driver": "postgres",
+		"host": "localhost",
+		"database": "arc",
+		"username": "postgres",
+		"password": "lol"
+	}
+}

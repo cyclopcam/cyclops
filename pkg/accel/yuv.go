@@ -39,6 +39,9 @@ func (x *YUVImage) ToCImageRGB() *cimg.Image {
 // Transcode from YUV420p to RGB
 // The target image must be the same size as the source, and RGB format
 func (x *YUVImage) CopyToCImageRGB(dst *cimg.Image) {
+	if dst.Width != x.Width || dst.Height != x.Height || dst.Format != cimg.PixelFormatRGB {
+		panic("Destination image must be the same size as the source image, and PixelFormatRGB")
+	}
 	YUV420pToRGB(x.Width, x.Height, x.Y, x.U, x.V, x.YStride(), x.UStride(), x.VStride(), dst.Stride, dst.Pixels)
 }
 

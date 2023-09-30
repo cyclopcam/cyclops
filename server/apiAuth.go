@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/bmharper/cyclops/pkg/pwdhash"
 	"github.com/bmharper/cyclops/pkg/www"
 	"github.com/bmharper/cyclops/server/configdb"
 	"github.com/julienschmidt/httprouter"
@@ -28,7 +29,7 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 	if newUser.Username == "" {
 		www.PanicBadRequestf("Username may not be empty")
 	}
-	newUser.Password = configdb.HashPassword(password)
+	newUser.Password = pwdhash.HashPassword(password)
 
 	//isInitialUser := false
 	creds := s.configDB.GetUser(r)

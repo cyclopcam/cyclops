@@ -35,17 +35,17 @@ const (
 
 var DBNotExistRegex *regexp.Regexp
 
-// DBConfig is the standard database config that we expect to find on our JSON config file.
+// DBConfig describes a database connection.
 type DBConfig struct {
-	Driver      string
-	Host        string
-	Port        int
-	Database    string
-	Username    string
-	Password    string
-	SSLCert     string
-	SSLKey      string
-	SSLRootCert string
+	Driver      string `json:"driver"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Database    string `json:"database"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	SSLCert     string `json:"ssl_cert"`
+	SSLKey      string `json:"-"`
+	SSLRootCert string `json:"ssl_root_cert"`
 }
 
 func MakeSqliteConfig(filename string) DBConfig {

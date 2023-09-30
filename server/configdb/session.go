@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/bmharper/cyclops/pkg/dbh"
+	"github.com/bmharper/cyclops/pkg/pwdhash"
+	"github.com/bmharper/cyclops/pkg/rando"
 	"github.com/bmharper/cyclops/pkg/www"
 )
 
@@ -63,12 +65,12 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 	if cookieExpiresAt.IsZero() || cookieExpiresAt.After(maxCookieExpireDate) {
 		cookieExpiresAt = maxCookieExpireDate
 	}
-	cookieToken := StrongRandomAlphaNumChars(30)
-	bearerToken := StrongRandomBytes(32)
+	cookieToken := rando.StrongRandomAlphaNumChars(30)
+	bearerToken := rando.StrongRandomBytes(32)
 	if doCookie {
 		cookieSession := Session{
 			CreatedAt: dbh.MakeIntTime(now),
-			Key:       HashSessionToken(cookieToken),
+			Key:       pwdhash.HashSessionToken(cookieToken),
 			UserID:    userID,
 			ExpiresAt: dbh.MakeIntTime(cookieExpiresAt),
 		}
@@ -80,7 +82,7 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 	if doBearer {
 		bearerSession := Session{
 			CreatedAt: dbh.MakeIntTime(now),
-			Key:       HashSessionToken(string(bearerToken)),
+			Key:       pwdhash.HashSessionToken(string(bearerToken)),
 			UserID:    userID,
 			ExpiresAt: dbh.MakeIntTime(expiresAt),
 		}
@@ -111,7 +113,7 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 func (c *ConfigDB) Logout(w http.ResponseWriter, r *http.Request) {
 	cookie, _ := r.Cookie(SessionCookie)
 	if cookie != nil {
-		c.DB.Where("key = ?", HashSessionToken(cookie.Value)).Delete(&Session{})
+		c.DB.Where("key = ?", pwdhash.HashSessionToken(cookie.Value)).Delete(&Session{})
 	}
 	www.SendOK(w)
 }
@@ -164,7 +166,7 @@ func (c *ConfigDB) GetUserID(r *http.Request, allowBasic bool) int64 {
 
 	if sessionCookie != "" {
 		session := Session{}
-		c.DB.Where("key = ?", HashSessionToken(sessionCookie)).Find(&session)
+		c.DB.Where("key = ?", pwdhash.HashSessionToken(sessionCookie)).Find(&session)
 		if session.UserID != 0 && (session.ExpiresAt.IsZero() || session.ExpiresAt.Get().After(time.Now())) {
 			return session.UserID
 		}
@@ -187,7 +189,7 @@ func (c *ConfigDB) GetUserID(r *http.Request, allowBasic bool) int64 {
 		//if decryptedBearerToken != nil {
 		token, _ := base64.StdEncoding.DecodeString(tokenBase64)
 		session := Session{}
-		c.DB.Where("key = ?", HashSessionToken(string(token))).Find(&session)
+		c.DB.Where("key = ?", pwdhash.HashSessionToken(string(token))).Find(&session)
 		if session.UserID != 0 && (session.ExpiresAt.IsZero() || session.ExpiresAt.Get().After(time.Now())) {
 			return session.UserID
 		}
@@ -200,7 +202,7 @@ func (c *ConfigDB) GetUserID(r *http.Request, allowBasic bool) int64 {
 			user := User{}
 			c.DB.Where("username_normalized = ?", NormalizeUsername(username)).Find(&user)
 			if user.ID != 0 {
-				if VerifyHash(password, user.Password) {
+				if pwdhash.VerifyHash(password, user.Password) {
 					return user.ID
 				}
 			}

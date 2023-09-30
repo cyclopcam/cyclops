@@ -450,16 +450,16 @@ static void detect_yolov7_8(ModelTypes modelType, ncnn::Net& net, int nn_width, 
 	//printf("scale: %f, wpad: %d, hpad: %d\n", scale, wpad, hpad);
 
 	for (int i = 0; i < count; i++) {
-		objects[i]      = proposals[picked[i]];
-		const auto& obj = objects[i];
+		objects[i]  = proposals[picked[i]];
+		Object& obj = objects[i];
 
 		//printf("object %d, class %d (%.1f%%) %f,%f,%f,%f\n", i, obj.label, obj.prob * 100, obj.rect.x, obj.rect.y, obj.rect.width, obj.rect.height);
 
 		// adjust offset to original unpadded
-		float x0 = (objects[i].rect.x - (wpad / 2)) / scale;
-		float y0 = (objects[i].rect.y - (hpad / 2)) / scale;
-		float x1 = (objects[i].rect.x + objects[i].rect.width - (wpad / 2)) / scale;
-		float y1 = (objects[i].rect.y + objects[i].rect.height - (hpad / 2)) / scale;
+		float x0 = (obj.rect.x - (wpad / 2)) / scale;
+		float y0 = (obj.rect.y - (hpad / 2)) / scale;
+		float x1 = (obj.rect.x + obj.rect.width - (wpad / 2)) / scale;
+		float y1 = (obj.rect.y + obj.rect.height - (hpad / 2)) / scale;
 
 		// clip
 		x0 = std::max(std::min(x0, (float) (img_w - 1)), 0.f);
@@ -467,10 +467,10 @@ static void detect_yolov7_8(ModelTypes modelType, ncnn::Net& net, int nn_width, 
 		x1 = std::max(std::min(x1, (float) (img_w - 1)), 0.f);
 		y1 = std::max(std::min(y1, (float) (img_h - 1)), 0.f);
 
-		objects[i].rect.x      = x0;
-		objects[i].rect.y      = y0;
-		objects[i].rect.width  = x1 - x0;
-		objects[i].rect.height = y1 - y0;
+		obj.rect.x      = x0;
+		obj.rect.y      = y0;
+		obj.rect.width  = x1 - x0;
+		obj.rect.height = y1 - y0;
 	}
 }
 

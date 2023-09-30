@@ -1,4 +1,4 @@
-package configdb
+package rando
 
 import (
 	"crypto/rand"

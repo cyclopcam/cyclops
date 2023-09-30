@@ -1,9 +1,10 @@
-package configdb
+package pwdhash
 
 import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"fmt"
 
 	"golang.org/x/crypto/scrypt"
@@ -47,6 +48,11 @@ func HashPassword(password string) []byte {
 	return hashPasswordWithSalt(createSalt(), password)
 }
 
+// Return base64 encoding of HashPassword
+func HashPasswordBase64(password string) string {
+	return base64.RawStdEncoding.EncodeToString(HashPassword(password))
+}
+
 // Returns true if a plaintext password matches a stored hash
 func VerifyHash(password string, hash []byte) bool {
 	if len(hash) != hashLenV1 {
@@ -57,9 +63,20 @@ func VerifyHash(password string, hash []byte) bool {
 	return subtle.ConstantTimeCompare(dk, hash[1+saltSizeV1:1+saltSizeV1+scryptHashSizeV1]) == 1
 }
 
+// Returns true if a plaintext password matches a stored hash, in base64
+func VerifyHashBase64(password string, hashb64 string) bool {
+	raw, _ := base64.RawStdEncoding.DecodeString(hashb64)
+	return VerifyHash(password, raw)
+}
+
 // Hash the session token to safeguard against timing attacks (eg in the DB's BTree lookup)
 // The caller gets the plaintext value, and that is the ONLY place where the plaintext lives.
 func HashSessionToken(value string) []byte {
 	h := sha256.Sum256([]byte(value))
 	return h[:]
+}
+
+// Return the base64 encoding of the hash of the session token
+func HashSessionTokenBase64(value string) string {
+	return base64.RawStdEncoding.EncodeToString(HashSessionToken(value))
 }

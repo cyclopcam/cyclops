@@ -431,7 +431,11 @@ func (m *Monitor) nnThread() {
 		yuv.CopyToCImageRGB(rgb)
 		objects, err := m.detector.DetectObjects(rgb.NChan(), rgb.Pixels, rgb.Width, rgb.Height, nil)
 		duration := time.Now().Sub(start)
-		m.avgTimeNSPerFrameNN.Store((99*m.avgTimeNSPerFrameNN.Load() + duration.Nanoseconds()) / 100)
+		if m.avgTimeNSPerFrameNN.Load() == 0 {
+			m.avgTimeNSPerFrameNN.Store(duration.Nanoseconds())
+		} else {
+			m.avgTimeNSPerFrameNN.Store((99*m.avgTimeNSPerFrameNN.Load() + duration.Nanoseconds()) / 100)
+		}
 		if err != nil {
 			if time.Now().Sub(lastErrAt) > 15*time.Second {
 				m.Log.Errorf("Error detecting objects: %v", err)
