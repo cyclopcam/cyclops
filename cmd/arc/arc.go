@@ -24,5 +24,7 @@ func main() {
 	}
 	s.HotReloadWWW = *hotReloadWWW
 	s.ListenForInterruptSignal()
-	s.ListenHTTP(":8081")
+	if err := s.ListenHTTP(":8081"); err != nil {
+		fmt.Printf("%v\n", err)
+	}
 }

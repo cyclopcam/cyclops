@@ -127,6 +127,19 @@
 			"program": "cmd/proxy/proxy.go"
 		},
 		{
+			"name": "arc.go",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+			"program": "cmd/arc/arc.go",
+			"cwd": "${workspaceFolder}",
+			"args": [
+				"--hot",
+				"--config",
+				"scripts/arc/arcserver.json"
+			]
+		},
+		{
 			"name": "kernelwg.go",
 			"type": "go",
 			"request": "launch",

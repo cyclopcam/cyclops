@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/cyclopcam/cyclops/arc/server/auth"
+	"github.com/cyclopcam/cyclops/arc/server/storage"
+	"github.com/cyclopcam/cyclops/arc/server/storagecache"
+	"github.com/cyclopcam/cyclops/arc/server/video"
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/julienschmidt/httprouter"
 	"gorm.io/gorm"
@@ -20,10 +23,13 @@ type Server struct {
 	Log          log.Log
 	DB           *gorm.DB
 
-	signalIn   chan os.Signal
-	httpServer *http.Server
-	httpRouter *httprouter.Router
-	auth       *auth.AuthServer
+	signalIn     chan os.Signal
+	httpServer   *http.Server
+	httpRouter   *httprouter.Router
+	auth         *auth.AuthServer
+	video        *video.VideoServer
+	storage      storage.Storage
+	storageCache *storagecache.StorageCache
 }
 
 func NewServer(configFile string) (*Server, error) {
@@ -44,10 +50,24 @@ func NewServer(configFile string) (*Server, error) {
 		return nil, err
 	}
 	authServer := auth.NewAuthServer(db, logs, "arc-session")
+	storageServer, err := storage.NewStorageFS(logs, cfg.StoragePath)
+	if err != nil {
+		return nil, err
+	}
+	var storageCache *storagecache.StorageCache
+	// Only use a cache if the underlying storage system is a cloud blob store
+	//storageCache, err := storagecache.NewStorageCache(logs, storageServer, cfg.StorageCachePath, 256*1024*1024)
+	//if err != nil {
+	//	return nil, err
+	//}
+	videoServer := video.NewVideoServer(logs, db, storageServer, storageCache)
 	s := &Server{
-		Log:  logs,
-		DB:   db,
-		auth: authServer,
+		Log:          logs,
+		DB:           db,
+		auth:         authServer,
+		video:        videoServer,
+		storage:      storageServer,
+		storageCache: storageCache,
 	}
 	if err := s.setupHttpRoutes(); err != nil {
 		return nil, err

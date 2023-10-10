@@ -9,8 +9,12 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-func (s *Server) httpAuthLogin(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
+func (s *Server) httpAuthLogin(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	s.auth.Login(w, r)
+}
+
+func (s *Server) httpAuthLogout(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
+	s.auth.Logout(w, r)
 }
 
 func (s *Server) httpAuthSetPassword(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {

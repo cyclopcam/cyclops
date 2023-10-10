@@ -1,11 +1,16 @@
-import './assets/main.css'
+import './assets/main.scss'
 
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
+import { globals } from './globals'
 
-const app = createApp(App)
+const app = createApp(App);
+app.use(router);
+app.mount('#app');
 
-app.use(router)
+if (window.location.pathname !== "/login") {
+	globals.redirectIfNotLoggedIn();
+}
 
-app.mount('#app')
+

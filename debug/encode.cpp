@@ -3,8 +3,8 @@
 #include <assert.h>
 #include <string>
 #include <algorithm>
-#include "server/videox/encoder.h"
-#include "server/videox/tsf.hpp"
+#include "pkg/videox/encoder.h"
+#include "pkg/videox/tsf.hpp"
 #include "debug/glob.hpp"
 
 // build ffmpeg:

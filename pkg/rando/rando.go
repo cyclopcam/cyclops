@@ -3,6 +3,8 @@ package rando
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"os"
+	"path/filepath"
 )
 
 // This is 62 symbols, hence 5.9542 bits per character
@@ -48,4 +50,9 @@ func StrongRandomDigits(nchars int) string {
 		buf[i] = digitChars[buf[i]%byte(len(digitChars))]
 	}
 	return string(buf)
+}
+
+// Returns a random filename in the temp directory, with the given extension
+func TempFilename(ext string) string {
+	return filepath.Join(os.TempDir(), StrongRandomAlphaNumChars(20)) + ext
 }

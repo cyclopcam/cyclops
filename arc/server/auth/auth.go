@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/cyclopcam/cyclops/arc/server/model"
@@ -13,10 +14,28 @@ import (
 	"gorm.io/gorm"
 )
 
+// Site-wide (aka some kind of superuser) permissions.
+// Stored in auth_user.site_permissions
+const (
+	SitePermissionAdmin = "a" // You can do anything
+)
+
+type AuthType int
+
+const (
+	AuthTypeSessionCookie    AuthType = 1
+	AuthTypeUsernamePassword AuthType = 2
+)
+
 type Credentials struct {
 	UserID                           int64
-	AuthenticatedViaSessionCookie    string // If session was authenticated via session cookie, this is pwdhash.HashSessionTokenBase64(cookie.Value)
+	SitePermissions                  string
+	AuthenticatedViaSessionCookie    string // If session was authenticated via session cookie, this is pwdhash.HashSessionTokenBase64(cookie.Value) - aka the value in the DB
 	AuthenticatedViaUsernamePassword bool   // If authenticated via username/password, this is true
+}
+
+func (c *Credentials) IsAdmin() bool {
+	return strings.Index(c.SitePermissions, SitePermissionAdmin) != -1
 }
 
 type AuthServer struct {
@@ -35,29 +54,53 @@ func NewAuthServer(db *gorm.DB, log log.Log, sessionCookieName string) *AuthServ
 
 // If authorization fails, sends a response to 'w', and returns nil
 // If authorization succeeds, returns a non-nil Credentials
-func (a *AuthServer) AuthenticateRequest(w http.ResponseWriter, r *http.Request) *Credentials {
-	cookie, _ := r.Cookie(a.sessionCookieName)
-	if cookie != nil {
-		hashedTokenb64 := pwdhash.HashSessionTokenBase64(cookie.Value)
-		session := model.AuthSession{}
-		a.db.First(&session).Where("key = ?", hashedTokenb64)
-		if session.AuthUserID != 0 {
-			return &Credentials{
-				UserID:                        session.AuthUserID,
-				AuthenticatedViaSessionCookie: hashedTokenb64,
+func (a *AuthServer) AuthenticateRequest(w http.ResponseWriter, r *http.Request, allowTypes AuthType) *Credentials {
+	cred := a.authenticateRequest(w, r, allowTypes)
+	if cred != nil {
+		// Augment returned Credentials with additional information about the user
+		user := model.AuthUser{}
+		if err := a.db.Where("id = ?", cred.UserID).First(&user).Error; err != nil {
+			a.log.Errorf("Error fetching user %v after authenticating request: %v", cred.UserID, err)
+			return nil
+		}
+	}
+	return cred
+}
+
+// Same contract AuthenticateRequest()
+func (a *AuthServer) authenticateRequest(w http.ResponseWriter, r *http.Request, allowTypes AuthType) *Credentials {
+	if allowTypes&AuthTypeSessionCookie != 0 {
+		cookie, _ := r.Cookie(a.sessionCookieName)
+		if cookie != nil {
+			hashedTokenb64 := pwdhash.HashSessionTokenBase64(cookie.Value)
+			session := model.AuthSession{}
+			a.db.Where("key = ?", hashedTokenb64).First(&session)
+			if session.AuthUserID != 0 {
+				return &Credentials{
+					UserID:                        session.AuthUserID,
+					AuthenticatedViaSessionCookie: hashedTokenb64,
+				}
 			}
 		}
 	}
-	if username, password, ok := r.BasicAuth(); ok {
-		user := model.AuthUser{}
-		a.db.First(&user).Where("email = ?", username)
-		if user.ID != 0 {
-			if pwdhash.VerifyHashBase64(password, user.Password) {
-				return &Credentials{
-					UserID:                           user.ID,
-					AuthenticatedViaUsernamePassword: true,
+
+	if allowTypes&AuthTypeUsernamePassword != 0 {
+		if username, password, ok := r.BasicAuth(); ok {
+			user := model.AuthUser{}
+			a.db.Where("email = ?", username).First(&user)
+			if user.ID != 0 {
+				if pwdhash.VerifyHashBase64(password, user.Password) {
+					return &Credentials{
+						UserID:                           user.ID,
+						AuthenticatedViaUsernamePassword: true,
+					}
+				} else {
+					www.SendError(w, "Invalid password", http.StatusUnauthorized)
 				}
+			} else {
+				www.SendError(w, "Invalid username", http.StatusUnauthorized)
 			}
+			return nil
 		}
 	}
 
@@ -66,7 +109,7 @@ func (a *AuthServer) AuthenticateRequest(w http.ResponseWriter, r *http.Request)
 }
 
 func (a *AuthServer) Login(w http.ResponseWriter, r *http.Request) {
-	cred := a.AuthenticateRequest(w, r)
+	cred := a.AuthenticateRequest(w, r, AuthTypeUsernamePassword)
 	if cred == nil {
 		return
 	}
@@ -98,6 +141,19 @@ func (a *AuthServer) Login(w http.ResponseWriter, r *http.Request) {
 		Expires: expiresAt,
 	}
 	http.SetCookie(w, cookie)
+	a.log.Infof("User %v logged in with session cookie hash = %v", cred.UserID, session.Key)
+	www.SendOK(w)
+}
+
+func (a *AuthServer) Logout(w http.ResponseWriter, r *http.Request) {
+	cred := a.AuthenticateRequest(w, r, AuthTypeSessionCookie)
+	if cred == nil {
+		return
+	}
+	if cred.AuthenticatedViaSessionCookie != "" {
+		a.log.Infof("User %v logout with session cookie hash = %v", cred.UserID, cred.AuthenticatedViaSessionCookie)
+		a.db.Where("key = ?", cred.AuthenticatedViaSessionCookie).Delete(&model.AuthSession{})
+	}
 	www.SendOK(w)
 }
 

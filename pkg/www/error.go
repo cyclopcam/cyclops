@@ -56,6 +56,14 @@ func PanicForbidden() {
 	panic(Forbidden())
 }
 
+func PanicForbiddenf(format string, args ...interface{}) {
+	panic(Forbiddenf(format, args...))
+}
+
+func Forbiddenf(format string, args ...interface{}) HTTPError {
+	return HTTPError{http.StatusForbidden, fmt.Sprintf(format, args...)}
+}
+
 func Unauthorized() HTTPError {
 	return HTTPError{http.StatusUnauthorized, "Unauthorized"}
 }

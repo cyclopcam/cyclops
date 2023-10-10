@@ -10,9 +10,9 @@ import (
 
 	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/monitor"
-	"github.com/cyclopcam/cyclops/server/videox"
 	"github.com/gorilla/websocket"
 )
 

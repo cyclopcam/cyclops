@@ -8,7 +8,7 @@ clang -g -o enc \
  -L /home/ben/dev/ffmpeg/libavutil \
  -L /home/ben/dev/ffmpeg/libswscale \
  -L /home/ben/dev/ffmpeg/libswresample \
- -I. debug/encode.cpp server/videox/helper.cpp \
+ -I. debug/encode.cpp pkg/videox/helper.cpp \
  -std=c++17 \
  -lavdevice \
  -lavfilter \

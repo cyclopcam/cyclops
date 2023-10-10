@@ -29,7 +29,7 @@ func (s *Server) setupHttpRoutes() error {
 			if logEveryRequest {
 				s.Log.Infof("HTTP (protected) %v %v", method, r.URL.Path)
 			}
-			cred := s.auth.AuthenticateRequest(w, r)
+			cred := s.auth.AuthenticateRequest(w, r, auth.AuthTypeSessionCookie)
 			if cred == nil {
 				return
 			}
@@ -48,9 +48,15 @@ func (s *Server) setupHttpRoutes() error {
 	}
 
 	unprotected("GET", "/api/ping", s.httpPing)
-	protected("POST", "/api/auth/login", s.httpAuthLogin)
+	unprotected("POST", "/api/auth/login", s.httpAuthLogin)
+	protected("POST", "/api/auth/logout", s.httpAuthLogout)
 	protected("POST", "/api/auth/setPassword/:userid", s.httpAuthSetPassword)
-	protected("POST", "/api/auth/check", s.httpAuthCheck)
+	protected("GET", "/api/auth/check", s.httpAuthCheck)
+
+	protected("PUT", "/api/video", s.video.HttpPutVideo)
+	protected("GET", "/api/video/:id/thumbnail", s.video.HttpVideoThumbnail)
+	protected("GET", "/api/video/:id/video/:res", s.video.HttpGetVideo)
+	protected("GET", "/api/videos/list", s.video.HttpListVideos)
 
 	isImmutable := true
 	var fsys fs.FS

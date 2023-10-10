@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/migration"
+	"github.com/cyclopcam/cyclops/arc/server/auth"
 	"github.com/cyclopcam/cyclops/arc/server/model"
 	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/log"
@@ -11,22 +12,6 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/rando"
 	"gorm.io/gorm"
 )
-
-func migrations(log log.Log) []migration.Migrator {
-	migs := []migration.Migrator{}
-	idx := 0
-
-	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
-		`
-		CREATE TABLE auth_user(id BIGSERIAL PRIMARY KEY, email TEXT, password TEXT, created_at TIMESTAMP);
-
-		CREATE TABLE auth_session(key TEXT PRIMARY KEY, auth_user_id BIGINT, created_at TIMESTAMP, expires_at TIMESTAMP);
-		CREATE INDEX idx_auth_session_auth_user_id ON auth_session(auth_user_id);
-		CREATE INDEX idx_auth_session_expires_at ON auth_session(expires_at);
-	`))
-
-	return migs
-}
 
 // Open or create the DB
 func openDB(log log.Log, config dbh.DBConfig) (*gorm.DB, error) {
@@ -45,9 +30,10 @@ func openDB(log log.Log, config dbh.DBConfig) (*gorm.DB, error) {
 		log.Infof("Username: admin")
 		log.Infof("Password: %v", pwd)
 		user := model.AuthUser{
-			Email:     "admin",
-			Password:  pwdhash.HashPasswordBase64(pwd),
-			CreatedAt: time.Now().UTC(),
+			Email:           "admin",
+			Password:        pwdhash.HashPasswordBase64(pwd),
+			CreatedAt:       time.Now().UTC(),
+			SitePermissions: auth.SitePermissionAdmin,
 		}
 		if err := db.Create(&user).Error; err != nil {
 			return nil, err
@@ -55,4 +41,30 @@ func openDB(log log.Log, config dbh.DBConfig) (*gorm.DB, error) {
 	}
 
 	return db, err
+}
+
+func migrations(log log.Log) []migration.Migrator {
+	migs := []migration.Migrator{}
+	idx := 0
+
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		CREATE TABLE auth_user(id BIGSERIAL PRIMARY KEY, email TEXT, password TEXT, created_at TIMESTAMP);
+
+		CREATE TABLE auth_session(key TEXT PRIMARY KEY, auth_user_id BIGINT, created_at TIMESTAMP, expires_at TIMESTAMP);
+		CREATE INDEX idx_auth_session_auth_user_id ON auth_session(auth_user_id);
+		CREATE INDEX idx_auth_session_expires_at ON auth_session(expires_at);
+	`))
+
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		CREATE TABLE video(id BIGSERIAL PRIMARY KEY, created_by BIGINT NOT NULL, created_at TIMESTAMP NOT NULL, camera_name TEXT NOT NULL);
+	`))
+
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		ALTER TABLE auth_user ADD COLUMN site_permissions TEXT;
+	`))
+
+	return migs
 }

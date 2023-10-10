@@ -7,9 +7,9 @@ import (
 
 	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/defs"
-	"github.com/cyclopcam/cyclops/server/videox"
 )
 
 // Camera represents a single physical camera, with two streams (high and low res)
