@@ -1,2 +1,2 @@
 #!/bin/bash
-go run cmd/arc/*.go --hot --config scripts/arc/arcserver.json "$@"
+ARC_ALWAYS_ALLOW_BASIC_AUTH=1 go run cmd/arc/*.go --hot --config scripts/arc/arcserver.json "$@"

@@ -15,3 +15,10 @@ invidual needs.
 -   Run `scripts/arc/server` to start the Arc server
 -   Change admin password to `12345678`:
     `curl -X POST -u admin:<password from above console logs> 'localhost:8081/api/auth/setPassword/1?password=12345678'`
+
+### Connecting to gcloud
+
+If you want to connect directly to google cloud from your dev environment:
+
+-   Run `gcloud auth application-default login` (see
+    https://cloud.google.com/docs/authentication/application-default-credentials)

@@ -68,3 +68,7 @@ func (fs *StorageFS) DeleteFile(name string) error {
 	fs.log.Infof("Deleting file %v", name)
 	return os.Remove(filepath.Join(fs.Root, name))
 }
+
+func (fs *StorageFS) URL(name string) (string, error) {
+	return "", ErrNoPublicUrl
+}

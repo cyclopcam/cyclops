@@ -62,12 +62,12 @@ func Open(log log.Log, root string) (*EventDB, error) {
 
 // Save a new recording to disk.
 // Returns the record of the new recording.
-func (e *EventDB) Save(res defs.Resolution, origin RecordingOrigin, cameraID int64, startTime time.Time, buf *videox.RawBuffer) (*Recording, error) {
-	rnd, err := e.createRandomID()
-	if err != nil {
-		return nil, err
+// Either rawLD or rawHD may be nil, but not both.
+func (e *EventDB) Save(origin RecordingOrigin, cameraID int64, startTime time.Time, rawLD, rawHD *videox.RawBuffer) (*Recording, error) {
+	if rawLD == nil && rawHD == nil {
+		return nil, fmt.Errorf("Both rawLD and rawHD are nil")
 	}
-	width, height, err := buf.DecodeHeader()
+	rnd, err := e.createRandomID()
 	if err != nil {
 		return nil, err
 	}
@@ -78,26 +78,45 @@ func (e *EventDB) Save(res defs.Resolution, origin RecordingOrigin, cameraID int
 		Origin:     origin,
 		CameraID:   cameraID,
 	}
-	recording.SetFormatAndDimensions(res, width, height)
-	videoPath := e.FullPath(recording.VideoFilename(res))
-	thumbnailPath := e.FullPath(recording.ThumbnailFilename())
-	os.MkdirAll(filepath.Dir(videoPath), 0770)
-	e.log.Infof("Creating recording thumbnail %v", thumbnailPath)
-	if err := e.saveThumbnailFromVideo(buf, thumbnailPath); err != nil {
-		return nil, err
+	if rawLD != nil {
+		width, height, err := rawLD.DecodeHeader()
+		if err != nil {
+			return nil, err
+		}
+		recording.SetFormatAndDimensions(defs.ResLD, width, height)
 	}
-	e.log.Infof("Saving recording %v", videoPath)
-	if err := buf.SaveToMP4(videoPath); err != nil {
+	if rawHD != nil {
+		width, height, err := rawHD.DecodeHeader()
+		if err != nil {
+			return nil, err
+		}
+		recording.SetFormatAndDimensions(defs.ResHD, width, height)
+	}
+	thumbnailPath := e.FullPath(recording.ThumbnailFilename())
+	// This directory will hold the thumbnail and the videos, so we only need to create it here
+	os.MkdirAll(filepath.Dir(thumbnailPath), 0770)
+	e.log.Infof("Creating recording thumbnail %v", thumbnailPath)
+	thumbnailBuf := rawLD
+	if thumbnailBuf == nil {
+		thumbnailBuf = rawHD
+	}
+	if err := e.saveThumbnailFromVideo(thumbnailBuf, thumbnailPath); err != nil {
 		return nil, err
 	}
 
-	videoStat, err := os.Stat(videoPath)
-	if err != nil {
-		// soft fail
-		e.log.Errorf("Failed to stat newly created video %v: %v", videoPath, err)
-		recording.Bytes += 1024 * 1024
-	} else {
-		recording.Bytes += videoStat.Size()
+	if rawLD != nil {
+		size, err := e.saveVideo(rawLD, e.FullPath(recording.VideoFilename(defs.ResLD)))
+		if err != nil {
+			return nil, err
+		}
+		recording.Bytes += size
+	}
+	if rawHD != nil {
+		size, err := e.saveVideo(rawHD, e.FullPath(recording.VideoFilename(defs.ResHD)))
+		if err != nil {
+			return nil, err
+		}
+		recording.Bytes += size
 	}
 
 	thumbStat, err := os.Stat(thumbnailPath)
@@ -368,6 +387,24 @@ func (e *EventDB) SaveThumbnail(img *cimg.Image, targetFilename string) error {
 		return err
 	}
 	return os.WriteFile(targetFilename, b, 0660)
+}
+
+// Save a video stream to a file.
+// Returns the size of the video file on disk
+func (e *EventDB) saveVideo(buf *videox.RawBuffer, targetFilename string) (int64, error) {
+	e.log.Infof("Saving recording %v", targetFilename)
+	if err := buf.SaveToMP4(targetFilename); err != nil {
+		return 0, err
+	}
+
+	videoStat, err := os.Stat(targetFilename)
+	if err != nil {
+		// soft fail
+		e.log.Errorf("Failed to stat newly created video %v: %v", targetFilename, err)
+		return 1024 * 1024, nil
+	} else {
+		return videoStat.Size(), nil
+	}
 }
 
 func deleteIfExists(filename string) error {

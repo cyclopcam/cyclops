@@ -40,7 +40,7 @@ func NewVideoServer(log log.Log, db *gorm.DB, storage storage.Storage, storageCa
 }
 
 func videoFilename(vidID int64, file string) string {
-	return fmt.Sprintf("%v/%v", vidID, file)
+	return fmt.Sprintf("videos/%v/%v", vidID, file)
 }
 
 func (s *VideoServer) HttpPutVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
@@ -49,7 +49,9 @@ func (s *VideoServer) HttpPutVideo(w http.ResponseWriter, r *http.Request, param
 		www.PanicBadRequestf("Request body is too large: %v. Maximum size: %v MB", r.ContentLength, maxSize/(1024*1024))
 	}
 	cameraName := strings.TrimSpace(www.RequiredQueryValue(r, "cameraName"))
-	cameraName = cameraName[:200]
+	if len(cameraName) > 200 {
+		cameraName = cameraName[:200]
+	}
 	reader := io.LimitReader(r.Body, maxSize)
 	body, err := io.ReadAll(reader)
 	www.Check(err)

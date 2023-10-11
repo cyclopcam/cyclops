@@ -1,9 +1,12 @@
 package storage
 
 import (
+	"errors"
 	"io"
 	"time"
 )
+
+var ErrNoPublicUrl = errors.New("No public URL available for this file")
 
 // Storage is an abstraction of a blob store (eg S3)
 type Storage interface {
@@ -14,6 +17,9 @@ type Storage interface {
 	ReadFile(name string) (*File, error)
 
 	DeleteFile(name string) error
+
+	// Return a URL to the given file. If that is not possible, return ErrNoPublicUrl.
+	URL(name string) (string, error)
 }
 
 // File is an element in blob storage.

@@ -110,6 +110,7 @@ func (r *Recording) ThumbnailFilename() string {
 	return r.baseFilename() + ".jpg"
 }
 
+// Set the width and height for the given resolution
 func (r *Recording) SetFormatAndDimensions(res defs.Resolution, width, height int) {
 	if res == defs.ResHD {
 		r.FormatHD = "mp4"

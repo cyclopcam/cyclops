@@ -57,6 +57,7 @@ func NewLiveCameras(logger log.Log, configDB *configdb.ConfigDB, shutdown chan b
 		configDB:               configDB,
 		shutdown:               shutdown,
 		monitor:                monitor,
+		ringBufferSize:         ringBufferSize,
 		cameraFromID:           map[int64]*camera.Camera{},
 		wake:                   make(chan bool, 10),
 		periodicWakeInterval:   10 * time.Second,

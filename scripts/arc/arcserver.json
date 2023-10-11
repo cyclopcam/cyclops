@@ -6,5 +6,11 @@
 		"username": "postgres",
 		"password": "lol"
 	},
-	"storage": "arc-storage"
+	"videoStorage": {
+		"gcs": {
+			"bucket": "cyclops-arc-videos",
+			"public": true
+		}
+	},
+	"videoCache": "arc-cache"
 }

@@ -120,7 +120,7 @@ func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod, duration time.D
 		firstPacket = oldestIDR
 		if firstPacket == -1 {
 			r.Log.Warnf("Not enough video frames in buffer")
-			return nil, fmt.Errorf("Not enough video frames in buffer")
+			return nil, fmt.Errorf("Not enough video frames in buffer (bufLen = %v)", bufLen)
 		} else if !satisfied {
 			// We failed to find enough frames to satisfy the desired duration.
 			// In this case, we issue a warning, but return the best effort.

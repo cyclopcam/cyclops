@@ -50,16 +50,33 @@ func NewServer(configFile string) (*Server, error) {
 		return nil, err
 	}
 	authServer := auth.NewAuthServer(db, logs, "arc-session")
-	storageServer, err := storage.NewStorageFS(logs, cfg.StoragePath)
+
+	// Open blob store
+	var storageServer storage.Storage
+	var storageCache *storagecache.StorageCache
+	if cfg.VideoStorage.GCS != nil {
+		// Google Cloud Storage
+		storageServer, err = storage.NewStorageGCS(logs, cfg.VideoStorage.GCS.Bucket, cfg.VideoStorage.GCS.Public)
+		if err != nil {
+			return nil, err
+		}
+	} else if cfg.VideoStorage.Filesystem != nil {
+		// Filesystem
+		storageServer, err = storage.NewStorageFS(logs, cfg.VideoStorage.Filesystem.Root)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, fmt.Errorf("One of the storage options must be configured (i.e. either 'filesystem' or 'gcs')")
+	}
+
+	// Our aim is to not need to use the storage cache. But for private blob store buckets, we need to.
+	// We could also implement signed URLs, but I haven't bothered with that yet.
+	storageCache, err = storagecache.NewStorageCache(logs, storageServer, cfg.VideoCache, 256*1024*1024)
 	if err != nil {
 		return nil, err
 	}
-	var storageCache *storagecache.StorageCache
-	// Only use a cache if the underlying storage system is a cloud blob store
-	//storageCache, err := storagecache.NewStorageCache(logs, storageServer, cfg.StorageCachePath, 256*1024*1024)
-	//if err != nil {
-	//	return nil, err
-	//}
+
 	videoServer := video.NewVideoServer(logs, db, storageServer, storageCache)
 	s := &Server{
 		Log:          logs,

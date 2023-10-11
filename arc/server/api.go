@@ -23,13 +23,25 @@ func (s *Server) setupHttpRoutes() error {
 	logEveryRequest := false
 	router := httprouter.New()
 
+	// This is useful when debugging, for "curl -u admin:123 ..."
+	// The bash script in scripts/arcserver sets this env var, but it's not expected to be set in production
+	alwaysAllowBASICAuth := false
+	if os.Getenv("ARC_ALWAYS_ALLOW_BASIC_AUTH") == "1" {
+		s.Log.Infof("Allowing BASIC authentication for all requests (not just logins)")
+		alwaysAllowBASICAuth = true
+	}
+
 	// protected creates an HTTP handler that is accessible only with authentication
 	protected := func(method, route string, handle authenticatedHandler) {
 		www.Handle(s.Log, router, method, route, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 			if logEveryRequest {
 				s.Log.Infof("HTTP (protected) %v %v", method, r.URL.Path)
 			}
-			cred := s.auth.AuthenticateRequest(w, r, auth.AuthTypeSessionCookie)
+			allowModes := auth.AuthTypeSessionCookie
+			if alwaysAllowBASICAuth {
+				allowModes |= auth.AuthTypeUsernamePassword
+			}
+			cred := s.auth.AuthenticateRequest(w, r, allowModes)
 			if cred == nil {
 				return
 			}

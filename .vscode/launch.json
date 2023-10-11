@@ -133,6 +133,9 @@
 			"mode": "auto",
 			"program": "cmd/arc/arc.go",
 			"cwd": "${workspaceFolder}",
+			"env": {
+				"ARC_ALWAYS_ALLOW_BASIC_AUTH": "1"
+			},
 			"args": [
 				"--hot",
 				"--config",

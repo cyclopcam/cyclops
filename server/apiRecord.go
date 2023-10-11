@@ -40,6 +40,10 @@ func (s *Server) recorderFunc(cam *camera.Camera, self *recorder) {
 	// We add 15 seconds grace, on top of the UI limit of 45 seconds.
 	maxTime := (45 + 15) * time.Second
 
+	// At least one of these must be true
+	includeLD := true
+	includeHD := true
+
 	logger := log.NewPrefixLogger(s.Log, fmt.Sprintf("Recorder %v", self.id))
 
 	defer close(self.finished)
@@ -63,15 +67,32 @@ outer:
 	}
 
 	// save recording
-	raw, err := cam.LowDumper.ExtractRawBuffer(camera.ExtractMethodDrain, time.Now().Sub(startAt))
-	if err != nil {
-		msg := fmt.Errorf("Failed to extract raw buffer: %v", err)
-		logger.Errorf("%v", msg)
-		self.result.err = msg
-		return
+	var rawLD *videox.RawBuffer
+	var rawHD *videox.RawBuffer
+	var err error
+
+	duration := time.Now().Sub(startAt)
+
+	if includeLD {
+		rawLD, err = cam.LowDumper.ExtractRawBuffer(camera.ExtractMethodDrain, duration)
+		if err != nil {
+			msg := fmt.Errorf("Failed to extract raw LD buffer: %v", err)
+			logger.Errorf("%v", msg)
+			self.result.err = msg
+			return
+		}
+	}
+	if includeHD {
+		rawHD, err = cam.HighDumper.ExtractRawBuffer(camera.ExtractMethodDrain, duration)
+		if err != nil {
+			msg := fmt.Errorf("Failed to extract raw HD buffer: %v", err)
+			logger.Errorf("%v", msg)
+			self.result.err = msg
+			return
+		}
 	}
 
-	recording, err := s.permanentEvents.Save(defs.ResLD, eventdb.RecordingOriginExplicit, cam.ID(), startAt, raw)
+	recording, err := s.permanentEvents.Save(eventdb.RecordingOriginExplicit, cam.ID(), startAt, rawLD, rawHD)
 	if err != nil {
 		msg := fmt.Errorf("Failed to save recording: %v", err)
 		logger.Errorf("%v", msg)

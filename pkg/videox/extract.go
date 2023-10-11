@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/rando"
@@ -38,11 +39,17 @@ func ExtractVideoDuration(srcFilename string) (time.Duration, error) {
 		}
 		return 0, fmt.Errorf("ffprobe execution failed: %w (%v)", err, outStr)
 	}
-	seconds, err := strconv.ParseFloat(string(out), 64)
-	if err != nil {
-		return 0, err
+	// I don't know why, but the full output on my machine is two lines:
+	//   Warning: using insecure memory!
+	//   6.399000
+	// So we make allowance for that here.
+	outStr := string(out)
+	for _, line := range strings.Split(outStr, "\n") {
+		if seconds, err := strconv.ParseFloat(line, 64); err == nil {
+			return time.Duration(seconds * float64(time.Second)), nil
+		}
 	}
-	return time.Duration(seconds * float64(time.Second)), nil
+	return 0, fmt.Errorf("Unable to parse ffprobe output: %v", outStr)
 }
 
 // Extract a single frame from a video file and return the JPEG bytes

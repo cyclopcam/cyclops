@@ -67,7 +67,7 @@ func (a *AuthServer) AuthenticateRequest(w http.ResponseWriter, r *http.Request,
 	return cred
 }
 
-// Same contract AuthenticateRequest()
+// Same contract as AuthenticateRequest()
 func (a *AuthServer) authenticateRequest(w http.ResponseWriter, r *http.Request, allowTypes AuthType) *Credentials {
 	if allowTypes&AuthTypeSessionCookie != 0 {
 		cookie, _ := r.Cookie(a.sessionCookieName)
