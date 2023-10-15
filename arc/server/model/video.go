@@ -2,6 +2,7 @@ package model
 
 import "time"
 
+// SYNC-ARC-VIDEO-RECORD
 type Video struct {
 	BaseModel
 	CreatedBy  int64     `json:"createdBy"`

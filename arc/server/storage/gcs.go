@@ -57,6 +57,7 @@ func (s *StorageGCS) DeleteFile(name string) error {
 
 func (s *StorageGCS) URL(name string) (string, error) {
 	if !s.isPublic {
+		// We could also use signed URLs, but I haven't bothered with that yet
 		return "", ErrNoPublicUrl
 	}
 	return "https://storage.googleapis.com/" + s.bucketName + "/" + name, nil

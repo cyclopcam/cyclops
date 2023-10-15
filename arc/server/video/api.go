@@ -23,6 +23,10 @@ import (
 	"gorm.io/gorm"
 )
 
+// Note that the video filenames in blob storage are also represented in code form
+// in video.ts. So if you change a path such as /:id/lowRes.mp4, then don't forget
+// to also change it in video.ts
+
 type VideoServer struct {
 	log          log.Log
 	db           *gorm.DB

@@ -60,6 +60,8 @@ func (s *Server) setupHttpRoutes() error {
 	}
 
 	unprotected("GET", "/api/ping", s.httpPing)
+	protected("GET", "/api/constants", s.httpConstants)
+
 	unprotected("POST", "/api/auth/login", s.httpAuthLogin)
 	protected("POST", "/api/auth/logout", s.httpAuthLogout)
 	protected("POST", "/api/auth/setPassword/:userid", s.httpAuthSetPassword)

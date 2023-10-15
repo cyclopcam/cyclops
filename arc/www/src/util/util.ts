@@ -36,6 +36,14 @@ export async function fetchOrErr(url: string, options?: RequestInit): Promise<Fe
 	}
 }
 
+// Throws a nice error if anything goes wrong
+export async function fetchOrThrow(url: string, options?: RequestInit): Promise<Response> {
+	let r = await fetchOrErr(url, options);
+	if (!r.ok)
+		throw r.error;
+	return r.r;
+}
+
 export function encodeQuery(kv: { [key: string]: string | number | boolean }): string {
 	let s = "";
 	for (let k in kv) {

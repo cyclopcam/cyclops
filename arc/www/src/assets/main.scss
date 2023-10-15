@@ -30,3 +30,11 @@
 	border: solid 1px var(--color-border-hover);
 	padding: 15px 20px;
 }
+
+.modalFrame {
+	border-radius: 5px;
+	box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.08), 3px 3px 7px rgba(0, 0, 0, 0.1);
+	border: solid 1px var(--color-border-hover);
+	padding: 15px 20px;
+	background-color: #fff;
+}

@@ -6,10 +6,7 @@ import TopBar from '@/components/TopBar.vue';
 <template>
 	<div class="flexColumn home">
 		<TopBar />
-		<div class="homeBody">
-			Foo! I am HomeView
-
-		</div>
+		<RouterView class="homeContent" />
 	</div>
 </template>
 
@@ -18,7 +15,7 @@ import TopBar from '@/components/TopBar.vue';
 	height: 100%;
 }
 
-.homeBody {
+.homeContent {
 	flex: 1 1 auto;
 }
 </style>

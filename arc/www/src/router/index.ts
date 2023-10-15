@@ -1,18 +1,26 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 import Login from '../views/Login.vue';
+import Videos from '@/videos/Videos.vue';
 
 const router = createRouter({
 	history: createWebHistory(import.meta.env.BASE_URL),
 	routes: [
 		{
 			path: '/',
-			name: 'home',
+			name: 'rtHome',
 			component: HomeView,
+			children: [
+				{
+					path: "videos",
+					name: "rtVideos",
+					component: Videos,
+				},
+			],
 		},
 		{
 			path: '/login',
-			name: 'login',
+			name: 'rtLogin',
 			component: Login,
 		},
 		/*

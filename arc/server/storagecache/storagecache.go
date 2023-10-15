@@ -11,6 +11,9 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/log"
 )
 
+// NOTE: This unit is very poorly tested, because I started using
+// publicly accessible URLs pretty early on.
+
 // StorageCache caches blob store files on the local disk so that
 // clients can seek inside them. It would be possible to build this
 // functionality without a cache, but then I couldn't just use
@@ -109,7 +112,11 @@ func (s *StorageCache) acquire(filename string) error {
 		return err
 	}
 	defer src.Reader.Close()
-	dst, err := os.Create(filepath.Join(s.cacheRoot, filename))
+	ondiskFilename := filepath.Join(s.cacheRoot, filename)
+	if err := os.MkdirAll(filepath.Dir(ondiskFilename), 0755); err != nil {
+		return err
+	}
+	dst, err := os.Create(ondiskFilename)
 	if err != nil {
 		return err
 	}
