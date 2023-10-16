@@ -1,5 +1,5 @@
 import { globals } from "@/globals";
-import { fetchOrThrow } from "@/util/util";
+import { dateTime, fetchOrThrow } from "@/util/util";
 
 export enum VideoResolution {
 	Low = "low",
@@ -12,7 +12,7 @@ export class Video {
 		public id: number,
 		public cameraName: string,
 		public createdBy: number,
-		public createdAt: number
+		public createdAt: Date
 	) { }
 
 	static fromJSON(j: any): Video {
@@ -20,7 +20,7 @@ export class Video {
 			j.id,
 			j.cameraName,
 			j.createdBy,
-			j.createdAt
+			new Date(j.createdAt),
 		);
 	}
 

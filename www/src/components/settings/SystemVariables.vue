@@ -17,6 +17,7 @@ interface VariableDefinition {
 	explanation: string;
 	required: boolean;
 	uiGroup: string;
+	type: 'path' | 'text' | 'password';
 }
 interface VariableValue {
 	key: string;
@@ -44,11 +45,19 @@ let ctx = new forms.Context(() => {
 	return true;
 },
 	{
-		inputWidth: '340px',
+		inputWidth: '310px',
 		inputColor: '#00a',
 		submitTitle: props.initialSetup ? "Next" : "Save",
 	}
 );
+
+function placeholder(v: Union): string {
+	if (v.def.type === 'path') {
+		return '/...';
+	} else {
+		return '';
+	}
+}
 
 async function onSubmit() {
 	ctx.submitError.value = '';
@@ -159,9 +168,11 @@ onMounted(() => {
 
 <template>
 	<div class="flexColumn">
-		<div v-for="v of variables">
-			<form-text :ctx="ctx" :id="v.def.key" :big-label="v.def.explanation" :label="v.def.title" v-model="v.val"
-				:required="v.def.required" placeholder="/..." />
+		<div style="padding: 0px 20px">
+			<div v-for="v of variables">
+				<form-text :ctx="ctx" :id="v.def.key" :big-label="v.def.explanation" :label="v.def.title" v-model="v.val"
+					:required="v.def.required" :placeholder="placeholder(v)" :password="v.def.type === 'password'" />
+			</div>
 		</div>
 		<form-bottom :ctx="ctx" @submit="onSubmit" />
 	</div>

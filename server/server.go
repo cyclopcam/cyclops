@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/server/arc"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/eventdb"
 	"github.com/cyclopcam/cyclops/server/livecameras"
@@ -47,6 +48,7 @@ type Server struct {
 	train           *train.Trainer
 	wsUpgrader      websocket.Upgrader
 	monitor         *monitor.Monitor
+	arcCredentials  *arc.ArcServerCredentials // If Arc server is not configured, then this is nil.
 
 	vpnLock sync.Mutex
 	vpn     *vpn.VPN
@@ -225,6 +227,8 @@ func (s *Server) LoadConfigVariables() error {
 	if err := s.configDB.DB.Find(&vars).Error; err != nil {
 		return err
 	}
+	arcCredentials := arc.ArcServerCredentials{}
+	var firstError error
 	for _, v := range vars {
 		trimmed := strings.TrimSpace(v.Value)
 		if trimmed == "" {
@@ -239,12 +243,21 @@ func (s *Server) LoadConfigVariables() error {
 			err = s.SetRecentEventStoragePath(trimmed)
 		case configdb.VarTempFilePath:
 			err = s.SetTempFilePath(trimmed)
+		case configdb.VarArcServer:
+			arcCredentials.ServerUrl = strings.TrimSuffix(trimmed, "/")
+		case configdb.VarArcUsername:
+			arcCredentials.Username = trimmed
+		case configdb.VarArcPassword:
+			arcCredentials.Password = trimmed
 		default:
 			s.Log.Errorf("Config variable '%v' not recognized", v.Key)
 		}
-		if err != nil {
-			return err
+		if err != nil && firstError == nil {
+			firstError = err
 		}
 	}
-	return nil
+	if arcCredentials.IsConfigured() {
+		s.arcCredentials = &arcCredentials
+	}
+	return firstError
 }

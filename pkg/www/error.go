@@ -132,12 +132,12 @@ func CheckClient(err error) {
 	}
 }
 
-// FailedRequestSummary returns a string that you can emit into a log message, when an HTTP that you've made fails
+// FailedRequestSummary returns a string that you can emit into a log message, when an HTTP request that you've made fails
 func FailedRequestSummary(resp *http.Response, err error) string {
 	return FailedRequestSummaryEx(resp, err, 100)
 }
 
-// FailedRequestSummaryEx returns a string that you can emit into a log message, when an HTTP that you've made fails
+// FailedRequestSummaryEx returns a string that you can emit into a log message, when an HTTP request that you've made fails
 func FailedRequestSummaryEx(resp *http.Response, err error, maxBodyLen int) string {
 	if resp != nil {
 		defer resp.Body.Close()

@@ -71,6 +71,10 @@ export class Recording {
 	async saveLabels(): Promise<FetchResult> {
 		return fetchOrErr("/api/record/setLabels", { method: "POST", body: JSON.stringify(this.toJSON()) });
 	}
+
+	async uploadToArc(): Promise<FetchResult> {
+		return fetchOrErr(`/api/record/sendToArc/${this.id}`, { method: "POST" });
+	}
 }
 
 // Labels on a video

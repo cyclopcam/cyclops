@@ -9,6 +9,7 @@ import Menue from '../../core/Menue.vue';
 import { globals } from '@/globals';
 import { tagColorClasses } from './tagStyles';
 import SelectButton from '../../core/SelectButton.vue';
+import { showToast } from '@/components/widgets/toast';
 
 let props = defineProps<{
 	playerCookie: string, // Used to ensure that there is only one RecordingItem playing a video at a time
@@ -22,6 +23,7 @@ let emits = defineEmits(['click', 'playInline', 'delete', 'openLabeler']);
 let enableBurgerMenu = ref(false);
 let showBurgerMenu = ref(false);
 let myCookie = ref(randomString(8));
+let isUploadingToArc = ref(false);
 
 let burgerItems = [
 	{ action: "delete", title: "Delete" },
@@ -99,6 +101,16 @@ function labelBtnClasses(): any {
 	return Object.assign({ labelTxt: true, shadow5LHover: true }, tagColorClasses(vt));
 }
 
+// Massive hack. Needs a purposebuilt UX.
+async function onUploadToArc() {
+	isUploadingToArc.value = true;
+	let r = await props.recording.uploadToArc();
+	isUploadingToArc.value = false;
+	if (!r.ok) {
+		showToast(r.error);
+	}
+}
+
 onMounted(() => {
 	if (props.playAtStartup) {
 		showInlinePlayer();
@@ -126,6 +138,8 @@ onMounted(() => {
 			<div style="font-size:12px">
 				{{ startDate() }}
 			</div>
+			<button @click="onUploadToArc" style="font-size: 13px; padding: 2px 4px">{{ isUploadingToArc ? '🙃' : '🫠'
+			}}</button>
 			<div :class="labelBtnClasses()" @click="$emit('openLabeler')">
 				{{ labelTxt() }}
 			</div>

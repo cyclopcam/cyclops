@@ -15,6 +15,7 @@ import (
 	"github.com/cyclopcam/cyclops/arc/server/model"
 	"github.com/cyclopcam/cyclops/arc/server/storage"
 	"github.com/cyclopcam/cyclops/arc/server/storagecache"
+	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/rando"
 	"github.com/cyclopcam/cyclops/pkg/videox"
@@ -47,7 +48,14 @@ func videoFilename(vidID int64, file string) string {
 	return fmt.Sprintf("videos/%v/%v", vidID, file)
 }
 
+// Upload a video.
+// A video is a zip file containing the following files:
+// - lowRes.mp4
+// - highRes.mp4
+// The low res video should be from the low res stream of the camera,
+// so that we can train on the exact same video that we are using for inference.
 func (s *VideoServer) HttpPutVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
+	s.log.Infof("Video incoming")
 	maxSize := int64(16 * 1024 * 1024)
 	if r.ContentLength > maxSize {
 		www.PanicBadRequestf("Request body is too large: %v. Maximum size: %v MB", r.ContentLength, maxSize/(1024*1024))
@@ -95,7 +103,7 @@ func (s *VideoServer) HttpPutVideo(w http.ResponseWriter, r *http.Request, param
 
 	vid := model.Video{
 		CreatedBy:  cred.UserID,
-		CreatedAt:  time.Now().UTC(),
+		CreatedAt:  dbh.Milli(time.Now().UTC()),
 		CameraName: cameraName,
 	}
 	tx := s.db.Begin()
@@ -107,6 +115,7 @@ func (s *VideoServer) HttpPutVideo(w http.ResponseWriter, r *http.Request, param
 	www.Check(storage.WriteFile(s.storage, videoFilename(vid.ID, "thumb.jpg"), bytes.NewReader(thumbnail)))
 	www.Check(tx.Commit().Error)
 	www.SendID(w, vid.ID)
+	s.log.Infof("New video %v from user %v, camera %v", vid.ID, cred.UserID, cameraName)
 }
 
 func (s *VideoServer) getVideoOrPanic(id string, cred *auth.Credentials) *model.Video {
@@ -150,7 +159,7 @@ func (s *VideoServer) HttpGetVideo(w http.ResponseWriter, r *http.Request, param
 	defer reader.Close()
 	w.Header().Set("Content-Type", "video/mp4")
 	if seeker, ok := reader.(io.ReadSeeker); ok {
-		http.ServeContent(w, r, "video.mp4", vid.CreatedAt, seeker)
+		http.ServeContent(w, r, "video.mp4", vid.CreatedAt.Time, seeker)
 	} else {
 		// This ends up creating a poorer html <video> element experience
 		io.Copy(w, reader)

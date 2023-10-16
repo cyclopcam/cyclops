@@ -11,6 +11,7 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/pkg/www"
+	"github.com/cyclopcam/cyclops/server/arc"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/defs"
@@ -247,6 +248,19 @@ func (s *Server) httpRecordSetOntology(w http.ResponseWriter, r *http.Request, p
 	www.Check(err)
 	// Prune unused ontologies, so that we don't end up with unnecessary records
 	www.Check(s.permanentEvents.PruneUnusedOntologies([]int64{id}))
+	www.SendOK(w)
+}
+
+func (s *Server) httpRecordSendToArc(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	if s.arcCredentials == nil {
+		www.PanicBadRequestf("Arc credentials are not configured")
+	}
+	recording, err := s.permanentEvents.GetRecording(www.ParseID(params.ByName("id")))
+	www.Check(err)
+	s.Log.Infof("Uploading video %v to arc", recording.ID)
+	camera := configdb.Camera{}
+	www.Check(s.configDB.DB.First(&camera, recording.CameraID).Error)
+	www.Check(arc.UploadToArc(s.arcCredentials, s.permanentEvents.Root, recording, camera.Name))
 	www.SendOK(w)
 }
 

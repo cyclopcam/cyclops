@@ -2,6 +2,8 @@ package dbh
 
 import (
 	"database/sql/driver"
+	"encoding/json"
+	"strconv"
 	"time"
 )
 
@@ -60,9 +62,10 @@ func (i IntTime) Value() (driver.Value, error) {
 	return int64(i), nil
 }
 
-/*
-MilliTime is almost nice, but it doesn't support omitempty when marshalling to JSON
-
+// MilliTime serializes to JSON as unix milliseconds.
+// Unfortunately it doesn't support JSON 'omitempty'.
+// We use this for Postgres, because Postgres has proper
+// time.Time support.
 type MilliTime struct {
 	// Embedding time.Time is better than making MilliTime an alias of time.Time, because embedding
 	// brings in all the methods of time.Time, whereas an alias won't have any time-based methods on it.
@@ -78,19 +81,14 @@ func (i *MilliTime) Scan(src any) error {
 		*i = MilliTime{time.Time{}}
 		return nil
 	}
-	if srcInt, ok := src.(int); ok {
-		*i = MilliTime{time.UnixMilli(int64(srcInt))}
-	} else if srcInt64, ok := src.(int64); ok {
-		*i = MilliTime{time.UnixMilli(srcInt64)}
+	if t, ok := src.(time.Time); ok {
+		i.Time = t
 	}
 	return nil
 }
 
 func (i MilliTime) Value() (driver.Value, error) {
-	if i.IsZero() {
-		return nil, nil
-	}
-	return i.UnixMilli(), nil
+	return driver.Value(i.Time), nil
 }
 
 func (i MilliTime) MarshalJSON() ([]byte, error) {
@@ -111,7 +109,6 @@ func (i *MilliTime) UnmarshalJSON(b []byte) error {
 	*i = MilliTime{time.UnixMilli(iv)}
 	return nil
 }
-*/
 
 /////////////////////////////////////////////////////////////////////////////
 
