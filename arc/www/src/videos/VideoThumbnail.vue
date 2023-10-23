@@ -9,8 +9,14 @@ let props = defineProps<{
 
 <template>
 	<div>
-		<img :src="props.video.thumbnailUrl()" />
+		<img :src="props.video.thumbnailUrl()" class="img" />
 	</div>
 </template>
 
-<style scoped lang="scss"></style>
+<style scoped lang="scss">
+.img {
+	width: 400px;
+	height: 280px;
+	object-fit: scale-down;
+}
+</style>

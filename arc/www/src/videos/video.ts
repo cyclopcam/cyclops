@@ -3,6 +3,7 @@ import { dateTime, fetchOrThrow } from "@/util/util";
 
 export enum VideoResolution {
 	Low = "low",
+	Medium = "medium",
 	High = "high",
 }
 

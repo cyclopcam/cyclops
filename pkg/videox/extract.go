@@ -14,7 +14,6 @@ import (
 // Extract the duration of a video file
 func ExtractVideoDuration(srcFilename string) (time.Duration, error) {
 	args := []string{
-		"ffprobe",
 		"-v",
 		"error",
 		"-show_entries",
@@ -23,21 +22,9 @@ func ExtractVideoDuration(srcFilename string) (time.Duration, error) {
 		"default=noprint_wrappers=1:nokey=1",
 		srcFilename,
 	}
-	ffprobe, err := exec.LookPath("ffprobe")
+	out, err := RunAppCombinedOutput("ffprobe", args)
 	if err != nil {
-		return 0, fmt.Errorf("Unable to find ffprobe in your path (%w)", err)
-	}
-	cmd := &exec.Cmd{
-		Path: ffprobe,
-		Args: args,
-	}
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		outStr := ""
-		if out != nil {
-			outStr = string(out)
-		}
-		return 0, fmt.Errorf("ffprobe execution failed: %w (%v)", err, outStr)
+		return 0, err
 	}
 	// I don't know why, but the full output on my machine is two lines:
 	//   Warning: using insecure memory!
@@ -53,28 +40,48 @@ func ExtractVideoDuration(srcFilename string) (time.Duration, error) {
 }
 
 // Extract a single frame from a video file and return the JPEG bytes
-func ExtractFrame(srcFilename string, atSecond float64) ([]byte, error) {
+// If outputWidth is zero, then we use the same width as the input video
+func ExtractFrame(srcFilename string, atSecond float64, outputWidth int) ([]byte, error) {
 	tmpFilename := rando.TempFilename(".jpg")
 	defer os.Remove(tmpFilename)
 	args := []string{
-		"ffmpeg",
 		"-ss",
 		fmt.Sprintf("%.3f", atSecond),
 		"-i",
 		srcFilename,
+	}
+	if outputWidth > 0 {
+		args = append(args,
+			"-vf",
+			fmt.Sprintf("scale=%v:-1", outputWidth),
+		)
+	}
+	args = append(args,
 		"-frames:v",
 		"1",
 		"-q:v",
 		"8",
 		tmpFilename,
-	}
-	ffmpeg, err := exec.LookPath("ffmpeg")
+	)
+	_, err := RunAppCombinedOutput("ffmpeg", args)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to find ffmpeg in your path (%w)", err)
+		return nil, err
 	}
+	return os.ReadFile(tmpFilename)
+}
+
+// app_name is an executable, such as "ffmpeg" or "ffprobe"
+// args must not include the executable name as the first parameter
+// Returns the string output from exec.Cmd's "CombinedOutput" method.
+func RunAppCombinedOutput(app_name string, args []string) ([]byte, error) {
+	app_path, err := exec.LookPath(app_name)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to find '%v' in your path (%w)", app_name, err)
+	}
+	args_with_app := append([]string{app_name}, args...)
 	cmd := &exec.Cmd{
-		Path: ffmpeg,
-		Args: args,
+		Path: app_path,
+		Args: args_with_app,
 	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -82,7 +89,7 @@ func ExtractFrame(srcFilename string, atSecond float64) ([]byte, error) {
 		if out != nil {
 			outStr = string(out)
 		}
-		return nil, fmt.Errorf("ffmpeg execution failed: %w (%v)", err, outStr)
+		return nil, fmt.Errorf("%v execution failed: %w (%v)", app_name, err, outStr)
 	}
-	return os.ReadFile(tmpFilename)
+	return out, nil
 }

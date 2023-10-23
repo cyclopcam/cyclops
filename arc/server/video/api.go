@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/cyclopcam/cyclops/arc/server/storage"
 	"github.com/cyclopcam/cyclops/arc/server/storagecache"
 	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/cyclops/pkg/iox"
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/rando"
 	"github.com/cyclopcam/cyclops/pkg/videox"
@@ -69,36 +71,28 @@ func (s *VideoServer) HttpPutVideo(w http.ResponseWriter, r *http.Request, param
 	www.Check(err)
 	zipReader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	www.Check(err)
-	lowRes, err := zipReader.Open("lowRes.mp4")
-	if err != nil {
-		www.PanicBadRequestf("Failed to open lowRes.mp4 in zip file: %v", err)
-	}
-	defer lowRes.Close()
-	lowResStat, err := lowRes.Stat()
-	www.Check(err)
-	if lowResStat.Size() > maxSize {
-		www.PanicBadRequestf("lowRes.mp4 is too large: %v", lowResStat.Size())
-	}
 
-	highRes, err := zipReader.Open("highRes.mp4")
-	if err != nil {
-		www.PanicBadRequestf("Failed to open highRes.mp4 in zip file: %v", err)
-	}
-	defer highRes.Close()
-	highResStat, err := highRes.Stat()
+	lowResTempFile, lowResReader, err := extractZipFile(zipReader, "lowRes.mp4", maxSize)
 	www.Check(err)
-	if highResStat.Size() > maxSize {
-		www.PanicBadRequestf("highRes.mp4 is too large: %v", highResStat.Size())
-	}
+	defer os.Remove(lowResTempFile)
+	defer lowResReader.Close()
 
-	lowResBytes, err := io.ReadAll(lowRes)
+	highResTempFile, highResReader, err := extractZipFile(zipReader, "highRes.mp4", maxSize)
 	www.Check(err)
-	lowResTempfile := rando.TempFilename(".jpg")
-	defer os.Remove(lowResTempfile)
-	www.Check(os.WriteFile(lowResTempfile, lowResBytes, 0644))
-	lowResDuration, err := videox.ExtractVideoDuration(lowResTempfile)
+	defer os.Remove(highResTempFile)
+	defer highResReader.Close()
+
+	mediumResTempFile := rando.TempFilename(".mp4")
+	defer os.Remove(mediumResTempFile)
+	www.Check(videox.TranscodeMediumQualitySeekable(highResTempFile, mediumResTempFile))
+	mediumResReader, err := os.Open(mediumResTempFile)
 	www.Check(err)
-	thumbnail, err := videox.ExtractFrame(lowResTempfile, lowResDuration.Seconds()/2)
+	defer mediumResReader.Close()
+
+	// Create thumbnail
+	highResDuration, err := videox.ExtractVideoDuration(highResTempFile)
+	www.Check(err)
+	thumbnail, err := videox.ExtractFrame(highResTempFile, highResDuration.Seconds()/2, 1280)
 	www.Check(err)
 
 	vid := model.Video{
@@ -110,12 +104,41 @@ func (s *VideoServer) HttpPutVideo(w http.ResponseWriter, r *http.Request, param
 	www.Check(tx.Error)
 	defer tx.Rollback()
 	www.Check(tx.Create(&vid).Error)
-	www.Check(storage.WriteFile(s.storage, videoFilename(vid.ID, "lowRes.mp4"), bytes.NewReader(lowResBytes)))
-	www.Check(storage.WriteFile(s.storage, videoFilename(vid.ID, "highRes.mp4"), highRes))
+	www.Check(storage.WriteFile(s.storage, videoFilename(vid.ID, "lowRes.mp4"), lowResReader))
+	www.Check(storage.WriteFile(s.storage, videoFilename(vid.ID, "mediumRes.mp4"), mediumResReader))
+	www.Check(storage.WriteFile(s.storage, videoFilename(vid.ID, "highRes.mp4"), highResReader))
 	www.Check(storage.WriteFile(s.storage, videoFilename(vid.ID, "thumb.jpg"), bytes.NewReader(thumbnail)))
 	www.Check(tx.Commit().Error)
 	www.SendID(w, vid.ID)
 	s.log.Infof("New video %v from user %v, camera %v", vid.ID, cred.UserID, cameraName)
+}
+
+// Extract a single file from a zip file.
+// Return the name of the temporary extract location, and a reader on that temporary file.
+func extractZipFile(zf *zip.Reader, filename string, maxBytes int64) (string, io.ReadCloser, error) {
+	content, err := zf.Open(filename)
+	if err != nil {
+		www.PanicBadRequestf("Failed to open %v in zip file: %v", filename, err)
+	}
+	defer content.Close()
+	stat, err := content.Stat()
+	if err != nil {
+		return "", nil, err
+	}
+	if stat.Size() > maxBytes {
+		return "", nil, fmt.Errorf("%v is too large: %v", filename, stat.Size())
+	}
+	tempFile := rando.TempFilename(filepath.Ext(filename))
+	err = iox.WriteStreamToFile(tempFile, content)
+	if err != nil {
+		return "", nil, err
+	}
+	reader, err := os.Open(tempFile)
+	if err != nil {
+		os.Remove(tempFile)
+		return "", nil, err
+	}
+	return tempFile, reader, nil
 }
 
 func (s *VideoServer) getVideoOrPanic(id string, cred *auth.Credentials) *model.Video {
@@ -139,8 +162,8 @@ func (s *VideoServer) HttpVideoThumbnail(w http.ResponseWriter, r *http.Request,
 
 func (s *VideoServer) HttpGetVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
 	res := params.ByName("res")
-	if res != "low" && res != "high" {
-		www.PanicBadRequestf("Invalid resolution: %v. Valid values are 'low' and 'high'", res)
+	if res != "low" && res != "medium" && res != "high" {
+		www.PanicBadRequestf("Invalid resolution: %v. Valid values are 'low', 'medium', 'high'", res)
 	}
 	//seekableUrl := www.QueryValue(r, "seekableUrl") == "1"
 	vid := s.getVideoOrPanic(params.ByName("id"), cred)

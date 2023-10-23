@@ -9,7 +9,7 @@ let props = defineProps<{
 <template>
 	<div class="modalFrame">
 		<div>
-			<video class="video" controls :src="video.videoUrl(VideoResolution.High)" />
+			<video class="video" controls :src="video.videoUrl(VideoResolution.Medium)" />
 		</div>
 		<div class="flexColumn">
 			<div>Created By: {{ video.createdBy }}</div>
