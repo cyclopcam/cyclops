@@ -48,7 +48,7 @@ func (r *VideoDecodeReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	r.TrackID = stream.H264TrackID
 	r.Track = stream.H264Track
 
-	decoder, err := videox.NewH264Decoder()
+	decoder, err := videox.NewH264StreamDecoder("h264")
 	if err != nil {
 		return nil, fmt.Errorf("Failed to start H264 decoder: %w", err)
 	}

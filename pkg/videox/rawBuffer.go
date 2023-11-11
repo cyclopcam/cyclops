@@ -381,7 +381,7 @@ func (r *RawBuffer) ResetPTS() {
 // Decode the center-most keyframe
 // This is O(1), assuming no errors or funny business like no keyframes.
 func (r *RawBuffer) ExtractThumbnail() (*cimg.Image, error) {
-	decoder, err := NewH264Decoder()
+	decoder, err := NewH264StreamDecoder("h264")
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,9 @@
 #include "simpleocv.h"
 #include <assert.h>
 
+// Transpose a matrix by operating on blocks of N x N pixels at a time.
+// The block size is hardcoded inside this function to 8 x 8, but I haven't
+// measured whether this is optimal.
 template <typename T>
 void TransposeT(const ncnn::Mat& in, ncnn::Mat& out) {
 	size_t w         = in.w;

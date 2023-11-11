@@ -70,8 +70,18 @@ github.com/asticode/go-astits v1.10.0 h1:ixKsRl84nWtjgHWcWKTDkUHNQ4kxbf9nKmjuSCn
 github.com/asticode/go-astits v1.10.0/go.mod h1:DkOWmBNQpnr9mv24KfZjq4JawCFX1FCqjLVGvO0DygQ=
 github.com/bmharper/cimg/v2 v2.0.4 h1:H+KorVgokoYrj1uLUhHCFrn6gXqq+U+OOeaSf3srF9Y=
 github.com/bmharper/cimg/v2 v2.0.4/go.mod h1:n4aJGk0UObZj+F0RNobiP/NkV235ECJFAwqGXq8ygJw=
+github.com/bmharper/flatbush-go v1.0.0 h1:p7xJHyKDIpzGYCaa9Zg4Du0gMNxdPcwEFJJ8KhHt5ZA=
+github.com/bmharper/flatbush-go v1.0.0/go.mod h1:Z+ze5Yql17pIeUx67EwVu5ESM0NqP4yyyYUKoNP0MUo=
 github.com/bmharper/ringbuffer v1.1.2 h1:r2QRV4KnTXxljr41TbCZYS0f/NvyU7xEJ5aGo8uQlBY=
 github.com/bmharper/ringbuffer v1.1.2/go.mod h1:Siq5AiKH4Hu6aPVKl2/24gl1mHB66hxr9JrACjqvHqc=
+github.com/bmharper/tiledinference v0.0.0-20231110030824-763b202a67c8 h1:99KD5iFyS7CTWsF/Vsbs/OrUovQ047haZ1IMDQUtQjg=
+github.com/bmharper/tiledinference v0.0.0-20231110030824-763b202a67c8/go.mod h1:q0VA9hkqyk6Vccwiu6rM/v1OP3zT24wb2MGn3fpwM2M=
+github.com/bmharper/tiledinference v0.0.0-20231110033618-c231f6b944f2 h1:cWAR4K9miujoDFfEJu3H+j4OW8iGaOFlZj04T9IlTMU=
+github.com/bmharper/tiledinference v0.0.0-20231110033618-c231f6b944f2/go.mod h1:q0VA9hkqyk6Vccwiu6rM/v1OP3zT24wb2MGn3fpwM2M=
+github.com/bmharper/tiledinference v0.0.0-20231110060209-339c4e349659 h1:42xzP4SwN4huUfgH8CZicfwGCj1uHmvvdBG1v7ve+3k=
+github.com/bmharper/tiledinference v0.0.0-20231110060209-339c4e349659/go.mod h1:q0VA9hkqyk6Vccwiu6rM/v1OP3zT24wb2MGn3fpwM2M=
+github.com/bmharper/tiledinference v1.0.0 h1:G5UpeVgRJrL9BsZkwONcecnZ9gwRDbK7VQYeKXmVHvE=
+github.com/bmharper/tiledinference v1.0.0/go.mod h1:q0VA9hkqyk6Vccwiu6rM/v1OP3zT24wb2MGn3fpwM2M=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/cespare/xxhash/v2 v2.1.1/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/cespare/xxhash/v2 v2.1.2 h1:YRXhKfTDauu4ajMg1TPgFO5jnlC2HCbmLXMcTG5cbYE=
@@ -374,6 +384,8 @@ github.com/stretchr/testify v1.7.2/go.mod h1:R6va5+xMeoiuVRoj+gSkQ7d3FALtqAAGI1F
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
 github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKsk=
 github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
+github.com/stretchr/testify v1.8.4 h1:CcVxjf3Q8PM0mHUKJCdn+eZZtm5yQwehR5yeSVQQcUk=
+github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.32/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=

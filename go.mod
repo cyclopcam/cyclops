@@ -1,6 +1,6 @@
 module github.com/cyclopcam/cyclops
 
-go 1.21
+go 1.21.1
 
 //replace github.com/go-chi/httprate => ../httprate
 
@@ -23,7 +23,7 @@ require (
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/lib/pq v1.10.2
 	github.com/mattn/go-sqlite3 v1.14.14
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.4
 	golang.org/x/crypto v0.11.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20220916014741-473347a5e6e3
 	gorm.io/driver/postgres v1.3.8
@@ -39,6 +39,8 @@ require (
 	cloud.google.com/go/longrunning v0.5.1 // indirect
 	cloud.google.com/go/storage v1.33.0 // indirect
 	github.com/asticode/go-astikit v0.20.0 // indirect
+	github.com/bmharper/flatbush-go v1.0.0 // indirect
+	github.com/bmharper/tiledinference v1.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsoprea/go-exif/v3 v3.0.0-20210625224831-a6301f85c82b // indirect

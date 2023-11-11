@@ -230,7 +230,7 @@ void Encoder_WriteNALU(char** err, void* _encoder, int64_t dts, int64_t pts, int
 	}
 
 	AVRational timeBase = encoder->OutStream->time_base;
-	auto       pkt      = av_packet_alloc();
+	AVPacket*  pkt      = av_packet_alloc();
 	pkt->dts            = av_rescale_q(dts, AVRational{1, 1000000000}, timeBase);
 	pkt->pts            = av_rescale_q(pts, AVRational{1, 1000000000}, timeBase);
 	//tsf::print("dts: %v, pts: %v\n", pkt->dts, pkt->pts);
@@ -360,6 +360,7 @@ void SetPacketDataPointer(void* _pkt, const void* buf, size_t bufLen) {
 }
 
 // I can't figure out how to get AV_ERROR_MAX_STRING_SIZE into Go code.. so we need this extra malloc
+// Note that this means you must free() the result.
 char* GetAvErrorStr(int averr) {
 	char msg[AV_ERROR_MAX_STRING_SIZE] = {0};
 	av_make_error_string(msg, AV_ERROR_MAX_STRING_SIZE, averr);
@@ -367,10 +368,10 @@ char* GetAvErrorStr(int averr) {
 }
 
 int AvCodecSendPacket(AVCodecContext* ctx, const void* buf, size_t bufLen) {
-	auto pkt  = av_packet_alloc();
-	pkt->data = (uint8_t*) buf;
-	pkt->size = (int) bufLen;
-	int res   = avcodec_send_packet(ctx, pkt);
+	AVPacket* pkt = av_packet_alloc();
+	pkt->data     = (uint8_t*) buf;
+	pkt->size     = (int) bufLen;
+	int res       = avcodec_send_packet(ctx, pkt);
 	av_packet_free(&pkt);
 	return res;
 }

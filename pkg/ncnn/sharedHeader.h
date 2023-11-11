@@ -1,5 +1,7 @@
 // This header is shared by the C definitions exported to Go, and the internal C++ code.
 
+#pragma once
+
 enum ModelTypes {
 	YOLOv7,
 	YOLOv8,

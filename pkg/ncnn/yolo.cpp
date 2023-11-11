@@ -6,6 +6,8 @@
 #include "yolo.h"
 #include "ncnn_helpers.h"
 
+#include "stb_image_write.h"
+
 //#if defined(USE_NCNN_SIMPLEOCV)
 //#include "simpleocv.h"
 //#else
@@ -195,6 +197,9 @@ static void detect_yolov7_8(ModelTypes modelType, ncnn::Net& net, int nn_width, 
 	//const int   target_size    = 640;
 	//const float prob_threshold = 0.25f;
 	//const float nms_threshold  = 0.45f;
+
+	// It's ultra useful to dump the image right before inference, to verify that you haven't screwed something up along the way
+	//stbi_write_jpg("/home/ben/dev/cyclops/inference.jpg", in_img.cols, in_img.rows, in_img.channels(), in_img.data, 95);
 
 	int img_w = in_img.cols;
 	int img_h = in_img.rows;

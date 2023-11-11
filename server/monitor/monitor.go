@@ -15,9 +15,9 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/accel"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/nn"
+	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/server/camera"
-	"github.com/cyclopcam/cyclops/server/ncnn"
-	"github.com/cyclopcam/cyclops/server/nn"
 )
 
 /* monitor runs our neural networks on the camera streams
@@ -103,7 +103,7 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 			logger.Warnf("Unable to resolve model path candidate '%v' to an absolute path: %v", tryPath, err)
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(abs, "yolov7-tiny.param")); err == nil {
+		if _, err := os.Stat(filepath.Join(abs, "yolov8s.json")); err == nil {
 			basePath = abs
 			break
 		}
@@ -113,7 +113,7 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	}
 	logger.Infof("Loading NN models from '%v'", basePath)
 
-	detector, err := ncnn.NewDetector("yolov8", filepath.Join(basePath, "yolov8s.param"), filepath.Join(basePath, "yolov8s.bin"), 320, 256)
+	detector, err := nnload.LoadModel(filepath.Join(basePath, "yolov8s"))
 	//detector, err := ncnn.NewDetector("yolov7", filepath.Join(basePath, "yolov7-tiny.param"), filepath.Join(basePath, "yolov7-tiny.bin"), 320, 256)
 	//detector, err := ncnn.NewDetector("yolov7", "/home/ben/dev/cyclops/models/yolov7-tiny.param", "/home/ben/dev/cyclops/models/yolov7-tiny.bin")
 	if err != nil {
@@ -420,6 +420,8 @@ func (m *Monitor) nnThread() {
 	// the bug of returning the incorrect lastImg for a camera (all cameras
 	// would share the same lastImg).
 
+	detectionParams := nn.NewDetectionParams()
+
 	for {
 		item, ok := <-m.nnThreadQueue
 		if !ok || m.mustStopNNThreads.Load() {
@@ -429,7 +431,7 @@ func (m *Monitor) nnThread() {
 		rgb := cimg.NewImage(yuv.Width, yuv.Height, cimg.PixelFormatRGB)
 		start := time.Now()
 		yuv.CopyToCImageRGB(rgb)
-		objects, err := m.detector.DetectObjects(rgb.NChan(), rgb.Pixels, rgb.Width, rgb.Height, nil)
+		objects, err := m.detector.DetectObjects(nn.WholeImage(rgb.NChan(), rgb.Pixels, rgb.Width, rgb.Height), detectionParams)
 		duration := time.Now().Sub(start)
 		if m.avgTimeNSPerFrameNN.Load() == 0 {
 			m.avgTimeNSPerFrameNN.Store(duration.Nanoseconds())

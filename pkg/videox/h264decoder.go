@@ -3,6 +3,7 @@ package videox
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"unsafe"
 
@@ -11,7 +12,8 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/accel"
 )
 
-// #cgo pkg-config: libavcodec libavutil libswscale
+// #cgo pkg-config: libavformat libavcodec libavutil libswscale
+// #include <libavformat/avformat.h>
 // #include <libavcodec/avcodec.h>
 // #include <libavutil/imgutils.h>
 // #include <libswscale/swscale.h>
@@ -36,15 +38,33 @@ func WrapAvErr(err C.int) error {
 	if err == -11 {
 		return ErrResourceTemporarilyUnavailable
 	}
+	// We need a better way than this to bring these constants in
+	if err == -541478725 {
+		return io.EOF
+	}
 	//char msg[AV_ERROR_MAX_STRING_SIZE] = {0};
 	//av_make_error_string(msg, AV_ERROR_MAX_STRING_SIZE, e);
 	//return msg;
 	//C.av_make_error_string()
-	return errors.New(C.GoString(C.GetAvErrorStr(err)))
+	raw := C.GetAvErrorStr(err)
+	msg := C.GoString(raw)
+	C.free(unsafe.Pointer(raw))
+	//fmt.Printf("Error %v: %v\n", err, msg)
+	return errors.New(msg)
+}
+
+// If you're decoding a file, provide the filename.
+// If you're decoding a stream, provide the codec
+type DecoderOptions struct {
+	Codec    string
+	Filename string
 }
 
 // H264Decoder is a wrapper around ffmpeg's H264 decoder.
 type H264Decoder struct {
+	formatCtx   *C.AVFormatContext // Only non-nil if we're decoding a file. If decoding an RTSP stream from memory, this is nil.
+	ownCodecCtx bool               // True if we created codecCtx, and need to free it.
+	videoStream C.int              // Only populated for files
 	codecCtx    *C.AVCodecContext
 	srcFrame    *C.AVFrame
 	swsCtx      *C.struct_SwsContext
@@ -52,8 +72,22 @@ type H264Decoder struct {
 	dstFramePtr []uint8
 }
 
+// Create a new decoder that you will feed with packets
+func NewH264StreamDecoder(codec string) (*H264Decoder, error) {
+	return NewH264Decoder(DecoderOptions{
+		Codec: codec,
+	})
+}
+
+// Create a new decoder that will decode the given file
+func NewH264FileDecoder(filename string) (*H264Decoder, error) {
+	return NewH264Decoder(DecoderOptions{
+		Filename: filename,
+	})
+}
+
 // NewH264Decoder allocates a new H264Decoder.
-func NewH264Decoder() (*H264Decoder, error) {
+func NewH264Decoder(options DecoderOptions) (*H264Decoder, error) {
 	// I tried this on Rpi4, to make sure I'm getting hardware decode.. but:
 	// This doesn't work.. I just get "avcodec_receive_frame error Resource temporarily unavailable"
 	// Perhaps it could work, I didn't try harder.
@@ -61,35 +95,79 @@ func NewH264Decoder() (*H264Decoder, error) {
 	//defer C.free(unsafe.Pointer(codecName))
 	//codec := C.avcodec_find_decoder_by_name(codecName)
 
-	codec := C.avcodec_find_decoder(C.AV_CODEC_ID_H264)
-	if codec == nil {
-		return nil, fmt.Errorf("avcodec_find_decoder() failed")
+	var formatCtx *C.AVFormatContext
+	var codecCtx *C.AVCodecContext
+	var codec *C.AVCodec
+	ownCodecCtx := false
+	success := false
+	pSuccess := &success
+	videoStream := C.int(-1)
+
+	if options.Filename != "" {
+		if cerr := C.avformat_open_input(&formatCtx, C.CString(options.Filename), nil, nil); cerr < 0 {
+			return nil, fmt.Errorf("Failed to open video file %v: %w", options.Filename, WrapAvErr(cerr))
+		}
+		defer func() {
+			if !*pSuccess {
+				C.avformat_close_input(&formatCtx)
+			}
+		}()
+
+		if cerr := C.avformat_find_stream_info(formatCtx, nil); cerr < 0 {
+			return nil, fmt.Errorf("Failed to find stream info for video file %v: %w", options.Filename, WrapAvErr(cerr))
+		}
+		videoStream = C.av_find_best_stream(formatCtx, C.AVMEDIA_TYPE_VIDEO, -1, -1, &codec, 0)
+		if videoStream < 0 {
+			return nil, fmt.Errorf("Failed to find video stream or codec in %v: %w", options.Filename, WrapAvErr(videoStream))
+		}
+		codecCtx = unsafe.Slice((**C.AVStream)(formatCtx.streams), formatCtx.nb_streams)[videoStream].codec
+	} else {
+		if options.Codec != "h264" {
+			return nil, fmt.Errorf("Only h264 codec is supported")
+		}
+
+		// Note: There is also avcodec_find_decoder_by_name()
+
+		codec = C.avcodec_find_decoder(C.AV_CODEC_ID_H264)
+		if codec == nil {
+			return nil, fmt.Errorf("avcodec_find_decoder() failed")
+		}
+
+		codecCtx = C.avcodec_alloc_context3(codec)
+		if codecCtx == nil {
+			return nil, fmt.Errorf("avcodec_alloc_context3() failed")
+		}
+		defer func() {
+			if !*pSuccess {
+				C.avcodec_close(codecCtx)
+			}
+		}()
+		ownCodecCtx = true
 	}
 
-	codecCtx := C.avcodec_alloc_context3(codec)
-	if codecCtx == nil {
-		return nil, fmt.Errorf("avcodec_alloc_context3() failed")
-	}
-
-	res := C.avcodec_open2(codecCtx, codec, nil)
-	if res < 0 {
-		C.avcodec_close(codecCtx)
-		return nil, fmt.Errorf("avcodec_open2() failed: %v", res)
+	if cerr := C.avcodec_open2(codecCtx, codec, nil); cerr < 0 {
+		return nil, fmt.Errorf("avcodec_open2() failed: %v", WrapAvErr(cerr))
 	}
 
 	srcFrame := C.av_frame_alloc()
 	if srcFrame == nil {
-		C.avcodec_close(codecCtx)
 		return nil, fmt.Errorf("av_frame_alloc() failed")
 	}
 
-	return &H264Decoder{
-		codecCtx: codecCtx,
-		srcFrame: srcFrame,
-	}, nil
+	decoder := &H264Decoder{
+		ownCodecCtx: ownCodecCtx,
+		codecCtx:    codecCtx,
+		videoStream: videoStream,
+		formatCtx:   formatCtx,
+		srcFrame:    srcFrame,
+	}
+
+	success = true
+
+	return decoder, nil
 }
 
-// close closes the decoder.
+// Close closes the decoder.
 func (d *H264Decoder) Close() {
 	if d.dstFrame != nil {
 		C.av_frame_free(&d.dstFrame)
@@ -100,7 +178,58 @@ func (d *H264Decoder) Close() {
 	}
 
 	C.av_frame_free(&d.srcFrame)
-	C.avcodec_close(d.codecCtx)
+	if d.ownCodecCtx {
+		C.avcodec_close(d.codecCtx)
+	}
+	if d.formatCtx != nil {
+		C.avformat_close_input(&d.formatCtx)
+	}
+}
+
+// NextFrame reads the next frame from a file and returns a copy of the YUV image.
+func (d *H264Decoder) NextFrame() (*accel.YUVImage, error) {
+	img, err := d.NextFrameDeepRef()
+	if err != nil {
+		return nil, err
+	}
+	return img.Clone(), nil
+}
+
+// NextFrameDeepRef will read the next frame from a file and return a deep
+// reference into the libavcodec decoded image buffer.
+// The next call to NextFrame/NextFrameDeepRef will invalidate that image.
+func (d *H264Decoder) NextFrameDeepRef() (*accel.YUVImage, error) {
+	packet := C.av_packet_alloc()
+	defer C.av_packet_free(&packet)
+
+	for {
+		if cerr := C.av_read_frame(d.formatCtx, packet); cerr < 0 {
+			return nil, WrapAvErr(cerr)
+		}
+
+		sendPacketErr := C.int(0)
+		if packet.stream_index == d.videoStream {
+			sendPacketErr = C.avcodec_send_packet(d.codecCtx, packet)
+		}
+
+		C.av_packet_unref(packet)
+
+		if sendPacketErr < 0 {
+			return nil, WrapAvErr(sendPacketErr)
+		}
+
+		// Note that we're not supporting non-trivial codecs here that might need multiple calls to
+		// receive_frame before a frame is available. Also, we're assuming that PTS is monotonically
+		// increasing.
+		cerr := C.avcodec_receive_frame(d.codecCtx, d.srcFrame)
+		if cerr == 0 {
+			//dumpYUV420pFrame(d.srcFrame)
+			deepRef := makeYUV420ImageDeepUnsafeReference(d.srcFrame)
+			return &deepRef, nil
+		} else {
+			return nil, WrapAvErr(cerr)
+		}
+	}
 }
 
 // Send the packet to the decoder, but don't retrieve the next frame
@@ -112,6 +241,7 @@ func (d *H264Decoder) Close() {
 //}
 
 // Decode the packet and return a copy of the YUV image.
+// This is used when decoding a stream (not a file).
 func (d *H264Decoder) Decode(packet *DecodedPacket) (*accel.YUVImage, error) {
 	img, err := d.DecodeDeepRef(packet)
 	if err != nil {
@@ -121,7 +251,7 @@ func (d *H264Decoder) Decode(packet *DecodedPacket) (*accel.YUVImage, error) {
 }
 
 // WARNING: The image returned is only valid while the decoder is still alive,
-// and it will be clobbered by the subsequent Decode().
+// and it will be clobbered by the subsequent DecodeDeepRef/Decode().
 // The pixels in the returned image are not a garbage-collected Go slice.
 // They point directly into the libavcodec decode buffer.
 // That's why the function name has the "DeepRef" suffix.
@@ -262,7 +392,7 @@ func (d *H264Decoder) sendPacket(packet []byte) error {
 // Obviously this is quite expensive, because you're creating a decoder
 // for just a single frame.
 func DecodeSinglePacketToImage(packet *DecodedPacket) (*cimg.Image, error) {
-	decoder, err := NewH264Decoder()
+	decoder, err := NewH264StreamDecoder("h264")
 	if err != nil {
 		return nil, err
 	}

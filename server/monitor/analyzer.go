@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/bmharper/ringbuffer"
-	"github.com/cyclopcam/cyclops/server/nn"
+	"github.com/cyclopcam/cyclops/pkg/nn"
 )
 
 /*
@@ -45,13 +45,13 @@ type analyzerSettings struct {
 // A time and position where we saw an object
 type timeAndPosition struct {
 	time      time.Time
-	detection nn.Detection
+	detection nn.ObjectDetection
 }
 
 // Internal state of an object that we're tracking
 type trackedObject struct {
 	id             int64 // every new tracked object gets a unique id
-	firstDetection nn.Detection
+	firstDetection nn.ObjectDetection
 	cameraWidth    int
 	cameraHeight   int
 	lastPosition   nn.Rect // equivalent to mostRecent().detection.Box, but kept here for convenience/lookup speed

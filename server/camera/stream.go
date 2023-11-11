@@ -176,6 +176,11 @@ func (s *Stream) Listen(address string) error {
 		cloned.RecvID = recvID
 		recvID++
 
+		// Frame size stats can be interesting
+		//if s.Ident == "driveway.low" {
+		//	fmt.Printf("Stream %v: Received packet %v. Size %v\n", s.Ident, cloned.RecvID, cloned.PayloadBytes())
+		//}
+
 		// Obtain the sinks lock, so that we can't send packets after a Close message has been sent.
 		s.sinksLock.Lock()
 		if !s.isClosed {

@@ -143,6 +143,26 @@
 			]
 		},
 		{
+			"name": "predict.go",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+			"program": "cmd/predict/predict.go",
+			"cwd": "${workspaceFolder}",
+			"args": [
+				"-i",
+				"/home/ben/tmp/mediumRes/swing/mediumRes.mp4",
+				"-o",
+				"foo.json",
+				"-s",
+				"64",
+				"-c",
+				"person",
+				"-m",
+				"models/yolov8l"
+			]
+		},
+		{
 			"name": "kernelwg.go",
 			"type": "go",
 			"request": "launch",

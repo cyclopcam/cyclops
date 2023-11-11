@@ -89,7 +89,7 @@ void RunDetection(NcnnDetector detector, const cv::Mat& img, bool benchmark, con
 }
 
 void DetectionThread(std::mutex* lock, std::vector<cv::Mat*>* queue, std::atomic<int>* numResults, TestModel tm) {
-	auto detector = CreateDetector(tm.ModelType.c_str(), tm.ParamFile.c_str(), tm.BinFile.c_str(), tm.Width, tm.Height);
+	auto detector = CreateDetector(DetectorFlagSingleThreaded, tm.ModelType.c_str(), tm.ParamFile.c_str(), tm.BinFile.c_str(), tm.Width, tm.Height);
 
 	while (true) {
 		if (QuitThreadsSignal) {
@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
 
 			// Measure the speed of a single run, so that we can figure out how many iterations to perform
 			if (Benchmark) {
-				auto detector = CreateDetector(tm.ModelType.c_str(), tm.ParamFile.c_str(), tm.BinFile.c_str(), tm.Width, tm.Height);
+				auto detector = CreateDetector(DetectorFlagSingleThreaded, tm.ModelType.c_str(), tm.ParamFile.c_str(), tm.BinFile.c_str(), tm.Width, tm.Height);
 				RunDetection(detector, m, true, tm);
 				DeleteDetector(detector);
 			}
