@@ -23,6 +23,7 @@ type DetectionResult struct {
 type DetectionParams struct {
 	ProbabilityThreshold float32 // Value between 0 and 1. Lower values will find more objects. Zero value will use the default.
 	NmsThreshold         float32 // Value between 0 and 1. Lower values will merge more objects together into one. Zero value will use the default.
+	Unclipped            bool    // If true, don't clip boxes to the neural network boundaries
 }
 
 // Create a default DetectionParams object
@@ -30,6 +31,7 @@ func NewDetectionParams() *DetectionParams {
 	return &DetectionParams{
 		ProbabilityThreshold: 0.5,
 		NmsThreshold:         0.45,
+		Unclipped:            false,
 	}
 }
 

@@ -7,6 +7,10 @@ enum ModelTypes {
 	YOLOv8,
 };
 
+enum DetectFlags {
+	DetectFlagNoClip = 1, // Do not clip detections to image boundary
+};
+
 typedef struct _Rect {
 	int X;
 	int Y;

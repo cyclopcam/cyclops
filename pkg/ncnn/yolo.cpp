@@ -28,6 +28,14 @@ struct Object {
 	float            prob;
 };
 
+static inline float clamp(float v, float vmin, float vmax) {
+	if (v < vmin)
+		return vmin;
+	if (v > vmax)
+		return vmax;
+	return v;
+}
+
 static inline float intersection_area(const Object& a, const Object& b) {
 	cv::Rect_<float> inter = a.rect & b.rect;
 	return inter.area();
@@ -185,7 +193,7 @@ static void generate_proposals(const ncnn::Mat& anchors, int stride, const ncnn:
 	}
 }
 
-static void detect_yolov7_8(ModelTypes modelType, ncnn::Net& net, int nn_width, int nn_height, float prob_threshold, float nms_threshold, const cv::Mat& in_img, std::vector<Object>& objects) {
+static void detect_yolov7_8(ModelTypes modelType, ncnn::Net& net, int nn_width, int nn_height, int detectFlags, float prob_threshold, float nms_threshold, const cv::Mat& in_img, std::vector<Object>& objects) {
 	// yolov7.opt.use_vulkan_compute = true;
 	// yolov7.opt.use_bf16_storage = true;
 
@@ -466,11 +474,20 @@ static void detect_yolov7_8(ModelTypes modelType, ncnn::Net& net, int nn_width, 
 		float x1 = (obj.rect.x + obj.rect.width - (wpad / 2)) / scale;
 		float y1 = (obj.rect.y + obj.rect.height - (hpad / 2)) / scale;
 
-		// clip
-		x0 = std::max(std::min(x0, (float) (img_w - 1)), 0.f);
-		y0 = std::max(std::min(y0, (float) (img_h - 1)), 0.f);
-		x1 = std::max(std::min(x1, (float) (img_w - 1)), 0.f);
-		y1 = std::max(std::min(y1, (float) (img_h - 1)), 0.f);
+		if (detectFlags & DetectFlagNoClip) {
+			// clip to 1x the NN size, in case we have crazy numbers.
+			x0 = clamp(x0, (float) -img_w, (float) (img_w * 2));
+			y0 = clamp(y0, (float) -img_h, (float) (img_h * 2));
+			x1 = clamp(x1, (float) -img_w, (float) (img_w * 2));
+			y1 = clamp(y1, (float) -img_h, (float) (img_h * 2));
+		} else {
+			// clip to NN size. The img_w - 1 and img_h - 1 (i.e. the -1) came from the original
+			// demo code. But looking at it now, it looks to me like the -1 is wrong.
+			x0 = clamp(x0, 0.f, (float) (img_w - 1));
+			y0 = clamp(y0, 0.f, (float) (img_h - 1));
+			x1 = clamp(x1, 0.f, (float) (img_w - 1));
+			y1 = clamp(y1, 0.f, (float) (img_h - 1));
+		}
 
 		obj.rect.x      = x0;
 		obj.rect.y      = y0;
@@ -479,9 +496,9 @@ static void detect_yolov7_8(ModelTypes modelType, ncnn::Net& net, int nn_width, 
 	}
 }
 
-void DetectYOLO(ModelTypes modelType, ncnn::Net& net, int nn_width, int nn_height, float prob_threshold, float nms_threshold, const cv::Mat& img, std::vector<Detection>& objects) {
+void DetectYOLO(ModelTypes modelType, ncnn::Net& net, int nn_width, int nn_height, int detectFlags, float prob_threshold, float nms_threshold, const cv::Mat& img, std::vector<Detection>& objects) {
 	std::vector<Object> obj;
-	detect_yolov7_8(modelType, net, nn_width, nn_height, prob_threshold, nms_threshold, img, obj);
+	detect_yolov7_8(modelType, net, nn_width, nn_height, detectFlags, prob_threshold, nms_threshold, img, obj);
 	//fprintf(stderr, "obj.size = %d\n", (int) obj.size());
 
 	for (const auto& o : obj) {

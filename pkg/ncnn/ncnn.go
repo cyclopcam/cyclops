@@ -17,9 +17,8 @@ import (
 )
 
 type Detector struct {
-	detector      *C.NcnnDetector
-	config        nn.ModelConfig
-	threadingMode nn.ThreadingMode
+	detector *C.NcnnDetector
+	config   nn.ModelConfig
 }
 
 func NewDetector(config *nn.ModelConfig, threadingMode nn.ThreadingMode, paramsFile, binFile string) (*Detector, error) {
@@ -38,9 +37,8 @@ func NewDetector(config *nn.ModelConfig, threadingMode nn.ThreadingMode, paramsF
 		return nil, fmt.Errorf("Failed to create NN detector (%v, '%v', '%v')", config.Architecture, paramsFile, binFile)
 	}
 	return &Detector{
-		detector:      cdet,
-		config:        *config,
-		threadingMode: nn.ThreadingModeParallel,
+		detector: cdet,
+		config:   *config,
 	}, nil
 }
 
@@ -51,9 +49,13 @@ func (d *Detector) Close() {
 func (d *Detector) DetectObjects(img nn.ImageCrop, params *nn.DetectionParams) ([]nn.ObjectDetection, error) {
 	detections := make([]C.Detection, 100)
 	nDetections := C.int(0)
+	flags := C.int(0)
+	if params.Unclipped {
+		flags |= C.DetectFlagNoClip
+	}
 	C.DetectObjects(d.detector,
 		C.int(img.NChan), (*C.uchar)(img.Pointer()), C.int(img.CropWidth), C.int(img.CropHeight), C.int(img.Stride()),
-		C.float(params.ProbabilityThreshold), C.float(params.NmsThreshold),
+		flags, C.float(params.ProbabilityThreshold), C.float(params.NmsThreshold),
 		C.int(len(detections)), (*C.Detection)(unsafe.Pointer(&detections[0])), &nDetections)
 	result := make([]nn.ObjectDetection, nDetections)
 
@@ -74,8 +76,4 @@ func (d *Detector) DetectObjects(img nn.ImageCrop, params *nn.DetectionParams) (
 
 func (d *Detector) Config() *nn.ModelConfig {
 	return &d.config
-}
-
-func (d *Detector) SetThreadingMode(mode nn.ThreadingMode) {
-	d.threadingMode = mode
 }
