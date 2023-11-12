@@ -113,27 +113,33 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	}
 	logger.Infof("Loading NN models from '%v'", basePath)
 
-	detector, err := nnload.LoadModel(filepath.Join(basePath, "yolov8s"))
+	// On a Raspberry Pi 4, a single NN thread is best. But on my larger desktops, more threads helps.
+	// I have some numbers in a spreadsheet. Basically, on a Pi, we want to have all cores processing
+	// a single image at a time. But on desktop CPUs, we want one core per image.
+	numCPU := runtime.NumCPU()
+	nnThreads := int(math.Max(1, float64(numCPU)/4))
+	nnThreadingModel := nn.ThreadingModeSingle
+	if nnThreads == 1 {
+		// If we're only running a single detection thread, then let the NN library use however
+		// many cores it can.
+		nnThreadingModel = nn.ThreadingModeParallel
+	}
+
+	// nnQueueSize should be at least equal to nnThreads, otherwise we'll never reach full utilization.
+	// But perhaps we can use nnQueueSize as a throttle, to optimize the number of active threads.
+	// One important point:
+	// queueSize must be at least twice the size of nnThreads, so that our exit mechanism can work.
+	// Once we signal mustStopNNThreads, we fill the queue with dummy jobs, so that the NN threads
+	// can wake up from their channel receive operation, and exit.
+	// If the queue size was too small, then this would deadlock.
+	nnQueueSize := nnThreads * 3
+
+	detector, err := nnload.LoadModel(filepath.Join(basePath, "yolov8s"), nnThreadingModel)
 	//detector, err := ncnn.NewDetector("yolov7", filepath.Join(basePath, "yolov7-tiny.param"), filepath.Join(basePath, "yolov7-tiny.bin"), 320, 256)
 	//detector, err := ncnn.NewDetector("yolov7", "/home/ben/dev/cyclops/models/yolov7-tiny.param", "/home/ben/dev/cyclops/models/yolov7-tiny.bin")
 	if err != nil {
 		return nil, err
 	}
-
-	// nnQueueSize should be at least equal to nnThreads, otherwise we'll never reach full utilization.
-	// But perhaps we can use nnQueueSize as a throttle, to optimize the number of active threads.
-	// It's not clear yet how many threads is optimal.
-	// One more important point:
-	// queueSize must be at least twice the size of nnThreads, so that our exit mechanism can work.
-	// Once we signal mustStopNNThreads, we fill the queue with dummy jobs, so that the NN threads
-	// can wake up from their channel receive operation, and exit.
-	// If the queue size was too small, then this would deadlock.
-
-	// On a Raspberry Pi 4, a single NN thread is best. But on my larger desktops, more threads helps.
-	// I have some numbers in a spreadsheet. Basically, on a Pi, we want to have all cores processing
-	// a single image at a time. But on desktop CPUs, we want one core per image.
-	nnThreads := int(math.Max(1, float64(runtime.NumCPU())/4))
-	nnQueueSize := nnThreads * 3
 
 	// No idea what a good number is here. I expect analysis to be much
 	// faster to run than NN, so provided this queue is large enough to

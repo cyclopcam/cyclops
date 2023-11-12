@@ -63,3 +63,8 @@ func (r Rect) Center() Point {
 		Y: r.Y + r.Height/2,
 	}
 }
+
+func (r *Rect) Offset(dx, dy int) {
+	r.X += dx
+	r.Y += dy
+}

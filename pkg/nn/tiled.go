@@ -100,7 +100,7 @@ func detectTile(model ObjectDetector, params *DetectionParams, tiling tiledinfer
 		return nil, nil, err
 	}
 	boxes := []tiledinference.Box{}
-	for _, obj := range objects {
+	for i, obj := range objects {
 		box := tiledinference.Box{
 			X1:    int32(obj.Box.X),
 			Y1:    int32(obj.Box.Y),
@@ -110,6 +110,7 @@ func detectTile(model ObjectDetector, params *DetectionParams, tiling tiledinfer
 			Tile:  tiling.MakeTileIndex(tx, ty),
 		}
 		box.Offset(int32(tx1), int32(ty1))
+		objects[i].Box.Offset(tx1, ty1)
 		boxes = append(boxes, box)
 	}
 	return objects, boxes, nil

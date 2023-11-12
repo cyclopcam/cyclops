@@ -4,6 +4,8 @@ package nn
 type VideoLabels struct {
 	Classes []string       `json:"classes"`
 	Frames  []*ImageLabels `json:"frames"`
+	Width   int            `json:"width"`  // Image width. Useful when inference is run at different resolution to original image
+	Height  int            `json:"height"` // Image height. Useful when inference is run at different resolution to original image
 }
 
 type ImageLabels struct {

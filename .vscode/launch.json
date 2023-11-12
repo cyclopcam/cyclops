@@ -151,15 +151,17 @@
 			"cwd": "${workspaceFolder}",
 			"args": [
 				"-i",
-				"/home/ben/tmp/mediumRes/swing/mediumRes.mp4",
+				"/home/ben/tmp/mediumRes/swing/highRes.mp4",
 				"-o",
 				"foo.json",
-				"-s",
-				"64",
-				"-c",
+				"--minsize",
+				"15",
+				"--classes",
 				"person",
-				"-m",
-				"models/yolov8l"
+				"--model",
+				"models/yolov8l",
+				"--vheight",
+				"720"
 			]
 		},
 		{

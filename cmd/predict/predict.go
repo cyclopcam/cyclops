@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/akamensky/argparse"
+	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/pkg/videox"
@@ -24,9 +25,11 @@ func main() {
 	parser := argparse.NewParser("predict", "Label a video stream")
 	input := parser.String("i", "input", &argparse.Options{Help: "Input video file", Required: true})
 	output := parser.File("o", "output", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0664, &argparse.Options{Help: "Output label file", Required: true})
-	minSize := parser.Int("s", "size", &argparse.Options{Help: "Minimum size of object, in pixels", Required: true})
+	minSize := parser.Int("m", "minsize", &argparse.Options{Help: "Minimum size of object, in pixels", Required: true})
+	maxVideoHeight := parser.Int("", "vheight", &argparse.Options{Help: "If video height is larger than this, then scale it down to this size", Required: false, Default: 0})
+	maxFrames := parser.Int("", "maxframes", &argparse.Options{Help: "Maximum number of video frames to process", Required: false, Default: 0})
 	classes := parser.String("c", "classes", &argparse.Options{Help: "Comma-separated list of named classes to detect", Required: true})
-	modelFile := parser.String("m", "model", &argparse.Options{Help: "Path to NN model file", Required: true})
+	modelFile := parser.String("n", "model", &argparse.Options{Help: "Path to NN model file", Required: true})
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
@@ -83,8 +86,23 @@ func main() {
 		//}
 		check(err)
 		frameIdx++
+		if *maxFrames > 0 && frameIdx > *maxFrames {
+			break
+		}
 		//fmt.Printf("%v,", frameIdx)
 		rgb := frame.ToCImageRGB()
+
+		if rgb.Height > *maxVideoHeight && *maxVideoHeight > 0 {
+			aspect := float64(rgb.Width) / float64(rgb.Height)
+			newHeight := *maxVideoHeight
+			newWidth := int(float64(newHeight)*aspect + 0.5)
+			rgb = cimg.ResizeNew(rgb, newWidth, newHeight)
+		}
+
+		// assume all frames are the same size
+		videoLabels.Width = rgb.Width
+		videoLabels.Height = rgb.Height
+
 		img := nn.WholeImage(3, rgb.Pixels, rgb.Width, rgb.Height)
 		objects, err := nn.TiledInference(model, img, nnParams, 1)
 		check(err)
@@ -95,8 +113,7 @@ func main() {
 		for _, obj := range objects {
 			outClass, ok := nnClassToOutputClass[obj.Class]
 			if ok &&
-				obj.Box.Width >= *minSize &&
-				obj.Box.Height >= *minSize {
+				(obj.Box.Width >= *minSize || obj.Box.Height >= *minSize) {
 				obj.Class = outClass
 				frameLabels.Objects = append(frameLabels.Objects, obj)
 			}
