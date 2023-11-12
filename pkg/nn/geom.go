@@ -2,7 +2,6 @@ package nn
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/cyclopcam/cyclops/pkg/gen"
 )
 
 type Point struct {
@@ -26,23 +25,23 @@ func (r Rect) Area() int {
 }
 
 func (r Rect) Intersection(b Rect) Rect {
-	x1 := gen.Max(r.X, b.X)
-	y1 := gen.Max(r.Y, b.Y)
-	x2 := gen.Min(r.X+r.Width, b.X+b.Width)
-	y2 := gen.Min(r.Y+r.Height, b.Y+b.Height)
+	x1 := max(r.X, b.X)
+	y1 := max(r.Y, b.Y)
+	x2 := min(r.X+r.Width, b.X+b.Width)
+	y2 := min(r.Y+r.Height, b.Y+b.Height)
 	return Rect{
 		X:      x1,
 		Y:      y1,
-		Width:  gen.Max(0, x2-x1),
-		Height: gen.Max(0, y2-y1),
+		Width:  max(0, x2-x1),
+		Height: max(0, y2-y1),
 	}
 }
 
 func (r Rect) Union(b Rect) Rect {
-	x1 := gen.Min(r.X, b.X)
-	y1 := gen.Min(r.Y, b.Y)
-	x2 := gen.Max(r.X+r.Width, b.X+b.Width)
-	y2 := gen.Max(r.Y+r.Height, b.Y+b.Height)
+	x1 := min(r.X, b.X)
+	y1 := min(r.Y, b.Y)
+	x2 := max(r.X+r.Width, b.X+b.Width)
+	y2 := max(r.Y+r.Height, b.Y+b.Height)
 	return Rect{
 		X:      x1,
 		Y:      y1,

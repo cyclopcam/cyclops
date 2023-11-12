@@ -63,7 +63,6 @@ func main() {
 	check(err)
 
 	nnParams := nn.NewDetectionParams()
-	nnParams.Unclipped = true
 
 	videoLabels := nn.VideoLabels{
 		Classes: outputClassNames,

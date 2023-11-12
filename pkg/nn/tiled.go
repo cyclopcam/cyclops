@@ -14,8 +14,13 @@ import (
 // into a single dataset.
 // If the model is larger than the image, then we just run the model directly, so it is safe
 // to call TiledInference on any image, without incurring any performance loss.
-func TiledInference(model ObjectDetector, img ImageCrop, params *DetectionParams, nThreads int) ([]ObjectDetection, error) {
+func TiledInference(model ObjectDetector, img ImageCrop, _params *DetectionParams, nThreads int) ([]ObjectDetection, error) {
 	config := model.Config()
+
+	// Late clipping seems like a healthy thing, but I haven't verified empirically if it
+	// solves any problems yet.
+	params := *_params
+	params.Unclipped = true
 
 	// This is somewhat arbitrary, and should probably be some multiple of the model size.
 	// In practice I think we'll probably restrict model size to something like 1024x1024,
@@ -29,6 +34,7 @@ func TiledInference(model ObjectDetector, img ImageCrop, params *DetectionParams
 	// The cropping into tiles occurs inside the loop, before we run DetectObject.
 	// It would be strange to be running TiledInference on a crop of the image, but we do support that,
 	// which is why we start with img.CropWidth, img.CropHeight here.
+	// One more thing to note: Our final results are relative to the crop, not of the original 'img'.
 	tiling := tiledinference.MakeTiling(img.CropWidth, img.CropHeight, config.Width, config.Height, minPadding)
 
 	tileQueue := make(chan tile, tiling.NumX*tiling.NumY)
@@ -43,7 +49,7 @@ func TiledInference(model ObjectDetector, img ImageCrop, params *DetectionParams
 		for {
 			select {
 			case tile := <-tileQueue:
-				objects, boxes, err := detectTile(model, params, tiling, tile.x, tile.y, img)
+				objects, boxes, err := detectTile(model, &params, tiling, tile.x, tile.y, img)
 				if err != nil {
 					detectionResults <- err
 					return
@@ -73,8 +79,20 @@ func TiledInference(model ObjectDetector, img ImageCrop, params *DetectionParams
 
 	merged := []ObjectDetection{}
 
+	finalClip := Rect{
+		X:      0,
+		Y:      0,
+		Width:  img.CropWidth,
+		Height: img.CropHeight,
+	}
+
 	if tiling.IsSingle() {
 		merged = allObjects
+
+		// We disabled clipping for tiling sake, so we need to clip now
+		for i, _ := range merged {
+			merged[i].Box = merged[i].Box.Intersection(finalClip)
+		}
 	} else {
 		groups, mergedBoxes := tiledinference.MergeBoxes(tiling, allBoxes, nil)
 		for igroup, group := range groups {
@@ -84,6 +102,9 @@ func TiledInference(model ObjectDetector, img ImageCrop, params *DetectionParams
 
 			// Use the merged box, which can be larger than the first object in the group
 			newObj.Box = Rect{X: int(r.Rect.X1), Y: int(r.Rect.Y1), Width: r.Rect.Width(), Height: int(r.Rect.Height())}
+
+			// Clip at the very end, since we disable clipping inside the NN model
+			newObj.Box = newObj.Box.Intersection(finalClip)
 
 			// Use max(confidence) from all objects in the group
 			for _, el := range group[1:] {
