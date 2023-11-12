@@ -155,13 +155,17 @@
 				"-o",
 				"foo.json",
 				"--minsize",
-				"15",
+				"75",
 				"--classes",
 				"person",
 				"--model",
 				"models/yolov8l",
 				"--vheight",
-				"720"
+				"1200",
+				"--startframe",
+				"45",
+				"--endframe",
+				"55"
 			]
 		},
 		{

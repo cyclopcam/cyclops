@@ -1,6 +1,7 @@
 package nn
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/bmharper/cimg/v2"
@@ -19,17 +20,20 @@ func TiledInference(model ObjectDetector, img ImageCrop, params *DetectionParams
 	// This is somewhat arbitrary, and should probably be some multiple of the model size.
 	// In practice I think we'll probably restrict model size to something like 1024x1024,
 	// which is why I'm not bothering to make this configurable.
-	minPadding := 64
+	minPadding := 32
 
 	allObjects := []ObjectDetection{}
 	allBoxes := []tiledinference.Box{}
 
 	// Note that the CropWidth and CropHeight here will usually be equal to the whole image width and height.
 	// The cropping into tiles occurs inside the loop, before we run DetectObject.
+	// It would be strange to be running TiledInference on a crop of the image, but we do support that,
+	// which is why we start with img.CropWidth, img.CropHeight here.
 	tiling := tiledinference.MakeTiling(img.CropWidth, img.CropHeight, config.Width, config.Height, minPadding)
 
 	tileQueue := make(chan tile, tiling.NumX*tiling.NumY)
 	allTiles(tiling, tileQueue)
+	//printTiling(tiling)
 
 	//nThreads := runtime.NumCPU()
 	//fmt.Printf("Running %v detection threads\n", nThreads)
@@ -72,14 +76,34 @@ func TiledInference(model ObjectDetector, img ImageCrop, params *DetectionParams
 	if tiling.IsSingle() {
 		merged = allObjects
 	} else {
-		groups := tiledinference.MergeBoxes(allBoxes, nil)
-		for _, group := range groups {
-			// Just use the first object in the group
-			merged = append(merged, allObjects[group[0]])
+		groups, mergedBoxes := tiledinference.MergeBoxes(tiling, allBoxes, nil)
+		for igroup, group := range groups {
+			// Start with the first object in the group
+			newObj := allObjects[group[0]]
+			r := mergedBoxes[igroup]
+
+			// Use the merged box, which can be larger than the first object in the group
+			newObj.Box = Rect{X: int(r.Rect.X1), Y: int(r.Rect.Y1), Width: r.Rect.Width(), Height: int(r.Rect.Height())}
+
+			// Use max(confidence) from all objects in the group
+			for _, el := range group[1:] {
+				newObj.Confidence = max(newObj.Confidence, allObjects[el].Confidence)
+			}
+
+			merged = append(merged, newObj)
 		}
 	}
 
 	return merged, nil
+}
+
+func printTiling(ti tiledinference.Tiling) {
+	for ty := 0; ty < ti.NumY; ty++ {
+		for tx := 0; tx < ti.NumX; tx++ {
+			r := ti.TileRect(tx, ty)
+			fmt.Printf("%v,%v,%v,%v\n", r.X1, r.Y1, r.X2, r.Y2)
+		}
+	}
 }
 
 func dumpTile(img ImageCrop) {
@@ -92,8 +116,8 @@ func dumpTile(img ImageCrop) {
 
 // Returns two parallel arrays
 func detectTile(model ObjectDetector, params *DetectionParams, tiling tiledinference.Tiling, tx, ty int, img ImageCrop) ([]ObjectDetection, []tiledinference.Box, error) {
-	tx1, ty1, tx2, ty2 := tiling.TileBox(tx, ty)
-	crop := img.Crop(tx1, ty1, tx2, ty2)
+	tileRect := tiling.TileRect(tx, ty)
+	crop := img.Crop(int(tileRect.X1), int(tileRect.Y1), int(tileRect.X2), int(tileRect.Y2))
 	//dumpTile(crop)
 	objects, err := model.DetectObjects(crop, params)
 	if err != nil {
@@ -102,15 +126,17 @@ func detectTile(model ObjectDetector, params *DetectionParams, tiling tiledinfer
 	boxes := []tiledinference.Box{}
 	for i, obj := range objects {
 		box := tiledinference.Box{
-			X1:    int32(obj.Box.X),
-			Y1:    int32(obj.Box.Y),
-			X2:    int32(obj.Box.X + obj.Box.Width),
-			Y2:    int32(obj.Box.Y + obj.Box.Height),
+			Rect: tiledinference.Rect{
+				X1: int32(obj.Box.X),
+				Y1: int32(obj.Box.Y),
+				X2: int32(obj.Box.X + obj.Box.Width),
+				Y2: int32(obj.Box.Y + obj.Box.Height),
+			},
 			Class: int32(obj.Class),
 			Tile:  tiling.MakeTileIndex(tx, ty),
 		}
-		box.Offset(int32(tx1), int32(ty1))
-		objects[i].Box.Offset(tx1, ty1)
+		box.Rect.Offset(int32(tileRect.X1), int32(tileRect.Y1))
+		objects[i].Box.Offset(int(tileRect.X1), int(tileRect.Y1))
 		boxes = append(boxes, box)
 	}
 	return objects, boxes, nil

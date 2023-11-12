@@ -27,7 +27,8 @@ func main() {
 	output := parser.File("o", "output", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0664, &argparse.Options{Help: "Output label file", Required: true})
 	minSize := parser.Int("m", "minsize", &argparse.Options{Help: "Minimum size of object, in pixels", Required: true})
 	maxVideoHeight := parser.Int("", "vheight", &argparse.Options{Help: "If video height is larger than this, then scale it down to this size", Required: false, Default: 0})
-	maxFrames := parser.Int("", "maxframes", &argparse.Options{Help: "Maximum number of video frames to process", Required: false, Default: 0})
+	startFrame := parser.Int("", "startframe", &argparse.Options{Help: "Start processing at frame", Required: false, Default: 0})
+	endFrame := parser.Int("", "endframe", &argparse.Options{Help: "Stop processing at frame", Required: false, Default: 0})
 	classes := parser.String("c", "classes", &argparse.Options{Help: "Comma-separated list of named classes to detect", Required: true})
 	modelFile := parser.String("n", "model", &argparse.Options{Help: "Path to NN model file", Required: true})
 	err := parser.Parse(os.Args)
@@ -72,7 +73,7 @@ func main() {
 	//	fmt.Printf("decode: %v\n", err)
 	//}
 
-	frameIdx := 0
+	frameIdx := -1
 	for {
 		frame, err := decoder.NextFrame()
 		if errors.Is(err, videox.ErrResourceTemporarilyUnavailable) {
@@ -81,13 +82,13 @@ func main() {
 		if errors.Is(err, io.EOF) {
 			break
 		}
-		//if frameIdx > 10 {
-		//	break
-		//}
 		check(err)
 		frameIdx++
-		if *maxFrames > 0 && frameIdx > *maxFrames {
+		if *endFrame > 0 && frameIdx > *endFrame {
 			break
+		}
+		if frameIdx < *startFrame {
+			continue
 		}
 		//fmt.Printf("%v,", frameIdx)
 		rgb := frame.ToCImageRGB()

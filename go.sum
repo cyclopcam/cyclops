@@ -86,6 +86,10 @@ github.com/bmharper/tiledinference v0.0.0-20231110060209-339c4e349659 h1:42xzP4S
 github.com/bmharper/tiledinference v0.0.0-20231110060209-339c4e349659/go.mod h1:q0VA9hkqyk6Vccwiu6rM/v1OP3zT24wb2MGn3fpwM2M=
 github.com/bmharper/tiledinference v1.0.0 h1:G5UpeVgRJrL9BsZkwONcecnZ9gwRDbK7VQYeKXmVHvE=
 github.com/bmharper/tiledinference v1.0.0/go.mod h1:q0VA9hkqyk6Vccwiu6rM/v1OP3zT24wb2MGn3fpwM2M=
+github.com/bmharper/tiledinference v1.0.1 h1:ridYKtQcxJvwvOvQGdq/nb3stMhv0x1Yclk0p7b7rS8=
+github.com/bmharper/tiledinference v1.0.1/go.mod h1:q0VA9hkqyk6Vccwiu6rM/v1OP3zT24wb2MGn3fpwM2M=
+github.com/bmharper/tiledinference v1.0.2 h1:TsfCOAUXB5sjpWe4UimYmGAKYn2s12n3uhbBINwOGrw=
+github.com/bmharper/tiledinference v1.0.2/go.mod h1:q0VA9hkqyk6Vccwiu6rM/v1OP3zT24wb2MGn3fpwM2M=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/cespare/xxhash/v2 v2.1.1/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/cespare/xxhash/v2 v2.1.2 h1:YRXhKfTDauu4ajMg1TPgFO5jnlC2HCbmLXMcTG5cbYE=
