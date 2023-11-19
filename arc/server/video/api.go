@@ -58,7 +58,7 @@ func videoFilename(vidID int64, file string) string {
 // so that we can train on the exact same video that we are using for inference.
 func (s *VideoServer) HttpPutVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
 	s.log.Infof("Video incoming")
-	maxSize := int64(16 * 1024 * 1024)
+	maxSize := int64(64 * 1024 * 1024)
 	if r.ContentLength > maxSize {
 		www.PanicBadRequestf("Request body is too large: %v. Maximum size: %v MB", r.ContentLength, maxSize/(1024*1024))
 	}
@@ -167,26 +167,33 @@ func (s *VideoServer) HttpGetVideo(w http.ResponseWriter, r *http.Request, param
 	}
 	//seekableUrl := www.QueryValue(r, "seekableUrl") == "1"
 	vid := s.getVideoOrPanic(params.ByName("id"), cred)
-	var reader io.ReadCloser
-	if s.storageCache != nil {
-		// Assume that the underlying storage system is a blob store that is a PITA to randomly seek
-		// Instead of a cache, we could also use signed URLs (https://cloud.google.com/storage/docs/access-control/signing-urls-with-helpers#storage-signed-url-object-go)
-		file, err := s.storageCache.Open(videoFilename(vid.ID, res+"Res.mp4"))
-		www.Check(err)
-		reader = file
-	} else {
-		file, err := s.storage.ReadFile(videoFilename(vid.ID, res+"Res.mp4"))
-		www.Check(err)
-		reader = file.Reader
-	}
+	reader, err := s.getSeekableVideoFile(vid.ID, res+"Res.mp4")
+	www.Check(err)
 	defer reader.Close()
-	w.Header().Set("Content-Type", "video/mp4")
-	if seeker, ok := reader.(io.ReadSeeker); ok {
-		http.ServeContent(w, r, "video.mp4", vid.CreatedAt.Time, seeker)
-	} else {
-		// This ends up creating a poorer html <video> element experience
-		io.Copy(w, reader)
-	}
+	http.ServeContent(w, r, "video.mp4", vid.CreatedAt.Time, reader)
+
+	/*
+		var reader io.ReadCloser
+		if s.storageCache != nil {
+			// Assume that the underlying storage system is a blob store that is a PITA to randomly seek
+			// Instead of a cache, we could also use signed URLs (https://cloud.google.com/storage/docs/access-control/signing-urls-with-helpers#storage-signed-url-object-go)
+			file, err := s.storageCache.Open(videoFilename(vid.ID, res+"Res.mp4"))
+			www.Check(err)
+			reader = file
+		} else {
+			file, err := s.storage.ReadFile(videoFilename(vid.ID, res+"Res.mp4"))
+			www.Check(err)
+			reader = file.Reader
+		}
+		defer reader.Close()
+		w.Header().Set("Content-Type", "video/mp4")
+		if seeker, ok := reader.(io.ReadSeeker); ok {
+			http.ServeContent(w, r, "video.mp4", vid.CreatedAt.Time, seeker)
+		} else {
+			// This ends up creating a poorer html <video> element experience
+			io.Copy(w, reader)
+		}
+	*/
 }
 
 func (s *VideoServer) HttpListVideos(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {

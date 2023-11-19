@@ -2,17 +2,13 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
 	"github.com/akamensky/argparse"
-	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
-	"github.com/cyclopcam/cyclops/pkg/videox"
 )
 
 func check(err error) {
@@ -37,93 +33,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	options := nn.InferenceOptions{
+		MinSize:        *minSize,
+		MaxVideoHeight: *maxVideoHeight,
+		StartFrame:     *startFrame,
+		EndFrame:       *endFrame,
+		Classes:        strings.Split(*classes, ","),
+		StdOutProgress: true,
+	}
+
 	model, err := nnload.LoadModel(*modelFile, nn.ThreadingModeParallel)
 	check(err)
 
-	modelConfig := model.Config()
-
-	// Build a dictionary of the class indices that we're interested in
-	nnClassToIndex := map[string]int{}
-	for i, class := range modelConfig.Classes {
-		nnClassToIndex[class] = i
-	}
-
-	outputClassNames := strings.Split(*classes, ",")
-	nnClassToOutputClass := map[int]int{}
-
-	for iOut, class := range outputClassNames {
-		iIn, ok := nnClassToIndex[class]
-		if !ok {
-			panic(fmt.Sprintf("Class '%v' not found in model\n", class))
-		}
-		nnClassToOutputClass[iIn] = iOut
-	}
-
-	decoder, err := videox.NewH264FileDecoder(*input)
+	videoLabels, err := nn.RunInferenceOnVideoFile(model, *input, options)
 	check(err)
-
-	nnParams := nn.NewDetectionParams()
-
-	videoLabels := nn.VideoLabels{
-		Classes: outputClassNames,
-	}
-
-	//for i := 0; i < 1000; i++ {
-	//	_, err = decoder.NextFrame()
-	//	fmt.Printf("decode: %v\n", err)
-	//}
-
-	frameIdx := -1
-	for {
-		frame, err := decoder.NextFrame()
-		if errors.Is(err, videox.ErrResourceTemporarilyUnavailable) {
-			continue
-		}
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		check(err)
-		frameIdx++
-		if *endFrame > 0 && frameIdx > *endFrame {
-			break
-		}
-		if frameIdx < *startFrame {
-			continue
-		}
-		//fmt.Printf("%v,", frameIdx)
-		rgb := frame.ToCImageRGB()
-
-		if rgb.Height > *maxVideoHeight && *maxVideoHeight > 0 {
-			aspect := float64(rgb.Width) / float64(rgb.Height)
-			newHeight := *maxVideoHeight
-			newWidth := int(float64(newHeight)*aspect + 0.5)
-			rgb = cimg.ResizeNew(rgb, newWidth, newHeight)
-		}
-
-		// assume all frames are the same size
-		videoLabels.Width = rgb.Width
-		videoLabels.Height = rgb.Height
-
-		img := nn.WholeImage(3, rgb.Pixels, rgb.Width, rgb.Height)
-		objects, err := nn.TiledInference(model, img, nnParams, 1)
-		check(err)
-
-		frameLabels := &nn.ImageLabels{
-			Frame: frameIdx,
-		}
-		for _, obj := range objects {
-			outClass, ok := nnClassToOutputClass[obj.Class]
-			if ok &&
-				(obj.Box.Width >= *minSize || obj.Box.Height >= *minSize) {
-				obj.Class = outClass
-				frameLabels.Objects = append(frameLabels.Objects, obj)
-			}
-		}
-		if len(frameLabels.Objects) != 0 {
-			videoLabels.Frames = append(videoLabels.Frames, frameLabels)
-		}
-		fmt.Printf("%v: %v\n", frameIdx, frameLabels.Objects)
-	}
 
 	encoder := json.NewEncoder(output)
 	encoder.SetIndent("", "  ")

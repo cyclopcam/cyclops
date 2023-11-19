@@ -23,14 +23,16 @@ const (
 type AuthType int
 
 const (
-	AuthTypeSessionCookie    AuthType = 1
-	AuthTypeUsernamePassword AuthType = 2
+	AuthTypeSessionCookie AuthType = 1 << iota
+	AuthTypeUsernamePassword
+	AuthTypeApiKey
 )
 
 type Credentials struct {
 	UserID                           int64
 	SitePermissions                  string
 	AuthenticatedViaSessionCookie    string // If session was authenticated via session cookie, this is pwdhash.HashSessionTokenBase64(cookie.Value) - aka the value in the DB
+	AuthenticatedViaApiKey           string // If session was authenticated via api key, this is pwdhash.HashSessionTokenBase64(key) - aka the value in the DB
 	AuthenticatedViaUsernamePassword bool   // If authenticated via username/password, this is true
 }
 
@@ -84,6 +86,26 @@ func (a *AuthServer) authenticateRequest(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
+	if allowTypes&AuthTypeApiKey != 0 {
+		auth := r.Header.Get("Authorization")
+		if strings.HasPrefix(auth, "ApiKey ") {
+			keyStr := auth[4:]
+			hashedTokenb64 := pwdhash.HashSessionTokenBase64(keyStr)
+			key := model.AuthApiKey{}
+			a.db.Where("key = ?", hashedTokenb64).First(&key)
+			if key.AuthUserID != 0 {
+				if !key.ExpiresAt.IsZero() && key.ExpiresAt.Before(time.Now()) {
+					www.SendError(w, "Key has expired", http.StatusUnauthorized)
+					return nil
+				}
+				return &Credentials{
+					UserID:                 key.AuthUserID,
+					AuthenticatedViaApiKey: hashedTokenb64,
+				}
+			}
+		}
+	}
+
 	if allowTypes&AuthTypeUsernamePassword != 0 {
 		if username, password, ok := r.BasicAuth(); ok {
 			user := model.AuthUser{}
@@ -122,7 +144,7 @@ func (a *AuthServer) Login(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	expiresAt := now.Add(365 * 24 * time.Hour)
 
-	token := rando.StrongRandomAlphaNumChars(20)
+	token := rando.StrongRandomAlphaNumChars(30)
 	session := model.AuthSession{
 		Key:        pwdhash.HashSessionTokenBase64(token),
 		AuthUserID: cred.UserID,
@@ -155,6 +177,36 @@ func (a *AuthServer) Logout(w http.ResponseWriter, r *http.Request) {
 		a.db.Where("key = ?", cred.AuthenticatedViaSessionCookie).Delete(&model.AuthSession{})
 	}
 	www.SendOK(w)
+}
+
+func (a *AuthServer) CreateKey(w http.ResponseWriter, r *http.Request) {
+	cred := a.AuthenticateRequest(w, r, AuthTypeUsernamePassword|AuthTypeSessionCookie|AuthTypeApiKey)
+	if cred == nil {
+		return
+	}
+	now := time.Now().UTC()
+
+	token := "sk-" + rando.StrongRandomAlphaNumChars(44)
+	key := model.AuthApiKey{
+		Key:          pwdhash.HashSessionTokenBase64(token),
+		RawKeyPrefix: token[:9],
+		AuthUserID:   cred.UserID,
+		CreatedAt:    now,
+		ExpiresAt:    time.Time{},
+	}
+	if err := a.db.Create(&key).Error; err != nil {
+		a.log.Errorf("Error creating API Key: %v", err)
+		www.SendError(w, "Error creating API Key", http.StatusInternalServerError)
+		return
+	}
+	a.log.Infof("User %v created auth API Key %v with hash = %v", cred.UserID, key.RawKeyPrefix, key.Key)
+	type response struct {
+		Key string `json:"key"`
+	}
+	resp := response{
+		Key: token,
+	}
+	www.SendJSON(w, &resp)
 }
 
 func (a *AuthServer) SetPassword(userID int64, password string) error {

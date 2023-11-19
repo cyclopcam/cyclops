@@ -11,6 +11,7 @@ import (
 // At 20 characters, that's 119 bits
 // At 24 characters, that's 142 bits
 // At 32 characters, that's 190 bits
+// At 36 characters, that's 214 bits
 const alphaNumChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 const digitChars = "0123456789"
 

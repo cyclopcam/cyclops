@@ -62,3 +62,7 @@ func (s *StorageGCS) URL(name string) (string, error) {
 	}
 	return "https://storage.googleapis.com/" + s.bucketName + "/" + name, nil
 }
+
+func (s *StorageGCS) Filename(name string) (string, error) {
+	return "", ErrNotAFilesystem
+}

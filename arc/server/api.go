@@ -37,7 +37,7 @@ func (s *Server) setupHttpRoutes() error {
 			if logEveryRequest {
 				s.Log.Infof("HTTP (protected) %v %v", method, r.URL.Path)
 			}
-			allowModes := auth.AuthTypeSessionCookie
+			allowModes := auth.AuthTypeSessionCookie | auth.AuthTypeApiKey
 			if alwaysAllowBASICAuth {
 				allowModes |= auth.AuthTypeUsernamePassword
 			}

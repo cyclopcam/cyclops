@@ -72,3 +72,7 @@ func (fs *StorageFS) DeleteFile(name string) error {
 func (fs *StorageFS) URL(name string) (string, error) {
 	return "", ErrNoPublicUrl
 }
+
+func (fs *StorageFS) Filename(name string) (string, error) {
+	return filepath.Join(fs.Root, name), nil
+}

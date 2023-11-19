@@ -45,25 +45,29 @@ type cacheItem struct {
 	lastUsed int64
 }
 
-type cacheItemReader struct {
+type CacheItemReader struct {
 	store *StorageCache
 	item  *cacheItem
 	f     io.ReadSeekCloser // OS file in our cache
 }
 
-func (r *cacheItemReader) Read(p []byte) (n int, err error) {
+func (r *CacheItemReader) Read(p []byte) (n int, err error) {
 	return r.f.Read(p)
 }
 
-func (r *cacheItemReader) Seek(offset int64, whence int) (int64, error) {
+func (r *CacheItemReader) Seek(offset int64, whence int) (int64, error) {
 	return r.f.Seek(offset, whence)
 }
 
-func (r *cacheItemReader) Close() error {
+func (r *CacheItemReader) Close() error {
 	r.store.itemsLock.Lock()
 	r.item.lock--
 	defer r.store.itemsLock.Unlock()
 	return r.f.Close()
+}
+
+func (r *CacheItemReader) Filename() string {
+	return r.item.filename
 }
 
 func NewStorageCache(log log.Log, upstream storage.Storage, cacheRoot string, maxBytes int64) (*StorageCache, error) {
@@ -81,7 +85,7 @@ func NewStorageCache(log log.Log, upstream storage.Storage, cacheRoot string, ma
 	return c, nil
 }
 
-func (s *StorageCache) Open(filename string) (io.ReadSeekCloser, error) {
+func (s *StorageCache) Open(filename string) (*CacheItemReader, error) {
 	s.itemsLock.Lock()
 	defer s.itemsLock.Unlock()
 	item := s.items[filename]
@@ -99,7 +103,7 @@ func (s *StorageCache) Open(filename string) (io.ReadSeekCloser, error) {
 	item.lock++
 	item.lastUsed = s.tick
 	s.tick++
-	return &cacheItemReader{
+	return &CacheItemReader{
 		store: s,
 		item:  item,
 		f:     f,

@@ -10,9 +10,19 @@ type AuthUser struct {
 	SitePermissions string    `json:"sitePermissions"`
 }
 
+// Login session (cookie-based)
 type AuthSession struct {
 	Key        string `gorm:"primaryKey"`
 	AuthUserID int64
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
+}
+
+// Same semantics as AuthSession, but intended for API keys
+type AuthApiKey struct {
+	Key          string `gorm:"primaryKey"`
+	RawKeyPrefix string // Unhashed key prefix, e.g. "sk-xyz123"
+	AuthUserID   int64
+	CreatedAt    time.Time
+	ExpiresAt    time.Time // Can be zero, which means no expiry
 }

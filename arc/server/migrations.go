@@ -66,5 +66,11 @@ func migrations(log log.Log) []migration.Migrator {
 		ALTER TABLE auth_user ADD COLUMN site_permissions TEXT;
 	`))
 
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		CREATE TABLE auth_api_key(key TEXT PRIMARY KEY, raw_key_prefix TEXT NOT NULL, auth_user_id BIGINT, created_at TIMESTAMP, expires_at TIMESTAMP);
+		CREATE INDEX idx_auth_api_key_auth_user_id ON auth_api_key(auth_user_id);
+	`))
+
 	return migs
 }

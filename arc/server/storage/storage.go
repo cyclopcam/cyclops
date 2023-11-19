@@ -7,8 +7,9 @@ import (
 )
 
 var ErrNoPublicUrl = errors.New("No public URL available for this file")
+var ErrNotAFilesystem = errors.New("This items in this blob store can't be accessed as local files")
 
-// Storage is an abstraction of a blob store (eg S3)
+// Storage is an abstraction of a blob store (eg S3), or a filesystem
 type Storage interface {
 	// When finished, you must close the WriteCloser
 	WriteFile(name string) (io.WriteCloser, error)
@@ -20,6 +21,9 @@ type Storage interface {
 
 	// Return a URL to the given file. If that is not possible, return ErrNoPublicUrl.
 	URL(name string) (string, error)
+
+	// If this is a local filesystem, then return the local path to the file.
+	Filename(name string) (string, error)
 }
 
 // File is an element in blob storage.
