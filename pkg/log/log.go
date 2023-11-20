@@ -116,7 +116,11 @@ func (l *Logger) write(level Level, format string, a ...interface{}) {
 			Payload:  fmt.Sprintf(format, a...),
 		})
 	} else {
-		prefix := fmt.Sprintf("%.3f %v ", float64(time.Now().UnixNano())/1e9, levelToName(level))
+		tm := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
+		for len(tm) < 26 {
+			tm += "0"
+		}
+		prefix := fmt.Sprintf("%v %v ", tm, levelToName(level))
 		if l.EnableColors && level > LevelInfo {
 			color := "\033[0;33m" // yellow
 			if level >= LevelError {

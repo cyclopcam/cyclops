@@ -10,4 +10,5 @@ type Video struct {
 	CreatedBy  int64         `json:"createdBy"`
 	CreatedAt  dbh.MilliTime `json:"createdAt"`
 	CameraName string        `json:"cameraName"` // Whatever the user chose to name the camera
+	HasLabels  bool          `json:"hasLabels"`  // True if the video has been labeled
 }

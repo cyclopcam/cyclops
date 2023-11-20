@@ -13,7 +13,8 @@ export class Video {
 		public id: number,
 		public cameraName: string,
 		public createdBy: number,
-		public createdAt: Date
+		public createdAt: Date,
+		public hasLabels: boolean,
 	) { }
 
 	static fromJSON(j: any): Video {
@@ -22,6 +23,7 @@ export class Video {
 			j.cameraName,
 			j.createdBy,
 			new Date(j.createdAt),
+			j.hasLabels,
 		);
 	}
 

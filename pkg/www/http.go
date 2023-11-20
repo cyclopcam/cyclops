@@ -3,6 +3,7 @@ package www
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -272,9 +273,18 @@ func SendJSONOpt(w http.ResponseWriter, obj interface{}, pretty bool) {
 	w.Write(b)
 }
 
-func SendJSONRaw(w http.ResponseWriter, raw string) {
+// Accept string, []byte, and io.Reader
+func SendJSONRaw(w http.ResponseWriter, raw any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(raw))
+	if s, ok := raw.(string); ok {
+		w.Write([]byte(s))
+	} else if b, ok := raw.([]byte); ok {
+		w.Write(b)
+	} else if r, ok := raw.(io.Reader); ok {
+		io.Copy(w, r)
+	} else {
+		panic(fmt.Sprintf("SendJSONRaw: unrecognized type %T", raw))
+	}
 }
 
 // SendText sends text as an HTTP text/plain response

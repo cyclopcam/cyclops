@@ -72,5 +72,10 @@ func migrations(log log.Log) []migration.Migrator {
 		CREATE INDEX idx_auth_api_key_auth_user_id ON auth_api_key(auth_user_id);
 	`))
 
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		ALTER TABLE video ADD COLUMN has_labels BOOLEAN NOT NULL DEFAULT FALSE;
+	`))
+
 	return migs
 }

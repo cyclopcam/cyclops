@@ -43,3 +43,7 @@ func (s *Server) httpAuthCheck(w http.ResponseWriter, r *http.Request, params ht
 	}
 	www.SendJSON(w, response{UserID: cred.UserID})
 }
+
+func (s *Server) httpAuthCreateApiKey(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
+	s.auth.CreateKey(w, r, cred)
+}

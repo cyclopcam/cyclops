@@ -9,15 +9,17 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/videox"
 )
 
+// NN analysis options for RunInferenceOnVideoFile
 type InferenceOptions struct {
 	MinSize        int      // Minimum size of object, in pixels. If max(width, height) >= MinSize, then use the object
 	MaxVideoHeight int      // If video height is larger than this, then scale it down to this size (0 = no scaling)
 	StartFrame     int      // Start processing at frame (0 = start at beginning)
 	EndFrame       int      // Stop processing at frame (0 = process to end)
-	Classes        []string // List of class names to detect (eg ["person", "car", "bear"]). Any classes not included in the list are ignored.
+	Classes        []string // List of class names to detect (eg ["person", "car", "bear"]). Classes not included in the list are ignored.
 	StdOutProgress bool     // Emit progress to stdout
 }
 
+// Run NN inference on every frame of a video
 func RunInferenceOnVideoFile(model ObjectDetector, inputFile string, options InferenceOptions) (*VideoLabels, error) {
 	if len(options.Classes) == 0 {
 		return nil, errors.New("No classes specified")

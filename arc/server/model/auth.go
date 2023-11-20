@@ -24,5 +24,5 @@ type AuthApiKey struct {
 	RawKeyPrefix string // Unhashed key prefix, e.g. "sk-xyz123"
 	AuthUserID   int64
 	CreatedAt    time.Time
-	ExpiresAt    time.Time // Can be zero, which means no expiry
+	ExpiresAt    time.Time `gorm:"default:null"` // Can be zero, which means no expiry
 }

@@ -66,11 +66,15 @@ func (s *Server) setupHttpRoutes() error {
 	protected("POST", "/api/auth/logout", s.httpAuthLogout)
 	protected("POST", "/api/auth/setPassword/:userid", s.httpAuthSetPassword)
 	protected("GET", "/api/auth/check", s.httpAuthCheck)
+	protected("POST", "/api/auth/apikey/create", s.httpAuthCreateApiKey)
 
 	protected("PUT", "/api/video", s.video.HttpPutVideo)
 	protected("GET", "/api/video/:id/thumbnail", s.video.HttpVideoThumbnail)
 	protected("GET", "/api/video/:id/video/:res", s.video.HttpGetVideo)
+	protected("POST", "/api/video/:id/labels", s.video.HttpPostLabels)
+	protected("GET", "/api/video/:id/labels", s.video.HttpGetLabels)
 	protected("GET", "/api/videos/list", s.video.HttpListVideos)
+	protected("GET", "/api/videos/unlabeled", s.video.HttpListUnlabeledVideos)
 
 	isImmutable := true
 	var fsys fs.FS

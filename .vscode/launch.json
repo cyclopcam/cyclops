@@ -169,6 +169,21 @@
 			]
 		},
 		{
+			"name": "bglabel.go",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+			"program": "cmd/bglabel/bglabel.go",
+			"cwd": "${workspaceFolder}",
+			"args": [
+				"-s",
+				"http://localhost:8081",
+				"-m",
+				"models/yolov8l"
+			],
+			"envFile": "${workspaceFolder}/.env"
+		},
+		{
 			"name": "kernelwg.go",
 			"type": "go",
 			"request": "launch",

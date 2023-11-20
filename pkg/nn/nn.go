@@ -111,7 +111,7 @@ type ObjectDetector interface {
 	// You can create a default DetectionParams with NewDetectionParams()
 	DetectObjects(img ImageCrop, params *DetectionParams) ([]ObjectDetection, error)
 
-	// Model Config
+	// Model Config.
 	// Don't alter the model config after creating the detector.
 	Config() *ModelConfig
 }

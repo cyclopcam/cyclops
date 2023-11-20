@@ -3,6 +3,7 @@ package video
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cyclopcam/cyclops/arc/server/auth"
@@ -19,6 +21,7 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/iox"
 	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/rando"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/pkg/www"
@@ -31,10 +34,11 @@ import (
 // to also change it in video.ts
 
 type VideoServer struct {
-	log          log.Log
-	db           *gorm.DB
-	storage      storage.Storage
-	storageCache *storagecache.StorageCache
+	log               log.Log
+	db                *gorm.DB
+	storage           storage.Storage
+	storageCache      *storagecache.StorageCache
+	numVideosUploaded atomic.Int64 // Number of videos uploaded since this process was started (i.e. NOT the number of videos in the DB)
 }
 
 func NewVideoServer(log log.Log, db *gorm.DB, storage storage.Storage, storageCache *storagecache.StorageCache) *VideoServer {
@@ -48,6 +52,12 @@ func NewVideoServer(log log.Log, db *gorm.DB, storage storage.Storage, storageCa
 
 func videoFilename(vidID int64, file string) string {
 	return fmt.Sprintf("videos/%v/%v", vidID, file)
+}
+
+func verifyResOrPanic(res string) {
+	if res != "low" && res != "medium" && res != "high" {
+		www.PanicBadRequestf("Invalid resolution: %v. Valid values are 'low', 'medium', 'high'", res)
+	}
 }
 
 // Upload a video.
@@ -111,6 +121,7 @@ func (s *VideoServer) HttpPutVideo(w http.ResponseWriter, r *http.Request, param
 	www.Check(tx.Commit().Error)
 	www.SendID(w, vid.ID)
 	s.log.Infof("New video %v from user %v, camera %v", vid.ID, cred.UserID, cameraName)
+	s.numVideosUploaded.Add(1)
 }
 
 // Extract a single file from a zip file.
@@ -162,9 +173,7 @@ func (s *VideoServer) HttpVideoThumbnail(w http.ResponseWriter, r *http.Request,
 
 func (s *VideoServer) HttpGetVideo(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
 	res := params.ByName("res")
-	if res != "low" && res != "medium" && res != "high" {
-		www.PanicBadRequestf("Invalid resolution: %v. Valid values are 'low', 'medium', 'high'", res)
-	}
+	verifyResOrPanic(res)
 	//seekableUrl := www.QueryValue(r, "seekableUrl") == "1"
 	vid := s.getVideoOrPanic(params.ByName("id"), cred)
 	reader, err := s.getSeekableVideoFile(vid.ID, res+"Res.mp4")
@@ -196,12 +205,65 @@ func (s *VideoServer) HttpGetVideo(w http.ResponseWriter, r *http.Request, param
 	*/
 }
 
+func (s *VideoServer) HttpPostLabels(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
+	vl := nn.VideoLabels{}
+	www.ReadJSON(w, r, &vl, 1024*1024)
+	if vl.Width < 0 || vl.Height < 0 {
+		www.PanicBadRequestf("Invalid width or height")
+	}
+	if len(vl.Classes) == 0 {
+		www.PanicBadRequestf("Classes list is empty")
+	}
+	vid := s.getVideoOrPanic(params.ByName("id"), cred)
+	vlJson, err := json.Marshal(&vl)
+	www.Check(err)
+	www.Check(storage.WriteFile(s.storage, videoFilename(vid.ID, "labels.json"), bytes.NewReader(vlJson)))
+	vid.HasLabels = true
+	www.Check(s.db.Save(vid).Error)
+	www.SendOK(w)
+}
+
+func (s *VideoServer) HttpGetLabels(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
+	vid := s.getVideoOrPanic(params.ByName("id"), cred)
+	file, err := s.storage.ReadFile(videoFilename(vid.ID, "labels.json"))
+	www.Check(err)
+	defer file.Reader.Close()
+	www.SendJSONRaw(w, file.Reader)
+}
+
 func (s *VideoServer) HttpListVideos(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
-	vids := []model.Video{}
+	vids := make([]model.Video, 0)
 	q := s.db
 	if !cred.IsAdmin() {
 		q = q.Where("created_by = ?", cred.UserID)
 	}
 	www.Check(q.Find(&vids).Error)
+	www.SendJSON(w, vids)
+}
+
+// This API was created for the background labeler, which long-polls this API.
+func (s *VideoServer) HttpListUnlabeledVideos(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
+	cred.PanicIfNotAdmin()
+	vids := make([]model.Video, 0)
+	startAt := time.Now()
+	longPollTimeout := 50 * time.Second
+	// Poll the DB to see if there are any videos that need to be labeled.
+	for {
+		numVideos := s.numVideosUploaded.Load()
+		www.Check(s.db.Where("has_labels = false").Find(&vids).Error)
+		if len(vids) != 0 || time.Now().Sub(startAt) > longPollTimeout {
+			break
+		}
+		// Sleep for 5 seconds before checking the DB again.
+		// This way, even if a video is uploaded to the DB without going through our API,
+		// we'll still pick it up after 5 seconds.
+		for i := 0; i < 50; i++ {
+			// Sleeping is almost always weaksauce, but doing this "properly" doesn't justify the additional complexity.
+			time.Sleep(100 * time.Millisecond)
+			if s.numVideosUploaded.Load() != numVideos {
+				break
+			}
+		}
+	}
 	www.SendJSON(w, vids)
 }

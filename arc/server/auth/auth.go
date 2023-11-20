@@ -40,6 +40,12 @@ func (c *Credentials) IsAdmin() bool {
 	return strings.Index(c.SitePermissions, SitePermissionAdmin) != -1
 }
 
+func (c *Credentials) PanicIfNotAdmin() {
+	if !c.IsAdmin() {
+		www.PanicForbiddenf("You must be an admin to access this resource")
+	}
+}
+
 type AuthServer struct {
 	db                *gorm.DB
 	log               log.Log
@@ -65,6 +71,7 @@ func (a *AuthServer) AuthenticateRequest(w http.ResponseWriter, r *http.Request,
 			a.log.Errorf("Error fetching user %v after authenticating request: %v", cred.UserID, err)
 			return nil
 		}
+		cred.SitePermissions = user.SitePermissions
 	}
 	return cred
 }
@@ -88,8 +95,10 @@ func (a *AuthServer) authenticateRequest(w http.ResponseWriter, r *http.Request,
 
 	if allowTypes&AuthTypeApiKey != 0 {
 		auth := r.Header.Get("Authorization")
-		if strings.HasPrefix(auth, "ApiKey ") {
-			keyStr := auth[4:]
+		// We use "ApiKey" to avoid confusion with an OAuth token which is usually prefixed with "Bearer"
+		apiKeyPrefix := "ApiKey "
+		if strings.HasPrefix(auth, apiKeyPrefix) {
+			keyStr := auth[len(apiKeyPrefix):]
 			hashedTokenb64 := pwdhash.HashSessionTokenBase64(keyStr)
 			key := model.AuthApiKey{}
 			a.db.Where("key = ?", hashedTokenb64).First(&key)
@@ -179,11 +188,7 @@ func (a *AuthServer) Logout(w http.ResponseWriter, r *http.Request) {
 	www.SendOK(w)
 }
 
-func (a *AuthServer) CreateKey(w http.ResponseWriter, r *http.Request) {
-	cred := a.AuthenticateRequest(w, r, AuthTypeUsernamePassword|AuthTypeSessionCookie|AuthTypeApiKey)
-	if cred == nil {
-		return
-	}
+func (a *AuthServer) CreateKey(w http.ResponseWriter, r *http.Request, cred *Credentials) {
 	now := time.Now().UTC()
 
 	token := "sk-" + rando.StrongRandomAlphaNumChars(44)
