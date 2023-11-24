@@ -29,8 +29,8 @@ COPY . .
 
 # Wipe the built 'www' from a local dev-environment build
 # The 'www' build is baked into the Go service with go:embed
-RUN rm -rf server/www
-COPY --from=www /build/server/www ./server/www
+RUN rm -rf arc/server/www
+COPY --from=www /build/server/www ./arc/server/www
 RUN CGO_ENABLED=1 go build -o /out/arc cmd/arc/arc.go
 
 ############################################################
@@ -39,4 +39,4 @@ FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y ffmpeg libturbojpeg
 
 COPY --from=build /out/arc /arc
-CMD ["/arc"]
+ENTRYPOINT ["/arc"]

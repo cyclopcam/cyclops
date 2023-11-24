@@ -15,3 +15,4 @@ node_modules
 /Simd/build
 /Simd/prj/txt/FullVersion.txt
 /Simd/src/Simd/SimdVersion.h
+/debug/yolov8

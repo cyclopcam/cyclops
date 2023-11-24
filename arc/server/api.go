@@ -32,14 +32,10 @@ func (s *Server) setupHttpRoutes() error {
 	}
 
 	// protected creates an HTTP handler that is accessible only with authentication
-	protected := func(method, route string, handle authenticatedHandler) {
+	protectedEx := func(method, route string, handle authenticatedHandler, allowModes auth.AuthType) {
 		www.Handle(s.Log, router, method, route, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 			if logEveryRequest {
 				s.Log.Infof("HTTP (protected) %v %v", method, r.URL.Path)
-			}
-			allowModes := auth.AuthTypeSessionCookie | auth.AuthTypeApiKey
-			if alwaysAllowBASICAuth {
-				allowModes |= auth.AuthTypeUsernamePassword
 			}
 			cred := s.auth.AuthenticateRequest(w, r, allowModes)
 			if cred == nil {
@@ -47,6 +43,15 @@ func (s *Server) setupHttpRoutes() error {
 			}
 			handle(w, r, params, cred)
 		})
+	}
+
+	// protected creates an HTTP handler that is accessible only with authentication
+	protected := func(method, route string, handle authenticatedHandler) {
+		allowModes := auth.AuthTypeSessionCookie | auth.AuthTypeApiKey
+		if alwaysAllowBASICAuth {
+			allowModes |= auth.AuthTypeUsernamePassword
+		}
+		protectedEx(method, route, handle, allowModes)
 	}
 
 	// unprotected creates an HTTP handler that is accessible without authentication
@@ -66,7 +71,7 @@ func (s *Server) setupHttpRoutes() error {
 	protected("POST", "/api/auth/logout", s.httpAuthLogout)
 	protected("POST", "/api/auth/setPassword/:userid", s.httpAuthSetPassword)
 	protected("GET", "/api/auth/check", s.httpAuthCheck)
-	protected("POST", "/api/auth/apikey/create", s.httpAuthCreateApiKey)
+	protectedEx("POST", "/api/auth/apikey/create", s.httpAuthCreateApiKey, auth.AuthTypeSessionCookie|auth.AuthTypeApiKey|auth.AuthTypeUsernamePassword)
 
 	protected("PUT", "/api/video", s.video.HttpPutVideo)
 	protected("GET", "/api/video/:id/thumbnail", s.video.HttpVideoThumbnail)

@@ -9,4 +9,5 @@ www/dist
 /scripts
 /wasm
 Dockerfile
+/arc/Dockerfile
 /cmd/proxy/Dockerfile
