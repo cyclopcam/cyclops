@@ -77,5 +77,10 @@ func migrations(log log.Log) []migration.Migrator {
 		ALTER TABLE video ADD COLUMN has_labels BOOLEAN NOT NULL DEFAULT FALSE;
 	`))
 
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		CREATE UNIQUE INDEX idx_auth_user_email ON auth_user(email);
+	`))
+
 	return migs
 }

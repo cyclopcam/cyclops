@@ -245,10 +245,8 @@ func (s *Server) LoadConfigVariables() error {
 			err = s.SetTempFilePath(trimmed)
 		case configdb.VarArcServer:
 			arcCredentials.ServerUrl = strings.TrimSuffix(trimmed, "/")
-		case configdb.VarArcUsername:
-			arcCredentials.Username = trimmed
-		case configdb.VarArcPassword:
-			arcCredentials.Password = trimmed
+		case configdb.VarArcApiKey:
+			arcCredentials.ApiKey = trimmed
 		default:
 			s.Log.Errorf("Config variable '%v' not recognized", v.Key)
 		}

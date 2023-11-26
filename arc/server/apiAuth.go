@@ -23,8 +23,8 @@ func (s *Server) httpAuthSetPassword(w http.ResponseWriter, r *http.Request, par
 		www.PanicBadRequestf("Invalid user ID")
 	}
 	password := strings.TrimSpace(www.QueryValue(r, "password"))
-	if len(password) < 8 {
-		www.PanicBadRequestf("Password must be at least 8 characters")
+	if err := auth.IsPasswordOK(password); err != nil {
+		www.PanicBadRequestf("%v", err)
 	}
 	if userID != cred.UserID {
 		www.PanicBadRequestf("You can only set your own password")
@@ -46,4 +46,31 @@ func (s *Server) httpAuthCheck(w http.ResponseWriter, r *http.Request, params ht
 
 func (s *Server) httpAuthCreateApiKey(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
 	s.auth.CreateKey(w, r, cred)
+}
+
+func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
+	cred.PanicIfNotAdmin()
+	type request struct {
+		Email           string `json:"email"`
+		Password        string `json:"password"`
+		SitePermissions string `json:"sitePermissions"`
+	}
+	req := request{}
+	www.ReadJSON(w, r, &req, 1024*1024)
+	www.Check(s.auth.CreateUser(req.Email, req.Password, req.SitePermissions))
+	www.SendOK(w)
+}
+
+func (s *Server) httpAuthListUsers(w http.ResponseWriter, r *http.Request, params httprouter.Params, cred *auth.Credentials) {
+	cred.PanicIfNotAdmin()
+	type user struct {
+		Email string `json:"email"`
+	}
+	users, err := s.auth.AllUsers()
+	www.Check(err)
+	resp := []user{}
+	for _, u := range users {
+		resp = append(resp, user{Email: u.Email})
+	}
+	www.SendJSON(w, resp)
 }

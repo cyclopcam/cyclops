@@ -28,12 +28,11 @@ const (
 	VarPermanentStoragePath   VariableKey = "PermanentStoragePath"
 	VarRecentEventStoragePath VariableKey = "RecentEventStoragePath"
 	VarTempFilePath           VariableKey = "TempFilePath"
-	// The following 3 are here because I haven't figured out the authentication strategy yet.
+	// The following 2 are here because I haven't figured out the authentication strategy yet.
 	// How does a person authenticate from their home cyclops server to an Arc server?
 	// It feels like it should be some kind of OAuth thing.
-	VarArcServer   VariableKey = "ArcServer"
-	VarArcUsername VariableKey = "ArcUsername"
-	VarArcPassword VariableKey = "ArcPassword"
+	VarArcServer VariableKey = "ArcServer"
+	VarArcApiKey VariableKey = "ArcApiKey"
 )
 
 // If true, then the system must be restarted after setting this variable
@@ -154,20 +153,12 @@ func init() {
 			UIGroup:     "02.01",
 		},
 		{
-			Key:         VarArcUsername,
-			Title:       "Arc Server username",
-			Explanation: "Username for logging into the Arc server.",
-			Required:    false,
-			Type:        "text",
-			UIGroup:     "02.02",
-		},
-		{
-			Key:         VarArcPassword,
-			Title:       "Arc Server password",
-			Explanation: "Password for logging into the Arc server.",
+			Key:         VarArcApiKey,
+			Title:       "Arc Server API key",
+			Explanation: "Secret key for communicating with Arc server.",
 			Required:    false,
 			Type:        "password",
-			UIGroup:     "02.03",
+			UIGroup:     "02.02",
 		},
 	}
 	AllVariablesByKey = map[VariableKey]*VariableDef{}

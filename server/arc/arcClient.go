@@ -17,12 +17,11 @@ import (
 
 type ArcServerCredentials struct {
 	ServerUrl string // eg https://arc.cyclopcam.org (no trailing slash)
-	Username  string
-	Password  string
+	ApiKey    string // secret key "sk-..."
 }
 
 func (a *ArcServerCredentials) IsConfigured() bool {
-	return a.ServerUrl != "" && a.Username != "" && a.Password != ""
+	return a.ServerUrl != "" && a.ApiKey != ""
 }
 
 func addFileToZip(zw *zip.Writer, filenameInZip, filenameOnDisk string, compress bool) error {
@@ -76,7 +75,8 @@ func UploadToArc(credentials *ArcServerCredentials, eventDBVideoRoot string, rec
 	if err != nil {
 		return err
 	}
-	req.SetBasicAuth(credentials.Username, credentials.Password)
+	req.Header.Set("Content-Type", "application/zip")
+	req.Header.Set("Authorization", "ApiKey "+credentials.ApiKey)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err

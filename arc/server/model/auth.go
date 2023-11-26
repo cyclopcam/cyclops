@@ -4,7 +4,7 @@ import "time"
 
 type AuthUser struct {
 	BaseModel
-	Email           string    `json:"email"`
+	Email           string    `json:"email"` // Doesn't need to be email. Can be any string.
 	Password        string    `json:"-"`
 	CreatedAt       time.Time `json:"createdAt"`
 	SitePermissions string    `json:"sitePermissions"`

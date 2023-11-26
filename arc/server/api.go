@@ -72,6 +72,8 @@ func (s *Server) setupHttpRoutes() error {
 	protected("POST", "/api/auth/setPassword/:userid", s.httpAuthSetPassword)
 	protected("GET", "/api/auth/check", s.httpAuthCheck)
 	protectedEx("POST", "/api/auth/apikey/create", s.httpAuthCreateApiKey, auth.AuthTypeSessionCookie|auth.AuthTypeApiKey|auth.AuthTypeUsernamePassword)
+	protected("POST", "/api/auth/user/create", s.httpAuthCreateUser)
+	protected("GET", "/api/auth/users/list", s.httpAuthListUsers)
 
 	protected("PUT", "/api/video", s.video.HttpPutVideo)
 	protected("GET", "/api/video/:id/thumbnail", s.video.HttpVideoThumbnail)
