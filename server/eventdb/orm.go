@@ -53,8 +53,6 @@ const (
 )
 
 // A recording refers to either a high resolution video, a low resolution video, or both.
-// When recording explicitly for training, we record just a low resolution video, because
-// that's all we need.
 // However, when recording a suspicious event, we want high resolution for playback and inspection,
 // but we also want low resolution in case the user wants to turn that video clip into
 // training data. This is why we record both high and low whenever the auto recorder kicks in.

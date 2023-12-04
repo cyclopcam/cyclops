@@ -118,7 +118,7 @@ func init() {
 	AllVariables = []VariableDef{
 		{
 			Key:   VarPermanentStoragePath,
-			Title: "Permanent Storage Path",
+			Title: "Permanent Storage Location",
 			Explanation: "Video clips that are used to train the system are stored in permanent storage. " +
 				"This folder should be backed up.",
 			Required: true,
@@ -127,7 +127,7 @@ func init() {
 		},
 		{
 			Key:   VarRecentEventStoragePath,
-			Title: "Recent Events Storage Path",
+			Title: "Recent Events Storage Location",
 			Explanation: "These are recent video clips which may be of interest. Old clips are automatically " +
 				"erased when we run out of space. If you boot from an SD card (eg Raspberry Pi), then this path should be located " +
 				"on removable storage (like a USB thumb drive), to avoid wearing out the flash memory on the boot device.",
@@ -137,7 +137,7 @@ func init() {
 		},
 		{
 			Key:   VarTempFilePath,
-			Title: "Temporary File Path",
+			Title: "Temporary File Location",
 			Explanation: "This is temporary space used while encoding videos. This space is seldom actually " +
 				"written to, and merely serves as a fallback when RAM is low.",
 			Required: true,

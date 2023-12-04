@@ -61,10 +61,11 @@ type watcher struct {
 	ch       chan *AnalysisState
 }
 
+// monitoCamera is the internal data structure for managing a single camera that we are monitoring
 type monitorCamera struct {
 	camera *camera.Camera
 
-	// Guards access to lastImg and objects
+	// Guards access to lastImg, lastDetection, analyzerState
 	lock sync.Mutex
 
 	// Guarded by 'lock' mutex.
@@ -75,12 +76,12 @@ type monitorCamera struct {
 	lastImg *cimg.Image
 
 	// Guarded by 'lock' mutex.
-	// Same comment applies to objects as to lastImg, in the sense that the contents of objects is immutable.
+	// Same comment applies here as to lastImg, in the sense that the contents of this object is immutable.
 	lastDetection *nn.DetectionResult
 
 	// Guared by 'lock' mutex.
 	// Can be nil.
-	// Same comment applies to objects as to lastImg, in the sense that the contents of objects is immutable.
+	// Same comment applies here as to lastImg, in the sense that the contents of this object is immutable.
 	analyzerState *AnalysisState
 }
 
@@ -132,6 +133,9 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	// Once we signal mustStopNNThreads, we fill the queue with dummy jobs, so that the NN threads
 	// can wake up from their channel receive operation, and exit.
 	// If the queue size was too small, then this would deadlock.
+	// nnQueueSize should not be less than 1, otherwise our backoff mechanism will never allow a
+	// frame through.
+	// SYNC-NN-THREAD-QUEUE-MIN-SIZE
 	nnQueueSize := nnThreads * 3
 
 	detector, err := nnload.LoadModel(filepath.Join(basePath, "yolov8s"), nnThreadingModel)
@@ -365,8 +369,10 @@ func (m *Monitor) readFrames() {
 			if m.mustStopFrameReader.Load() {
 				break
 			}
+			// SYNC-NN-THREAD-QUEUE-MIN-SIZE
 			if len(m.nnThreadQueue) >= 2*cap(m.nnThreadQueue)/3 {
-				continue
+				// Our NN queue is full, so drop frames.
+				break
 			}
 
 			// It's vital that this incrementing happens after the queue check above,
@@ -463,6 +469,7 @@ func (m *Monitor) nnThread() {
 			item.camera.lock.Unlock()
 
 			if len(m.analyzerQueue) >= cap(m.analyzerQueue)*9/10 {
+				// We do not expect this
 				m.Log.Warnf("NN analyzer queue is falling behind - dropping frames")
 			} else {
 				m.analyzerQueue <- analyzerQueueItem{

@@ -35,7 +35,7 @@ type EventDB struct {
 }
 
 // Open or create an event DB
-func Open(log log.Log, root string) (*EventDB, error) {
+func NewEventDB(log log.Log, root string) (*EventDB, error) {
 	root = filepath.Clean(root)
 	if err := os.MkdirAll(root, 0777); err != nil {
 		return nil, fmt.Errorf("Failed to set event storage path '%v': %w", root, err)

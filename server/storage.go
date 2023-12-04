@@ -7,7 +7,7 @@ import (
 )
 
 func (s *Server) SetPermanentStoragePath(root string) error {
-	if db, err := eventdb.Open(log.NewPrefixLogger(s.Log, "PermEventDB"), root); err != nil {
+	if db, err := eventdb.NewEventDB(log.NewPrefixLogger(s.Log, "PermEventDB"), root); err != nil {
 		return err
 	} else {
 		s.permanentEvents = db
@@ -16,7 +16,7 @@ func (s *Server) SetPermanentStoragePath(root string) error {
 }
 
 func (s *Server) SetRecentEventStoragePath(root string) error {
-	if db, err := eventdb.Open(log.NewPrefixLogger(s.Log, "RecentEventDB"), root); err != nil {
+	if db, err := eventdb.NewEventDB(log.NewPrefixLogger(s.Log, "RecentEventDB"), root); err != nil {
 		return err
 	} else {
 		s.recentEvents = db

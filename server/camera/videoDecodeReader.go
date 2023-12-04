@@ -32,9 +32,8 @@ type VideoDecodeReader struct {
 	ready        bool
 
 	lastImgLock sync.Mutex
-	//lastImg     *cimg.Image
-	lastImg   *accel.YUVImage
-	lastImgID int64 // If zero, then no frames decoded. The first decoded frame is 1, and it increases with each new frame
+	lastImg     *accel.YUVImage // We store the YUV image, so that we can run motion analysis on Y only, and only pay YUV -> RGB cost on demand
+	lastImgID   int64           // If zero, then no frames decoded. The first decoded frame is 1, and it increases with each new frame
 }
 
 func NewVideoDecodeReader() *VideoDecodeReader {
@@ -75,7 +74,7 @@ func (r *VideoDecodeReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	return r.incoming, nil
 }
 
-// Return image, id of last image if it's different to the given id
+// Return a copy of the latest image and its ID, if it's different to the given ID
 func (r *VideoDecodeReader) GetLastImageIfDifferent(ifNotEqualTo int64) (*accel.YUVImage, int64) {
 	r.lastImgLock.Lock()
 	defer r.lastImgLock.Unlock()
