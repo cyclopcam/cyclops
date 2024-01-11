@@ -18,51 +18,62 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/log"
 )
 
-// This is the prefix that we add whenever we need to encode into AnnexB
-var NALUPrefix = []byte{0x00, 0x00, 0x01}
+// EmulationState can be used to inform us whether a NALU has any emulation prevention bytes.
+// This is a tiny optimization that we can use to avoid decoding from Annex-B into raw bytes.
+type EmulationState int
 
-// A NALU, with optional annex-b prefix bytes
-// NOTE: We do not add the 0x03 "Emulation Prevention" byte, so this is going to bite us every now and then. We SHOULD DO IT.
+const (
+	EmulationStateUnknown                EmulationState = iota // We don't know what's inside
+	EmulationStateContainsEmulationBytes                       // There is at least one emulation prevention byte
+	EmulationStateNoEmulationBytes                             // There were no byte sequences that needed the 0x03 emulation prevention byte
+)
+
+// Type of NALU (either RBSP or SODB)
+type NALUFormat int
+
+const (
+	NALUFormatUnknown NALUFormat = iota // A 'nil' value
+	NALUFormatRBSP                      // Raw Byte Sequence Payload (No start code, no emulation prevention bytes)
+	NALUFormatSODB                      // String of Data Bits (Annex-B encoding. Has start code and emulation prevention bytes)
+)
+
+// A NALU that is one of:
+//
+//  1. Raw Byte Sequence Payload (RBSP)
+//  2. String of Data Bits (SODB) - aka Annex-B encoding
+//
+// RBSP has no prefix, and no emulation prevention bytes.
+// SODB has a 3 or 4 byte prefix, and emulation prevention bytes.
 type NALU struct {
-	// If zero, then no prefix.
-	// If 3 or 4, then the first N bytes of Payload are 00 00 01 or 00 00 00 01 respectively.
-	// No values beside 0,3,4 are valid for PrefixLen.
+	// If zero, then no prefix, and RBSP format.
+	// If 3 or 4, then the first N bytes of Payload are 00 00 01 or 00 00 00 01 respectively, and SODB format.
+	// The only valid values for PrefixLen are: 0,3,4
 	PrefixLen int
+	Emulation EmulationState
 	Payload   []byte
 }
 
-// DecodedPacket is what we store in our ring buffer
-// This thing probably wants a better name...
-// Maybe VideoPacket?
-type DecodedPacket struct {
+// VideoPacket is what we store in our ring buffer
+type VideoPacket struct {
 	RecvID       int64     // Arbitrary monotonically increasing ID. Used to detect dropped packets, or other issues like that.
 	RecvTime     time.Time // Wall time when the packet was received. This is obviously subject to network jitter etc, so not a substitute for PTS
 	H264NALUs    []NALU
 	H264PTS      time.Duration
 	PTSEqualsDTS bool
-	IsBacklog    bool // a bit of a hack to inject this state here. maybe an integer counter would suffice? (eg nBacklongPackets)
+	IsBacklog    bool // a bit of a hack to inject this state here. maybe an integer counter would suffice? (eg nBacklogPackets)
 }
 
-type RawBuffer struct {
-	Packets []*DecodedPacket
+// A list of packets, with some helper functions
+type PacketBuffer struct {
+	Packets []*VideoPacket
 }
 
-// Clone a raw NALU, but add prefix bytes to the clone
-func CloneNALUWithPrefix(raw []byte) NALU {
-	return NALU{
-		PrefixLen: len(NALUPrefix),
-		Payload:   append(NALUPrefix, raw...),
-	}
-}
-
-// Returns a clone with prefix bytes added
-func (n *NALU) CloneWithPrefix() NALU {
-	if n.PrefixLen != 0 {
-		return n.Clone()
-	}
-	return NALU{
-		PrefixLen: len(NALUPrefix),
-		Payload:   append(NALUPrefix, n.Payload...),
+// Returns either RBSP or SODB
+func (n *NALU) Format() NALUFormat {
+	if n.PrefixLen == 0 {
+		return NALUFormatRBSP
+	} else {
+		return NALUFormatSODB
 	}
 }
 
@@ -71,19 +82,96 @@ func WrapRawNALU(raw []byte) NALU {
 	return NALU{
 		PrefixLen: 0,
 		Payload:   raw,
+		Emulation: EmulationStateUnknown,
 	}
 }
 
-// Returns the payload with the prefix bytes stripped out
-func (n *NALU) RawPayload() []byte {
-	return n.Payload[n.PrefixLen:]
+// Returns the raw payload in RBSP format (no prefix bytes, and no emulation prevention bytes)
+func (n *NALU) RBSPPayload() []byte {
+	if n.Format() == NALUFormatRBSP {
+		return n.Payload
+	}
+	copy := n.clone(false, NALUFormatRBSP)
+	return copy.Payload
 }
 
-// Return a deep clone of a NALU
-func (n *NALU) Clone() NALU {
-	return NALU{
-		PrefixLen: n.PrefixLen,
-		Payload:   gen.CopySlice(n.Payload),
+// Returns the payload in SODB format (prefix/start code bytes and emulation prevention bytes)
+func (n *NALU) SODBPayload() []byte {
+	if n.Format() == NALUFormatSODB {
+		return n.Payload
+	}
+	copy := n.clone(false, NALUFormatSODB)
+	return copy.Payload
+}
+
+// Return a clone of a NALU in the given encoding.
+// The clone is shallow (i.e. references same memory) if possible.
+func (n *NALU) ShallowCloneToFormat(format NALUFormat) NALU {
+	return n.clone(false, format)
+}
+
+func (n *NALU) DeepCloneToFormat(format NALUFormat) NALU {
+	return n.clone(true, format)
+}
+
+func (n *NALU) DeepClone() NALU {
+	return n.clone(true, NALUFormatUnknown)
+}
+
+func (n *NALU) clone(forceDeep bool, targetFormat NALUFormat) NALU {
+	if targetFormat == NALUFormatUnknown {
+		targetFormat = n.Format()
+	}
+
+	if n.Format() == NALUFormatSODB && targetFormat == NALUFormatRBSP && n.Emulation == EmulationStateNoEmulationBytes && !forceDeep {
+		// This is a special case where we don't need to remove the emulation bytes, because we
+		// know that there are none. We expect to encounter this path quite frequently if we have an array of packets
+		// that are Annex-B encoded, and we want them all in raw format.
+		return NALU{
+			PrefixLen: 0,
+			Payload:   n.Payload[n.PrefixLen:],
+			Emulation: EmulationStateUnknown,
+		}
+	}
+
+	deep := forceDeep || targetFormat != n.Format()
+	if deep {
+		if targetFormat != n.Format() {
+			if targetFormat == NALUFormatRBSP {
+				// Decode to RBSP
+				return NALU{
+					PrefixLen: 0,
+					Payload:   DecodeAnnexB(n.Payload[n.PrefixLen:]),
+					Emulation: EmulationStateUnknown,
+				}
+			} else {
+				// Encode to Annex-B
+				rn := NALU{
+					PrefixLen: len(NALUPrefix),
+					Payload:   EncodeAnnexB(n.Payload, true),
+				}
+				if len(rn.Payload) != len(n.Payload)+len(NALUPrefix) {
+					rn.Emulation = EmulationStateContainsEmulationBytes
+				} else {
+					rn.Emulation = EmulationStateNoEmulationBytes
+				}
+				return rn
+			}
+		} else {
+			// Just clone
+			return NALU{
+				PrefixLen: n.PrefixLen,
+				Payload:   gen.CopySlice(n.Payload),
+				Emulation: n.Emulation,
+			}
+		}
+	} else {
+		// Shallow
+		return NALU{
+			PrefixLen: n.PrefixLen,
+			Payload:   n.Payload,
+			Emulation: n.Emulation,
+		}
 	}
 }
 
@@ -97,8 +185,8 @@ func (n *NALU) Type() h264.NALUType {
 }
 
 // Deep clone of packet buffer
-func (p *DecodedPacket) Clone() *DecodedPacket {
-	c := &DecodedPacket{
+func (p *VideoPacket) Clone() *VideoPacket {
+	c := &VideoPacket{
 		RecvID:       p.RecvID,
 		RecvTime:     p.RecvTime,
 		H264PTS:      p.H264PTS,
@@ -107,13 +195,13 @@ func (p *DecodedPacket) Clone() *DecodedPacket {
 	}
 	c.H264NALUs = make([]NALU, len(p.H264NALUs))
 	for i, n := range p.H264NALUs {
-		c.H264NALUs[i] = n.Clone()
+		c.H264NALUs[i] = n.DeepClone()
 	}
 	return c
 }
 
 // Return true if this packet has a NALU of type t inside
-func (p *DecodedPacket) HasType(t h264.NALUType) bool {
+func (p *VideoPacket) HasType(t h264.NALUType) bool {
 	for _, n := range p.H264NALUs {
 		if n.Type() == t {
 			return true
@@ -123,17 +211,17 @@ func (p *DecodedPacket) HasType(t h264.NALUType) bool {
 }
 
 // Returns true if this packet has a keyframe
-func (p *DecodedPacket) HasIDR() bool {
+func (p *VideoPacket) HasIDR() bool {
 	return p.HasType(h264.NALUTypeIDR)
 }
 
 // Return true if this packet has one NALU which is an intermediate frame
-func (p *DecodedPacket) IsIFrame() bool {
+func (p *VideoPacket) IsIFrame() bool {
 	return len(p.H264NALUs) == 1 && p.H264NALUs[0].Type() == h264.NALUTypeNonIDR
 }
 
 // Returns the first NALU of the given type, or nil if none exists
-func (p *DecodedPacket) FirstNALUOfType(t h264.NALUType) *NALU {
+func (p *VideoPacket) FirstNALUOfType(t h264.NALUType) *NALU {
 	for i := 0; i < len(p.H264NALUs); i++ {
 		if p.H264NALUs[i].Type() == t {
 			return &p.H264NALUs[i]
@@ -143,8 +231,8 @@ func (p *DecodedPacket) FirstNALUOfType(t h264.NALUType) *NALU {
 }
 
 // Returns the number of bytes of NALU data.
-// If the NALUs have annex-b prefixes, then this number of included in the size.
-func (p *DecodedPacket) PayloadBytes() int {
+// If the NALUs have annex-b prefixes, then these are included in the size.
+func (p *VideoPacket) PayloadBytes() int {
 	size := 0
 	for _, n := range p.H264NALUs {
 		size += len(n.Payload)
@@ -152,7 +240,7 @@ func (p *DecodedPacket) PayloadBytes() int {
 	return size
 }
 
-func (p *DecodedPacket) Summary() string {
+func (p *VideoPacket) Summary() string {
 	parts := []string{}
 	for _, n := range p.H264NALUs {
 		t := n.Type()
@@ -162,40 +250,55 @@ func (p *DecodedPacket) Summary() string {
 }
 
 // Encode all NALUs in the packet into AnnexB format (i.e. with 00,00,01 prefix bytes)
-func (p *DecodedPacket) EncodeToAnnexBPacket() []byte {
-	if len(p.H264NALUs) == 1 && p.H264NALUs[0].PrefixLen != 0 {
+func (p *VideoPacket) EncodeToAnnexBPacket() []byte {
+	if len(p.H264NALUs) == 1 && p.H264NALUs[0].Format() == NALUFormatSODB {
 		return p.H264NALUs[0].Payload
 	}
 
-	// measure how much space we'll need
+	// estimate how much space we'll need
 	outLen := 0
 	for _, n := range p.H264NALUs {
-		outLen += len(n.Payload)
-		if n.PrefixLen == 0 {
-			outLen += len(NALUPrefix)
+		if n.Format() == NALUFormatRBSP {
+			outLen += AnnexBWorstSize(len(n.Payload))
+		} else {
+			outLen += len(n.Payload)
 		}
 	}
 	// build up a contiguous buffer
-	out := make([]byte, 0, outLen)
+	out := make([]byte, outLen)
+	used := 0
 	for _, n := range p.H264NALUs {
-		if n.PrefixLen == 0 {
-			out = append(out, NALUPrefix...)
+		if n.Format() == NALUFormatRBSP {
+			encSize, encOK := EncodeAnnexBInto(n.Payload, true, out[used:])
+			if !encOK {
+				panic("Ran out of space packing NALUs into Annex-B")
+			}
+			used += encSize
+		} else {
+			copy(out[used:], n.Payload)
+			used += len(n.Payload)
 		}
-		out = append(out, n.Payload...)
 	}
-	return out
+	return out[:used]
 }
 
 // Clone a packet of NALUs and return the cloned packet
-func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *DecodedPacket {
+// NOTE: gortsplib re-uses buffers, which is why we copy the payloads.
+func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *VideoPacket {
 	nalus := []NALU{}
 	for _, buf := range ctx.H264NALUs {
 		// While we're doing a memcpy, we might as well append the prefix bytes.
 		// This saves us one additional memcpy before we send the NALUs out for
 		// decoding to RGBA, saving to mp4, or sending to the browser.
-		nalus = append(nalus, CloneNALUWithPrefix(buf))
+		// UPDATE: Now that we're actually doing the Annex-B encoding, and it has
+		// a non-zero cost, I'm opting to rather delay the Annex-B encoding until
+		// necessary. This is largely irrelevant for low resolution streams, but
+		// it does factor in when doing permanent recording of high res streams.
+		//nalus = append(nalus, CloneNALUToAnnexB(buf))
+		n := WrapRawNALU(buf)
+		nalus = append(nalus, n.DeepClone())
 	}
-	return &DecodedPacket{
+	return &VideoPacket{
 		RecvTime:     recvTime,
 		H264NALUs:    nalus,
 		H264PTS:      ctx.H264PTS,
@@ -205,20 +308,21 @@ func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *Decod
 
 // Wrap a packet of NALUs into our own data structure.
 // WARNING: gortsplib re-uses buffers, so the memory buffers inside the NALUs here are only valid until your function returns.
-func WrapPacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *DecodedPacket {
-	nalus := make([]NALU, 0, len(ctx.H264NALUs))
-	for _, buf := range ctx.H264NALUs {
-		nalus = append(nalus, WrapRawNALU(buf))
-	}
-	return &DecodedPacket{
-		RecvTime:     recvTime,
-		H264NALUs:    nalus,
-		H264PTS:      ctx.H264PTS,
-		PTSEqualsDTS: ctx.PTSEqualsDTS,
-	}
-}
+// I'm commenting this function out, because it's never used
+//func WrapPacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *VideoPacket {
+//	nalus := make([]NALU, 0, len(ctx.H264NALUs))
+//	for _, buf := range ctx.H264NALUs {
+//		nalus = append(nalus, WrapRawNALU(buf))
+//	}
+//	return &VideoPacket{
+//		RecvTime:     recvTime,
+//		H264NALUs:    nalus,
+//		H264PTS:      ctx.H264PTS,
+//		PTSEqualsDTS: ctx.PTSEqualsDTS,
+//	}
+//}
 
-// Returns true if the packet has an IDR (with my Hikvisions this always implies IPS + PPS + IDR)
+// Returns true if the packet has an IDR (with my Hikvisions this always implies SPS + PPS + IDR)
 func PacketHasIDR(ctx *gortsplib.ClientOnPacketRTPCtx) bool {
 	for _, p := range ctx.H264NALUs {
 		t := h264.NALUType(p[0] & 31)
@@ -230,13 +334,13 @@ func PacketHasIDR(ctx *gortsplib.ClientOnPacketRTPCtx) bool {
 }
 
 // Extract saved buffer into an MPEGTS stream
-func (r *RawBuffer) SaveToMPEGTS(log log.Log, output io.Writer) error {
+func (r *PacketBuffer) SaveToMPEGTS(log log.Log, output io.Writer) error {
 	sps := r.FirstNALUOfType(h264.NALUTypeSPS)
 	pps := r.FirstNALUOfType(h264.NALUTypePPS)
 	if sps == nil || pps == nil {
 		return fmt.Errorf("Stream has no SPS or PPS")
 	}
-	encoder, err := NewMPEGTSEncoder(log, output, sps.RawPayload(), pps.RawPayload())
+	encoder, err := NewMPEGTSEncoder(log, output, sps.RBSPPayload(), pps.RBSPPayload())
 	if err != nil {
 		return fmt.Errorf("Failed to start MPEGTS encoder: %w", err)
 	}
@@ -266,16 +370,16 @@ func (r *RawBuffer) SaveToMPEGTS(log log.Log, output io.Writer) error {
 }
 
 // Decode SPS and PPS to extract header information
-func (r *RawBuffer) DecodeHeader() (width, height int, err error) {
+func (r *PacketBuffer) DecodeHeader() (width, height int, err error) {
 	sps := r.FirstNALUOfType(h264.NALUTypeSPS)
 	if sps == nil {
 		return 0, 0, fmt.Errorf("Failed to find SPS NALU")
 	}
-	return ParseSPS(sps.RawPayload())
+	return ParseSPS(sps.RBSPPayload())
 }
 
 // Returns the first NALU of the given type, or nil if none found
-func (r *RawBuffer) FirstNALUOfType(ofType h264.NALUType) *NALU {
+func (r *PacketBuffer) FirstNALUOfType(ofType h264.NALUType) *NALU {
 	i, j := r.IndexOfFirstNALUOfType(ofType)
 	if i == -1 {
 		return nil
@@ -283,7 +387,7 @@ func (r *RawBuffer) FirstNALUOfType(ofType h264.NALUType) *NALU {
 	return &r.Packets[i].H264NALUs[j]
 }
 
-func (r *RawBuffer) IndexOfFirstNALUOfType(ofType h264.NALUType) (packetIdx int, indexInPacket int) {
+func (r *PacketBuffer) IndexOfFirstNALUOfType(ofType h264.NALUType) (packetIdx int, indexInPacket int) {
 	for i, packet := range r.Packets {
 		for j := range packet.H264NALUs {
 			if packet.H264NALUs[j].Type() == ofType {
@@ -294,7 +398,7 @@ func (r *RawBuffer) IndexOfFirstNALUOfType(ofType h264.NALUType) (packetIdx int,
 	return -1, -1
 }
 
-func (r *RawBuffer) SaveToMP4(filename string) error {
+func (r *PacketBuffer) SaveToMP4(filename string) error {
 	width, height, err := r.DecodeHeader()
 	if err != nil {
 		return err
@@ -352,14 +456,14 @@ func (r *RawBuffer) SaveToMP4(filename string) error {
 }
 
 // Dump each NALU to a .raw file
-func (r *RawBuffer) DumpBin(dir string) error {
+func (r *PacketBuffer) DumpBin(dir string) error {
 	files, _ := filepath.Glob(dir + "/*.raw")
 	for _, file := range files {
 		os.Remove(file)
 	}
 	for i, packet := range r.Packets {
 		for j := 0; j < len(packet.H264NALUs); j++ {
-			if err := os.WriteFile(fmt.Sprintf("%v/%03d-%03d.%012d.raw", dir, i, j, packet.H264PTS.Nanoseconds()), packet.H264NALUs[j].RawPayload(), 0660); err != nil {
+			if err := os.WriteFile(fmt.Sprintf("%v/%03d-%03d.%012d.raw", dir, i, j, packet.H264PTS.Nanoseconds()), packet.H264NALUs[j].RBSPPayload(), 0660); err != nil {
 				return err
 			}
 		}
@@ -368,7 +472,7 @@ func (r *RawBuffer) DumpBin(dir string) error {
 }
 
 // Adjust all PTS values so that the first frame start at time 0
-func (r *RawBuffer) ResetPTS() {
+func (r *PacketBuffer) ResetPTS() {
 	if len(r.Packets) == 0 {
 		return
 	}
@@ -380,7 +484,7 @@ func (r *RawBuffer) ResetPTS() {
 
 // Decode the center-most keyframe
 // This is O(1), assuming no errors or funny business like no keyframes.
-func (r *RawBuffer) ExtractThumbnail() (*cimg.Image, error) {
+func (r *PacketBuffer) ExtractThumbnail() (*cimg.Image, error) {
 	decoder, err := NewH264StreamDecoder("h264")
 	if err != nil {
 		return nil, err
@@ -422,18 +526,18 @@ func ParseBinFilename(filename string) (packetNumber int, naluNumber int, timeNS
 
 // Opposite of RawBuffer.DumpBin
 // NOTE: We don't attempt to inject SPS and PPS into RawBuffer, but would be trivial for H264.. just look at first byte of payload... (67 and 68 for SPS and PPS)
-func LoadBinDir(dir string) (*RawBuffer, error) {
+func LoadBinDir(dir string) (*PacketBuffer, error) {
 	files, err := filepath.Glob(dir + "/*.raw")
 	if err != nil {
 		return nil, err
 	}
 	sort.Strings(files)
 
-	buf := &RawBuffer{
-		Packets: []*DecodedPacket{},
+	buf := &PacketBuffer{
+		Packets: []*VideoPacket{},
 	}
 	cPacketNumber := -1
-	var cPacket *DecodedPacket
+	var cPacket *VideoPacket
 
 	for _, rawFilename := range files {
 		packetNumber, _, timeNS := ParseBinFilename(rawFilename)
@@ -442,7 +546,7 @@ func LoadBinDir(dir string) (*RawBuffer, error) {
 				buf.Packets = append(buf.Packets, cPacket)
 			}
 			// NOTE: We don't populate RecvTime
-			cPacket = &DecodedPacket{
+			cPacket = &VideoPacket{
 				H264PTS: time.Duration(timeNS) * time.Nanosecond,
 			}
 		}

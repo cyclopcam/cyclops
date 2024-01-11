@@ -6,30 +6,30 @@ _Only tested on Ubuntu 22.04_
 
 ## Dev environment
 
--   Install Go
+-   Install the latest version of Go
 -   Install the apt packages mentioned above
 -   Build ncnn (make sure you have done `git submodule update --init`)
     -   `cd ncnn`
     -   `mkdir build`
     -   `cd build`
     -   `cmake -DNCNN_SIMPLEOCV=1 ..`
-    -   `make -j` (if you have sufficient RAM ...)
-    -   `make -j2` (... for a Rpi4 with 4GB RAM)
+    -   `make -j` (if you have 16GB RAM ...)
+    -   `make -j2` (... if you only have 4GB RAM)
 -   Build Simd (make sure you have done `git submodule update --init`)
     -   `cd Simd`
     -   `mkdir build`
     -   `cd build`
     -   `cmake ../prj/cmake`
-    -   `make -j` (if you have sufficient RAM ...)
-    -   `make -j2` (... for a Rpi4 with 4GB RAM)
+    -   `make -j` (if you have 16GB RAM ...)
+    -   `make -j2` (... if you only have 4GB RAM)
 -   Install nvm
--   Use `nvm install v18.2.0` (The version is possibly not important, but this
-    is the exact version I used when creating this document)
+-   Use `nvm install v18.2.0` (The exact version is probably not important, but
+    this is the exact version I used when creating this document)
 -   In `www`, do `npm install`, then `npm run build`
 -   In `appui`, do `npm install`, then `npm run build`
--   `go build -o bin/kernelwg cmd/kernelwg/*.go`
--   First run of `go run cmd/cyclops/cyclops.go` takes a few minutes on RPi4,
-    mostly due to single-threaded build of `github.com/mattn/go-sqlite3`
+-   First run of `go run cmd/cyclops/cyclops.go` takes a few minutes on a
+    Raspberry Pi, mostly due to the single-threaded build of
+    `github.com/mattn/go-sqlite3`
 
 Once setup, you should be able to run the server and the UI:
 

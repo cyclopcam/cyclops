@@ -32,7 +32,7 @@ type PerfStats struct {
 
 var Stats = PerfStats{}
 
-func Update(stat *atomic.Uint64, value int64) {
+func UpdateMovingAverage(stat *atomic.Uint64, value int64) {
 	vu := uint64(value)
 	// We don't bother about strict correctness here, with CompareAndSwap,
 	// because this is just sampled stats, and it's OK to miss one or two samples.
@@ -41,6 +41,11 @@ func Update(stat *atomic.Uint64, value int64) {
 	} else {
 		stat.Store((stat.Load()*63 + vu) >> 6)
 	}
+}
+
+func Add(stat *atomic.Uint64, delta int64) int64 {
+	vu := uint64(delta)
+	return int64(stat.Add(vu))
 }
 
 func (s *PerfStats) String() string {

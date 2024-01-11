@@ -242,7 +242,7 @@ func (d *H264Decoder) NextFrameDeepRef() (*accel.YUVImage, error) {
 
 // Decode the packet and return a copy of the YUV image.
 // This is used when decoding a stream (not a file).
-func (d *H264Decoder) Decode(packet *DecodedPacket) (*accel.YUVImage, error) {
+func (d *H264Decoder) Decode(packet *VideoPacket) (*accel.YUVImage, error) {
 	img, err := d.DecodeDeepRef(packet)
 	if err != nil {
 		return nil, err
@@ -255,7 +255,7 @@ func (d *H264Decoder) Decode(packet *DecodedPacket) (*accel.YUVImage, error) {
 // The pixels in the returned image are not a garbage-collected Go slice.
 // They point directly into the libavcodec decode buffer.
 // That's why the function name has the "DeepRef" suffix.
-func (d *H264Decoder) DecodeDeepRef(packet *DecodedPacket) (*accel.YUVImage, error) {
+func (d *H264Decoder) DecodeDeepRef(packet *VideoPacket) (*accel.YUVImage, error) {
 	if err := d.sendPacket(packet.EncodeToAnnexBPacket()); err != nil {
 		// sendPacket failure is not fatal
 		// We should log it or something.
@@ -308,7 +308,7 @@ func (d *H264Decoder) DecodeDeepRef(packet *DecodedPacket) (*accel.YUVImage, err
 			img := cimg.NewImage(width, height, cimg.PixelFormatRGB)
 			start := time.Now()
 			accel.YUV420pToRGB(width, height, rawY, rawU, rawV, strideY, strideU, strideV, img.Stride, img.Pixels)
-			perfstats.Update(&perfstats.Stats.YUV420ToRGB_NanosecondsPerKibiPixel, (time.Since(start).Nanoseconds()*1024)/(int64(d.srcFrame.width*d.srcFrame.height)))
+			perfstats.UpdateMovingAverage(&perfstats.Stats.YUV420ToRGB_NanosecondsPerKibiPixel, (time.Since(start).Nanoseconds()*1024)/(int64(d.srcFrame.width*d.srcFrame.height)))
 			return img, nil
 		} else {
 			// if frame size has changed, allocate needed objects
@@ -350,7 +350,7 @@ func (d *H264Decoder) DecodeDeepRef(packet *DecodedPacket) (*accel.YUVImage, err
 			if res < 0 {
 				return nil, fmt.Errorf("sws_scale() error %v", res)
 			}
-			perfstats.Update(&perfstats.Stats.YUV420ToRGB_NanosecondsPerKibiPixel, (time.Since(start).Nanoseconds()*1024)/(int64(d.srcFrame.width*d.srcFrame.height)))
+			perfstats.UpdateMovingAverage(&perfstats.Stats.YUV420ToRGB_NanosecondsPerKibiPixel, (time.Since(start).Nanoseconds()*1024)/(int64(d.srcFrame.width*d.srcFrame.height)))
 			//fmt.Printf("Got frame %v x %v -> %v x %v\n", d.srcFrame.width, d.srcFrame.height, d.dstFrame.width, d.dstFrame.height)
 			return cimg.WrapImage(int(d.dstFrame.width), int(d.dstFrame.height), cimg.PixelFormatRGB, d.dstFramePtr), nil
 		}
@@ -366,10 +366,6 @@ func (d *H264Decoder) Height() int {
 }
 
 func (d *H264Decoder) sendPacket(packet []byte) error {
-	//if nalu.PrefixLen == 0 {
-	//	nalu = nalu.CloneWithPrefix()
-	//}
-
 	// The following doesn't work, because we're storing a Go pointer inside a C struct,
 	// and then passing that C struct to a C function. So to fix this, we need to define
 	// a helper function in C.
@@ -391,7 +387,7 @@ func (d *H264Decoder) sendPacket(packet []byte) error {
 // This was built for extracting a thumbnail during a long recording.
 // Obviously this is quite expensive, because you're creating a decoder
 // for just a single frame.
-func DecodeSinglePacketToImage(packet *DecodedPacket) (*cimg.Image, error) {
+func DecodeSinglePacketToImage(packet *VideoPacket) (*cimg.Image, error) {
 	decoder, err := NewH264StreamDecoder("h264")
 	if err != nil {
 		return nil, err

@@ -112,7 +112,7 @@ func (r *VideoDecodeReader) Close() {
 	}
 }
 
-func (r *VideoDecodeReader) OnPacketRTP(packet *videox.DecodedPacket) {
+func (r *VideoDecodeReader) OnPacketRTP(packet *videox.VideoPacket) {
 	r.nPackets++
 	//r.Log.Infof("[Packet %v] VideoDecodeReader", r.nPackets)
 

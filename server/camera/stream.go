@@ -26,8 +26,8 @@ type StandardStreamSink interface {
 	// OnConnect is called by Stream.ConnectSinkAndRun().
 	// You must return a channel to which all stream messages will be sent.
 	OnConnect(stream *Stream) (StreamSinkChan, error)
-	OnPacketRTP(packet *videox.DecodedPacket) // Called by RunStandardStream(), when it receives a StreamMsgTypePacket
-	Close()                                   // Called by RunStandardStream(), when it receives a StreamMsgTypeClose
+	OnPacketRTP(packet *videox.VideoPacket) // Called by RunStandardStream(), when it receives a StreamMsgTypePacket
+	Close()                                 // Called by RunStandardStream(), when it receives a StreamMsgTypeClose
 }
 
 type StreamMsgType int
@@ -41,7 +41,7 @@ const (
 type StreamMsg struct {
 	Type   StreamMsgType
 	Stream *Stream
-	Packet *videox.DecodedPacket
+	Packet *videox.VideoPacket
 }
 
 // There isn't much rhyme or reason behind this number
@@ -334,7 +334,7 @@ func (s *Stream) RemoveSink(sink StreamSinkChan) {
 	}
 }
 
-func (s *Stream) sendSinkMsg(sink StreamSinkChan, msgType StreamMsgType, packet *videox.DecodedPacket) {
+func (s *Stream) sendSinkMsg(sink StreamSinkChan, msgType StreamMsgType, packet *videox.VideoPacket) {
 	sink <- StreamMsg{
 		Type:   msgType,
 		Stream: s,

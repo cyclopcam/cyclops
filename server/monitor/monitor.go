@@ -407,9 +407,8 @@ func (m *Monitor) readFrames() {
 		}
 
 		interval := 10 * math.Pow(1.5, float64(nStats))
-		if interval > 5*60 {
-			interval = 5 * 60
-		}
+		interval = max(interval, 5)
+		interval = min(interval, 3600)
 		if time.Now().Sub(lastStats) > time.Duration(interval)*time.Second {
 			nStats++
 			totalFrames, totalProcessed := frameReaderStats(looperCameras)

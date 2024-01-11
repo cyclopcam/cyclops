@@ -57,6 +57,10 @@ func (v *VideoEncoder) Close() {
 }
 
 func (v *VideoEncoder) WriteNALU(dts, pts time.Duration, nalu NALU) error {
+	if nalu.Format() != NALUFormatSODB {
+		// Encoding to Annex-B has a non-zero cost (615 MB/s on a Raspberry Pi 5, vs 4600 MB/s memcpy).
+		nalu = nalu.ShallowCloneToFormat(NALUFormatSODB)
+	}
 	idts := C.int64_t(dts.Nanoseconds())
 	ipts := C.int64_t(pts.Nanoseconds())
 	var cerr *C.char
@@ -67,7 +71,7 @@ func (v *VideoEncoder) WriteNALU(dts, pts time.Duration, nalu NALU) error {
 	return nil
 }
 
-func (v *VideoEncoder) WritePacket(dts, pts time.Duration, packet *DecodedPacket) error {
+func (v *VideoEncoder) WritePacket(dts, pts time.Duration, packet *VideoPacket) error {
 	idts := C.int64_t(dts.Nanoseconds())
 	ipts := C.int64_t(pts.Nanoseconds())
 	encoded := packet.EncodeToAnnexBPacket()

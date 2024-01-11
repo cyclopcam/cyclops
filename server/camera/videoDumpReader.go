@@ -45,14 +45,14 @@ type VideoDumpReader struct {
 	HaveIDR bool
 
 	BufferLock sync.Mutex // Guards all access to Buffer
-	Buffer     ringbuffer.WeightedRingT[videox.DecodedPacket]
+	Buffer     ringbuffer.WeightedRingT[videox.VideoPacket]
 
 	incoming StreamSinkChan
 }
 
 func NewVideoDumpReader(maxRingBufferBytes int) *VideoDumpReader {
 	return &VideoDumpReader{
-		Buffer:   ringbuffer.NewWeightedRingT[videox.DecodedPacket](maxRingBufferBytes),
+		Buffer:   ringbuffer.NewWeightedRingT[videox.VideoPacket](maxRingBufferBytes),
 		incoming: make(StreamSinkChan, StreamSinkChanDefaultBufferSize),
 	}
 }
@@ -67,14 +67,14 @@ func (r *VideoDumpReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 }
 
 func (r *VideoDumpReader) initializeBuffer() {
-	r.Buffer = ringbuffer.NewWeightedRingT[videox.DecodedPacket](r.Buffer.MaxWeight)
+	r.Buffer = ringbuffer.NewWeightedRingT[videox.VideoPacket](r.Buffer.MaxWeight)
 }
 
 func (r *VideoDumpReader) Close() {
 	r.Log.Infof("VideoDumpReader closed")
 }
 
-func (r *VideoDumpReader) OnPacketRTP(packet *videox.DecodedPacket) {
+func (r *VideoDumpReader) OnPacketRTP(packet *videox.VideoPacket) {
 	//r.Log.Infof("[Packet %v] VideoDumpReader", 0)
 	r.BufferLock.Lock()
 	defer r.BufferLock.Unlock()
@@ -85,7 +85,7 @@ func (r *VideoDumpReader) OnPacketRTP(packet *videox.DecodedPacket) {
 // Extract from <video_end - duration> until <video_end>.
 // video_end is the PTS of the most recently received packet.
 // duration is a positive number.
-func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod, duration time.Duration) (*videox.RawBuffer, error) {
+func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod, duration time.Duration) (*videox.PacketBuffer, error) {
 	r.BufferLock.Lock()
 	defer r.BufferLock.Unlock()
 
@@ -128,8 +128,8 @@ func (r *VideoDumpReader) ExtractRawBuffer(method ExtractMethod, duration time.D
 		}
 	}
 
-	out := &videox.RawBuffer{
-		Packets: make([]*videox.DecodedPacket, bufLen-firstPacket),
+	out := &videox.PacketBuffer{
+		Packets: make([]*videox.VideoPacket, bufLen-firstPacket),
 	}
 
 	switch method {

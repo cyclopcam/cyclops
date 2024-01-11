@@ -63,7 +63,7 @@ func NewEventDB(log log.Log, root string) (*EventDB, error) {
 // Save a new recording to disk.
 // Returns the record of the new recording.
 // Either rawLD or rawHD may be nil, but not both.
-func (e *EventDB) Save(origin RecordingOrigin, cameraID int64, startTime time.Time, rawLD, rawHD *videox.RawBuffer) (*Recording, error) {
+func (e *EventDB) Save(origin RecordingOrigin, cameraID int64, startTime time.Time, rawLD, rawHD *videox.PacketBuffer) (*Recording, error) {
 	if rawLD == nil && rawHD == nil {
 		return nil, fmt.Errorf("Both rawLD and rawHD are nil")
 	}
@@ -369,7 +369,7 @@ func (e *EventDB) createRandomID() (string, error) {
 	return hex.EncodeToString(rnd[:]), nil
 }
 
-func (e *EventDB) saveThumbnailFromVideo(buf *videox.RawBuffer, targetFilename string) error {
+func (e *EventDB) saveThumbnailFromVideo(buf *videox.PacketBuffer, targetFilename string) error {
 	img, err := buf.ExtractThumbnail()
 	if err != nil {
 		// If thumbnail creation fails, it's a good sign that this video is useless
@@ -391,7 +391,7 @@ func (e *EventDB) SaveThumbnail(img *cimg.Image, targetFilename string) error {
 
 // Save a video stream to a file.
 // Returns the size of the video file on disk
-func (e *EventDB) saveVideo(buf *videox.RawBuffer, targetFilename string) (int64, error) {
+func (e *EventDB) saveVideo(buf *videox.PacketBuffer, targetFilename string) (int64, error) {
 	e.log.Infof("Saving recording %v", targetFilename)
 	if err := buf.SaveToMP4(targetFilename); err != nil {
 		return 0, err

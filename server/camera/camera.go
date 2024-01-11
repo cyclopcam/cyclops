@@ -126,7 +126,7 @@ func (c *Camera) LatestImage(contentType string) []byte {
 
 // Extract from <now - duration> until <now>.
 // duration is a positive number.
-func (c *Camera) ExtractHighRes(method ExtractMethod, duration time.Duration) (*videox.RawBuffer, error) {
+func (c *Camera) ExtractHighRes(method ExtractMethod, duration time.Duration) (*videox.PacketBuffer, error) {
 	return c.HighDumper.ExtractRawBuffer(method, duration)
 }
 

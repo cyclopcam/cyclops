@@ -69,7 +69,7 @@ func (e *MPGTSEncoder) Encode(nalus []NALU, pts time.Duration) error {
 	idrPresent := false
 
 	for _, nalu := range nalus {
-		payload := nalu.RawPayload()
+		payload := nalu.RBSPPayload()
 		typ := h264.NALUType(payload[0] & 0x1F)
 		switch typ {
 		case h264.NALUTypeSPS:

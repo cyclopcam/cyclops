@@ -32,7 +32,7 @@ type webSocketJSON struct {
 // Queued data that must be sent over the websocket
 // Either videoFrame or detectionResult will be non-nil
 type webSocketSendPacket struct {
-	videoFrame *videox.DecodedPacket
+	videoFrame *videox.VideoPacket
 	detection  *monitor.AnalysisState
 }
 
@@ -96,7 +96,7 @@ func (s *VideoWebSocketStreamer) OnConnect(stream *camera.Stream) (camera.Stream
 	return s.incoming, nil
 }
 
-func (s *VideoWebSocketStreamer) onPacketRTP(packet *videox.DecodedPacket) {
+func (s *VideoWebSocketStreamer) onPacketRTP(packet *videox.VideoPacket) {
 	if s.debug {
 		s.log.Infof("onPacketRTP")
 	}
@@ -310,10 +310,11 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 			binary.Write(&buf, binary.LittleEndian, flags)
 			binary.Write(&buf, binary.LittleEndian, uint32(frame.RecvID))
 			for _, n := range frame.H264NALUs {
-				if n.PrefixLen == 0 {
-					buf.Write([]byte{0, 0, 1})
-				}
-				buf.Write(n.Payload)
+				//if n.PrefixLen == 0 {
+				//	buf.Write([]byte{0, 0, 1})
+				//}
+				//buf.Write(n.Payload)
+				buf.Write(n.SODBPayload())
 			}
 			final := buf.Bytes()
 			//s.log.Infof("Sending packet: %v", final[:5])

@@ -68,8 +68,8 @@ outer:
 	}
 
 	// save recording
-	var rawLD *videox.RawBuffer
-	var rawHD *videox.RawBuffer
+	var rawLD *videox.PacketBuffer
+	var rawHD *videox.PacketBuffer
 	var err error
 
 	duration := time.Now().Sub(startAt)

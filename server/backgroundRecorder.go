@@ -149,7 +149,7 @@ func (bg *backgroundStream) OnConnect(stream *camera.Stream) (camera.StreamSinkC
 	return bg.sink, nil
 }
 
-func (bg *backgroundStream) OnPacketRTP(packet *videox.DecodedPacket) {
+func (bg *backgroundStream) OnPacketRTP(packet *videox.VideoPacket) {
 	if bg.parent.stop.Load() {
 		// Remove ourselves
 		bg.stream.RemoveSink(bg.sink)
@@ -158,7 +158,7 @@ func (bg *backgroundStream) OnPacketRTP(packet *videox.DecodedPacket) {
 	}
 
 	if bg.width == 0 && packet.HasType(h264.NALUTypeSPS) {
-		width, height, err := videox.ParseSPS(packet.FirstNALUOfType(h264.NALUTypeSPS).RawPayload())
+		width, height, err := videox.ParseSPS(packet.FirstNALUOfType(h264.NALUTypeSPS).RBSPPayload())
 		if err != nil {
 			bg.log.Errorf("Failed to decode SPS: %v", err)
 		} else {

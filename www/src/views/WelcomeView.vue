@@ -107,6 +107,6 @@ onMounted(async () => {
 		<setup-v-p-n v-if="isSetupVPN" @finished="moveToNextStage()" />
 		<new-user v-if="isCreateFirstUser" :is-first-user="true" @finished="moveToNextStage()" />
 		<system-variables v-if="isConfigureVariables" :initial-setup="true" @finished="moveToNextStage()" />
-		<setup-camera v-if="isConfigureCameras" :isInitialSetup="true" @finished="moveToNextStage()" />
+		<setup-cameras v-if="isConfigureCameras" :isInitialSetup="true" @finished="moveToNextStage()" />
 	</mobile-fullscreen>
 </template>
