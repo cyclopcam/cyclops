@@ -17,7 +17,7 @@ onMounted(() => {
 <template>
 	<div class="flexColumnCenter">
 		<router-view @recordNew="onRecordNew" v-slot="{ Component, route }">
-			<transition :name="route.meta.transitionName">
+			<transition :name="route.meta.transitionName + ''">
 				<component :is="Component" />
 			</transition>
 		</router-view>

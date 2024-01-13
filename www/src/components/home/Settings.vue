@@ -4,7 +4,7 @@
 <template>
 	<div class="flexColumn settingsRoot">
 		<router-view v-slot="{ Component, route }">
-			<transition :name="route.meta.transitionName">
+			<transition :name="route.meta.transitionName + ''">
 				<component :is="Component" />
 			</transition>
 		</router-view>
