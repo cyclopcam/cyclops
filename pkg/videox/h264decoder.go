@@ -120,7 +120,21 @@ func NewH264Decoder(options DecoderOptions) (*H264Decoder, error) {
 		if videoStream < 0 {
 			return nil, fmt.Errorf("Failed to find video stream or codec in %v: %w", options.Filename, WrapAvErr(videoStream))
 		}
-		codecCtx = unsafe.Slice((**C.AVStream)(formatCtx.streams), formatCtx.nb_streams)[videoStream].codec
+		codecPar := unsafe.Slice((**C.AVStream)(formatCtx.streams), formatCtx.nb_streams)[videoStream].codecpar
+		//codecCtx = unsafe.Slice((**C.AVStream)(formatCtx.streams), formatCtx.nb_streams)[videoStream].codec
+		codecCtx = C.avcodec_alloc_context3(codec)
+		if codecCtx == nil {
+			return nil, fmt.Errorf("avcodec_alloc_context3() failed")
+		}
+		defer func() {
+			if !*pSuccess {
+				C.avcodec_close(codecCtx)
+			}
+		}()
+		ownCodecCtx = true
+		if C.avcodec_parameters_to_context(codecCtx, codecPar) < 0 {
+			return nil, fmt.Errorf("avcodec_parameters_to_context() failed")
+		}
 	} else {
 		if options.Codec != "h264" {
 			return nil, fmt.Errorf("Only h264 codec is supported")

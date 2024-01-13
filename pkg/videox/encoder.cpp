@@ -18,9 +18,14 @@
 // I could find which just worked.
 
 struct Encoder {
+#if LIBAVCODEC_VERSION_MAJOR < 59
+	AVOutputFormat* Format = nullptr;
+	AVCodec*        Codec  = nullptr;
+#else
+	const AVOutputFormat* Format = nullptr;
+	const AVCodec*        Codec  = nullptr;
+#endif
 	AVFormatContext* OutFormatCtx = nullptr;
-	AVOutputFormat*  Format       = nullptr;
-	AVCodec*         Codec        = nullptr;
 	AVCodecContext*  CodecCtx     = nullptr;
 	AVStream*        OutStream    = nullptr;
 
