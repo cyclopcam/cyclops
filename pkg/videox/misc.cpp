@@ -67,6 +67,14 @@ size_t EncodeAnnexB(const void* src, size_t srcLen, void* dst, size_t dstLen) {
 	return out - (uint8_t*) dst;
 }
 
+// For testing, does not do any encoding, but simply a memcpy
+size_t EncodeAnnexB_Null(const void* src, size_t srcLen, void* dst, size_t dstLen) {
+	if (dstLen < srcLen || srcLen == 0)
+		return 0;
+	memcpy(dst, src, srcLen);
+	return srcLen;
+}
+
 // This is copied from the ffmpeg source code, so we use it to verify our implementation.
 size_t EncodeAnnexB_Ref(const void* src, size_t srcLen, void* dst, size_t dstLen) {
 	const uint8_t* in  = (const uint8_t*) src;

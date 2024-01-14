@@ -5,8 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aler9/gortsplib"
-	"github.com/aler9/gortsplib/pkg/h264"
+	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/bmharper/ringbuffer"
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videox"
@@ -39,9 +38,9 @@ buffer would be only 4800 KB, and that would be an insanely long recording.
 // VideoDumpReader is a ring buffer that accumulates the stream in a format that can be turned into a video file.
 // The video is not decoded.
 type VideoDumpReader struct {
-	Log     log.Log
-	TrackID int
-	Track   *gortsplib.TrackH264
+	Log log.Log
+	//TrackID int
+	//Track   *gortsplib.TrackH264
 	HaveIDR bool
 
 	BufferLock sync.Mutex // Guards all access to Buffer
@@ -59,8 +58,8 @@ func NewVideoDumpReader(maxRingBufferBytes int) *VideoDumpReader {
 
 func (r *VideoDumpReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	r.Log = stream.Log
-	r.TrackID = stream.H264TrackID
-	r.Track = stream.H264Track
+	//r.TrackID = stream.H264TrackID
+	//r.Track = stream.H264Track
 	r.HaveIDR = false
 	r.initializeBuffer()
 	return r.incoming, nil

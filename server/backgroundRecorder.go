@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/aler9/gortsplib/pkg/h264"
+	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/log"

@@ -7,7 +7,8 @@ import (
 	"os"
 	"unsafe"
 
-	"github.com/aler9/gortsplib/pkg/h264"
+	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
+
 	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/accel"
 )

@@ -6,8 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/aler9/gortsplib"
-	"github.com/aler9/gortsplib/pkg/h264"
+	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/cyclopcam/cyclops/pkg/accel"
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videox"
@@ -21,9 +20,9 @@ import (
 // a blocking call which waits for a new frame to be decoded,
 // depending upon the acceptable latency.
 type VideoDecodeReader struct {
-	Log     log.Log
-	TrackID int
-	Track   *gortsplib.TrackH264
+	Log log.Log
+	//TrackID int
+	//Track   *gortsplib.TrackH264
 	Decoder *videox.H264Decoder
 
 	incoming     StreamSinkChan
@@ -44,8 +43,8 @@ func NewVideoDecodeReader() *VideoDecodeReader {
 
 func (r *VideoDecodeReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	r.Log = stream.Log
-	r.TrackID = stream.H264TrackID
-	r.Track = stream.H264Track
+	//r.TrackID = stream.H264TrackID
+	//r.Track = stream.H264Track
 
 	decoder, err := videox.NewH264StreamDecoder("h264")
 	if err != nil {

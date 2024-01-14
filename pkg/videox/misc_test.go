@@ -12,8 +12,8 @@ func TestEncodeAnnexB(t *testing.T) {
 	require.Equal(t, 3, len(NALUPrefix))
 
 	verify := func(raw, expect []byte) {
-		e1 := EncodeAnnexB(raw, false)
-		e2 := EncodeAnnexB(raw, true)
+		e1 := EncodeAnnexB(raw, AnnexBEncodeFlagAddEmulationPreventionBytes)
+		e2 := EncodeAnnexB(raw, AnnexBEncodeFlagAddStartCode|AnnexBEncodeFlagAddEmulationPreventionBytes)
 		// NALU prefix
 		require.Equal(t, len(e1)+3, len(e2))
 		require.Equal(t, []byte{0, 0, 1}, e2[:3])

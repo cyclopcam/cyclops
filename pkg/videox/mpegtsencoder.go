@@ -6,10 +6,10 @@ import (
 	"io"
 	"time"
 
+	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/log"
 
-	"github.com/aler9/gortsplib/pkg/h264"
 	"github.com/asticode/go-astits"
 )
 
@@ -148,7 +148,7 @@ func (e *MPGTSEncoder) Encode(nalus []NALU, pts time.Duration) error {
 	}
 
 	// encode into Annex-B
-	annexb, err := h264.AnnexBEncode(filteredNALUs)
+	annexb, err := h264.AnnexBMarshal(filteredNALUs)
 	if err != nil {
 		return err
 	}

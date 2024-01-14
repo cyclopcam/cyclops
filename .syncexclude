@@ -13,6 +13,6 @@ node_modules
 /bin
 /ncnn/build
 /Simd/build
-/Simd/prj/txt/FullVersion.txt
+#/Simd/prj/txt/FullVersion.txt
 /Simd/src/Simd/SimdVersion.h
 /debug/yolov8

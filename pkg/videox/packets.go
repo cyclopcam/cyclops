@@ -11,12 +11,30 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aler9/gortsplib"
-	"github.com/aler9/gortsplib/pkg/h264"
+	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/log"
 )
+
+// Topic: $ANNEXB-CONFUSION
+// Here's the story:
+// When we receive packets from Hikvision cameras, via github.com/bluenviron/gortsplib, the packets
+// are supposedly NALUFormatRBSP, aka raw data bits, with no start codes, and no emulation prevention bytes.
+// The codecs seem to want packets in SODB (aka AnnexB) encoding, so we dutifully encode the raw packets
+// into AnnexB, with emulation prevention bytes added. HOWEVER, when we activate this code path,
+// we get sporadic errors from ffmpeg, telling us that we've got bad frames. If we comment out the
+// code that does the emulation prevention byte injection, then these errors go away.
+// To be clear, we must inject the start codes. This is unambiguous. It's the emulation prevention bytes
+// that cause errors.
+// This confusion is the reason for this constant. At some point we'll hopefully learn more, and make
+// better sense of this.
+// Right now the culprit could be any one of these:
+// 1. HikVision cameras
+// 2. gortsplib
+// 3. h264
+// 4. My understanding
+const EnableEmulationPreventBytesEscaping = false
 
 // EmulationState can be used to inform us whether a NALU has any emulation prevention bytes.
 // This is a tiny optimization that we can use to avoid decoding from Annex-B into raw bytes.
@@ -55,12 +73,11 @@ type NALU struct {
 
 // VideoPacket is what we store in our ring buffer
 type VideoPacket struct {
-	RecvID       int64     // Arbitrary monotonically increasing ID. Used to detect dropped packets, or other issues like that.
-	RecvTime     time.Time // Wall time when the packet was received. This is obviously subject to network jitter etc, so not a substitute for PTS
-	H264NALUs    []NALU
-	H264PTS      time.Duration
-	PTSEqualsDTS bool
-	IsBacklog    bool // a bit of a hack to inject this state here. maybe an integer counter would suffice? (eg nBacklogPackets)
+	RecvID    int64     // Arbitrary monotonically increasing ID. Used to detect dropped packets, or other issues like that.
+	RecvTime  time.Time // Wall time when the packet was received. This is obviously subject to network jitter etc, so not a substitute for PTS
+	H264NALUs []NALU
+	H264PTS   time.Duration
+	IsBacklog bool // a bit of a hack to inject this state here. maybe an integer counter would suffice? (eg nBacklogPackets)
 }
 
 // A list of packets, with some helper functions
@@ -146,9 +163,16 @@ func (n *NALU) clone(forceDeep bool, targetFormat NALUFormat) NALU {
 				}
 			} else {
 				// Encode to Annex-B
+				encodeFlags := AnnexBEncodeFlagAddStartCode
+				// I don't understand why, but when we add emulation prevention bytes, ffmpeg's h264 decoder
+				// gives errors on quite a few of the frames.
+				// See $ANNEXB-CONFUSION discussion at the top of this file.
+				if EnableEmulationPreventBytesEscaping {
+					encodeFlags |= AnnexBEncodeFlagAddEmulationPreventionBytes
+				}
 				rn := NALU{
 					PrefixLen: len(NALUPrefix),
-					Payload:   EncodeAnnexB(n.Payload, true),
+					Payload:   EncodeAnnexB(n.Payload, encodeFlags),
 				}
 				if len(rn.Payload) != len(n.Payload)+len(NALUPrefix) {
 					rn.Emulation = EmulationStateContainsEmulationBytes
@@ -187,11 +211,10 @@ func (n *NALU) Type() h264.NALUType {
 // Deep clone of packet buffer
 func (p *VideoPacket) Clone() *VideoPacket {
 	c := &VideoPacket{
-		RecvID:       p.RecvID,
-		RecvTime:     p.RecvTime,
-		H264PTS:      p.H264PTS,
-		PTSEqualsDTS: p.PTSEqualsDTS,
-		IsBacklog:    p.IsBacklog,
+		RecvID:    p.RecvID,
+		RecvTime:  p.RecvTime,
+		H264PTS:   p.H264PTS,
+		IsBacklog: p.IsBacklog,
 	}
 	c.H264NALUs = make([]NALU, len(p.H264NALUs))
 	for i, n := range p.H264NALUs {
@@ -269,7 +292,11 @@ func (p *VideoPacket) EncodeToAnnexBPacket() []byte {
 	used := 0
 	for _, n := range p.H264NALUs {
 		if n.Format() == NALUFormatRBSP {
-			encSize, encOK := EncodeAnnexBInto(n.Payload, true, out[used:])
+			flags := AnnexBEncodeFlagAddStartCode
+			if EnableEmulationPreventBytesEscaping {
+				flags |= AnnexBEncodeFlagAddEmulationPreventionBytes
+			}
+			encSize, encOK := EncodeAnnexBInto(n.Payload, flags, out[used:])
 			if !encOK {
 				panic("Ran out of space packing NALUs into Annex-B")
 			}
@@ -284,9 +311,9 @@ func (p *VideoPacket) EncodeToAnnexBPacket() []byte {
 
 // Clone a packet of NALUs and return the cloned packet
 // NOTE: gortsplib re-uses buffers, which is why we copy the payloads.
-func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *VideoPacket {
+func ClonePacket(nalusIn [][]byte, pts time.Duration, recvTime time.Time) *VideoPacket {
 	nalus := []NALU{}
-	for _, buf := range ctx.H264NALUs {
+	for _, buf := range nalusIn {
 		// While we're doing a memcpy, we might as well append the prefix bytes.
 		// This saves us one additional memcpy before we send the NALUs out for
 		// decoding to RGBA, saving to mp4, or sending to the browser.
@@ -299,10 +326,9 @@ func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *Video
 		nalus = append(nalus, n.DeepClone())
 	}
 	return &VideoPacket{
-		RecvTime:     recvTime,
-		H264NALUs:    nalus,
-		H264PTS:      ctx.H264PTS,
-		PTSEqualsDTS: ctx.PTSEqualsDTS,
+		RecvTime:  recvTime,
+		H264NALUs: nalus,
+		H264PTS:   pts,
 	}
 }
 
@@ -318,20 +344,19 @@ func ClonePacket(ctx *gortsplib.ClientOnPacketRTPCtx, recvTime time.Time) *Video
 //		RecvTime:     recvTime,
 //		H264NALUs:    nalus,
 //		H264PTS:      ctx.H264PTS,
-//		PTSEqualsDTS: ctx.PTSEqualsDTS,
 //	}
 //}
 
 // Returns true if the packet has an IDR (with my Hikvisions this always implies SPS + PPS + IDR)
-func PacketHasIDR(ctx *gortsplib.ClientOnPacketRTPCtx) bool {
-	for _, p := range ctx.H264NALUs {
-		t := h264.NALUType(p[0] & 31)
-		if t == h264.NALUTypeIDR {
-			return true
-		}
-	}
-	return false
-}
+//func PacketHasIDR(ctx *gortsplib.ClientOnPacketRTPCtx) bool {
+//	for _, p := range ctx.H264NALUs {
+//		t := h264.NALUType(p[0] & 31)
+//		if t == h264.NALUTypeIDR {
+//			return true
+//		}
+//	}
+//	return false
+//}
 
 // Extract saved buffer into an MPEGTS stream
 func (r *PacketBuffer) SaveToMPEGTS(log log.Log, output io.Writer) error {

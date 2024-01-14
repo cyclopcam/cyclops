@@ -13,26 +13,37 @@ import (
 // This must remain in sync with the behaviour inside EncodeAnnexB()
 var NALUPrefix = []byte{0x00, 0x00, 0x01}
 
+// Flags that control how EncodeAnnexB works
+type AnnexBEncodeFlags int
+
+const (
+	AnnexBEncodeFlagNone                        AnnexBEncodeFlags = 0 // This is nonsensical - it is simply a memcpy
+	AnnexBEncodeFlagAddStartCode                AnnexBEncodeFlags = 1 // Add the 3 byte start code 00 00 01
+	AnnexBEncodeFlagAddEmulationPreventionBytes AnnexBEncodeFlags = 2 // Add emulation prevention bytes (0x03) where necessary
+)
+
 // Encode an RBSP (Raw Byte Sequence Packet) into Annex-B format, optionally adding
 // a 3 byte start code (00.00.01) to the beginning of the encoded byte stream.
-// This encoding adds the "emulation prevention byte" (0x03) where necessary.
-func EncodeAnnexB(raw []byte, addNALUStartCode bool) []byte {
+// This encoding adds the "emulation prevention byte" (0x03) where necessary,
+// if the relevant flag is set.
+func EncodeAnnexB(raw []byte, flags AnnexBEncodeFlags) []byte {
 	startCodeSize := 0
-	if addNALUStartCode {
+	addStartCode := flags&AnnexBEncodeFlagAddStartCode != 0
+	if addStartCode {
 		startCodeSize = 3
 	}
 
 	// optimistic first pass, assuming 1% expansion
 	// +8 is for small SPS/PPS NALs
 	dst := make([]byte, startCodeSize+8+len(raw)*101/100)
-	dstSize, dstOK := EncodeAnnexBInto(raw, addNALUStartCode, dst)
+	dstSize, dstOK := EncodeAnnexBInto(raw, flags, dst)
 	if dstOK {
 		return dst[:dstSize]
 	}
 
 	// pessimistic second pass
 	dst = make([]byte, startCodeSize+len(raw)*3/2)
-	dstSize, dstOK = EncodeAnnexBInto(raw, addNALUStartCode, dst)
+	dstSize, dstOK = EncodeAnnexBInto(raw, flags, dst)
 	if !dstOK {
 		panic("EncodeAnnexB failed - buffer never large enough")
 	}
@@ -42,9 +53,11 @@ func EncodeAnnexB(raw []byte, addNALUStartCode bool) []byte {
 // Encode an RBSP (Raw Byte Sequence Packet) into Annex-B format, optionally adding
 // a 3 byte start code (00.00.01) to the beginning of the encoded byte stream.
 // This encoding adds the "emulation prevention byte" (0x03) where necessary.
-func EncodeAnnexBInto(raw []byte, addNALUPrefix bool, dst []byte) (encodedSize int, bufferSizeOK bool) {
+func EncodeAnnexBInto(raw []byte, flags AnnexBEncodeFlags, dst []byte) (encodedSize int, bufferSizeOK bool) {
 	r := C.ulong(0)
-	if addNALUPrefix {
+	addStartCode := flags&AnnexBEncodeFlagAddStartCode != 0
+	addEmulationPreventionBytes := flags&AnnexBEncodeFlagAddEmulationPreventionBytes != 0
+	if addStartCode {
 		if len(dst) < 3 {
 			return 0, false
 		}
@@ -53,11 +66,19 @@ func EncodeAnnexBInto(raw []byte, addNALUPrefix bool, dst []byte) (encodedSize i
 		dst[1] = 0
 		dst[2] = 1
 		if len(raw) != 0 {
-			r = C.EncodeAnnexB(unsafe.Pointer(&raw[0]), C.ulong(len(raw)), unsafe.Pointer(&dst[3]), C.ulong(len(dst)-3))
+			if addEmulationPreventionBytes {
+				r = C.EncodeAnnexB(unsafe.Pointer(&raw[0]), C.ulong(len(raw)), unsafe.Pointer(&dst[3]), C.ulong(len(dst)-3))
+			} else {
+				r = C.EncodeAnnexB_Null(unsafe.Pointer(&raw[0]), C.ulong(len(raw)), unsafe.Pointer(&dst[3]), C.ulong(len(dst)-3))
+			}
 		}
 	} else {
 		if len(raw) != 0 {
-			r = C.EncodeAnnexB(unsafe.Pointer(&raw[0]), C.ulong(len(raw)), unsafe.Pointer(&dst[0]), C.ulong(len(dst)))
+			if addEmulationPreventionBytes {
+				r = C.EncodeAnnexB(unsafe.Pointer(&raw[0]), C.ulong(len(raw)), unsafe.Pointer(&dst[0]), C.ulong(len(dst)))
+			} else {
+				r = C.EncodeAnnexB_Null(unsafe.Pointer(&raw[0]), C.ulong(len(raw)), unsafe.Pointer(&dst[0]), C.ulong(len(dst)))
+			}
 		}
 	}
 	if r == 0 && len(raw) != 0 {
@@ -65,7 +86,7 @@ func EncodeAnnexBInto(raw []byte, addNALUPrefix bool, dst []byte) (encodedSize i
 		return 0, false
 	} else {
 		// Success
-		if addNALUPrefix {
+		if addStartCode {
 			return 3 + int(r), true
 		} else {
 			return int(r), true

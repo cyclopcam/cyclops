@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/aler9/gortsplib/pkg/h264"
+	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/camera"
@@ -55,10 +55,10 @@ const WebSocketSendBufferSize = 50
 var nextWebSocketStreamerID int64
 
 type VideoWebSocketStreamer struct {
-	log             log.Log
-	streamerID      int64 // Intended to aid in logging/debugging
-	incoming        camera.StreamSinkChan
-	trackID         int
+	log        log.Log
+	streamerID int64 // Intended to aid in logging/debugging
+	incoming   camera.StreamSinkChan
+	//trackID         int
 	closed          atomic.Bool
 	paused          atomic.Bool
 	fromWebSocket   chan webSocketMsg
@@ -89,9 +89,10 @@ func RunVideoWebSocketStreamer(cameraName string, logger log.Log, conn *websocke
 }
 
 func (s *VideoWebSocketStreamer) OnConnect(stream *camera.Stream) (camera.StreamSinkChan, error) {
-	s.trackID = stream.H264TrackID
+	//s.trackID = stream.H264TrackID
 	if s.debug {
-		s.log.Infof("OnConnect trackID:%v", s.trackID)
+		//s.log.Infof("OnConnect trackID:%v", s.trackID)
+		s.log.Infof("OnConnect %v", stream.Ident)
 	}
 	return s.incoming, nil
 }
@@ -137,10 +138,11 @@ func (s *VideoWebSocketStreamer) onDetection(detection *monitor.AnalysisState) {
 }
 
 func (s *VideoWebSocketStreamer) run(conn *websocket.Conn, stream *camera.Stream, backlog *camera.VideoDumpReader) {
-	s.trackID = stream.H264TrackID
+	//s.trackID = stream.H264TrackID
 
 	if s.debug {
-		s.log.Infof("Run start, trackID:%v", s.trackID)
+		//s.log.Infof("Run start, trackID:%v", s.trackID)
+		s.log.Infof("Run start, stream:%v", stream.Ident)
 	}
 
 	stream.ConnectSink(s.incoming)

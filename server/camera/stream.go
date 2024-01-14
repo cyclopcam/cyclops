@@ -4,17 +4,21 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/bluenviron/gortsplib/v4/pkg/format/rtph264"
+	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/bmharper/ringbuffer"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videox"
+	"github.com/pion/rtp"
 
-	"github.com/aler9/gortsplib"
-	"github.com/aler9/gortsplib/pkg/h264"
-	"github.com/aler9/gortsplib/pkg/liberrors"
-	"github.com/aler9/gortsplib/pkg/url"
+	"github.com/bluenviron/gortsplib/v4"
+	"github.com/bluenviron/gortsplib/v4/pkg/base"
+	"github.com/bluenviron/gortsplib/v4/pkg/format"
+	"github.com/bluenviron/gortsplib/v4/pkg/liberrors"
 )
 
 // A stream sink is fundamentally just a channel
@@ -60,8 +64,8 @@ type Stream struct {
 	StreamName string // Just for logs
 
 	// These are read at the start of Listen(), and will be populated before Listen() returns
-	H264TrackID int                  // 0-based track index
-	H264Track   *gortsplib.TrackH264 // track object
+	//H264TrackID int                  // 0-based track index
+	//H264Track   *gortsplib.TrackH264 // track object
 
 	sinksLock sync.Mutex
 	sinks     []StreamSinkChan
@@ -72,7 +76,7 @@ type Stream struct {
 	info     *StreamInfo // With Go 1.19 one could use atomic.Pointer[T] here
 
 	recentFramesLock sync.Mutex
-	recentFrames     ringbuffer.RingP[time.Duration]
+	recentFrames     ringbuffer.RingP[time.Duration] // PTS of frames
 	loggedFPS        bool
 }
 
@@ -94,7 +98,7 @@ func (s *Stream) Listen(address string) error {
 	client := &gortsplib.Client{}
 
 	// parse URL
-	u, err := url.Parse(address)
+	u, err := base.ParseURL(address)
 	if err != nil {
 		return fmt.Errorf("Invalid stream URL: %w", err)
 	}
@@ -110,7 +114,7 @@ func (s *Stream) Listen(address string) error {
 	s.Client = client
 
 	// find published tracks
-	tracks, baseURL, _, err := client.Describe(u)
+	session, _, err := client.Describe(u)
 	if err != nil {
 		if e, ok := err.(liberrors.ErrClientBadStatusCode); ok {
 			if e.Code == 401 {
@@ -122,25 +126,55 @@ func (s *Stream) Listen(address string) error {
 	}
 
 	// find the H264 track
-	h264TrackID, h264track := func() (int, *gortsplib.TrackH264) {
-		for i, track := range tracks {
-			if h264track, ok := track.(*gortsplib.TrackH264); ok {
-				return i, h264track
-			}
-		}
-		return -1, nil
-	}()
-	if h264TrackID < 0 {
+	var forma *format.H264
+	media := session.FindFormat(&forma)
+	if media == nil {
 		return fmt.Errorf("H264 track not found")
 	}
-	s.H264TrackID = h264TrackID
-	s.H264Track = h264track
-	s.Log.Infof("Connected to %v, track %v", camHost, h264TrackID)
+	//h264TrackID, h264track := func() (int, *gortsplib.TrackH264) {
+	//	for i, track := range tracks {
+	//		if h264track, ok := track.(*gortsplib.TrackH264); ok {
+	//			return i, h264track
+	//		}
+	//	}
+	//	return -1, nil
+	//}()
+	//if h264TrackID < 0 {
+	//	return fmt.Errorf("H264 track not found")
+	//}
 
-	recvID := int64(0)
+	rtpDecoder, err := forma.CreateDecoder()
+	if err != nil {
+		return fmt.Errorf("Failed to create H264 decoder: %w", err)
+	}
 
-	client.OnPacketRTP = func(ctx *gortsplib.ClientOnPacketRTPCtx) {
-		if ctx.TrackID != h264TrackID || len(ctx.H264NALUs) == 0 {
+	client.Setup(session.BaseURL, media, 0, 0)
+
+	// From old gortplib version
+	//s.H264TrackID = h264TrackID
+	//s.H264Track = h264track
+
+	s.Log.Infof("Connected to %v, track %v", camHost, media.ID)
+
+	recvID := atomic.Int64{}
+
+	client.OnPacketRTP(media, forma, func(pkt *rtp.Packet) {
+		//if ctx.TrackID != h264TrackID || len(ctx.H264NALUs) == 0 {
+		//	return
+		//}
+		pts, ok := client.PacketPTS(media, pkt)
+		if !ok {
+			if recvID.Load() != 0 {
+				s.Log.Warnf("Ignoring H264 packet, waiting for timestamp")
+			}
+			return
+		}
+
+		nalus, err := rtpDecoder.Decode(pkt)
+		if err != nil {
+			if err != rtph264.ErrNonStartingPacketAndNoPrevious && err != rtph264.ErrMorePacketsNeeded {
+				s.Log.Errorf("Failed to decode H264 packet: %v", err)
+			}
 			return
 		}
 
@@ -149,14 +183,14 @@ func (s *Stream) Listen(address string) error {
 		// Populate width & height.
 		s.infoLock.Lock()
 		if s.info == nil {
-			if inf := s.extractSPSInfo(ctx.H264NALUs); inf != nil {
+			if inf := s.extractSPSInfo(nalus); inf != nil {
 				s.info = inf
 				s.Log.Infof("Size: %v x %v", inf.Width, inf.Height)
 			}
 		}
 		s.infoLock.Unlock()
 
-		s.countFrames(ctx)
+		s.countFrames(nalus, pts)
 
 		// Before we return, we must clone the packet. This is because we send
 		// the packet via channels, to all of our stream sinks. These sinks
@@ -172,9 +206,8 @@ func (s *Stream) Listen(address string) error {
 		// streams, so this penalty is not too severe.
 		// A typical iframe packet from a 320x240 camera is around 100 bytes!
 		// A keyframe is between 10 and 20 KB.
-		cloned := videox.ClonePacket(ctx, now)
-		cloned.RecvID = recvID
-		recvID++
+		cloned := videox.ClonePacket(nalus, pts, now)
+		cloned.RecvID = recvID.Add(1)
 
 		// Frame size stats can be interesting
 		//if s.Ident == "driveway.low" {
@@ -189,12 +222,13 @@ func (s *Stream) Listen(address string) error {
 			}
 		}
 		s.sinksLock.Unlock()
-	}
+	})
 
 	// start reading tracks
-	err = client.SetupAndPlay(tracks, baseURL)
+	//err = client.SetupAndPlay(tracks, baseURL)
+	_, err = client.Play(nil)
 	if err != nil {
-		return fmt.Errorf("Stream SetupAndPlay failed: %w", err)
+		return fmt.Errorf("Stream Play failed: %w", err)
 	}
 
 	s.Log.Infof("Connection to %v success", camHost)
@@ -352,15 +386,15 @@ func (s *Stream) sinkIndexNoLock(sink StreamSinkChan) int {
 	return -1
 }
 
-func (s *Stream) countFrames(ctx *gortsplib.ClientOnPacketRTPCtx) {
+func (s *Stream) countFrames(nalus [][]byte, pts time.Duration) {
 	s.recentFramesLock.Lock()
 	defer s.recentFramesLock.Unlock()
 
-	for _, nalu := range ctx.H264NALUs {
+	for _, nalu := range nalus {
 		if len(nalu) > 0 {
 			t := h264.NALUType(nalu[0] & 31)
 			if videox.IsVisualPacket(t) {
-				s.recentFrames.Add(ctx.H264PTS)
+				s.recentFrames.Add(pts)
 			}
 		}
 	}

@@ -1,6 +1,6 @@
 # Install
 
-_Only tested on Ubuntu 22.04_
+_Only tested on Ubuntu 22.04 and Ubuntu 23.10_
 
     sudo apt install libavformat-dev libswscale-dev ffmpeg cmake gcc g++ pkg-config libturbojpeg0-dev wireguard wireguard-tools
 
@@ -23,7 +23,7 @@ _Only tested on Ubuntu 22.04_
     -   `make -j` (if you have 16GB RAM ...)
     -   `make -j2` (... if you only have 4GB RAM)
 -   Install nvm
--   Use `nvm install v18.2.0` (The exact version is probably not important, but
+-   Use `nvm install v18.19.0` (The exact version is probably not important, but
     this is the exact version I used when creating this document)
 -   In `www`, do `npm install`, then `npm run build`
 -   In `appui`, do `npm install`, then `npm run build`
