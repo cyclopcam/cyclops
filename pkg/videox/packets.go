@@ -311,6 +311,8 @@ func (p *VideoPacket) EncodeToAnnexBPacket() []byte {
 
 // Clone a packet of NALUs and return the cloned packet
 // NOTE: gortsplib re-uses buffers, which is why we copy the payloads.
+// NOTE2: I think that after upgrading gortsplib in Jan 2024, it no longer re-uses buffers,
+// so I should revisit the requirement of our deep clone here.
 func ClonePacket(nalusIn [][]byte, pts time.Duration, recvTime time.Time) *VideoPacket {
 	nalus := []NALU{}
 	for _, buf := range nalusIn {
@@ -496,7 +498,7 @@ func (r *PacketBuffer) DumpBin(dir string) error {
 	return nil
 }
 
-// Adjust all PTS values so that the first frame start at time 0
+// Adjust all PTS values so that the first frame starts at time 0
 func (r *PacketBuffer) ResetPTS() {
 	if len(r.Packets) == 0 {
 		return

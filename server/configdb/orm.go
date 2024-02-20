@@ -59,6 +59,11 @@ type Key struct {
 	Value string // normal (not URL-safe) base64 encoded (same as Wireguard)
 }
 
+type SystemConfig struct {
+	Key   string `gorm:"primaryKey"`
+	Value dbh.JSONField[ConfigJSON]
+}
+
 // UserPermissions are single characters that are present in the user's Permissions field
 type UserPermissions string
 

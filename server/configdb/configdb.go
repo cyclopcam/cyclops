@@ -17,6 +17,8 @@ type ConfigDB struct {
 	PrivateKey wgtypes.Key
 	PublicKey  wgtypes.Key
 
+	Config ConfigJSON // Read from system_config table at startup
+
 	//keyLock    sync.Mutex
 	//privateKey wgtypes.Key
 
@@ -25,7 +27,7 @@ type ConfigDB struct {
 }
 
 func NewConfigDB(logger log.Log, dbFilename, explicitPrivateKey string) (*ConfigDB, error) {
-	os.MkdirAll(filepath.Dir(dbFilename), 0777)
+	os.MkdirAll(filepath.Dir(dbFilename), 0770)
 	configDB, err := dbh.OpenDB(logger, dbh.MakeSqliteConfig(dbFilename), Migrations(logger), 0)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open database %v: %w", dbFilename, err)

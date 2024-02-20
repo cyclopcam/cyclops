@@ -48,7 +48,7 @@ func NewTempFiles(root string, logger log.Log) (*TempFiles, error) {
 		pathNamed,
 	}
 	for _, d := range dirs {
-		if err := os.MkdirAll(d, 0777); err != nil {
+		if err := os.MkdirAll(d, 0770); err != nil {
 			return nil, fmt.Errorf("Failed to create temporary file directory '%v': %w", d, err)
 		}
 	}

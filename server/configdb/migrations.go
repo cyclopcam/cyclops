@@ -1,6 +1,8 @@
 package configdb
 
 import (
+	"encoding/json"
+
 	"github.com/BurntSushi/migration"
 	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/log"
@@ -104,6 +106,26 @@ func Migrations(log log.Log) []migration.Migrator {
 		ALTER TABLE camera ADD COLUMN updated_at INT NOT NULL DEFAULT 0;
 		UPDATE camera SET created_at = strftime('%s') * 1000, updated_at = strftime('%s') * 1000;
 	`))
+
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		CREATE TABLE system_config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+	`))
+
+	migs = append(migs, dbh.MakeMigrationFromFunc(log, &idx, func(tx migration.LimitedTx) error {
+		c := ConfigJSON{
+			Recording: RecordingJSON{
+				Mode: RecordModeAlways,
+			},
+		}
+		tx.QueryRow("SELECT value FROM variable WHERE key = 'TempFilePath'").Scan(&c.TempFilePath)
+		tx.QueryRow("SELECT value FROM variable WHERE key = 'PermanentStoragePath'").Scan(&c.Recording.Path)
+		tx.QueryRow("SELECT value FROM variable WHERE key = 'ArcServer'").Scan(&c.ArcServer)
+		tx.QueryRow("SELECT value FROM variable WHERE key = 'ArcApiKey'").Scan(&c.ArcApiKey)
+		j, _ := json.Marshal(&c)
+		tx.Exec("INSERT INTO system_config (key, value) VALUES ('main', ?)", string(j))
+		return nil
+	}))
 
 	return migs
 }

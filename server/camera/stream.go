@@ -21,6 +21,9 @@ import (
 	"github.com/bluenviron/gortsplib/v4/pkg/liberrors"
 )
 
+// Log stream stats every 5 minutes
+const LogStreamStatsInterval = 5 * time.Minute
+
 // A stream sink is fundamentally just a channel
 type StreamSinkChan chan StreamMsg
 
@@ -56,6 +59,24 @@ type StreamInfo struct {
 	Height int
 }
 
+// Average observed stats from a sample of recent frames
+type StreamStats struct {
+	FPS            float64 // frames per second
+	FrameSize      float64 // average frame size in bytes
+	KeyFrameSize   float64 // average key-frame size in bytes
+	InterFrameSize float64 // average non-key-frame size in bytes
+}
+
+func (s *StreamStats) FPSRounded() int {
+	return int(math.Round(s.FPS))
+}
+
+type frameStat struct {
+	isIDR bool
+	pts   time.Duration
+	size  int
+}
+
 type Stream struct {
 	Log        log.Log
 	Client     *gortsplib.Client
@@ -76,14 +97,14 @@ type Stream struct {
 	info     *StreamInfo // With Go 1.19 one could use atomic.Pointer[T] here
 
 	recentFramesLock sync.Mutex
-	recentFrames     ringbuffer.RingP[time.Duration] // PTS of frames
-	loggedFPS        bool
+	recentFrames     ringbuffer.RingP[frameStat] // Some stats of recent frames (eg PTS, size)
+	loggedStatsAt    time.Time
 }
 
 func NewStream(logger log.Log, cameraName, streamName string) *Stream {
 	return &Stream{
 		Log:          log.NewPrefixLogger(logger, "Stream "+cameraName+"."+streamName),
-		recentFrames: ringbuffer.NewRingP[time.Duration](64),
+		recentFrames: ringbuffer.NewRingP[frameStat](64),
 		CameraName:   cameraName,
 		StreamName:   streamName,
 		Ident:        cameraName + "." + streamName,
@@ -190,7 +211,7 @@ func (s *Stream) Listen(address string) error {
 		}
 		s.infoLock.Unlock()
 
-		s.countFrames(nalus, pts)
+		s.addFrameToStats(nalus, pts)
 
 		// Before we return, we must clone the packet. This is because we send
 		// the packet via channels, to all of our stream sinks. These sinks
@@ -287,27 +308,41 @@ func (s *Stream) Info() *StreamInfo {
 }
 
 // Estimate the frame rate
-func (s *Stream) FPSFloat() float64 {
+func (s *Stream) RecentFrameStats() StreamStats {
 	s.recentFramesLock.Lock()
 	defer s.recentFramesLock.Unlock()
 
-	return s.fpsNoMutexLock()
+	return s.statsNoMutexLock()
 }
 
-// Estimate the frame rate
-func (s *Stream) FPS() int {
-	return int(math.Round(s.FPSFloat()))
-}
-
-func (s *Stream) fpsNoMutexLock() float64 {
+func (s *Stream) statsNoMutexLock() StreamStats {
+	stats := StreamStats{}
 	if s.recentFrames.Len() < 2 {
-		return 10
+		return stats
 	}
 	count := s.recentFrames.Len()
 	oldest := s.recentFrames.Peek(0)
 	latest := s.recentFrames.Peek(count - 1)
-	elapsed := latest.Seconds() - oldest.Seconds()
-	return float64(count-1) / elapsed
+	elapsed := latest.pts.Seconds() - oldest.pts.Seconds()
+	stats.FPS = float64(count-1) / elapsed
+	nIDR := 0
+	nInter := 0
+	for i := 0; i < count; i++ {
+		frame := s.recentFrames.Peek(i)
+		frameSize := float64(frame.size)
+		stats.FrameSize += frameSize
+		if frame.isIDR {
+			stats.KeyFrameSize += frameSize
+			nIDR++
+		} else {
+			stats.InterFrameSize += frameSize
+			nInter++
+		}
+	}
+	stats.FrameSize /= float64(count)
+	stats.KeyFrameSize /= float64(nIDR)
+	stats.InterFrameSize /= float64(nInter)
+	return stats
 }
 
 // Connect a sink.
@@ -386,21 +421,26 @@ func (s *Stream) sinkIndexNoLock(sink StreamSinkChan) int {
 	return -1
 }
 
-func (s *Stream) countFrames(nalus [][]byte, pts time.Duration) {
+func (s *Stream) addFrameToStats(nalus [][]byte, pts time.Duration) {
 	s.recentFramesLock.Lock()
 	defer s.recentFramesLock.Unlock()
 
 	for _, nalu := range nalus {
-		if len(nalu) > 0 {
-			t := h264.NALUType(nalu[0] & 31)
-			if videox.IsVisualPacket(t) {
-				s.recentFrames.Add(pts)
-			}
+		nn := videox.WrapRawNALU(nalu)
+		nnType := nn.Type()
+		if videox.IsVisualPacket(nnType) {
+			s.recentFrames.Add(frameStat{
+				isIDR: nnType == h264.NALUTypeIDR,
+				pts:   pts,
+				size:  len(nalu),
+			})
 		}
 	}
 
-	if !s.loggedFPS && s.recentFrames.Len() >= s.recentFrames.Capacity() {
-		s.loggedFPS = true
-		s.Log.Infof("FPS: %.3f", s.fpsNoMutexLock())
+	now := time.Now()
+	if now.Sub(s.loggedStatsAt) > LogStreamStatsInterval && s.recentFrames.Len() >= s.recentFrames.Capacity() {
+		s.loggedStatsAt = now
+		stats := s.statsNoMutexLock()
+		s.Log.Infof("FPS: %.1f, Avg: %.0f, IDR: %.0f, Non-IDR: %.0f", stats.FPS, stats.FrameSize, stats.KeyFrameSize, stats.InterFrameSize)
 	}
 }
