@@ -72,9 +72,9 @@ func TestReaderWriter(t *testing.T) {
 	tbase := time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
 	trackW, err := MakeVideoTrack("HD", tbase, CodecH264, 320, 240)
 	require.NoError(t, err)
-	w, err := NewWriter(BaseDir+"/test", []*Track{trackW})
+	fw, err := NewFile(BaseDir+"/test", []*Track{trackW})
 	require.NoError(t, err)
-	require.NotNil(t, w)
+	require.NotNil(t, fw)
 	nNALUs := 200
 	fps := 10.0
 	nalusW := createTestNALUs(trackW, nNALUs, fps)
@@ -87,15 +87,15 @@ func TestReaderWriter(t *testing.T) {
 		err := trackW.WriteNALUs(nalusW[i:end])
 		require.NoError(t, err)
 	}
-	err = w.Close()
+	err = fw.Close()
 	require.NoError(t, err)
 
 	// Read
-	r, err := Open(BaseDir + "/test")
+	fr, err := Open(BaseDir + "/test")
 	require.NoError(t, err)
-	require.NotNil(t, r)
-	require.Equal(t, 1, len(r.Tracks))
-	trackR := r.Tracks[0]
+	require.NotNil(t, fr)
+	require.Equal(t, 1, len(fr.Tracks))
+	trackR := fr.Tracks[0]
 	require.Equal(t, nNALUs, trackR.Count())
 	require.Equal(t, trackW.IsVideo, trackR.IsVideo)
 	require.Equal(t, trackW.Name, trackR.Name)

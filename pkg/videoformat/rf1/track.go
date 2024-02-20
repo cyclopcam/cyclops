@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/cyclopcam/cyclops/pkg/cgogo"
@@ -16,38 +17,73 @@ import "C"
 
 const IndexHeaderSize = int(unsafe.Sizeof(C.CommonIndexHeader{}))
 
-// Reader is used to read an rf1 file group
-type Reader struct {
-	Tracks []*Track
+// Track is one track of audio or video
+type Track struct {
+	IsVideo  bool      // else Audio
+	Name     string    // Name of track - becomes part of filename
+	TimeBase time.Time // All PTS times are relative to this
+	Codec    string    // eg "H264"
+	Width    int       // Only applicable to video
+	Height   int       // Only applicable to video
+
+	isWriting   bool     // else reading
+	index       *os.File // Index file
+	indexCount  int      // Number of index entries in file. Read once, when opening the track, and only used when reading
+	packets     *os.File // Packets file
+	packetsPos  int64    // End of last written byte inside packets file. Used when writing.
+	packetsSize int64    // Size of packets file in bytes. Read once, when opening the track, and only used when reading
 }
 
-// Open an rf1 file group for reading
-func Open(baseFilename string) (*Reader, error) {
-	// Scan for tracks
-	//dir, _ := filepath.Split(baseFilename)
-	//matches, err := filepath.Glob(TrackFilename(dir+"/*", "*", FileTypeIndex))
-	matches, err := filepath.Glob(TrackFilename(baseFilename, "*", FileTypeIndex))
-	if err != nil {
-		return nil, err
+func MakeVideoTrack(name string, timeBase time.Time, codec string, width, height int) (*Track, error) {
+	if !IsValidCodec(codec) {
+		return nil, ErrInvalidCodec
+	}
+	if width < 1 || height < 1 {
+		return nil, fmt.Errorf("Invalid video width/height (%v, %v)", width, height)
+	}
+	if !IsValidTrackName(name) {
+		return nil, fmt.Errorf("Invalid track name: %v", name)
+	}
+	return &Track{
+		IsVideo:  true,
+		Name:     name,
+		TimeBase: timeBase,
+		Codec:    codec,
+		Width:    width,
+		Height:   height,
+	}, nil
+}
+
+// Return true if the given name is a valid track name.
+// Track names become part of filenames, so we impose restrictions on them.
+func IsValidTrackName(name string) bool {
+	if strings.ContainsAny(name, "/.\\#!@%^&*?<>|()") {
+		return false
+	}
+	if path.Clean(name) != name {
+		return false
+	}
+	return true
+}
+
+// Write NALUs
+func (t *Track) WriteNALUs(nalus []NALU) error {
+	index := []uint64{}
+
+	// write packets
+	for _, nalu := range nalus {
+		pos := t.packetsPos
+		n, err := t.packets.Write(nalu.Payload)
+		t.packetsPos += int64(n)
+		if err != nil {
+			return err
+		}
+		index = append(index, MakeIndexNALU(EncodePTSTime(nalu.PTS, t.TimeBase), pos, nalu.Flags))
 	}
 
-	tracks := make([]*Track, 0)
-	for _, m := range matches {
-		trackName := strings.TrimPrefix(m, baseFilename+"_")
-		trackName = strings.TrimSuffix(trackName, ".rf1i")
-		track, err := OpenTrack(baseFilename, trackName)
-		if err != nil {
-			if os.IsNotExist(err) {
-				break
-			}
-			return nil, err
-		}
-		tracks = append(tracks, track)
-	}
-	if len(tracks) == 0 {
-		return nil, os.ErrNotExist
-	}
-	return &Reader{Tracks: tracks}, nil
+	// write to index
+	_, err := cgogo.WriteSlice(t.index, index)
+	return err
 }
 
 // Open a track for reading
