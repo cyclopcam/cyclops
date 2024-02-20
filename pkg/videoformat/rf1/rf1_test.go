@@ -70,7 +70,7 @@ func createTestNALUs(track *Track, nFrames int, fps float64) []NALU {
 
 func TestReaderWriter(t *testing.T) {
 	tbase := time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
-	trackW, err := MakeVideoTrack(tbase, CodecH264, 320, 240)
+	trackW, err := MakeVideoTrack("HD", tbase, CodecH264, 320, 240)
 	require.NoError(t, err)
 	w, err := NewWriter(BaseDir+"/test", []*Track{trackW})
 	require.NoError(t, err)
@@ -98,6 +98,7 @@ func TestReaderWriter(t *testing.T) {
 	trackR := r.Tracks[0]
 	require.Equal(t, nNALUs, trackR.Count())
 	require.Equal(t, trackW.IsVideo, trackR.IsVideo)
+	require.Equal(t, trackW.Name, trackR.Name)
 	require.Equal(t, trackW.TimeBase, trackR.TimeBase)
 	require.Equal(t, trackW.Codec, trackR.Codec)
 	require.Equal(t, trackW.Width, trackR.Width)

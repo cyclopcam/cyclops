@@ -104,7 +104,7 @@ func IsValidCodec(c string) bool {
 	return len(c) == 4 && c == CodecH264
 }
 
-func TrackFilename(baseFilename string, trackIndex int, fileType FileType) string {
+func TrackFilename(baseFilename string, trackName string, fileType FileType) string {
 	extension := ""
 	switch fileType {
 	case FileTypeIndex:
@@ -114,5 +114,5 @@ func TrackFilename(baseFilename string, trackIndex int, fileType FileType) strin
 	default:
 		panic("Invalid fileType")
 	}
-	return fmt.Sprintf("%v_%v.%v", baseFilename, trackIndex, extension)
+	return fmt.Sprintf("%v_%v.%v", baseFilename, trackName, extension)
 }

@@ -3,6 +3,8 @@ package rf1
 import (
 	"fmt"
 	"os"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/cgogo"
@@ -19,6 +21,7 @@ type Writer struct {
 // Track is one track of audio or video
 type Track struct {
 	IsVideo  bool      // else Audio
+	Name     string    // Name of track - becomes part of filename
 	TimeBase time.Time // All PTS times are relative to this
 	Codec    string    // eg "H264"
 	Width    int       // Only applicable to video
@@ -32,20 +35,36 @@ type Track struct {
 	packetsSize int64    // Size of packets file in bytes. Read once, when opening the track, and only used when reading
 }
 
-func MakeVideoTrack(timeBase time.Time, codec string, width, height int) (*Track, error) {
+func MakeVideoTrack(name string, timeBase time.Time, codec string, width, height int) (*Track, error) {
 	if !IsValidCodec(codec) {
 		return nil, ErrInvalidCodec
 	}
 	if width < 1 || height < 1 {
 		return nil, fmt.Errorf("Invalid video width/height (%v, %v)", width, height)
 	}
+	if !IsValidTrackName(name) {
+		return nil, fmt.Errorf("Invalid track name: %v", name)
+	}
 	return &Track{
 		IsVideo:  true,
+		Name:     name,
 		TimeBase: timeBase,
 		Codec:    codec,
 		Width:    width,
 		Height:   height,
 	}, nil
+}
+
+// Return true if the given name is a valid track name.
+// Track names become part of filenames, so we impose restrictions on them.
+func IsValidTrackName(name string) bool {
+	if strings.ContainsAny(name, "/.\\#!@%^&*?<>|()") {
+		return false
+	}
+	if path.Clean(name) != name {
+		return false
+	}
+	return true
 }
 
 // Create a new rf1 file group writer.
@@ -58,12 +77,12 @@ func NewWriter(baseFilename string, tracks []*Track) (*Writer, error) {
 	}
 	w := &Writer{}
 
-	for itrack, track := range tracks {
-		idx, err := os.Create(TrackFilename(baseFilename, itrack, FileTypeIndex))
+	for _, track := range tracks {
+		idx, err := os.Create(TrackFilename(baseFilename, track.Name, FileTypeIndex))
 		if err != nil {
 			return nil, err
 		}
-		pkt, err := os.Create(TrackFilename(baseFilename, itrack, FileTypePackets))
+		pkt, err := os.Create(TrackFilename(baseFilename, track.Name, FileTypePackets))
 		if err != nil {
 			idx.Close()
 			return nil, err

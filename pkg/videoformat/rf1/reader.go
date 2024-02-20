@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"unsafe"
 
 	"github.com/cyclopcam/cyclops/pkg/cgogo"
@@ -22,9 +24,18 @@ type Reader struct {
 // Open an rf1 file group for reading
 func Open(baseFilename string) (*Reader, error) {
 	// Scan for tracks
+	//dir, _ := filepath.Split(baseFilename)
+	//matches, err := filepath.Glob(TrackFilename(dir+"/*", "*", FileTypeIndex))
+	matches, err := filepath.Glob(TrackFilename(baseFilename, "*", FileTypeIndex))
+	if err != nil {
+		return nil, err
+	}
+
 	tracks := make([]*Track, 0)
-	for i := 0; ; i++ {
-		track, err := OpenTrack(baseFilename, i)
+	for _, m := range matches {
+		trackName := strings.TrimPrefix(m, baseFilename+"_")
+		trackName = strings.TrimSuffix(trackName, ".rf1i")
+		track, err := OpenTrack(baseFilename, trackName)
 		if err != nil {
 			if os.IsNotExist(err) {
 				break
@@ -40,7 +51,7 @@ func Open(baseFilename string) (*Reader, error) {
 }
 
 // Open a track for reading
-func OpenTrack(baseFilename string, trackIdx int) (*Track, error) {
+func OpenTrack(baseFilename string, trackName string) (*Track, error) {
 	var idxFile *os.File
 	var pktFile *os.File
 	var err error
@@ -56,11 +67,11 @@ func OpenTrack(baseFilename string, trackIdx int) (*Track, error) {
 		}
 	}()
 
-	idxFile, err = os.Open(TrackFilename(baseFilename, trackIdx, FileTypeIndex))
+	idxFile, err = os.Open(TrackFilename(baseFilename, trackName, FileTypeIndex))
 	if err != nil {
 		return nil, err
 	}
-	pktFile, err = os.Open(TrackFilename(baseFilename, trackIdx, FileTypePackets))
+	pktFile, err = os.Open(TrackFilename(baseFilename, trackName, FileTypePackets))
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +110,7 @@ func OpenTrack(baseFilename string, trackIdx int) (*Track, error) {
 
 	track := &Track{
 		IsVideo:     isVideo,
+		Name:        trackName,
 		Codec:       string(codec[:]),
 		TimeBase:    DecodeTimeBase(uint64(indexHead.TimeBase)),
 		index:       idxFile,
