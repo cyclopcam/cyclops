@@ -3,6 +3,7 @@ package rf1
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -17,23 +18,39 @@ import "C"
 
 const IndexHeaderSize = int(unsafe.Sizeof(C.CommonIndexHeader{}))
 
+var ErrReadOnly = fmt.Errorf("track is read-only")
+
+type TrackType int
+
+const (
+	TrackTypeVideo TrackType = iota
+	TrackTypeAudio
+)
+
+type OpenMode int
+
+const (
+	OpenModeReadOnly OpenMode = iota
+	OpenModeReadWrite
+)
+
 // Track is one track of audio or video
 type Track struct {
-	IsVideo  bool      // else Audio
+	Type     TrackType // Audio or Video
 	Name     string    // Name of track - becomes part of filename
 	TimeBase time.Time // All PTS times are relative to this
 	Codec    string    // eg "H264"
 	Width    int       // Only applicable to video
 	Height   int       // Only applicable to video
 
-	isWriting   bool     // else reading
+	canWrite    bool     // True if opened with write ability
 	index       *os.File // Index file
-	indexCount  int      // Number of index entries in file. Read once, when opening the track, and only used when reading
+	indexCount  int      // Number of index entries in file
 	packets     *os.File // Packets file
-	packetsPos  int64    // End of last written byte inside packets file. Used when writing.
-	packetsSize int64    // Size of packets file in bytes. Read once, when opening the track, and only used when reading
+	packetsSize int64    // Size of packets file in bytes
 }
 
+// Create a new track definition, but do not write anything to disk, or associate the track with a file.
 func MakeVideoTrack(name string, timeBase time.Time, codec string, width, height int) (*Track, error) {
 	if !IsValidCodec(codec) {
 		return nil, ErrInvalidCodec
@@ -45,7 +62,8 @@ func MakeVideoTrack(name string, timeBase time.Time, codec string, width, height
 		return nil, fmt.Errorf("Invalid track name: %v", name)
 	}
 	return &Track{
-		IsVideo:  true,
+		canWrite: true,
+		Type:     TrackTypeVideo,
 		Name:     name,
 		TimeBase: timeBase,
 		Codec:    codec,
@@ -66,28 +84,55 @@ func IsValidTrackName(name string) bool {
 	return true
 }
 
-// Write NALUs
-func (t *Track) WriteNALUs(nalus []NALU) error {
-	index := []uint64{}
-
-	// write packets
-	for _, nalu := range nalus {
-		pos := t.packetsPos
-		n, err := t.packets.Write(nalu.Payload)
-		t.packetsPos += int64(n)
-		if err != nil {
-			return err
-		}
-		index = append(index, MakeIndexNALU(EncodePTSTime(nalu.PTS, t.TimeBase), pos, nalu.Flags))
+// Create new track files on disk
+func (t *Track) CreateTrackFiles(baseFilename string) error {
+	idx, err := os.Create(TrackFilename(baseFilename, t.Name, FileTypeIndex))
+	if err != nil {
+		return err
+	}
+	pkt, err := os.Create(TrackFilename(baseFilename, t.Name, FileTypePackets))
+	if err != nil {
+		idx.Close()
+		return err
 	}
 
-	// write to index
-	_, err := cgogo.WriteSlice(t.index, index)
-	return err
+	if t.Type == TrackTypeVideo {
+		header := C.VideoIndexHeader{}
+		header.TimeBase = C.uint64_t(EncodeTimeBase(t.TimeBase))
+		cgogo.CopySlice(header.Magic[:], []byte(MagicVideoTrackBytes))
+		cgogo.CopySlice(header.Codec[:], []byte(t.Codec))
+		header.Width = C.uint16_t(t.Width)
+		header.Height = C.uint16_t(t.Height)
+		if _, err := cgogo.WriteStruct(idx, &header); err != nil {
+			idx.Close()
+			return err
+		}
+	} else if t.Type == TrackTypeAudio {
+		header := C.AudioIndexHeader{}
+		header.TimeBase = C.uint64_t(EncodeTimeBase(t.TimeBase))
+		cgogo.CopySlice(header.Magic[:], []byte(MagicAudioTrackBytes))
+		cgogo.CopySlice(header.Codec[:], []byte(t.Codec))
+		if _, err := cgogo.WriteStruct(idx, &header); err != nil {
+			idx.Close()
+			return err
+		}
+	} else {
+		return fmt.Errorf("Invalid track type: %v", t.Type)
+	}
+
+	t.canWrite = true
+	t.index = idx
+	t.indexCount = 0
+	t.packets = pkt
+	t.packetsSize = 0
+
+	return nil
 }
 
-// Open a track for reading
-func OpenTrack(baseFilename string, trackName string) (*Track, error) {
+// Open a track for reading/writing
+// If OpenMode is OpenModeReadOnly, then we open the files with O_RDONLY.
+// If OpenMode is OpenModeReadWrite is true, and we can't open the file with O_RDWR, then the function fails.
+func OpenTrack(baseFilename string, trackName string, mode OpenMode) (*Track, error) {
 	var idxFile *os.File
 	var pktFile *os.File
 	var err error
@@ -103,11 +148,16 @@ func OpenTrack(baseFilename string, trackName string) (*Track, error) {
 		}
 	}()
 
-	idxFile, err = os.Open(TrackFilename(baseFilename, trackName, FileTypeIndex))
+	flag := os.O_RDONLY
+	if mode == OpenModeReadWrite {
+		flag = os.O_RDWR
+	}
+
+	idxFile, err = os.OpenFile(TrackFilename(baseFilename, trackName, FileTypeIndex), flag, 0666)
 	if err != nil {
 		return nil, err
 	}
-	pktFile, err = os.Open(TrackFilename(baseFilename, trackName, FileTypePackets))
+	pktFile, err = os.OpenFile(TrackFilename(baseFilename, trackName, FileTypePackets), flag, 0666)
 	if err != nil {
 		return nil, err
 	}
@@ -120,11 +170,11 @@ func OpenTrack(baseFilename string, trackName string) (*Track, error) {
 	codec := [4]byte{}
 	cgogo.CopySlice(magic[:], indexHead.Magic[:])
 	cgogo.CopySlice(codec[:], indexHead.Codec[:])
-	var isVideo bool
+	trackType := TrackTypeVideo
 	if bytes.Equal(magic[:], []byte(MagicAudioTrackBytes)) {
-		isVideo = false
+		trackType = TrackTypeAudio
 	} else if bytes.Equal(magic[:], []byte(MagicVideoTrackBytes)) {
-		isVideo = true
+		trackType = TrackTypeVideo
 	} else {
 		return nil, fmt.Errorf("Unrecognized magic bytes in index track: %02x %02x %02x %02x", magic[0], magic[1], magic[2], magic[3])
 	}
@@ -133,29 +183,33 @@ func OpenTrack(baseFilename string, trackName string) (*Track, error) {
 		return nil, fmt.Errorf("%w '%v'", ErrInvalidCodec, string(codec[:]))
 	}
 
-	idxStat, err := idxFile.Stat()
+	// Seek to end of files, so that we can continue to write.
+	// But more importantly in most cases - this gives us the file size.
+	// I don't see opening of an existing file and appending to it as a common use case.
+	idxSize, err := idxFile.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, err
 	}
-	indexCount := (int(idxStat.Size()) - IndexHeaderSize) / 8
+	indexCount := (int(idxSize) - IndexHeaderSize) / 8
 
-	pktStat, err := pktFile.Stat()
+	pktSize, err := pktFile.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, err
 	}
 
 	track := &Track{
-		IsVideo:     isVideo,
+		canWrite:    mode == OpenModeReadWrite,
+		Type:        trackType,
 		Name:        trackName,
 		Codec:       string(codec[:]),
 		TimeBase:    DecodeTimeBase(uint64(indexHead.TimeBase)),
 		index:       idxFile,
-		indexCount:  int(indexCount),
+		indexCount:  indexCount,
 		packets:     pktFile,
-		packetsSize: pktStat.Size(),
+		packetsSize: pktSize,
 	}
 
-	if isVideo {
+	if trackType == TrackTypeVideo {
 		videoHead := C.VideoIndexHeader{}
 		commonHeadBytes := unsafe.Slice((*byte)(unsafe.Pointer(&indexHead)), int(unsafe.Sizeof(indexHead)))
 		videoHeadBytes := unsafe.Slice((*byte)(unsafe.Pointer(&videoHead)), int(unsafe.Sizeof(videoHead)))
@@ -245,4 +299,28 @@ func (t *Track) ReadPayload(nalus []NALU) error {
 		}
 	}
 	return nil
+}
+
+// Write NALUs
+func (t *Track) WriteNALUs(nalus []NALU) error {
+	if !t.canWrite {
+		return ErrReadOnly
+	}
+	index := []uint64{}
+
+	// write packets
+	for _, nalu := range nalus {
+		pos := t.packetsSize
+		n, err := t.packets.Write(nalu.Payload)
+		t.packetsSize += int64(n)
+		if err != nil {
+			return err
+		}
+		index = append(index, MakeIndexNALU(EncodePTSTime(nalu.PTS, t.TimeBase), pos, nalu.Flags))
+	}
+
+	// write to index
+	_, err := cgogo.WriteSlice(t.index, index)
+	t.indexCount += len(index)
+	return err
 }

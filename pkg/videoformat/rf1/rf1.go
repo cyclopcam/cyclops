@@ -43,7 +43,7 @@ const (
 type NALU struct {
 	PTS      time.Time
 	Flags    IndexNALUFlags
-	Position int64 // Only used when reading
+	Position int64 // Position in packets file. Only used when reading
 	Length   int64 // Only used when reading
 	Payload  []byte
 }

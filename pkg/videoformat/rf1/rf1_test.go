@@ -69,6 +69,12 @@ func createTestNALUs(track *Track, nFrames int, fps float64) []NALU {
 }
 
 func TestReaderWriter(t *testing.T) {
+	for closeAndReOpen := 0; closeAndReOpen < 2; closeAndReOpen++ {
+		testReaderWriter(t, closeAndReOpen == 1)
+	}
+}
+
+func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
 	tbase := time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
 	trackW, err := MakeVideoTrack("HD", tbase, CodecH264, 320, 240)
 	require.NoError(t, err)
@@ -86,24 +92,34 @@ func TestReaderWriter(t *testing.T) {
 		}
 		err := trackW.WriteNALUs(nalusW[i:end])
 		require.NoError(t, err)
+		if i == chunkSize*3 && enableCloseAndReOpen {
+			// Stress the fact that we can close a file and re-open it, and then continue writing to it.
+			err = fw.Close()
+			require.NoError(t, err)
+			fw, err = Open(BaseDir+"/test", OpenModeReadWrite)
+			require.NoError(t, err)
+			require.NotNil(t, fw)
+			require.Equal(t, 1, len(fw.Tracks))
+			trackW = fw.Tracks[0]
+		}
 	}
 	err = fw.Close()
 	require.NoError(t, err)
 
 	// Read
-	fr, err := Open(BaseDir + "/test")
+	fr, err := Open(BaseDir+"/test", OpenModeReadOnly)
 	require.NoError(t, err)
 	require.NotNil(t, fr)
 	require.Equal(t, 1, len(fr.Tracks))
 	trackR := fr.Tracks[0]
 	require.Equal(t, nNALUs, trackR.Count())
-	require.Equal(t, trackW.IsVideo, trackR.IsVideo)
+	require.Equal(t, trackW.Type, trackR.Type)
 	require.Equal(t, trackW.Name, trackR.Name)
 	require.Equal(t, trackW.TimeBase, trackR.TimeBase)
 	require.Equal(t, trackW.Codec, trackR.Codec)
 	require.Equal(t, trackW.Width, trackR.Width)
 	require.Equal(t, trackW.Height, trackR.Height)
-	require.Equal(t, trackR.isWriting, false)
+	require.Equal(t, trackR.canWrite, false)
 	require.Equal(t, trackR.indexCount, nNALUs)
 	for i := 0; i < nNALUs; i += chunkSize {
 		end := i + chunkSize

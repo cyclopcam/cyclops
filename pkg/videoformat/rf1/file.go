@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/cyclopcam/cyclops/pkg/cgogo"
 )
 
 // #include "rf1.h"
@@ -13,7 +11,8 @@ import "C"
 
 // File is used to read and write rf1 files
 type File struct {
-	Tracks []*Track
+	BaseFilename string
+	Tracks       []*Track
 }
 
 // Create a new rf1 file group writer.
@@ -24,55 +23,23 @@ func NewFile(baseFilename string, tracks []*Track) (*File, error) {
 			return nil, ErrInvalidCodec
 		}
 	}
-	f := &File{}
+	f := &File{
+		BaseFilename: baseFilename,
+	}
 
 	for _, track := range tracks {
-		idx, err := os.Create(TrackFilename(baseFilename, track.Name, FileTypeIndex))
-		if err != nil {
+		if err := track.CreateTrackFiles(baseFilename); err != nil {
+			f.Close()
 			return nil, err
 		}
-		pkt, err := os.Create(TrackFilename(baseFilename, track.Name, FileTypePackets))
-		if err != nil {
-			idx.Close()
-			return nil, err
-		}
-
-		if track.IsVideo {
-			header := C.VideoIndexHeader{}
-			header.TimeBase = C.uint64_t(EncodeTimeBase(track.TimeBase))
-			cgogo.CopySlice(header.Magic[:], []byte(MagicVideoTrackBytes))
-			cgogo.CopySlice(header.Codec[:], []byte(track.Codec))
-			header.Width = C.uint16_t(track.Width)
-			header.Height = C.uint16_t(track.Height)
-			//if _, err := idx.Write(unsafe.Slice((*byte)(unsafe.Pointer(&header)), unsafe.Sizeof(header))); err != nil {
-			if _, err := cgogo.WriteStruct(idx, &header); err != nil {
-				idx.Close()
-				return nil, err
-			}
-		} else {
-			header := C.AudioIndexHeader{}
-			header.TimeBase = C.uint64_t(EncodeTimeBase(track.TimeBase))
-			cgogo.CopySlice(header.Magic[:], []byte(MagicAudioTrackBytes))
-			cgogo.CopySlice(header.Codec[:], []byte(track.Codec))
-			//if _, err := idx.Write(unsafe.Slice((*byte)(unsafe.Pointer(&header)), unsafe.Sizeof(header))); err != nil {
-			if _, err := cgogo.WriteStruct(idx, &header); err != nil {
-				idx.Close()
-				return nil, err
-			}
-		}
-
-		track.index = idx
-		track.packets = pkt
-		track.packetsPos = 0
-		track.isWriting = true
 		f.Tracks = append(f.Tracks, track)
 	}
 
 	return f, nil
 }
 
-// Open an rf1 file group for reading
-func Open(baseFilename string) (*File, error) {
+// Open an existing rf1 file group
+func Open(baseFilename string, mode OpenMode) (*File, error) {
 	// Scan for tracks
 	//dir, _ := filepath.Split(baseFilename)
 	//matches, err := filepath.Glob(TrackFilename(dir+"/*", "*", FileTypeIndex))
@@ -80,24 +47,24 @@ func Open(baseFilename string) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
+	f := &File{
+		BaseFilename: baseFilename,
+	}
 
-	tracks := make([]*Track, 0)
 	for _, m := range matches {
 		trackName := strings.TrimPrefix(m, baseFilename+"_")
 		trackName = strings.TrimSuffix(trackName, ".rf1i")
-		track, err := OpenTrack(baseFilename, trackName)
+		track, err := OpenTrack(baseFilename, trackName, mode)
 		if err != nil {
-			if os.IsNotExist(err) {
-				break
-			}
+			f.Close()
 			return nil, err
 		}
-		tracks = append(tracks, track)
+		f.Tracks = append(f.Tracks, track)
 	}
-	if len(tracks) == 0 {
+	if len(f.Tracks) == 0 {
 		return nil, os.ErrNotExist
 	}
-	return &File{Tracks: tracks}, nil
+	return f, nil
 }
 
 func (f *File) Close() error {
