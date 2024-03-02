@@ -2,11 +2,10 @@ package rf1
 
 import (
 	"fmt"
-	"math"
-	"math/rand"
 	"os"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/stretchr/testify/require"
 )
@@ -36,39 +35,9 @@ func TestBits(t *testing.T) {
 	})
 }
 
-// The first 2 NALUs are EssentialMetadata
-// The 3rd NALU is a keyframe, and every 10th frame thereafter is a keyframe
-func testNALUFlags(naluIdx int) IndexNALUFlags {
-	if naluIdx <= 2 {
-		return IndexNALUFlagEssentialMeta
-	} else if naluIdx%10 == 3 {
-		return IndexNALUFlagKeyFrame
-	}
-	return 0
-}
-
-// Frame flags are controlled by testNALUFlags()
-func createTestNALUs(track *Track, nFrames int, fps float64) []NALU {
-	nalus := make([]NALU, nFrames)
-	rng := rand.New(rand.NewSource(12345))
-	for i := 0; i < nFrames; i++ {
-		pts := time.Duration(float64(i) * float64(time.Second) / fps)
-		nalu := NALU{
-			PTS: track.TimeBase.Add(pts),
-		}
-		nalu.Flags = testNALUFlags(i)
-		packetSize := rng.Intn(100) + 50
-		nalu.Payload = make([]byte, packetSize)
-		_, err := rng.Read(nalu.Payload)
-		if err != nil {
-			panic(err)
-		}
-		nalus[i] = nalu
-	}
-	return nalus
-}
-
 func TestReaderWriter(t *testing.T) {
+	t.Logf("sizeof(rf1.NALU) = %v", unsafe.Sizeof(NALU{}))
+
 	for closeAndReOpen := 0; closeAndReOpen < 2; closeAndReOpen++ {
 		testReaderWriter(t, closeAndReOpen == 1)
 	}
@@ -78,12 +47,12 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
 	tbase := time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
 	trackW, err := MakeVideoTrack("HD", tbase, CodecH264, 320, 240)
 	require.NoError(t, err)
-	fw, err := NewFile(BaseDir+"/test", []*Track{trackW})
+	fw, err := Create(BaseDir+"/test", []*Track{trackW})
 	require.NoError(t, err)
 	require.NotNil(t, fw)
 	nNALUs := 200
 	fps := 10.0
-	nalusW := createTestNALUs(trackW, nNALUs, fps)
+	nalusW := CreateTestNALUs(trackW.TimeBase, 0, nNALUs, fps, 12345)
 	chunkSize := 11
 	for i := 0; i < nNALUs; i += chunkSize {
 		end := i + chunkSize
@@ -102,6 +71,7 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
 			require.Equal(t, 1, len(fw.Tracks))
 			trackW = fw.Tracks[0]
 		}
+		require.LessOrEqual(t, AbsTimeDiff(nalusW[end-1].PTS, trackW.TimeBase.Add(trackW.Duration())), time.Second/4096)
 	}
 	err = fw.Close()
 	require.NoError(t, err)
@@ -121,6 +91,7 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
 	require.Equal(t, trackW.Height, trackR.Height)
 	require.Equal(t, trackR.canWrite, false)
 	require.Equal(t, trackR.indexCount, nNALUs)
+	require.LessOrEqual(t, AbsTimeDiff(nalusW[nNALUs-1].PTS, trackR.TimeBase.Add(trackR.Duration())), time.Second/4096)
 	for i := 0; i < nNALUs; i += chunkSize {
 		end := i + chunkSize
 		if end > nNALUs {
@@ -131,8 +102,7 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
 		require.Equal(t, end-i, len(nalusR))
 		for j := 0; j < len(nalusR); j++ {
 			// Our time precision is 1/4096 of a second
-			timeDiff := math.Abs(float64(nalusW[i+j].PTS.Sub(nalusR[j].PTS)))
-			require.Less(t, timeDiff, float64(time.Second)/4096)
+			require.LessOrEqual(t, AbsTimeDiff(nalusW[i+j].PTS, nalusR[j].PTS), time.Second/4096)
 			require.Equal(t, nalusW[i+j].Flags, nalusR[j].Flags)
 			require.EqualValues(t, len(nalusW[i+j].Payload), nalusR[j].Length)
 		}
@@ -144,10 +114,18 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
 	}
 }
 
+func AbsTimeDiff(t1, t2 time.Time) time.Duration {
+	diff := t1.Sub(t2)
+	if diff < 0 {
+		return -diff
+	}
+	return diff
+}
+
 func TestMain(m *testing.M) {
 	// Setup
 	if err := os.MkdirAll(BaseDir, 0755); err != nil {
-		fmt.Printf("Error creating test directory '%v': %v\n", BaseDir, err)
+		fmt.Printf("Error creating rf1 test directory '%v': %v\n", BaseDir, err)
 		os.Exit(1)
 	}
 

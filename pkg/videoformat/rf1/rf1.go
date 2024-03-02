@@ -3,6 +3,7 @@ package rf1
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -13,6 +14,10 @@ const (
 )
 
 var ErrInvalidCodec = errors.New("invalid codec")
+
+const MaxPacketsFileSize = 1<<30 - 1 // 1 GB
+const MaxDuration = 1024 * time.Second
+const MaxEncodedPTS = 1<<22 - 1
 
 type FileType int
 
@@ -44,7 +49,7 @@ type NALU struct {
 	PTS      time.Time
 	Flags    IndexNALUFlags
 	Position int64 // Position in packets file. Only used when reading
-	Length   int64 // Only used when reading
+	Length   int64 // Only used when reading (logically this is equal to len(Payload))
 	Payload  []byte
 }
 
@@ -104,15 +109,21 @@ func IsValidCodec(c string) bool {
 	return len(c) == 4 && c == CodecH264
 }
 
-func TrackFilename(baseFilename string, trackName string, fileType FileType) string {
-	extension := ""
+func Extension(fileType FileType) string {
 	switch fileType {
 	case FileTypeIndex:
-		extension = "rf1i"
+		return "rf1i"
 	case FileTypePackets:
-		extension = "rf1p"
+		return "rf1p"
 	default:
 		panic("Invalid fileType")
 	}
-	return fmt.Sprintf("%v_%v.%v", baseFilename, trackName, extension)
+}
+
+func TrackFilename(baseFilename string, trackName string, fileType FileType) string {
+	return fmt.Sprintf("%v_%v.%v", baseFilename, trackName, Extension(fileType))
+}
+
+func IsVideoFile(filename string) bool {
+	return strings.HasSuffix(filename, ".rf1i")
 }

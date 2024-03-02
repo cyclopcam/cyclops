@@ -43,11 +43,13 @@ type Track struct {
 	Width    int       // Only applicable to video
 	Height   int       // Only applicable to video
 
-	canWrite    bool     // True if opened with write ability
-	index       *os.File // Index file
-	indexCount  int      // Number of index entries in file
-	packets     *os.File // Packets file
-	packetsSize int64    // Size of packets file in bytes
+	canWrite    bool          // True if opened with write ability
+	index       *os.File      // Index file
+	indexCount  int           // Number of index entries in file
+	packets     *os.File      // Packets file
+	packetsSize int64         // Size of packets file in bytes
+	duration    time.Duration // Duration of track
+	indexCache  []uint64      // Cache of index entries
 }
 
 // Create a new track definition, but do not write anything to disk, or associate the track with a file.
@@ -85,6 +87,8 @@ func IsValidTrackName(name string) bool {
 }
 
 // Create new track files on disk
+// You will usually not call this function directly. Instead, it is called
+// for you when using [File.AddTrack].
 func (t *Track) CreateTrackFiles(baseFilename string) error {
 	idx, err := os.Create(TrackFilename(baseFilename, t.Name, FileTypeIndex))
 	if err != nil {
@@ -125,6 +129,8 @@ func (t *Track) CreateTrackFiles(baseFilename string) error {
 	t.indexCount = 0
 	t.packets = pkt
 	t.packetsSize = 0
+	t.duration = 0
+	t.indexCache = nil
 
 	return nil
 }
@@ -218,6 +224,11 @@ func OpenTrack(baseFilename string, trackName string, mode OpenMode) (*Track, er
 		track.Height = int(videoHead.Height)
 	}
 
+	track.duration, err = track.readDuration()
+	if err != nil {
+		return nil, err
+	}
+
 	success = true
 	return track, nil
 }
@@ -225,6 +236,23 @@ func OpenTrack(baseFilename string, trackName string, mode OpenMode) (*Track, er
 // Returns the number of NALUs
 func (t *Track) Count() int {
 	return t.indexCount
+}
+
+// Returns the duration of the track
+func (t *Track) Duration() time.Duration {
+	return t.duration
+}
+
+// Use the PTS of the last NALU in the index to figure out the duration of the track
+func (t *Track) readDuration() (time.Duration, error) {
+	if t.indexCount == 0 {
+		return 0, nil
+	}
+	nalus, err := t.ReadIndex(t.indexCount-1, t.indexCount)
+	if err != nil {
+		return 0, err
+	}
+	return nalus[0].PTS.Sub(t.TimeBase), nil
 }
 
 // Read NALU index in the range [startIdx, endIdx).
@@ -301,26 +329,67 @@ func (t *Track) ReadPayload(nalus []NALU) error {
 	return nil
 }
 
+// Read NALUs by specifying time instead of packet indices
+func (t *Track) ReadAtTime(startTime, endTime time.Duration) ([]NALU, error) {
+	// Until it becomes clear that this is the wrong move, we just read the entire index.
+	if len(t.indexCache) == 0 {
+		//nalus, err := t.ReadIndex(0, t.indexCount)
+	}
+	return nil, nil
+}
+
 // Write NALUs
 func (t *Track) WriteNALUs(nalus []NALU) error {
 	if !t.canWrite {
 		return ErrReadOnly
 	}
+	if len(nalus) == 0 {
+		return nil
+	}
 	index := []uint64{}
 
 	// write packets
 	for _, nalu := range nalus {
+		relativePTS := nalu.PTS.Sub(t.TimeBase)
+		if relativePTS < t.duration {
+			return fmt.Errorf("NALU occurs before the end of the track (%v < %v), '%v < %v'", relativePTS, t.duration, nalu.PTS, t.TimeBase.Add(t.duration))
+		}
+		t.duration = relativePTS
 		pos := t.packetsSize
 		n, err := t.packets.Write(nalu.Payload)
 		t.packetsSize += int64(n)
 		if err != nil {
 			return err
 		}
-		index = append(index, MakeIndexNALU(EncodePTSTime(nalu.PTS, t.TimeBase), pos, nalu.Flags))
+		index = append(index, MakeIndexNALU(EncodeTimeOffset(relativePTS), pos, nalu.Flags))
 	}
 
 	// write to index
 	_, err := cgogo.WriteSlice(t.index, index)
 	t.indexCount += len(index)
 	return err
+}
+
+func (t *Track) HasCapacity(nalus []NALU) bool {
+	if !t.canWrite {
+		return false
+	}
+	if len(nalus) == 0 {
+		return true
+	}
+	// Check if we have enough space in the packets file
+	packetBytes := int64(0)
+	for _, nalu := range nalus {
+		packetBytes += int64(len(nalu.Payload))
+	}
+	if t.packetsSize+packetBytes > MaxPacketsFileSize {
+		return false
+	}
+	// Check if we have enough time in the index file
+	encodedTime := EncodePTSTime(nalus[len(nalus)-1].PTS, t.TimeBase)
+	if encodedTime > MaxEncodedPTS {
+		return false
+	}
+
+	return true
 }
