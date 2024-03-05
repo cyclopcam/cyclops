@@ -67,6 +67,7 @@ type Archive struct {
 	formats              []VideoFormat
 	streams              map[string]*videoStream
 	maxVideoFileDuration time.Duration // We need to know this so that it is fast to find files close to a given time period.
+	maxBytesPerRead      int           // Maximum number of bytes that we will return from a single Read()
 }
 
 // Open a directory of video files for reading and/or writing.
@@ -87,6 +88,9 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat) (*Archive, erro
 	// to find files.
 	maxVideoFileDuration := 1000 * time.Second
 
+	// This is an arbitrary limit intended to reduce the chance of an accidental out of memory situation
+	maxBytesPerRead := 256 * 1024 * 1024
+
 	baseDir = strings.TrimSuffix(baseDir, "/")
 	// Scan top-level directories.
 	// Each directory is a stream (eg camera-0001).
@@ -96,6 +100,7 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat) (*Archive, erro
 		formats:              formats,
 		streams:              map[string]*videoStream{},
 		maxVideoFileDuration: maxVideoFileDuration,
+		maxBytesPerRead:      maxBytesPerRead,
 	}
 	err := filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -419,9 +424,6 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 	if stream == nil {
 		return nil, fmt.Errorf("Stream not found: %v", streamName)
 	}
-	if len(stream.files) == 0 {
-		return nil, nil
-	}
 	// Do a binary search inside the stream.files to find the file that contains the requested time period.
 	// We'll use the file's start time as the key for the binary search.
 
@@ -435,6 +437,25 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 	// we reverse back by one.
 
 	tracks := map[string][]rf1.NALU{}
+	totalBytes := 0
+
+	// Read the tracks from vf, and append them to our result set
+	readFromVideoFile := func(filename string, vf VideoFile) error {
+		for _, trackName := range trackNames {
+			packets, err := vf.Read(trackName, startTime, endTime)
+			if err != nil {
+				return fmt.Errorf("Error reading track %v from video file %v: %v", trackName, filename, err)
+			}
+			tracks[trackName] = append(tracks[trackName], packets...)
+			for _, p := range packets {
+				totalBytes += len(p.Payload)
+			}
+		}
+		if totalBytes > a.maxBytesPerRead {
+			return fmt.Errorf("Read limit exceeded: %v bytes", a.maxBytesPerRead)
+		}
+		return nil
+	}
 
 	startIdx := sort.Search(len(stream.files), func(i int) bool {
 		return stream.files[i].startTime >= startTime.UnixMilli()
@@ -451,12 +472,14 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 			return nil, fmt.Errorf("Error opening video file %v: %v", videoFilename, err)
 		}
 		defer videoFile.Close()
-		for _, trackName := range trackNames {
-			packets, err := videoFile.Read(trackName, startTime, endTime)
-			if err != nil {
-				return nil, fmt.Errorf("Error reading track %v from video file %v: %v", trackName, videoFilename, err)
-			}
-			tracks[trackName] = append(tracks[trackName], packets...)
+		if err := readFromVideoFile(videoFilename, videoFile); err != nil {
+			return nil, err
+		}
+	}
+
+	if stream.current != nil && stream.current.startTime.Before(endTime) && stream.current.endTime.After(startTime) {
+		if err := readFromVideoFile(stream.current.filename, stream.current.file); err != nil {
+			return nil, err
 		}
 	}
 
