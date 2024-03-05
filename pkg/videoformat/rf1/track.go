@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sort"
 	"strings"
 	"time"
 	"unsafe"
@@ -255,6 +256,41 @@ func (t *Track) readDuration() (time.Duration, error) {
 	return nalus[0].PTS.Sub(t.TimeBase), nil
 }
 
+// Read a range of packet uint64 index entries, either from the file, or from our in-memory cache.
+// At present out caching strategy is simply to read the entire index the first time
+// we need any of it, and keep the whole thing in memory. The index is so small compared to
+// the payload, that it's not clear that anything else makes sense.
+func (t *Track) readRawIndex(startIdx, endIdx int) ([]uint64, error) {
+	if startIdx < 0 || endIdx <= startIdx || endIdx > t.indexCount {
+		return nil, fmt.Errorf("Invalid startIdx, endIdx: %v, %v (number of indices: %v)", startIdx, endIdx, t.indexCount)
+	}
+	if len(t.indexCache) != t.indexCount {
+		// Special exceptions for when we don't cache the entire index:
+		// 1. When reading the final index entry.
+		//    This is used to determine the duration of the track, and does not necessary imply
+		//    subsequent reading.
+		doNotCache := startIdx == t.indexCount-1
+		if doNotCache {
+			// Read only what was requested
+			raw := make([]uint64, endIdx-startIdx)
+			_, err := cgogo.ReadSliceAt(t.index, raw, int64(IndexHeaderSize)+int64(startIdx)*8)
+			if err != nil {
+				return nil, err
+			}
+			return raw, nil
+		} else {
+			// Read the whole index into the cache
+			raw := make([]uint64, t.indexCount)
+			_, err := cgogo.ReadSliceAt(t.index, raw, int64(IndexHeaderSize))
+			if err != nil {
+				return nil, err
+			}
+			t.indexCache = raw
+		}
+	}
+	return t.indexCache[startIdx:endIdx], nil
+}
+
 // Read NALU index in the range [startIdx, endIdx).
 func (t *Track) ReadIndex(startIdx, endIdx int) ([]NALU, error) {
 	if startIdx < 0 || endIdx <= startIdx || endIdx > t.indexCount {
@@ -268,9 +304,7 @@ func (t *Track) ReadIndex(startIdx, endIdx int) ([]NALU, error) {
 	if plusOne {
 		readCount++
 	}
-	startByte := int64(IndexHeaderSize) + int64(startIdx)*8
-	raw := make([]uint64, readCount)
-	_, err := cgogo.ReadSliceAt(t.index, raw, startByte)
+	raw, err := t.readRawIndex(startIdx, startIdx+readCount)
 	if err != nil {
 		return nil, err
 	}
@@ -329,13 +363,36 @@ func (t *Track) ReadPayload(nalus []NALU) error {
 	return nil
 }
 
-// Read NALUs by specifying time instead of packet indices
+// Read NALUs with payload by specifying time instead of packet indices
 func (t *Track) ReadAtTime(startTime, endTime time.Duration) ([]NALU, error) {
-	// Until it becomes clear that this is the wrong move, we just read the entire index.
-	if len(t.indexCache) == 0 {
-		//nalus, err := t.ReadIndex(0, t.indexCount)
+	rawIdx, err := t.readRawIndex(0, t.indexCount)
+	if err != nil {
+		return nil, err
 	}
-	return nil, nil
+
+	// Find the first packet that is after startTime
+	startIdx := sort.Search(len(rawIdx), func(i int) bool {
+		return SplitIndexNALUTimeOnly(rawIdx[i]) >= startTime
+	})
+
+	// Find the first packet that is after endTime
+	endIdx := sort.Search(len(rawIdx), func(i int) bool {
+		return SplitIndexNALUTimeOnly(rawIdx[i]) > endTime
+	})
+
+	if endIdx-startIdx == 0 {
+		// Empty search
+		return nil, nil
+	}
+
+	nalus, err := t.ReadIndex(startIdx, endIdx)
+	if err != nil {
+		return nil, err
+	}
+	if err := t.ReadPayload(nalus); err != nil {
+		return nil, err
+	}
+	return nalus, nil
 }
 
 // Write NALUs

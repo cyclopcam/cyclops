@@ -105,6 +105,10 @@ func SplitIndexNALU(p uint64) (pts int64, location int64, flags IndexNALUFlags) 
 	return
 }
 
+func SplitIndexNALUTimeOnly(p uint64) time.Duration {
+	return DecodeTimeOffset(int64(p >> 42))
+}
+
 func IsValidCodec(c string) bool {
 	return len(c) == 4 && c == CodecH264
 }

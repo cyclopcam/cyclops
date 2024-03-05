@@ -112,6 +112,56 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
 			require.Equal(t, nalusW[i+j].Payload, nalusR[j].Payload)
 		}
 	}
+	allNALUs, err := fr.Tracks[0].ReadIndex(0, fr.Tracks[0].Count())
+	require.NoError(t, err)
+
+	// ReadAtTime
+	timesToRead := []struct {
+		start     time.Time
+		end       time.Time
+		expectErr error
+		firstIdx  int
+		lastIdx   int
+	}{
+		{allNALUs[0].PTS, allNALUs[10].PTS, nil, 0, -1},
+		{allNALUs[15].PTS, allNALUs[20].PTS, nil, -1, -1},
+		{allNALUs[len(allNALUs)-30].PTS, allNALUs[len(allNALUs)-1].PTS.Add(5 * time.Second), nil, -1, len(allNALUs) - 1},
+	}
+
+	for freshOpen := 0; freshOpen < 2; freshOpen++ {
+		for _, tt := range timesToRead {
+			if freshOpen == 1 {
+				fr.Close()
+				fr, _ = Open(BaseDir+"/test", OpenModeReadOnly)
+			}
+			result, err := fr.Tracks[0].ReadAtTime(tt.start.Sub(trackR.TimeBase), tt.end.Sub(trackR.TimeBase))
+			if tt.expectErr != nil {
+				require.Error(t, err)
+				require.Nil(t, result)
+				continue
+			}
+			require.NoError(t, err)
+			expectN := 0
+			for _, n := range allNALUs {
+				if (n.PTS.Equal(tt.start) || n.PTS.After(tt.start)) && n.PTS.Before(tt.end) {
+					expectN++
+				}
+			}
+			require.InDelta(t, expectN, len(result), 1)
+			if tt.firstIdx >= 0 {
+				// ensure that the first NALU we read is as expected
+				// These assertions verify that we do indeed read the first NALU in the file, so we don't have
+				// some kind of off-by-one error in that regard.
+				require.Equal(t, allNALUs[tt.firstIdx].Position, result[0].Position)
+			}
+			if tt.lastIdx >= 0 {
+				// ensure that the last NALU we read is as expected.
+				// These assertions verify that we do indeed read the final NALU in the file, similar to the check above.
+				require.Equal(t, allNALUs[tt.lastIdx].Position, result[len(result)-1].Position)
+			}
+		}
+	}
+
 }
 
 func AbsTimeDiff(t1, t2 time.Time) time.Duration {
