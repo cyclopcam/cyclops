@@ -265,6 +265,9 @@ func (a *Archive) streamDir(streamName string) string {
 }
 
 // Close the archive.
+// If the system is shutting down, its probably simplest to NOT call Close() on the archive,
+// because then you don't have to worry about upsetting any background readers or writers.
+// You can just let them go away naturally, as they finish.
 func (a *Archive) Close() {
 	a.log.Infof("Archive closing")
 	a.streamsLock.Lock()
@@ -355,6 +358,12 @@ func (a *Archive) write(streamName string, payload map[string]TrackPayload) erro
 	// the caller is trying to write. If the caller has altered the track composition,
 	// then we create a new file.
 
+	// This is a big lock, but there's no simple way around this. We don't want to introduce
+	// multi-threaded access into our VideoFile interface - that would be insane.
+	// I'm assuming that the write phase here will usually complete quickly, so that we don't
+	// end up starving readers. Unless something bad is happening (eg running out of disk space),
+	// writes here should complete very quickly, because they're just a copying of memory into
+	// the disk cache.
 	stream.contentLock.Lock()
 	defer stream.contentLock.Unlock()
 
