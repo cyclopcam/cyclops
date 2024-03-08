@@ -87,6 +87,11 @@ func IsValidTrackName(name string) bool {
 	return true
 }
 
+// Return [index file, packet file] paths
+func (t *Track) Filenames(baseFilename string) (string, string) {
+	return TrackFilename(baseFilename, t.Name, FileTypeIndex), TrackFilename(baseFilename, t.Name, FileTypePackets)
+}
+
 // Create new track files on disk
 // You will usually not call this function directly. Instead, it is called
 // for you when using [File.AddTrack].

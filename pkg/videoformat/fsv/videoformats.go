@@ -3,6 +3,7 @@ package fsv
 import (
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
@@ -10,12 +11,13 @@ import (
 
 var ErrTrackNotFound = errors.New("Track not found")
 
-// A video file format must support the VideoFormat interface in order to be
+// A video file type must support the VideoFormat interface in order to be
 // used by fsv.
 type VideoFormat interface {
 	IsVideoFile(filename string) bool
 	Open(filename string) (VideoFile, error)
 	Create(filename string) (VideoFile, error)
+	Delete(filename string, tracks []string) error
 }
 
 // Metadata about a track
@@ -35,6 +37,7 @@ type VideoFile interface {
 	CreateVideoTrack(trackName string, timeBase time.Time, codec string, width, height int) error
 	Write(trackName string, packets []rf1.NALU) error
 	Read(trackName string, startTime, endTime time.Time) ([]rf1.NALU, error)
+	Size() (int64, error) // Total size of the video file(s)
 }
 
 type VideoFormatRF1 struct {
@@ -58,6 +61,16 @@ func (f *VideoFormatRF1) Create(filename string) (VideoFile, error) {
 		return nil, err
 	}
 	return &VideoFileRF1{File: vf}, nil
+}
+
+func (f *VideoFormatRF1) Delete(filename string, tracks []string) error {
+	for _, track := range tracks {
+		err := os.Remove(rf1.TrackFilename(filename, track, rf1.FileTypeIndex))
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -118,6 +131,23 @@ func (v *VideoFileRF1) Read(trackName string, startTime, endTime time.Time) ([]r
 		}
 	}
 	return nil, fmt.Errorf("%w: '%v'", ErrTrackNotFound, trackName)
+}
+
+func (v *VideoFileRF1) Size() (int64, error) {
+	sum := int64(0)
+	for _, track := range v.File.Tracks {
+		f1, f2 := track.Filenames(v.File.BaseFilename)
+		s1, err := os.Stat(f1)
+		if err != nil {
+			return 0, err
+		}
+		s2, err := os.Stat(f2)
+		if err != nil {
+			return 0, err
+		}
+		sum += s1.Size() + s2.Size()
+	}
+	return sum, nil
 }
 
 /////////////////////////////////////////////////////////////////////////////////

@@ -16,9 +16,11 @@ const BaseDir = "test-fsv-tmp"
 func TestReaderWriter(t *testing.T) {
 	logger := log.NewTestingLog(t)
 
+	maxSizeDelta := float64(0)
+
 	// System wakes up and archive is empty
 
-	arc1, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}})
+	arc1, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}}, DefaultArchiveSettings())
 	require.NoError(t, err)
 	require.NotNil(t, arc1)
 
@@ -26,7 +28,12 @@ func TestReaderWriter(t *testing.T) {
 	tbase2 := tbase1.Add(arc1.MaxVideoFileDuration())         // Packets after tbase 2 will require a new file
 	packets1 := rf1.CreateTestNALUs(tbase1, 0, 100, 10.0, 13) // these go into the first file
 	packets2 := rf1.CreateTestNALUs(tbase2, 0, 50, 10.0, 15)  // these go into the second file
+
+	require.InDelta(t, 0, arc1.TotalSize(), maxSizeDelta)
+
 	require.NoError(t, arc1.Write("stream1", map[string]TrackPayload{"videoTrack1": makeVideoPayload(packets1)}))
+
+	require.InDelta(t, expectedFilesize(packets1), arc1.TotalSize(), maxSizeDelta)
 
 	// No files in index yet
 	require.Equal(t, 0, len(arc1.streams["stream1"].files))
@@ -47,13 +54,15 @@ func TestReaderWriter(t *testing.T) {
 	// Read data from a file in the index, and the current file
 	verifyRead(t, arc1, "stream1", "videoTrack1", packets1[0].PTS, packets2[len(packets2)-1].PTS, len(packets1)+len(packets2), 0)
 
+	require.InDelta(t, expectedFilesize(packets1)+expectedFilesize(packets2), arc1.TotalSize(), maxSizeDelta)
+
 	arc1.Close()
 
 	// System goes down and comes up again
 	// Verify that we can read the data we just wrote.
 	// Now we expect to find 2 files in the index.
 
-	arc2, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}})
+	arc2, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}}, DefaultArchiveSettings())
 	require.NoError(t, err)
 	require.NotNil(t, arc2)
 	streams := arc2.ListStreams()
@@ -62,6 +71,8 @@ func TestReaderWriter(t *testing.T) {
 	require.Equal(t, "stream1", stream0.Name)
 	require.LessOrEqual(t, AbsTimeDiff(packets1[0].PTS, stream0.StartTime), time.Millisecond)
 	require.LessOrEqual(t, AbsTimeDiff(packets2[len(packets2)-1].PTS, stream0.EndTime), time.Millisecond)
+
+	require.InDelta(t, expectedFilesize(packets1)+expectedFilesize(packets2), arc2.TotalSize(), maxSizeDelta)
 
 	// We expect two video files, from packets1 and packets2 respectively
 	require.Equal(t, 2, len(arc2.streams["stream1"].files))
@@ -78,6 +89,28 @@ func TestReaderWriter(t *testing.T) {
 
 	// A read that spans all packets in packets1 and packets2
 	verifyRead(t, arc2, "stream1", "videoTrack1", packets1[0].PTS, packets2[len(packets2)-1].PTS, len(packets1)+len(packets2), 0)
+
+	arc2.Close()
+
+	// Get the sweeper to run
+	withSweep := DefaultArchiveSettings()
+	withSweep.MaxArchiveSize = expectedFilesize(packets2) * 103 / 100
+	withSweep.SweepInterval = time.Millisecond
+	arc3, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}}, withSweep)
+	require.Equal(t, expectedFilesize(packets1)+expectedFilesize(packets2), arc3.TotalSize())
+	arc3.StartSweeper()
+	time.Sleep(time.Millisecond * 3)
+	require.Equal(t, expectedFilesize(packets2), arc3.TotalSize())
+	arc3.StopSweeper()
+}
+
+func expectedFilesize(packets []rf1.NALU) int64 {
+	indexSize := 32 + len(packets)*8
+	packetSize := 0
+	for _, p := range packets {
+		packetSize += len(p.Payload)
+	}
+	return int64(indexSize + packetSize)
 }
 
 func verifyRead(t *testing.T, arc *Archive, streamName string, trackName string, startTime time.Time, endTime time.Time, numExpectedPackets, maxPacketCountDelta int) {

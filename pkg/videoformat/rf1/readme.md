@@ -41,3 +41,14 @@ benchmark case for a high res stream is 100 KB average bytes per frame. At 10
 FPS, this is 1MB per second. 1000 seconds brings us to 1GB, which is our size
 limit. So the number of files per month will be in the same ballpark for high
 res streams as for low res streams.
+
+## Durability/Consistency
+
+The original idea behind this file format was making it extremely easy to read
+and write, and in particular, avoiding any need for a finalization phase. In
+other words, to append to a file, you just write your packets, and you're done.
+However, the caveat here is that we don't use any filesystem tricks or fsync to
+ensure that the packets and index files are written in order, or written
+atomically as a pair. If the operating system (or hardware) crashes during a
+write, then you could end up with such inconsistencies (eg index entries
+pointing to non-existent packets).

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,12 +23,15 @@ type videoFile struct {
 	startTime time.Time // Start time of the video file
 	endTime   time.Time // End time of the video file
 	file      VideoFile // Interface to the on-disk format. This is an open handle to the video file, and needs to be Closed() when we're done with it.
+	tracks    []string  // Names of all the tracks that we've written in this file
 }
 
-// A small memory-footprint record that exists for every file in the archive
+// A small-memory-footprint record that exists for every file in the archive
 type videoFileIndex struct {
-	filename  string // Only the logical filename, such as "1708584695"
-	startTime int64  // Milliseconds UTC
+	filename  string   // Only the logical filename, such as "1708584695"
+	startTime int64    // Milliseconds UTC
+	size      int64    // Size of the file in bytes. For rf1 files, this is the sum of all rf1 files (all tracks: index files and packet files)
+	tracks    []string // Names of the tracks (necessary for rf1, so we can delete all tracks/files of the video without scanning the filesystem)
 }
 
 // videoStream is a single logical video stream, usually split across many videoFiles
@@ -70,17 +74,34 @@ type Archive struct {
 	baseDir              string
 	formats              []VideoFormat
 	maxVideoFileDuration time.Duration // We need to know this so that it is fast to find files close to a given time period.
-	maxBytesPerRead      int           // Maximum number of bytes that we will return from a single Read()
+	settingsLock         sync.Mutex
+	settings             ArchiveSettings
+	sweepStop            chan bool
 
 	streamsLock sync.Mutex // Guards access to the streams map
 	streams     map[string]*videoStream
+}
+
+// Archive Settings
+type ArchiveSettings struct {
+	MaxBytesPerRead int           // Maximum number of bytes that we will return from a single Read()
+	MaxArchiveSize  int64         // Maximum size of all files in the archive. We will eat into old files when we need to recycle space.
+	SweepInterval   time.Duration // How often we check if we need to recycle space
+}
+
+func DefaultArchiveSettings() ArchiveSettings {
+	return ArchiveSettings{
+		MaxBytesPerRead: 256 * 1024 * 1024, // 256MB
+		MaxArchiveSize:  0,                 // No limit
+		SweepInterval:   5 * time.Minute,
+	}
 }
 
 // Open a directory of video files for reading and/or writing.
 // The directory baseDir must exist, but it may be empty.
 // When creating new streams, formats[0] is used, so the ordering
 // of formats is important.
-func Open(logger log.Log, baseDir string, formats []VideoFormat) (*Archive, error) {
+func Open(logger log.Log, baseDir string, formats []VideoFormat, settings ArchiveSettings) (*Archive, error) {
 	if len(formats) == 0 {
 		return nil, fmt.Errorf("No video formats provided")
 	}
@@ -94,9 +115,6 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat) (*Archive, erro
 	// to find files.
 	maxVideoFileDuration := 1000 * time.Second
 
-	// This is an arbitrary limit intended to reduce the chance of an accidental out of memory situation
-	maxBytesPerRead := 256 * 1024 * 1024
-
 	baseDir = strings.TrimSuffix(baseDir, "/")
 	// Scan top-level directories.
 	// Each directory is a stream (eg camera-0001).
@@ -106,7 +124,7 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat) (*Archive, erro
 		formats:              formats,
 		streams:              map[string]*videoStream{},
 		maxVideoFileDuration: maxVideoFileDuration,
-		maxBytesPerRead:      maxBytesPerRead,
+		settings:             settings,
 	}
 	err := filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -126,12 +144,18 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat) (*Archive, erro
 	}
 
 	// Scan for all video files, so that we know the start and end time of each stream,
-	// and the name of every file.
+	// and the name of every file. Also - their sizes.
 	if err := archive.scan(); err != nil {
 		return nil, fmt.Errorf("Error scanning archive: %v", err)
 	}
 
 	return archive, nil
+}
+
+func (a *Archive) SetSettings(settings ArchiveSettings) {
+	a.settingsLock.Lock()
+	defer a.settingsLock.Unlock()
+	a.settings = settings
 }
 
 func (a *Archive) MaxVideoFileDuration() time.Duration {
@@ -165,97 +189,117 @@ func (a *Archive) ListStreams() []*StreamInfo {
 // of the archive, because we assume here that we have exclusive access to the
 // entire data structure - i.e. no thread safety.
 func (a *Archive) scan() error {
-	forgetStreams := []string{}
 	for _, stream := range a.streams {
-		// Scan all files in the stream
-		streamDir := a.streamDir(stream.name)
-		minStartTime := int64(1<<63 - 1)
-		maxStartTime := int64(0)
-		latestVideoFile := ""
-		seenFile := map[string]bool{}
-		var firstFormat VideoFormat
-		err := filepath.WalkDir(streamDir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if path == streamDir {
-				// first iteration of walk
-				return nil
-			}
-			if d.IsDir() {
-				// This is unexpected, but we'll ignore it.
-				// We expect to find a flat list of video files in the stream directory - no sub-directories.
-				return filepath.SkipDir
-			}
-			// Check if this is a video file
-			for _, format := range a.formats {
-				if format.IsVideoFile(path) {
-					onlyFilename := filepath.Base(path)
-					// We need to shop the filename up here, because for rf1, look at this example:
-					// path: /var/lib/cyclops/archive/camera-0001/1708584695_video.rf1i
-					// onlyFilename: 1708584695_video.rf1i
-					// Logically, we call this file "1708584695", because there could be more
-					// tracks, such as 1708584695_audio.rf1i, and we don't want to count this video twice.
-					// It's also nice to consistent in writing and reading video files. So that's why
-					// we strip all the rf1-specific filename stuff away here.
-					startTimeUnixMilli, _, found := strings.Cut(onlyFilename, "_")
-					if found {
-						if !seenFile[startTimeUnixMilli] {
-							seenFile[startTimeUnixMilli] = true
-							if firstFormat != nil && format != firstFormat {
-								return fmt.Errorf("Multiple video formats found in stream %v", stream.name)
-							} else if firstFormat == nil {
-								firstFormat = format
-							}
-							t, err := strconv.ParseInt(startTimeUnixMilli, 10, 64)
-							if err != nil {
-								return fmt.Errorf("Invalid number in video file '%v'. Expected '{unixmilli}_...' video filename", onlyFilename)
-							}
-							if t > maxStartTime {
-								latestVideoFile = path
-							}
-							minStartTime = min(minStartTime, t)
-							maxStartTime = max(maxStartTime, t)
-							stream.files = append(stream.files, videoFileIndex{
-								filename:  startTimeUnixMilli,
-								startTime: t,
-							})
-						}
-					} else {
-						return fmt.Errorf("Invalid video file '%v'. Expected {unixseconds}_... format", path)
-					}
-				}
-			}
-			return nil
-		})
-		if err != nil {
+		if err := a.scanStream(stream); err != nil {
 			return err
 		}
-		if latestVideoFile != "" {
-			// Stream has at least one video file
-			stream.format = firstFormat
-			stream.startTime = time.UnixMilli(minStartTime)
-			if file, err := firstFormat.Open(latestVideoFile); err != nil {
-				return fmt.Errorf("Error opening latest video file '%v' in stream %v: %w", latestVideoFile, stream.name, err)
-			} else {
-				// stream.endTime is the end time of the longest track in the latest video file (all tracks will usually have similar durations)
-				stream.endTime = VideoFileMaxTrackEndTime(file)
-				file.Close()
-			}
-			sort.Slice(stream.files, func(i, j int) bool {
-				return stream.files[i].startTime < stream.files[j].startTime
-			})
-		} else {
-			// Forget about empty streams, so that we can create them from scratch.
-			// Imagine a process dies after creating the stream directory name, but it never actually
-			// writes any video files to that stream. Now it's a defunct thing, because we don't know
-			// its format. So that's why we just forget about it here, and recreate it if somebody
-			// ever tries to write to that stream.
+	}
+
+	// Forget about empty streams, so that we can create them from scratch.
+	// Imagine a process dies after creating the stream directory name, but it never actually
+	// writes any video files to that stream. Now it's a defunct thing, because we don't know
+	// its format. So that's why we just forget about it here, and recreate it if somebody
+	// ever tries to write to that stream.
+	forgetStreams := []string{}
+	for _, stream := range a.streams {
+		if stream.startTime.IsZero() {
 			forgetStreams = append(forgetStreams, stream.name)
 		}
 	}
 	for _, streamName := range forgetStreams {
 		delete(a.streams, streamName)
+	}
+
+	return nil
+}
+
+func (a *Archive) scanStream(stream *videoStream) error {
+	// Scan all files in the stream
+	streamDir := a.streamDir(stream.name)
+	foundTime := map[string]*videoFileIndex{} // Total size of all .rf1i/.rf1p files (can be multiple tracks)
+	foundVideo := map[string]bool{}           // Have we found the .rf1i file?
+	streamFormat := a.formats[0]              // Just assume rf1
+	err := filepath.WalkDir(streamDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == streamDir {
+			// first iteration of walk
+			return nil
+		}
+		if d.IsDir() {
+			// This is unexpected, but we'll ignore it.
+			// We expect to find a flat list of video files in the stream directory - no sub-directories.
+			return filepath.SkipDir
+		}
+		// Check if this is a video file
+		onlyFilename := filepath.Base(path)
+		// We need to chop the filename up here, because for rf1, look at this example:
+		// path: /var/lib/cyclops/archive/camera-0001/1708584695_video.rf1i
+		// onlyFilename: 1708584695_video.rf1i
+		// Logically, we call this file "1708584695", because there could be more
+		// tracks, such as 1708584695_audio.rf1i, and we don't want to count this video twice.
+		// It's also nice to consistent in writing and reading video files. So that's why
+		// we strip all the rf1-specific filename stuff away here.
+		tMilli := int64(0)
+		startTimeUnixMilli, remainder, splitOK := strings.Cut(onlyFilename, "_")
+		if splitOK {
+			tMilli, _ = strconv.ParseInt(startTimeUnixMilli, 10, 64)
+		}
+		if tMilli == 0 {
+			// Ignore files that don't start with "{unixmilli}_"
+			return nil
+		}
+		trackName, ext, _ := strings.Cut(remainder, ".")
+		if ext != "rf1i" && ext != "rf1p" {
+			// Ignore unrecognized filename
+			return nil
+		}
+		//if err != nil {
+		//	return fmt.Errorf("Invalid number in video file '%v'. Expected '{unixmilli}_...' video filename", onlyFilename)
+		//}
+		// Ignore stat error
+		st, _ := os.Stat(path)
+		entry := foundTime[startTimeUnixMilli]
+		if entry == nil {
+			foundTime[startTimeUnixMilli] = &videoFileIndex{
+				filename:  startTimeUnixMilli,
+				startTime: tMilli,
+				size:      0,
+			}
+			entry = foundTime[startTimeUnixMilli]
+		}
+		// Sum of all files with the same timestamp
+		entry.size += st.Size()
+
+		if ext == "rf1i" {
+			foundVideo[startTimeUnixMilli] = true
+			entry.tracks = append(entry.tracks, trackName)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if len(foundVideo) != 0 {
+		// Stream has at least one video file
+		for filename := range foundVideo {
+			stream.files = append(stream.files, *foundTime[filename])
+		}
+		sort.Slice(stream.files, func(i, j int) bool {
+			return stream.files[i].startTime < stream.files[j].startTime
+		})
+		latestVideoFile := filepath.Join(streamDir, stream.files[len(stream.files)-1].filename)
+
+		stream.format = streamFormat
+		stream.startTime = time.UnixMilli(stream.files[0].startTime)
+		if file, err := streamFormat.Open(latestVideoFile); err != nil {
+			return fmt.Errorf("Error opening latest video file '%v' in stream %v: %w", latestVideoFile, stream.name, err)
+		} else {
+			// stream.endTime is the end time of the longest track in the latest video file (all tracks will usually have similar durations)
+			stream.endTime = VideoFileMaxTrackEndTime(file)
+			file.Close()
+		}
 	}
 	return nil
 }
@@ -306,12 +350,61 @@ func (a *Archive) getOrCreateStream(streamName string) (*videoStream, error) {
 	return stream, nil
 }
 
+func (a *Archive) deleteEmptyStreamHaveLock(streamName string) {
+	dir := a.streamDir(streamName)
+	if err := os.RemoveAll(dir); err != nil {
+		a.log.Warnf("Failed to remove empty stream directory %v: %v", dir, err)
+	}
+	delete(a.streams, streamName)
+}
+
+// Return the total size of all files in the archive
+func (a *Archive) TotalSize() int64 {
+	ss := a.StreamSizes()
+	total := int64(0)
+	for _, size := range ss {
+		total += size
+	}
+	return total
+}
+
+// Return the size of each stream
+func (a *Archive) StreamSizes() map[string]int64 {
+	streamSize := map[string]int64{}
+
+	// Make a copy of 'a.streams', so that we don't need to hold a.streamsLock for long.
+	a.streamsLock.Lock()
+	streams := make([]*videoStream, 0, len(a.streams))
+	for _, stream := range a.streams {
+		streams = append(streams, stream)
+	}
+	a.streamsLock.Unlock()
+
+	for _, stream := range streams {
+		stream.contentLock.Lock()
+
+		size := int64(0)
+		for _, file := range stream.files {
+			size += file.size
+		}
+		if stream.current != nil {
+			currentSize, _ := stream.current.file.Size()
+			size += currentSize
+		}
+		streamSize[stream.name] = size
+
+		stream.contentLock.Unlock()
+	}
+
+	return streamSize
+}
+
 // Write a payload to the archive.
 // payload keys are track names.
 // The payload must always include the exact same set of tracks, even if some of
 // them have no new content to write. We use the set of tracks and their properties (eg width, height)
 // to figure out when we need to close a file and open a new one. For example, if the user
-// decides to enable HD recording, then the track composition would change. Such as change
+// decides to enable HD recording, then the track composition would change. Such a change
 // requires a new video file.
 func (a *Archive) Write(streamName string, payload map[string]TrackPayload) error {
 	err := a.write(streamName, payload)
@@ -390,22 +483,30 @@ func (a *Archive) write(streamName string, payload map[string]TrackPayload) erro
 
 		if mustCloseReason != "" {
 			a.log.Infof("Closing video file %v: %v", stream.current.filename, mustCloseReason)
-			err := stream.current.file.Close()
+			currentSize, err := stream.current.file.Size()
 			if err != nil {
-				a.log.Errorf("Error closing video file %v: %v", stream.current.filename, err)
+				return fmt.Errorf("Error getting size of video file %v: %v", stream.current.filename, err)
 			}
 			// Add to index
 			stream.files = append(stream.files, videoFileIndex{
 				filename:  filepath.Base(stream.current.filename),
 				startTime: stream.current.startTime.UnixMilli(),
+				size:      currentSize,
+				tracks:    stream.current.tracks,
 			})
+			err = stream.current.file.Close()
+			if err != nil {
+				a.log.Errorf("Error closing video file %v: %v", stream.current.filename, err)
+			}
 			stream.current = nil
 		}
 	}
 
 	if stream.current == nil {
 		// Create a new video file
-		//
+
+		// But first, see if we've run out of disk space, and need to recycle some old files.
+
 		// Filename has resolution of one millisecond.
 		// I can't see a scenario where you will start/stop recording within 1ms.
 		//
@@ -441,6 +542,9 @@ func (a *Archive) write(streamName string, payload map[string]TrackPayload) erro
 	for track, packets := range payload {
 		if err := stream.current.file.Write(track, packets.NALUs); err != nil {
 			return fmt.Errorf("Error writing to video file %v: %v", stream.current.filename, err)
+		}
+		if !slices.Contains(stream.current.tracks, track) {
+			stream.current.tracks = append(stream.current.tracks, track)
 		}
 	}
 
@@ -478,6 +582,9 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 
 	tracks := map[string][]rf1.NALU{}
 	totalBytes := 0
+	a.settingsLock.Lock()
+	maxBytesPerRead := a.settings.MaxBytesPerRead
+	a.settingsLock.Unlock()
 
 	// Read the tracks from vf, and append them to our result set
 	readFromVideoFile := func(filename string, vf VideoFile) error {
@@ -491,8 +598,8 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 				totalBytes += len(p.Payload)
 			}
 		}
-		if totalBytes > a.maxBytesPerRead {
-			return fmt.Errorf("Read limit exceeded: %v bytes", a.maxBytesPerRead)
+		if totalBytes > maxBytesPerRead {
+			return fmt.Errorf("Read limit exceeded: %v bytes", maxBytesPerRead)
 		}
 		return nil
 	}

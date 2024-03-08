@@ -36,3 +36,7 @@ per file. Let's imagine a 7 day archive, with one file for every 1000 seconds.
 7 \* 24 \* 3600 = 604800 seconds. 604800 / 1000 = 604 files. 604 \* 40 = 24160
 bytes per stream. This is small enough that the pros seems to outweight the
 cons.
+
+Update -- because of our rf1 multi-file architecture, we also need to store the
+list of tracks inside this index. So the data structure is more like 80 bytes
+per file. Even if we double the 24kb per stream, that's still nothing.
