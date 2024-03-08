@@ -17,10 +17,14 @@ func (a *Archive) StopSweeper() {
 
 func (a *Archive) sweeperThread() {
 	for {
+		a.settingsLock.Lock()
+		interval := a.settings.SweepInterval
+		a.settingsLock.Unlock()
+
 		select {
 		case <-a.sweepStop:
 			return
-		case <-time.After(a.settings.SweepInterval):
+		case <-time.After(interval):
 			a.sweepIfNecessary()
 		}
 	}
@@ -28,12 +32,16 @@ func (a *Archive) sweeperThread() {
 
 // Check if the archive is too large, and delete old files if necessary
 func (a *Archive) sweepIfNecessary() {
-	if a.settings.MaxArchiveSize <= 0 {
+	a.settingsLock.Lock()
+	maxArchiveSize := a.settings.MaxArchiveSize
+	a.settingsLock.Unlock()
+
+	if maxArchiveSize <= 0 {
 		return
 	}
 	totalSize := a.TotalSize()
-	maxSize := (a.settings.MaxArchiveSize * 99) / 100
-	targetSize := (a.settings.MaxArchiveSize * 98) / 100
+	maxSize := (maxArchiveSize * 99) / 100
+	targetSize := (maxArchiveSize * 98) / 100
 	if totalSize > maxSize {
 		a.sweep(totalSize, targetSize)
 	}

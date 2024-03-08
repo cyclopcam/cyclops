@@ -74,11 +74,12 @@ type Archive struct {
 	baseDir              string
 	formats              []VideoFormat
 	maxVideoFileDuration time.Duration // We need to know this so that it is fast to find files close to a given time period.
-	settingsLock         sync.Mutex
-	settings             ArchiveSettings
-	sweepStop            chan bool
+	sweepStop            chan bool     // Tell the sweeper to stop
 
-	streamsLock sync.Mutex // Guards access to the streams map
+	settingsLock sync.Mutex // Guards access to settings
+	settings     ArchiveSettings
+
+	streamsLock sync.Mutex // Guards access to the streams map. Access inside a stream needs stream.contentLock.
 	streams     map[string]*videoStream
 }
 
@@ -647,9 +648,10 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 	// We need to manage two scenarios here:
 	// 1. Current is still open
 	// 2. Current has been closed
-	// It is tempting to always reopen 'current', but our rf1 files aren't guaranteed to be in
-	// a consistent state if they're still being written to (i.e. index could be written before
-	// payload). Because of this, we always try to use our open handle for 'current'.
+	// It is tempting to always reopen a new handle to 'current', but our rf1 files aren't
+	// guaranteed to be in a consistent state if they're still being written to
+	// (i.e. index could be written before payload). Because of this, we always use
+	// our open handle for 'current'.
 	if useCurrent != nil {
 		stream.contentLock.Lock()
 		defer stream.contentLock.Unlock()
