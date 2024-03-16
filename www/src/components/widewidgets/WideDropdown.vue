@@ -6,7 +6,7 @@ import { ref } from 'vue';
 let props = defineProps<{
 	label: string,
 	modelValue: string | null,
-	options: string[]
+	options: any[] // Can be an array of strings, or array of objects of type {value:string, label: string}
 }>()
 let emit = defineEmits(['update:modelValue']);
 
@@ -14,7 +14,29 @@ let showModal = ref(false)
 
 function onSelect(value: any) {
 	showModal.value = false;
-	emit('update:modelValue', value);
+	if (typeof value === 'object')
+		emit('update:modelValue', value.value);
+	else
+		emit('update:modelValue', value);
+}
+
+// Given a value, such as "motion", return the label associated with it, such as "Whenever there is motion"
+function valueToLabel(value: string | null) {
+	if (value == null)
+		return "";
+	if (typeof props.options[0] === 'object') {
+		let obj = props.options.find(o => o.value === value);
+		if (obj)
+			return obj.label;
+		return value;
+	}
+	return value;
+}
+
+function displayValue(value: any) {
+	if (typeof value === 'object')
+		return value.label;
+	return value;
 }
 
 </script>
@@ -26,14 +48,14 @@ function onSelect(value: any) {
 		</div>
 		<div class="valueContainer" @click="showModal = true">
 			<div class="value">
-				{{ props.modelValue }}
+				{{ valueToLabel(props.modelValue) }}
 			</div>
 			<img :src="SelectorIcon" class="selector" />
 		</div>
 		<modal v-if="showModal" @close="showModal = false" tint="dark" :scrollable="true">
 			<div class="modalContainer">
 				<div v-for="opt in options" class="modalElement" @click="onSelect(opt)">
-					{{ opt }}
+					{{ displayValue(opt) }}
 				</div>
 			</div>
 		</modal>

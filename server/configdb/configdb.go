@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/log"
@@ -17,7 +18,8 @@ type ConfigDB struct {
 	PrivateKey wgtypes.Key
 	PublicKey  wgtypes.Key
 
-	Config ConfigJSON // Read from system_config table at startup
+	configLock sync.Mutex // Guards all access to Config
+	config     ConfigJSON // Read from system_config table at startup
 
 	//keyLock    sync.Mutex
 	//privateKey wgtypes.Key
@@ -40,12 +42,20 @@ func NewConfigDB(logger log.Log, dbFilename, explicitPrivateKey string) (*Config
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read or create private key: %w", err)
 	}
-	return &ConfigDB{
+
+	systemConfig := SystemConfig{}
+	configDB.First(&systemConfig)
+
+	cdb := &ConfigDB{
 		Log:        logger,
 		DB:         configDB,
 		PrivateKey: privateKey,
 		PublicKey:  privateKey.PublicKey(),
-	}, nil
+	}
+	if systemConfig.Value != nil {
+		cdb.config = systemConfig.Value.Data
+	}
+	return cdb, nil
 }
 
 func readOrCreatePrivateKey(logger log.Log, db *gorm.DB, explicitPrivateKey string) (wgtypes.Key, error) {
@@ -81,8 +91,8 @@ func readOrCreatePrivateKey(logger log.Log, db *gorm.DB, explicitPrivateKey stri
 			return inDB, nil
 		} else {
 			logger.Warnf("Explicit private key does not match private key in database")
-			logger.Warnf("Private key from database was %v", inDB)
-			logger.Warnf("I am going to overwrite the database key with the explicitly provided key.")
+			logger.Warnf("Old private key from database was %v", inDB)
+			logger.Warnf("I am going to overwrite that database key with the explicitly provided key.")
 			logger.Warnf("This might be the last time you will ever see the key %v, so if you need to", inDB)
 			logger.Warnf("preserve it, or you're not sure, then you should copy it somewhere safe now.")
 			if err := db.Delete(&keyRecord).Error; err != nil {

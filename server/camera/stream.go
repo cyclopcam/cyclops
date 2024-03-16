@@ -21,9 +21,6 @@ import (
 	"github.com/bluenviron/gortsplib/v4/pkg/liberrors"
 )
 
-// Log stream stats every 5 minutes
-const LogStreamStatsInterval = 5 * time.Minute
-
 // A stream sink is fundamentally just a channel
 type StreamSinkChan chan StreamMsg
 
@@ -77,6 +74,12 @@ type frameStat struct {
 	size  int
 }
 
+// Stream is a bridge between the RTSP library (gortsplib) and one or more "sink" objects.
+// The stream understands just enough about RTSP and video codecs to be able to receive
+// information from gortsplib, transform them into our own internal data structures,
+// and pass them onto the sinks.
+// For each camera, we create one stream to handle the high res video, and another stream
+// for the low res video.
 type Stream struct {
 	Log        log.Log
 	Client     *gortsplib.Client
@@ -96,6 +99,10 @@ type Stream struct {
 	infoLock sync.Mutex
 	info     *StreamInfo // With Go 1.19 one could use atomic.Pointer[T] here
 
+	// Used to infer real time from packet's relative timestamps
+	refTimeWall     time.Time
+	refTimeDuration time.Duration
+
 	recentFramesLock sync.Mutex
 	recentFrames     ringbuffer.RingP[frameStat] // Some stats of recent frames (eg PTS, size)
 	loggedStatsAt    time.Time
@@ -104,7 +111,7 @@ type Stream struct {
 func NewStream(logger log.Log, cameraName, streamName string) *Stream {
 	return &Stream{
 		Log:          log.NewPrefixLogger(logger, "Stream "+cameraName+"."+streamName),
-		recentFrames: ringbuffer.NewRingP[frameStat](64),
+		recentFrames: ringbuffer.NewRingP[frameStat](128),
 		CameraName:   cameraName,
 		StreamName:   streamName,
 		Ident:        cameraName + "." + streamName,
@@ -191,6 +198,9 @@ func (s *Stream) Listen(address string) error {
 			return
 		}
 
+		// I don't seem to be getting these from my Hikvision cameras
+		//ntp, ntpOK := client.PacketNTP(media, pkt)
+
 		nalus, err := rtpDecoder.Decode(pkt)
 		if err != nil {
 			if err != rtph264.ErrNonStartingPacketAndNoPrevious && err != rtph264.ErrMorePacketsNeeded {
@@ -200,6 +210,25 @@ func (s *Stream) Listen(address string) error {
 		}
 
 		now := time.Now()
+
+		// Note that gortsplib also has client.PacketNTP(), which we could experiment with.
+		// Perhaps we should measure NTP time from the camera, and if its close enough to our
+		// perceived time, then use the camera's time.
+
+		// establish reference time
+		if s.refTimeWall.IsZero() && len(nalus) != 0 {
+			s.refTimeWall = now
+			s.refTimeDuration = pts
+		}
+
+		// compute absolute PTS
+		refTime := time.Time{}
+		if !s.refTimeWall.IsZero() {
+			refTime = s.refTimeWall.Add(pts - s.refTimeDuration)
+			//if ntpOK {
+			//	fmt.Printf("ntp: %v, refTime: %v\n", ntp, refTime)
+			//}
+		}
 
 		// Populate width & height.
 		s.infoLock.Lock()
@@ -227,7 +256,7 @@ func (s *Stream) Listen(address string) error {
 		// streams, so this penalty is not too severe.
 		// A typical iframe packet from a 320x240 camera is around 100 bytes!
 		// A keyframe is between 10 and 20 KB.
-		cloned := videox.ClonePacket(nalus, pts, now)
+		cloned := videox.ClonePacket(nalus, pts, now, refTime)
 		cloned.RecvID = recvID.Add(1)
 
 		// Frame size stats can be interesting
@@ -437,9 +466,8 @@ func (s *Stream) addFrameToStats(nalus [][]byte, pts time.Duration) {
 		}
 	}
 
-	now := time.Now()
-	if now.Sub(s.loggedStatsAt) > LogStreamStatsInterval && s.recentFrames.Len() >= s.recentFrames.Capacity() {
-		s.loggedStatsAt = now
+	if s.loggedStatsAt.IsZero() && s.recentFrames.Len() >= s.recentFrames.Capacity() {
+		s.loggedStatsAt = time.Now()
 		stats := s.statsNoMutexLock()
 		s.Log.Infof("FPS: %.1f, Avg: %.0f, IDR: %.0f, Non-IDR: %.0f", stats.FPS, stats.FrameSize, stats.KeyFrameSize, stats.InterFrameSize)
 	}

@@ -37,11 +37,11 @@ type LiveCameras struct {
 	timeUntilCameraRestart time.Duration // Wait this long for a camera to be silent, before restarting it
 	closeTestCameraAfter   time.Duration // Close the test camera after this long
 
-	// In order to speed up the sequence of Test Camera, Add Camera, we hang onto the most recently
+	// In order to speed up the UX sequence of Test Camera, Add Camera, we hang onto the most recently
 	// tested camera. This prevents an often multi-second delay that the user would experience
 	// when adding a new camera to the system. The first delay is the initial test connection.
 	// The second (unnecessary) delay is when adding that camera. So we keep the initial connection
-	// from the test alive.
+	// from the test alive, thereby eliminating the second unnecessary delay.
 	lastTestedCameraLock      sync.Mutex // Guards access to lastTestedCameraXXX
 	lastTestedCamera          *camera.Camera
 	lastTestedCameraConfig    configdb.Camera

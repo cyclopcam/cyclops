@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -177,4 +178,19 @@ func (t *TempFiles) cleanOld(dir string, maxAge time.Duration, touchedAt map[str
 // For a given maximum age, return a reasonable cleanup interval
 func (t *TempFiles) cleanupIntervalOf(maxAge time.Duration) time.Duration {
 	return maxAge / 2
+}
+
+// Try to find any temporary file directory, opting for 'preferred' if that is specified,
+// and falling back to other guesses.
+func FindAnyTempFileDirectory(preferred string) (string, error) {
+	if preferred != "" {
+		if err := os.MkdirAll(preferred, 0770); err == nil {
+			return preferred, nil
+		}
+	}
+	dir := os.TempDir()
+	if err := os.MkdirAll(dir, 0770); err == nil {
+		return dir, nil
+	}
+	return "", errors.New("Unable to find a suitable temporary files directory")
 }

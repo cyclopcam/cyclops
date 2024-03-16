@@ -12,7 +12,8 @@ import SettingsHome from "@/components/settings/SettingsHome.vue";
 import EditCamera from "@/components/settings/EditCamera.vue";
 import ScanForCameras from "@/components/settings/ScanForCameras.vue";
 import AddCamera from "@/components/settings/AddCamera.vue";
-import SystemVariables from "@/components/settings/SystemVariables.vue";
+import SystemVariables from "@/components/settings/SystemVariables.vue"; // Old
+import SystemSettings from "@/components/settings/SystemSettings.vue"; // New
 import Empty from "@/components/home/Empty.vue";
 import BlankView from "@/views/Blank.vue";
 
@@ -35,9 +36,14 @@ export const router = createRouter({
 							component: SettingsHome,
 						},
 						{
+							path: "systemOld",
+							name: "rtSettingsSystemOld",
+							component: SystemVariables,
+						},
+						{
 							path: "system",
 							name: "rtSettingsSystem",
-							component: SystemVariables,
+							component: SystemSettings,
 						},
 						{
 							path: "camera/:id",

@@ -32,8 +32,9 @@ import (
 // Right now the culprit could be any one of these:
 // 1. HikVision cameras
 // 2. gortsplib
-// 3. h264
-// 4. My understanding
+// 3. The way I'm using the h264 codec in ffmpeg
+// 4. My SODB/Annex-B encoder
+// 5. My understanding
 const EnableEmulationPreventBytesEscaping = false
 
 // EmulationState can be used to inform us whether a NALU has any emulation prevention bytes.
@@ -77,7 +78,8 @@ type VideoPacket struct {
 	RecvTime  time.Time // Wall time when the packet was received. This is obviously subject to network jitter etc, so not a substitute for PTS
 	H264NALUs []NALU
 	H264PTS   time.Duration
-	IsBacklog bool // a bit of a hack to inject this state here. maybe an integer counter would suffice? (eg nBacklogPackets)
+	WallPTS   time.Time // Reference wall time combined with the received PTS. We consider this the ground truth/reality of when the packet was recorded.
+	IsBacklog bool      // a bit of a hack to inject this state here. maybe an integer counter would suffice? (eg nBacklogPackets)
 }
 
 // A list of packets, with some helper functions
@@ -214,6 +216,7 @@ func (p *VideoPacket) Clone() *VideoPacket {
 		RecvID:    p.RecvID,
 		RecvTime:  p.RecvTime,
 		H264PTS:   p.H264PTS,
+		WallPTS:   p.WallPTS,
 		IsBacklog: p.IsBacklog,
 	}
 	c.H264NALUs = make([]NALU, len(p.H264NALUs))
@@ -313,7 +316,7 @@ func (p *VideoPacket) EncodeToAnnexBPacket() []byte {
 // NOTE: gortsplib re-uses buffers, which is why we copy the payloads.
 // NOTE2: I think that after upgrading gortsplib in Jan 2024, it no longer re-uses buffers,
 // so I should revisit the requirement of our deep clone here.
-func ClonePacket(nalusIn [][]byte, pts time.Duration, recvTime time.Time) *VideoPacket {
+func ClonePacket(nalusIn [][]byte, pts time.Duration, recvTime time.Time, wallPTS time.Time) *VideoPacket {
 	nalus := []NALU{}
 	for _, buf := range nalusIn {
 		// While we're doing a memcpy, we might as well append the prefix bytes.
@@ -331,6 +334,7 @@ func ClonePacket(nalusIn [][]byte, pts time.Duration, recvTime time.Time) *Video
 		RecvTime:  recvTime,
 		H264NALUs: nalus,
 		H264PTS:   pts,
+		WallPTS:   wallPTS,
 	}
 }
 

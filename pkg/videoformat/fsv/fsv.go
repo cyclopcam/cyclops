@@ -65,6 +65,15 @@ type TrackPayload struct {
 	NALUs       []rf1.NALU
 }
 
+func MakeVideoPayload(codec string, width, height int, nalus []rf1.NALU) TrackPayload {
+	return TrackPayload{
+		Codec:       codec,
+		VideoWidth:  width,
+		VideoHeight: height,
+		NALUs:       nalus,
+	}
+}
+
 // Archive is a collection of zero or more video streams,
 // rooted at the same base directory. Every sub-directory from the base holds
 // the videos of one stream. The stream name is the directory name.
@@ -86,7 +95,7 @@ type Archive struct {
 // Archive Settings
 type ArchiveSettings struct {
 	MaxBytesPerRead int           // Maximum number of bytes that we will return from a single Read()
-	MaxArchiveSize  int64         // Maximum size of all files in the archive. We will eat into old files when we need to recycle space.
+	MaxArchiveSize  int64         // Maximum size of all files in the archive. We will eat into old files when we need to recycle space. Zero = no limit.
 	SweepInterval   time.Duration // How often we check if we need to recycle space
 }
 
@@ -151,6 +160,12 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat, settings Archiv
 	}
 
 	return archive, nil
+}
+
+func (a *Archive) Settings() ArchiveSettings {
+	a.settingsLock.Lock()
+	defer a.settingsLock.Unlock()
+	return a.settings
 }
 
 func (a *Archive) SetSettings(settings ArchiveSettings) {

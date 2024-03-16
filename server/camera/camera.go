@@ -18,9 +18,9 @@ type Camera struct {
 	Config     configdb.Camera // Copy from the config database, from the moment when the camera was created. Can be out of date if camera config has been modified since.
 	LowStream  *Stream
 	HighStream *Stream
-	HighDumper *VideoDumpReader
+	HighDumper *VideoRingBuffer
 	LowDecoder *VideoDecodeReader
-	LowDumper  *VideoDumpReader
+	LowDumper  *VideoRingBuffer
 	lowResURL  string
 	highResURL string
 }
@@ -42,11 +42,11 @@ func NewCamera(log log.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Came
 		return nil, err
 	}
 
-	highDumper := NewVideoDumpReader(ringBufferSizeBytes)
+	highDumper := NewVideoRingBuffer(ringBufferSizeBytes)
 
 	// See discussion in videoDumpReader.go about the amount of storage that we need here
 	// SYNC-MAX-TRAIN-RECORD-TIME
-	lowDumper := NewVideoDumpReader(3 * 1024 * 1024)
+	lowDumper := NewVideoRingBuffer(3 * 1024 * 1024)
 
 	lowDecoder := NewVideoDecodeReader()
 	high := NewStream(log, cfg.Name, "high")

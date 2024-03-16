@@ -9,6 +9,12 @@ import * as base64 from "base64-arraybuffer";
 import { fetchAndValidateServerPublicKey, getBearerToken } from "./auth";
 import type { Chacha20 } from "ts-chacha20";
 
+export interface StartupError {
+	// SYNC-STARTUP-ERROR-CODES
+	code: "ARCHIVE_PATH";
+	message: string;
+}
+
 // A global reactive object used throughout the app
 export class Globals {
 	// If isApp is true, then we are running in a WebView inside our mobile app.
@@ -22,7 +28,8 @@ export class Globals {
 	cameras: CameraInfo[] = [];
 	networkError = ""; // Most recent network error, typically shown in the top/bottom bar
 	isLoggedIn = false; // Only valid after isSystemInfoLoadFinished = true
-	readyError = ""; // Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
+	readyError = ""; // DEPRECATED. Replaced by startupErrors. Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
+	startupErrors: StartupError[] = []; // Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
 	isSystemInfoLoadFinished = false;
 
 	// isServerPublicKeyLoaded is set to true after we've validated the server's
@@ -115,7 +122,7 @@ export class Globals {
 	//	this.encryptedBearerToken = loadAndEncryptBearerToken(this.ownPrivateKey, serverKey, this.sharedNonce);
 	//}
 
-	async loadSystemInfo() {
+	async bootup(setVueRoute: boolean) {
 		await this.loadPublicKey();
 
 		try {
@@ -149,24 +156,29 @@ export class Globals {
 				}
 			} else if (r.status === 200) {
 				this.isLoggedIn = true;
-				await this.postLoadAutoRoute();
+				await this.postAuthenticateLoadSystemInfo(setVueRoute);
 			}
 		} catch (err) {
-			console.log("loadSystemInfo failed", err);
+			console.log("bootup failed", err);
 		}
 
 		this.isSystemInfoLoadFinished = true;
 	}
 
-	async postLoadAutoRoute() {
+	async postAuthenticateLoadSystemInfo(setVueRoute: boolean) {
 		let root = await (await fetch("/api/system/info")).json();
 		if (root.readyError) {
+			// OLD
+			console.log(`readyError: ${root.readyError}`);
 			this.readyError = root.readyError;
 			return;
 		}
+		this.startupErrors = root.startupErrors;
+		console.log(`startupErrors`, root.startupErrors);
 
 		if (root.cameras.length === 0) {
-			replaceRoute(router, { name: "rtWelcome" });
+			if (setVueRoute)
+				replaceRoute(router, { name: "rtWelcome" });
 		} else {
 			// This is supposed to be a catch-all place where we fetch data
 			// about all cameras in the system, regardless of how the user
@@ -175,11 +187,33 @@ export class Globals {
 			// perhaps on a 'preload' property of a top-level route or something.
 			this.loadCamerasFromInfo(root);
 
-			let current = router.currentRoute.value.name;
-			if (!current || current === "rtHome" || current === "rtLogin") {
-				replaceRoute(router, { name: "rtMonitor" });
+			if (setVueRoute) {
+				let current = router.currentRoute.value.name;
+				if (!current || current === "rtHome" || current === "rtLogin") {
+					replaceRoute(router, { name: "rtMonitor" });
+				}
 			}
 		}
+	}
+
+	// Restart the server
+	// Returns an empty string on success.
+	async restart(timeoutSeconds: number): Promise<string> {
+		let r = await fetchOrErr('/api/system/restart', { method: 'POST' });
+		if (!r.ok) {
+			return r.error;
+		}
+		let start = new Date().getTime();
+		while (true) {
+			await sleep(200);
+			let r = await fetchOrErr('/api/system/info');
+			if (r.ok)
+				break;
+			if (new Date().getTime() - start > timeoutSeconds * 1000)
+				return "Timeout";
+		}
+		await this.postAuthenticateLoadSystemInfo(false);
+		return "";
 	}
 
 	async loadCameras() {

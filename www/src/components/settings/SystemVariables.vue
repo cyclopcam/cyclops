@@ -6,6 +6,8 @@ import { onMounted, ref } from 'vue';
 import { encodeQuery, fetchOrErr, sleep } from '@/util/util';
 import type { SystemInfoJSON } from '@/api/api';
 
+// OLD! Replaced by SystemSettings.vue
+
 let props = defineProps<{
 	initialSetup?: boolean,
 }>()
@@ -170,8 +172,9 @@ onMounted(() => {
 	<div class="flexColumn">
 		<div style="padding: 0px 20px">
 			<div v-for="v of variables">
-				<form-text :ctx="ctx" :id="v.def.key" :big-label="v.def.explanation" :label="v.def.title" v-model="v.val"
-					:required="v.def.required" :placeholder="placeholder(v)" :password="v.def.type === 'password'" />
+				<form-text :ctx="ctx" :id="v.def.key" :big-label="v.def.explanation" :label="v.def.title"
+					v-model="v.val" :required="v.def.required" :placeholder="placeholder(v)"
+					:password="v.def.type === 'password'" />
 			</div>
 		</div>
 		<form-bottom :ctx="ctx" @submit="onSubmit" />

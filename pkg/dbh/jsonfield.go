@@ -27,7 +27,11 @@ func (j *JSONField[T]) Scan(src any) error {
 	}
 	srcByte, ok := src.([]byte)
 	if !ok {
-		return errors.New("JSONField underlying type must be []byte (some kind of Blob/JSON/JSONB field)")
+		srcString, ok := src.(string)
+		if !ok {
+			return errors.New("JSONField underlying type must be []byte or string (some kind of Blob/JSON/JSONB/text field)")
+		}
+		srcByte = []byte(srcString)
 	}
 	if err := json.Unmarshal(srcByte, &j.Data); err != nil {
 		return err

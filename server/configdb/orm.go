@@ -61,7 +61,7 @@ type Key struct {
 
 type SystemConfig struct {
 	Key   string `gorm:"primaryKey"`
-	Value dbh.JSONField[ConfigJSON]
+	Value *dbh.JSONField[ConfigJSON]
 }
 
 // UserPermissions are single characters that are present in the user's Permissions field

@@ -251,7 +251,7 @@ onMounted(async () => {
 		<wide-text label="IP Address / Hostname" v-model="host" />
 		<wide-dropdown label="Model" v-model="model" :options="constants.cameraModels" />
 		<wide-text label="Username" v-model="username" />
-		<wide-text label="Password" v-model="password" :password="true" autocomplete="off" />
+		<wide-text label="Password" v-model="password" type="password" autocomplete="off" />
 		<wide-section>
 			<!-- <div v-if="testResult === TestResult.Success" class="success">Connection Succeeded</div> -->
 			<div v-if="error" class="error">{{ error }}</div>
@@ -262,8 +262,8 @@ onMounted(async () => {
 				<div style="width:10px" />
 				<button :class="{ focalButton: canSave(), submitButtons: true }" :disabled="!canSave() || busySaving"
 					@click="onSave">{{
-						saveButtonTitle()
-					}}</button>
+			saveButtonTitle()
+		}}</button>
 			</div>
 			<div v-if="!isNewCamera || testResultImageBlob || testBusy" class="previewContainer">
 				<camera-preview :camera="original" :image-blob="testResultImageBlob" />

@@ -114,7 +114,6 @@ func (a *Archive) deleteOldestFile(stream *videoStream) {
 	} else if stream.current != nil {
 		stream.startTime = stream.current.startTime
 	} else {
-		// We should maybe delete the stream
 		a.log.Warnf("Stream %v is now empty", stream.name)
 		stream.startTime = time.Time{}
 		stream.endTime = time.Time{}

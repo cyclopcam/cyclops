@@ -51,11 +51,11 @@ precision. That's 22 bits total for time.
 
 Next question: How many bits do we need for the NALU location on disk?
 
-| Frames per Segment | Index Bits | Max Segment Size | Max Average Frame Size |
-| ------------------ | ---------- | ---------------- | ---------------------- |
-| 1024               | 30         | 1 GB             | 1 MB                   |
-| 1024               | 31         | 2 GB             | 2 MB                   |
-| 1024               | 32         | 4 GB             | 4 MB                   |
+| Seconds | Index Bits | Max Segment Size | Max Average Frame Size |
+| ------- | ---------- | ---------------- | ---------------------- |
+| 1024    | 30         | 1 GB             | 1 MB                   |
+| 1024    | 31         | 2 GB             | 2 MB                   |
+| 1024    | 32         | 4 GB             | 4 MB                   |
 
 An H264 video stream of about 1920 x 1080 has an average frame size of under 100
 KB, so an average frame size of 1MB is a lot. If we run out of space in a

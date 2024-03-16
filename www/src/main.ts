@@ -14,4 +14,4 @@ app.directive("focus", {
 });
 app.mount("#app");
 
-globals.loadSystemInfo();
+globals.bootup(true);

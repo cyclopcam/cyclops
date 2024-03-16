@@ -26,7 +26,7 @@ async function onSubmit() {
 	}
 
 	globals.networkError = '';
-	globals.postLoadAutoRoute();
+	globals.postAuthenticateLoadSystemInfo();
 }
 
 //onMounted(() => {
@@ -49,6 +49,4 @@ async function onSubmit() {
 	</mobile-fullscreen>
 </template>
 
-<style lang="scss" scoped>
-
-</style>
+<style lang="scss" scoped></style>

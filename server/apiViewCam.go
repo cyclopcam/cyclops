@@ -140,7 +140,7 @@ func (s *Server) httpCamGetRecentVideo(w http.ResponseWriter, r *http.Request, p
 
 	contentType := "video/mp4"
 	fn := s.TempFiles.GetOnceOff()
-	raw, err := cam.ExtractHighRes(camera.ExtractMethodClone, duration)
+	raw, err := cam.ExtractHighRes(camera.ExtractMethodShallowClone, duration)
 	www.Check(err)
 	www.Check(raw.SaveToMP4(fn))
 
@@ -154,7 +154,7 @@ func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, para
 
 	// send backlog for small stream, so user can play immediately.
 	// could do the same for high stream too...
-	var backlog *camera.VideoDumpReader
+	var backlog *camera.VideoRingBuffer
 	if res == defs.ResLD {
 		backlog = cam.LowDumper
 	}

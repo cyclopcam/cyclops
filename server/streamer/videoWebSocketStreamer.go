@@ -72,7 +72,7 @@ type VideoWebSocketStreamer struct {
 	logPacketCount  bool
 }
 
-func RunVideoWebSocketStreamer(cameraName string, logger log.Log, conn *websocket.Conn, stream *camera.Stream, backlog *camera.VideoDumpReader, detections chan *monitor.AnalysisState) {
+func RunVideoWebSocketStreamer(cameraName string, logger log.Log, conn *websocket.Conn, stream *camera.Stream, backlog *camera.VideoRingBuffer, detections chan *monitor.AnalysisState) {
 	streamerID := atomic.AddInt64(&nextWebSocketStreamerID, 1)
 
 	streamer := &VideoWebSocketStreamer{
@@ -137,7 +137,7 @@ func (s *VideoWebSocketStreamer) onDetection(detection *monitor.AnalysisState) {
 	}
 }
 
-func (s *VideoWebSocketStreamer) run(conn *websocket.Conn, stream *camera.Stream, backlog *camera.VideoDumpReader) {
+func (s *VideoWebSocketStreamer) run(conn *websocket.Conn, stream *camera.Stream, backlog *camera.VideoRingBuffer) {
 	//s.trackID = stream.H264TrackID
 
 	if s.debug {
@@ -206,7 +206,7 @@ func (s *VideoWebSocketStreamer) run(conn *websocket.Conn, stream *camera.Stream
 	}
 }
 
-func (s *VideoWebSocketStreamer) sendBacklog(backlog *camera.VideoDumpReader) {
+func (s *VideoWebSocketStreamer) sendBacklog(backlog *camera.VideoRingBuffer) {
 	s.log.Infof("Sending backlog of frames")
 	backlog.BufferLock.Lock()
 	defer backlog.BufferLock.Unlock()

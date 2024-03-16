@@ -252,7 +252,10 @@ func (s *Server) httpRecordSetOntology(w http.ResponseWriter, r *http.Request, p
 }
 
 func (s *Server) httpRecordSendToArc(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	if s.arcCredentials == nil {
+	s.arcCredentialsLock.Lock()
+	cred := s.arcCredentials
+	s.arcCredentialsLock.Unlock()
+	if cred == nil {
 		www.PanicBadRequestf("Arc credentials are not configured")
 	}
 	recording, err := s.permanentEvents.GetRecording(www.ParseID(params.ByName("id")))
@@ -260,7 +263,7 @@ func (s *Server) httpRecordSendToArc(w http.ResponseWriter, r *http.Request, par
 	s.Log.Infof("Uploading video %v to arc", recording.ID)
 	camera := configdb.Camera{}
 	www.Check(s.configDB.DB.First(&camera, recording.CameraID).Error)
-	www.Check(arc.UploadToArc(s.arcCredentials, s.permanentEvents.Root, recording, camera.Name))
+	www.Check(arc.UploadToArc(cred, s.permanentEvents.Root, recording, camera.Name))
 	www.SendOK(w)
 }
 

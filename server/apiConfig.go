@@ -3,9 +3,14 @@ package server
 import (
 	"net"
 	"net/http"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bmharper/cimg/v2"
+	"github.com/cyclopcam/cyclops/pkg/shell"
 	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/configdb"
@@ -13,6 +18,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
 )
+
+var digitRegex = regexp.MustCompile(`\d+`)
 
 func (s *Server) httpConfigGetCamera(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	id := www.ParseID(params.ByName("cameraID"))
@@ -223,4 +230,91 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 	}
 
 	s.Log.Infof("httpConfigTestCamera finished (success: %v)", success)
+}
+
+// The user wants to know how much space is available for storing videos
+// at the given location. We return out much space is available on that
+// volume, and also how much space is used by that location.
+func (s *Server) httpConfigMeasureStorageSpace(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	inPath := strings.TrimSpace(www.RequiredQueryValue(r, "path"))
+	path := filepath.Clean(inPath)
+	// We refuse to run this operation on "/" because the "du" would take very long
+	if strings.HasSuffix(path, string(filepath.Separator)) {
+		www.PanicBadRequestf("Invalid measurement path")
+	}
+
+	s.Log.Infof("Measure space available at %v (raw %v)", path, inPath)
+	availB := int64(0)
+
+	// Keep walking up the directory tree until we can find the free space.
+	// This is useful because often the path specified won't exist yet, but
+	// it will be rooted in a valid directory, somewhere higher up.
+	availPath := path
+	for {
+		// On linux
+		// df -B1 --output=avail /path
+		// Example output:
+		//        Avail
+		// 815667085312
+		res, err := shell.Run("df", "-B1", "--output=avail", availPath)
+		if err != nil {
+			if strings.Contains(err.Error(), "No such file or directory") {
+				availPath = filepath.Dir(availPath)
+				if availPath == "\\" || availPath == "/" || availPath == "." {
+					www.PanicBadRequestf("Invalid path: %v", availPath)
+				} else {
+					continue
+				}
+			}
+			www.PanicBadRequestf("Failed to read space available: %v", err)
+		}
+		availStr := digitRegex.FindString(res)
+		availB, _ = strconv.ParseInt(availStr, 10, 64)
+		break
+	}
+
+	// For the disk used portion, we don't consider it a failed API call
+	// if we can't get the amount of disk space used. This is because
+	// the path might not exist yet.
+	usedB := int64(0)
+
+	// Measure the amount of space used by /path
+	// du -s /path
+	// Example output:
+	// 12345678 /path
+	res, err := shell.Run("du", "-s", path)
+	if err != nil {
+		s.Log.Warnf("Failed to read space used: %v", err)
+		//www.PanicBadRequestf("Failed to read space used: %v", err)
+	} else {
+		usedStr := digitRegex.FindString(string(res))
+		usedB, err = strconv.ParseInt(usedStr, 10, 64)
+	}
+
+	output := struct {
+		Available int64 `json:"available"`
+		Used      int64 `json:"used"`
+	}{
+		Available: availB,
+		Used:      usedB,
+	}
+
+	www.SendJSON(w, &output)
+}
+
+func (s *Server) httpConfigGetSettings(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	www.SendJSON(w, s.configDB.GetConfig())
+}
+
+func (s *Server) httpConfigSetSettings(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	config := configdb.ConfigJSON{}
+	www.ReadJSON(w, r, &config, 1024*1024)
+	needsRestart, err := s.configDB.SetConfig(config)
+	www.Check(err)
+	resp := struct {
+		NeedsRestart bool `json:"needsRestart"`
+	}{
+		NeedsRestart: needsRestart,
+	}
+	www.SendJSON(w, &resp)
 }
