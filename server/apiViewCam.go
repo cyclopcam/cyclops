@@ -174,7 +174,7 @@ func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, para
 
 	streamer.RunVideoWebSocketStreamer(cam.Name(), s.Log, conn, stream, backlog, newDetections)
 
-	s.monitor.RemoveWatcher(newDetections)
+	s.monitor.RemoveWatcher(cam.ID(), newDetections)
 
 	s.Log.Infof("httpCamStreamVideo done")
 }

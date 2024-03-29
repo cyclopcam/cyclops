@@ -21,6 +21,8 @@ type Camera struct {
 	HighDumper *VideoRingBuffer
 	LowDecoder *VideoDecodeReader
 	LowDumper  *VideoRingBuffer
+	//HighRecorder *VideoRecorder
+	//LowRecorder  *VideoRecorder
 	lowResURL  string
 	highResURL string
 }
@@ -73,6 +75,20 @@ func (c *Camera) Name() string {
 	return c.Config.Name
 }
 
+func (c *Camera) LongLivedName() string {
+	return c.Config.LongLivedName
+}
+
+// The name of the low res recording stream in the video archive
+func (c *Camera) LowResRecordingStreamName() string {
+	return c.Config.LongLivedName + "-" + string(defs.ResLD)
+}
+
+// The name of the high res recording stream in the video archive
+func (c *Camera) HighResRecordingStreamName() string {
+	return c.Config.LongLivedName + "-" + string(defs.ResHD)
+}
+
 func (c *Camera) Start() error {
 	if err := c.HighStream.Listen(c.highResURL); err != nil {
 		return err
@@ -95,6 +111,14 @@ func (c *Camera) Start() error {
 // Close the camera.
 // If wg is not nil, then you must use it to signal when all of your resources are closed.
 func (c *Camera) Close(wg *sync.WaitGroup) {
+	//if c.LowRecorder != nil {
+	//	c.LowRecorder.Stop()
+	//	c.LowRecorder = nil
+	//}
+	//if c.HighRecorder != nil {
+	//	c.HighRecorder.Stop()
+	//	c.HighRecorder = nil
+	//}
 	if c.LowStream != nil {
 		c.LowStream.Close(wg)
 		c.LowStream = nil

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
+	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
@@ -29,6 +30,10 @@ type VideoRecorder struct {
 	lastWriteWarning time.Time
 }
 
+// Create a new video recorder and start recording.
+// This function is expected to return very quickly. Specifically, the code inside LiveCameras
+// that starts/stops recorders holds a lock while it performs this operation, assuming that
+// this function will return very quickly.
 func StartVideoRecorder(ringBuffer *VideoRingBuffer, streamName string, archive *fsv.Archive, includeHistory time.Duration) *VideoRecorder {
 	r := &VideoRecorder{
 		Log:        ringBuffer.Log,
@@ -36,12 +41,20 @@ func StartVideoRecorder(ringBuffer *VideoRingBuffer, streamName string, archive 
 		streamName: streamName,
 		archive:    archive,
 		stop:       make(chan bool),
-		onPacket:   make(chan *videox.VideoPacket),
+		// Our packet receive channel must have a non-zero buffer to avoid a deadlock
+		// when we stop recording. After we call RemovePacketListener(), the ringbuffer
+		// might still try sending a packet or two. I can't think of a deterministic
+		// way to avoid this situation. The non-zero channel buffer is a band-aid that
+		// will probably work just fine in practice, but I would prefer to have a
+		// bullet-proof solution.
+		onPacket: make(chan *videox.VideoPacket, 10),
 	}
 	r.start(includeHistory)
 	return r
 }
 
+// Stop recording.
+// Like StartVideoRecorder(), this function is expected to return immediately.
 func (r *VideoRecorder) Stop() {
 	r.Log.Infof("VideoRecorder stopped")
 	close(r.stop)
@@ -69,7 +82,7 @@ func (r *VideoRecorder) recordFunc(includeHistory time.Duration) {
 		pause := time.Millisecond * 200 * time.Duration(math.Pow(1.5, float64(maxWaitPower)))
 		select {
 		case <-r.stop:
-			r.Log.Infof("Stream %v recorder stopped (before it started)", r.streamName)
+			r.Log.Infof("Recorder stopped (before it started)")
 			return
 		case <-time.After(pause):
 			// --- Lock ---
@@ -77,11 +90,11 @@ func (r *VideoRecorder) recordFunc(includeHistory time.Duration) {
 			history, err := r.ringBuffer.ExtractRawBufferNoLock(ExtractMethodShallowClone, includeHistory)
 			if err != nil {
 				if nAttempts == 5 {
-					r.Log.Warnf("Stream %v recorder not ready yet: %v", r.streamName, err)
+					r.Log.Warnf("Recorder not ready yet: %v", err)
 				}
 			} else {
 				if err := r.extractStreamParameters(history); err != nil {
-					r.Log.Warnf("Recorder of stream %v failed to extract parameters (width/height): %v", r.streamName, err)
+					r.Log.Warnf("Recorder failed to extract parameters (width/height): %v", err)
 				} else {
 					// It's crucial that we add our packet listener inside r.ringBuffer.BufferLock.
 					// This guarantees that we don't miss any packets.
@@ -99,12 +112,14 @@ func (r *VideoRecorder) recordFunc(includeHistory time.Duration) {
 		}
 	}
 	startAt := time.Now()
-	r.Log.Infof("Stream %v recorder starting")
+	r.Log.Infof("Recorder starting")
 
 	for {
 		select {
 		case <-r.stop:
-			r.Log.Infof("Stream %v recorder stopped after %v", r.streamName, time.Now().Sub(startAt))
+			r.ringBuffer.RemovePacketListener(r.onPacket)
+			gen.DrainChannel(r.onPacket)
+			r.Log.Infof("Recorder stopped after %v", time.Now().Sub(startAt))
 			return
 		case packet := <-r.onPacket:
 			r.writePackets([]*videox.VideoPacket{packet})
@@ -149,7 +164,7 @@ func (r *VideoRecorder) writePackets(packets []*videox.VideoPacket) {
 		now := time.Now()
 		if now.Sub(r.lastWriteWarning) > time.Second*30 {
 			r.lastWriteWarning = now
-			r.Log.Warnf("Stream %v recorder failed to write to archive: %v", r.streamName, err)
+			r.Log.Warnf("Recorder failed to write to archive: %v", err)
 		}
 	}
 }

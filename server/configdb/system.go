@@ -3,6 +3,7 @@ package configdb
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/kibi"
@@ -30,9 +31,25 @@ const (
 // Recording config
 // SYNC-SYSTEM-RECORDING-CONFIG-JSON
 type RecordingJSON struct {
-	Mode           RecordMode `json:"mode,omitempty"`
-	Path           string     `json:"path,omitempty"`           // Root directory of fsv archive
-	MaxStorageSize string     `json:"maxStorageSize,omitempty"` // Maximum storage with optional "gb", "mb", "tb" suffix. If no suffix, then bytes.
+	Mode              RecordMode `json:"mode,omitempty"`
+	Path              string     `json:"path,omitempty"`              // Root directory of fsv archive
+	MaxStorageSize    string     `json:"maxStorageSize,omitempty"`    // Maximum storage with optional "gb", "mb", "tb" suffix. If no suffix, then bytes.
+	RecordBeforeEvent int        `json:"recordBeforeEvent,omitempty"` // Record this many seconds before an event
+	RecordAfterEvent  int        `json:"recordAfterEvent,omitempty"`  // Record this many seconds after an event
+}
+
+func (r *RecordingJSON) RecordBeforeEventDuration() time.Duration {
+	if r.RecordBeforeEvent <= 0 {
+		return 15 * time.Second
+	}
+	return time.Duration(r.RecordBeforeEvent) * time.Second
+}
+
+func (r *RecordingJSON) RecordAfterEventDuration() time.Duration {
+	if r.RecordAfterEvent <= 0 {
+		return 15 * time.Second
+	}
+	return time.Duration(r.RecordAfterEvent) * time.Second
 }
 
 // Returns an error if there is anything invalid about the config, or nil if everything is OK

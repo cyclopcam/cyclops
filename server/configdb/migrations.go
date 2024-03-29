@@ -127,5 +127,31 @@ func Migrations(log log.Log) []migration.Migrator {
 		return nil
 	}))
 
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		ALTER TABLE camera RENAME TO camera_old;
+
+		CREATE TABLE camera(
+			id INTEGER PRIMARY KEY,
+			model TEXT NOT NULL,
+			name TEXT NOT NULL,
+			host TEXT NOT NULL,
+			port INT,
+			username TEXT NOT NULL,
+			password TEXT NOT NULL,
+			high_res_url_suffix TEXT,
+			low_res_url_suffix TEXT,
+			created_at INT NOT NULL,
+			updated_at INT NOT NULL,
+			long_lived_name TEXT NOT NULL
+		);
+
+		INSERT INTO camera
+			SELECT id, model, name, host, port, username, password, high_res_url_suffix, low_res_url_suffix, created_at, updated_at,
+				'cam-' || id AS long_lived_name
+			FROM camera_old;
+
+	`))
+
 	return migs
 }

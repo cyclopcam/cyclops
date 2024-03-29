@@ -14,11 +14,11 @@ import (
 
 // VideoDB manages recordings
 type VideoDB struct {
-	Root string // Where we store our videos (also directory where sqlite DB is stored)
+	Root    string // Where we store our videos (also directory where sqlite DB is stored)
+	Archive *fsv.Archive
 
-	log     log.Log
-	db      *gorm.DB
-	archive *fsv.Archive
+	log log.Log
+	db  *gorm.DB
 }
 
 // Open or create a video DB
@@ -51,18 +51,18 @@ func NewVideoDB(log log.Log, root string) (*VideoDB, error) {
 	self := &VideoDB{
 		log:     log,
 		db:      vdb,
-		archive: archive,
+		Archive: archive,
 		Root:    root,
 	}
 	return self, nil
 }
 
 func (v *VideoDB) SetMaxArchiveSize(maxSize int64) {
-	s := v.archive.Settings()
+	s := v.Archive.Settings()
 	s.MaxArchiveSize = maxSize
-	v.archive.SetSettings(s)
+	v.Archive.SetSettings(s)
 }
 
 func (v *VideoDB) Close() {
-	v.archive.Close()
+	v.Archive.Close()
 }

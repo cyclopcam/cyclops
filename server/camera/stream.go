@@ -85,7 +85,7 @@ type Stream struct {
 	Client     *gortsplib.Client
 	Ident      string // Just for logs. Simply CameraName.StreamName.
 	CameraName string // Just for logs
-	StreamName string // Just for logs
+	StreamName string // The stream name, such as "low" and "high"
 
 	// These are read at the start of Listen(), and will be populated before Listen() returns
 	//H264TrackID int                  // 0-based track index

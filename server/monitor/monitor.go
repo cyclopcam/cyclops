@@ -52,8 +52,9 @@ type Monitor struct {
 	camerasLock sync.Mutex       // Guards access to cameras
 	cameras     []*monitorCamera // Cameras that we're monitoring
 
-	watchersLock sync.RWMutex // Guards access to watchers
-	watchers     []watcher    // Channels to send detection results to
+	watchersLock       sync.RWMutex          // Guards access to watchers, watchersAllCameras
+	watchers           map[int64][]watcher   // Keys are CameraID. Values are channels to send detection results to
+	watchersAllCameras []chan *AnalysisState // Agents watching all cameras
 }
 
 type watcher struct {
@@ -168,7 +169,9 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 			objectForgetTime:          5 * time.Second,
 			verbose:                   false,
 		},
-		enabled: true,
+		watchers:           map[int64][]watcher{},
+		watchersAllCameras: []chan *AnalysisState{},
+		enabled:            true,
 	}
 	for i := 0; i < m.numNNThreads; i++ {
 		go m.nnThread()
@@ -224,7 +227,7 @@ func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *nn.DetectionResult,
 	return cam.lastImg, cam.lastDetection, cam.analyzerState, nil
 }
 
-// Register to receive detection results.
+// Register to receive detection results for a specific camera.
 // You must be careful to ensure that your receiver always processes a result
 // immediately, and keeps the channel drained. If you don't do this, then
 // the monitor will freeze, and obviously that's a really bad thing to happen
@@ -233,36 +236,69 @@ func (m *Monitor) AddWatcher(cameraID int64) chan *AnalysisState {
 	m.watchersLock.Lock()
 	defer m.watchersLock.Unlock()
 	ch := make(chan *AnalysisState, 100)
-	m.watchers = append(m.watchers, watcher{
+	m.watchers[cameraID] = append(m.watchers[cameraID], watcher{
 		cameraID: cameraID,
 		ch:       ch,
 	})
 	return ch
 }
 
-// Unregister from detection results
-func (m *Monitor) RemoveWatcher(ch chan *AnalysisState) {
+// Unregister from detection results for a specific camera
+func (m *Monitor) RemoveWatcher(cameraID int64, ch chan *AnalysisState) {
 	m.watchersLock.Lock()
 	defer m.watchersLock.Unlock()
-	for i, w := range m.watchers {
+	for i, w := range m.watchers[cameraID] {
 		if w.ch == ch {
-			m.watchers = gen.DeleteFromSliceUnordered(m.watchers, i)
+			m.watchers[cameraID] = gen.DeleteFromSliceUnordered(m.watchers[cameraID], i)
 			return
 		}
 	}
-	m.Log.Warnf("Monitor.RemoveWatcher failed to find channel")
+	m.Log.Warnf("Monitor.RemoveWatcher failed to find channel for camera %v", cameraID)
+}
+
+// Add a watcher that is interested in all camera activity
+func (m *Monitor) AddWatcherAllCameras() chan *AnalysisState {
+	m.watchersLock.Lock()
+	defer m.watchersLock.Unlock()
+	ch := make(chan *AnalysisState, 100)
+	m.watchersAllCameras = append(m.watchersAllCameras, ch)
+	return ch
+}
+
+// Unregister from detection results of all cameras
+func (m *Monitor) RemoveWatcherAllCameras(ch chan *AnalysisState) {
+	m.watchersLock.Lock()
+	defer m.watchersLock.Unlock()
+	for i, wch := range m.watchersAllCameras {
+		if wch == ch {
+			m.watchersAllCameras = gen.DeleteFromSliceUnordered(m.watchersAllCameras, i)
+			return
+		}
+	}
+	m.Log.Warnf("Monitor.RemoveWatcherAllCameras failed to find channel")
 }
 
 func (m *Monitor) sendToWatchers(state *AnalysisState) {
 	m.watchersLock.RLock()
-	for _, watcher := range m.watchers {
+	// Regarding our behaviour here to drop frames:
+	// Perhaps it would be better not to drop frames, but simply to stall.
+	// This would presumably wake up the threads that consume the analysis.
+	for _, watcher := range m.watchers[state.CameraID] {
 		if watcher.cameraID == state.CameraID {
 			if len(watcher.ch) >= cap(watcher.ch)*9/10 {
-				// This should never happen. But as a safeguard against a monitor deadlock, we choose to drop frames.
+				// This should never happen. But as a safeguard against a monitor stalls, we choose to drop frames.
 				m.Log.Warnf("Monitor watcher on camera %v is falling behind. I am going to drop frames.", watcher.cameraID)
 			} else {
 				watcher.ch <- state
 			}
+		}
+	}
+	for _, ch := range m.watchersAllCameras {
+		if len(ch) >= cap(ch)*9/10 {
+			// This should never happen. But as a safeguard against a monitor stalls, we choose to drop frames.
+			m.Log.Warnf("Monitor watcher on all cameras is falling behind. I am going to drop frames.")
+		} else {
+			ch <- state
 		}
 	}
 	m.watchersLock.RUnlock()
@@ -320,6 +356,21 @@ func (m *Monitor) SetCameras(cameras []*camera.Camera) {
 	m.camerasLock.Lock()
 	m.cameras = newCameras
 	m.camerasLock.Unlock()
+
+	// Remove watchers for cameras that no longer exist
+	// Hmmm.. I'm undecided about this. It's possibly in the territory of
+	// "unwanted action at a distance".
+	// Imagine a scenario where a watcher is added, and then a camera blips
+	// for a few seconds. It gets removed and re-added. During that time, the
+	// agent watching was OK with just having things go silent for a few seconds,
+	// and then return. It didn't anticipate having to re-add the watcher.
+	//m.watchersLock.Lock()
+	//newWatchers := map[int64][]watcher{}
+	//for _, cam := range cameras {
+	//	newWatchers[cam.ID()] = m.watchers[cam.ID()]
+	//}
+	//m.watchers = newWatchers
+	//m.watchersLock.Unlock()
 
 	if m.enabled {
 		m.startFrameReader()

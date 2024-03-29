@@ -14,3 +14,19 @@ func DrainChannelIntoSlice[T any](ch chan T) []T {
 	}
 	return slice
 }
+
+// Drain the channel and discard the contents
+func DrainChannel[T any](ch chan T) {
+	for {
+		select {
+		case _, ok := <-ch:
+			if !ok {
+				// The channel is closed
+				return
+			}
+		default:
+			// The channel is empty
+			return
+		}
+	}
+}

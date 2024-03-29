@@ -14,6 +14,7 @@ import (
 
 	"github.com/cyclopcam/cyclops/pkg/kibi"
 	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/server/arc"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/eventdb"
@@ -136,6 +137,10 @@ func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey, ker
 		s.StartupErrors = append(s.StartupErrors, StartupError{StartupErrorArchivePath, err.Error()})
 		log.Errorf("%v", err)
 	}
+	var fsvArchive *fsv.Archive
+	if s.videoDB != nil {
+		fsvArchive = s.videoDB.Archive
+	}
 
 	s.ApplyConfig()
 
@@ -147,7 +152,7 @@ func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey, ker
 
 	s.train = train.NewTrainer(s.Log, s.permanentEvents)
 
-	s.LiveCameras = livecameras.NewLiveCameras(s.Log, s.configDB, s.ShutdownStarted, s.monitor, s.RingBufferSize)
+	s.LiveCameras = livecameras.NewLiveCameras(s.Log, s.configDB, s.ShutdownStarted, s.monitor, fsvArchive, s.RingBufferSize)
 
 	// Cameras start connecting here
 	s.LiveCameras.Run()
@@ -299,7 +304,8 @@ func (s *Server) LoadConfigVariables() error {
 	return firstError
 }
 
-// This replaces LoadConfigVariables
+// NEW: This replaces LoadConfigVariables
+// This is called whenever system config changes
 func (s *Server) ApplyConfig() {
 	cfg := s.configDB.GetConfig()
 
@@ -317,6 +323,10 @@ func (s *Server) ApplyConfig() {
 			s.Log.Warnf("Max archive storage size is 0 (unlimited). We will eventually run out of disk space.")
 		}
 		s.videoDB.SetMaxArchiveSize(maxStorage)
+	}
+
+	if s.LiveCameras != nil {
+		s.LiveCameras.ConfigurationChanged()
 	}
 }
 

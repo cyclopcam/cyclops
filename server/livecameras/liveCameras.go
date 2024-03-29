@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/monitor"
@@ -19,6 +20,10 @@ import (
 // cameras are stopped, started, or restarted, as needed. This same system also
 // detects when cameras have stopped sending us packets, in which case the camera
 // is taken offline, and we will then attempt to restart it.
+//
+// Lock Hierarchy (to avoid deadlocks):
+// If you are going to hold camerasLock and recordStateLock at the same time, then
+// you must first take camerasLock, and then recordStateLock.
 type LiveCameras struct {
 	ShutdownComplete chan bool // ShutdownComplete is closed when we are done shutting down
 
@@ -26,6 +31,7 @@ type LiveCameras struct {
 	configDB       *configdb.ConfigDB
 	shutdown       chan bool // The parent system closes this channel when it wants us to shutdown
 	monitor        *monitor.Monitor
+	archive        *fsv.Archive // archive can be nil, in which case we can't record
 	ringBufferSize int
 
 	camerasLock  sync.Mutex
@@ -46,23 +52,45 @@ type LiveCameras struct {
 	lastTestedCamera          *camera.Camera
 	lastTestedCameraConfig    configdb.Camera
 	lastTestedCameraCreatedAt time.Time
+
+	////////////////////////////////////////////////////////////
+	// Recording related fields
+	allCameraMonitorMsg chan *monitor.AnalysisState
+
+	// Controls access to recorderState
+	recordStateLock      sync.Mutex
+	recordStates         map[int64]*recordState // Map from CameraID to recordState
+	recordThreadShutdown chan bool
+	recordThreadWake     chan bool
+}
+
+// State of a camera, regarding recording on/off
+type recordState struct {
+	recorder      *camera.VideoRecorder // If non-nil, then we are recording (and vice versa)
+	lastDetection time.Time             // Last time when Monitor sent us an event containing an object detection
 }
 
 // Create a new LiveCameras object.
+// archive can be nil, in which case we can't record.
 // shutdown is a channel that the parent system will close when it wants us to shutdown.
-func NewLiveCameras(logger log.Log, configDB *configdb.ConfigDB, shutdown chan bool, monitor *monitor.Monitor, ringBufferSize int) *LiveCameras {
+func NewLiveCameras(logger log.Log, configDB *configdb.ConfigDB, shutdown chan bool, monitor *monitor.Monitor, archive *fsv.Archive, ringBufferSize int) *LiveCameras {
 	lc := &LiveCameras{
 		ShutdownComplete:       make(chan bool),
 		log:                    log.NewPrefixLogger(logger, "LiveCameras:"),
 		configDB:               configDB,
 		shutdown:               shutdown,
 		monitor:                monitor,
+		archive:                archive,
 		ringBufferSize:         ringBufferSize,
 		cameraFromID:           map[int64]*camera.Camera{},
-		wake:                   make(chan bool, 10),
+		wake:                   make(chan bool, 50),
 		periodicWakeInterval:   10 * time.Second,
 		timeUntilCameraRestart: 15 * time.Second,
 		closeTestCameraAfter:   60 * time.Second,
+		allCameraMonitorMsg:    monitor.AddWatcherAllCameras(),
+		recordThreadShutdown:   make(chan bool),
+		recordThreadWake:       make(chan bool, 50),
+		recordStates:           map[int64]*recordState{},
 	}
 	return lc
 }
@@ -70,6 +98,12 @@ func NewLiveCameras(logger log.Log, configDB *configdb.ConfigDB, shutdown chan b
 // Start the runner thread, which is the only thread that starts and stops cameras
 func (s *LiveCameras) Run() {
 	go s.runThread()
+	go s.recorderThread()
+	s.wake <- true
+}
+
+// If any configuration might have changed, then wake up the auto starter
+func (s *LiveCameras) ConfigurationChanged() {
 	s.wake <- true
 }
 
@@ -147,7 +181,7 @@ func (s *LiveCameras) SaveTestCamera(cfg configdb.Camera, cam *camera.Camera) {
 // of the camera testing function httpConfigTestCamera.
 func (s *LiveCameras) runThread() {
 	keepRunning := true
-	for iter := 0; keepRunning; iter++ {
+	for keepRunning {
 		select {
 		case <-time.After(s.periodicWakeInterval):
 			s.startStopConfiguredCameras()
@@ -164,9 +198,15 @@ func (s *LiveCameras) runThread() {
 			break
 		}
 	}
-	s.log.Infof("LiveCameras shutting down")
+	s.log.Infof("Shutting down")
+
+	s.monitor.RemoveWatcherAllCameras(s.allCameraMonitorMsg)
+
+	s.log.Infof("Waiting for test camera to close")
 
 	s.CloseTestCamera()
+
+	s.log.Infof("Waiting for cameras to close")
 
 	wg := sync.WaitGroup{}
 	s.camerasLock.Lock()
@@ -175,6 +215,13 @@ func (s *LiveCameras) runThread() {
 	}
 	s.camerasLock.Unlock()
 	wg.Wait()
+
+	s.log.Infof("Waiting for record thread to shutdown")
+
+	<-s.recordThreadShutdown
+
+	s.log.Infof("Shutdown complete")
+
 	close(s.ShutdownComplete)
 }
 
@@ -238,6 +285,7 @@ func (s *LiveCameras) startStopConfiguredCameras() {
 				s.log.Warnf("Camera %v (%v) configuration out of date. Restarting", cfg.ID, cfg.Name)
 			} else {
 				// camera is running and responding normally
+				//s.startStopRecorder(cam, &systemConfig)
 				continue
 			}
 			s.removeCamera(cam)

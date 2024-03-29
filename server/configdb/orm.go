@@ -35,6 +35,14 @@ type Camera struct {
 	LowResURLSuffix  string      `json:"lowResURLSuffix" gorm:"default:null"`  // eg Streaming/Channels/102 for HikVision. Can leave blank if Model is a known type.
 	CreatedAt        dbh.IntTime `json:"createdAt" gorm:"autoCreateTime:milli"`
 	UpdatedAt        dbh.IntTime `json:"updatedAt" gorm:"autoUpdateTime:milli"`
+
+	// The long lived name is used to identify the camera in the storage archive.
+	// If necessary, we can make this configurable.
+	// At present, it is equal to the camera ID. But in future, we could allow
+	// the user to override this. For example, if their system goes down, but their
+	// archive is on another disk, and they want to restore all the cameras, and
+	// still have the history intact, and matching up to the new (but same) cameras.
+	LongLivedName string `json:"longLivedName"`
 }
 
 // Compare the current camera config against the new camera config, and return
