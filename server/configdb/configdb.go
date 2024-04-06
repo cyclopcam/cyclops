@@ -117,3 +117,15 @@ func readOrCreatePrivateKey(logger log.Log, db *gorm.DB, explicitPrivateKey stri
 	}
 	return key, nil
 }
+
+// Generate a new ID from the 'next_id' table in the database
+func (c *ConfigDB) GenerateNewID(tx *gorm.DB, key string) (int64, error) {
+	if err := tx.Exec(`INSERT INTO next_id (key, value) VALUES (?, 1) ON CONFLICT(key) DO UPDATE SET value = value + 1`, key).Error; err != nil {
+		return 0, err
+	}
+	nextid := int64(0)
+	if err := tx.Raw("SELECT value FROM next_id WHERE key = $1", key).Row().Scan(&nextid); err != nil {
+		return 0, err
+	}
+	return nextid, nil
+}

@@ -98,10 +98,10 @@ func TestReaderWriter(t *testing.T) {
 	withSweep.SweepInterval = time.Millisecond
 	arc3, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}}, withSweep)
 	require.Equal(t, expectedFilesize(packets1)+expectedFilesize(packets2), arc3.TotalSize())
-	arc3.StartSweeper()
+	arc3.startSweeper()
 	time.Sleep(time.Millisecond * 3)
 	require.Equal(t, expectedFilesize(packets2), arc3.TotalSize())
-	arc3.StopSweeper()
+	arc3.stopSweeper()
 }
 
 func expectedFilesize(packets []rf1.NALU) int64 {

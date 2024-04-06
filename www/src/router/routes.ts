@@ -46,7 +46,7 @@ export const router = createRouter({
 							component: SystemSettings,
 						},
 						{
-							path: "camera/:id",
+							path: "camera/:id/:host/:model/:returnToScan",
 							name: "rtSettingsEditCamera",
 							component: EditCamera,
 							props: true,

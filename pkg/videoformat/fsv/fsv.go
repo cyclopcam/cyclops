@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -84,6 +83,7 @@ type Archive struct {
 	formats              []VideoFormat
 	maxVideoFileDuration time.Duration // We need to know this so that it is fast to find files close to a given time period.
 	sweepStop            chan bool     // Tell the sweeper to stop
+	sweeperStopped       chan bool     // Sweeper closes this once it has stopped
 
 	settingsLock sync.Mutex // Guards access to settings
 	settings     ArchiveSettings
@@ -103,7 +103,7 @@ func DefaultArchiveSettings() ArchiveSettings {
 	return ArchiveSettings{
 		MaxBytesPerRead: 256 * 1024 * 1024, // 256MB
 		MaxArchiveSize:  0,                 // No limit
-		SweepInterval:   5 * time.Minute,
+		SweepInterval:   time.Minute,
 	}
 }
 
@@ -158,6 +158,8 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat, settings Archiv
 	if err := archive.scan(); err != nil {
 		return nil, fmt.Errorf("Error scanning archive: %v", err)
 	}
+
+	archive.startSweeper()
 
 	return archive, nil
 }
@@ -330,6 +332,7 @@ func (a *Archive) streamDir(streamName string) string {
 // You can just let them go away naturally, as they finish.
 func (a *Archive) Close() {
 	a.log.Infof("Archive closing")
+	a.stopSweeper()
 	a.streamsLock.Lock()
 	defer a.streamsLock.Unlock()
 	for _, stream := range a.streams {
@@ -413,282 +416,6 @@ func (a *Archive) StreamSizes() map[string]int64 {
 	}
 
 	return streamSize
-}
-
-// Write a payload to the archive.
-// payload keys are track names.
-// The payload must always include the exact same set of tracks, even if some of
-// them have no new content to write. We use the set of tracks and their properties (eg width, height)
-// to figure out when we need to close a file and open a new one. For example, if the user
-// decides to enable HD recording, then the track composition would change. Such a change
-// requires a new video file.
-func (a *Archive) Write(streamName string, payload map[string]TrackPayload) error {
-	err := a.write(streamName, payload)
-	if err != nil {
-		a.log.Errorf("Error writing to stream %v: %v", streamName, err)
-	}
-	return err
-}
-
-func (a *Archive) write(streamName string, payload map[string]TrackPayload) error {
-	for track, payload := range payload {
-		if payload.TrackType != rf1.TrackTypeVideo {
-			return fmt.Errorf("Only video tracks have been implemented. Track %v has type: %v", track, payload.TrackType)
-		}
-	}
-
-	// Find the earliest packet time.
-	// We'll use this if we need to create a new video file.
-	hasPackets := false
-	minPTSMicro := int64(1<<63 - 1)
-	maxPTSMicro := int64(0)
-	for _, packets := range payload {
-		if len(packets.NALUs) != 0 {
-			hasPackets = true
-			minPTSMicro = min(minPTSMicro, packets.NALUs[0].PTS.UnixMicro())
-			maxPTSMicro = max(maxPTSMicro, packets.NALUs[len(packets.NALUs)-1].PTS.UnixMicro())
-		}
-	}
-	if !hasPackets {
-		// If we don't have any packets to write, then we can't create a new video file.
-		// Since there are zero packets, this function call is anyway a no-op,
-		// so no harm in just returning immediately.
-		return nil
-	}
-	minPTS := time.UnixMicro(minPTSMicro)
-	maxPTS := time.UnixMicro(maxPTSMicro)
-
-	stream, err := a.getOrCreateStream(streamName)
-	if err != nil {
-		return err
-	}
-
-	// Ensure that the tracks in the video file are the same set of tracks that
-	// the caller is trying to write. If the caller has altered the track composition,
-	// then we create a new file.
-
-	// This is a big lock, but there's no simple way around this. We don't want to introduce
-	// multi-threaded access into our VideoFile interface - that would be insane.
-	// I'm assuming that the write phase here will usually complete quickly, so that we don't
-	// end up starving readers. Unless something bad is happening (eg running out of disk space),
-	// writes here should complete very quickly, because they're just a copying of memory into
-	// the disk cache.
-	stream.contentLock.Lock()
-	defer stream.contentLock.Unlock()
-
-	if stream.current != nil {
-		mustCloseReason := "" // If not empty, then we close
-		for trackName, packets := range payload {
-			if !VideoFileHasVideoTrack(stream.current.file, trackName, packets.VideoWidth, packets.VideoHeight) {
-				mustCloseReason = fmt.Sprintf("Track %v does not exist or has different dimensions", trackName)
-				break
-			}
-			if !stream.current.file.HasCapacity(trackName, packets.NALUs) {
-				mustCloseReason = fmt.Sprintf("Insufficient capacity in for track %v", trackName)
-				break
-			}
-			if len(packets.NALUs) > 0 {
-				endPTS := packets.NALUs[len(packets.NALUs)-1].PTS
-				duration := endPTS.Sub(stream.current.startTime)
-				if duration > a.maxVideoFileDuration {
-					mustCloseReason = fmt.Sprintf("File has reached max duration %v", a.maxVideoFileDuration)
-					break
-				}
-			}
-		}
-
-		if mustCloseReason != "" {
-			a.log.Infof("Closing video file %v: %v", stream.current.filename, mustCloseReason)
-			currentSize, err := stream.current.file.Size()
-			if err != nil {
-				return fmt.Errorf("Error getting size of video file %v: %v", stream.current.filename, err)
-			}
-			// Add to index
-			stream.files = append(stream.files, videoFileIndex{
-				filename:  filepath.Base(stream.current.filename),
-				startTime: stream.current.startTime.UnixMilli(),
-				size:      currentSize,
-				tracks:    stream.current.tracks,
-			})
-			err = stream.current.file.Close()
-			if err != nil {
-				a.log.Errorf("Error closing video file %v: %v", stream.current.filename, err)
-			}
-			stream.current = nil
-		}
-	}
-
-	if stream.current == nil {
-		// Create a new video file
-
-		// But first, see if we've run out of disk space, and need to recycle some old files.
-
-		// Filename has resolution of one millisecond.
-		// I can't see a scenario where you will start/stop recording within 1ms.
-		//
-		// At present, unix time is 1708584695, which is 10 digits. We'd like to preserve
-		// lexicographic ordering. Do we need to use 11 digits? Unix time will only roll over
-		// to 11 digits on 2286-11-20 17:46:40. The world is going to look very different 262
-		// years from now. Probably not worth thinking about.
-		videoFilename := filepath.Join(a.streamDir(streamName), fmt.Sprintf("%v", minPTSMicro/1000))
-		a.log.Infof("Creating new video file %v", videoFilename)
-		file, err := stream.format.Create(videoFilename)
-		if err != nil {
-			return fmt.Errorf("Error creating video file %v: %v", videoFilename, err)
-		}
-		for track, payload := range payload {
-			if err := file.CreateVideoTrack(track, minPTS, payload.Codec, payload.VideoWidth, payload.VideoHeight); err != nil {
-				file.Close()
-				return fmt.Errorf("Error creating video track %v in %v: %v", track, videoFilename, err)
-			}
-		}
-
-		stream.current = &videoFile{
-			filename:  videoFilename,
-			file:      file,
-			startTime: minPTS,
-			endTime:   minPTS, // We haven't written to the stream yet, so start = end. We'll update endTime further down in this function.
-		}
-	}
-
-	if minPTS.Before(stream.current.endTime) {
-		return fmt.Errorf("Video payload %v starts before the end of the current video file %v. This would cause non-contiguous frames.", minPTS, stream.current.endTime)
-	}
-
-	for track, packets := range payload {
-		if err := stream.current.file.Write(track, packets.NALUs); err != nil {
-			return fmt.Errorf("Error writing to video file %v: %v", stream.current.filename, err)
-		}
-		if !slices.Contains(stream.current.tracks, track) {
-			stream.current.tracks = append(stream.current.tracks, track)
-		}
-	}
-
-	stream.current.endTime = maxPTS
-
-	if stream.startTime.IsZero() {
-		stream.startTime = minPTS
-	}
-	stream.endTime = maxPTS
-
-	return nil
-}
-
-// Read packets from the archive.
-// The map that is returned contains the tracks that were requested.
-// If no packets are found, we return an empty map and a nil error.
-func (a *Archive) Read(streamName string, trackNames []string, startTime, endTime time.Time) (map[string][]rf1.NALU, error) {
-	a.streamsLock.Lock()
-	stream := a.streams[streamName]
-	a.streamsLock.Unlock()
-	if stream == nil {
-		return nil, fmt.Errorf("Stream not found: %v", streamName)
-	}
-	// Do a binary search inside the stream.files to find the file that contains the requested time period.
-	// We'll use the file's start time as the key for the binary search.
-
-	// Concrete example to aid in the logic here:
-	// 110_video
-	// 123_video
-	// 136_video
-	// 170_video
-
-	// We find the first video with a start time AFTER 'startTime', and then
-	// we reverse back by one.
-
-	tracks := map[string][]rf1.NALU{}
-	totalBytes := 0
-	a.settingsLock.Lock()
-	maxBytesPerRead := a.settings.MaxBytesPerRead
-	a.settingsLock.Unlock()
-
-	// Read the tracks from vf, and append them to our result set
-	readFromVideoFile := func(filename string, vf VideoFile) error {
-		for _, trackName := range trackNames {
-			packets, err := vf.Read(trackName, startTime, endTime)
-			if err != nil {
-				return fmt.Errorf("Error reading track %v from video file %v: %v", trackName, filename, err)
-			}
-			tracks[trackName] = append(tracks[trackName], packets...)
-			for _, p := range packets {
-				totalBytes += len(p.Payload)
-			}
-		}
-		if totalBytes > maxBytesPerRead {
-			return fmt.Errorf("Read limit exceeded: %v bytes", maxBytesPerRead)
-		}
-		return nil
-	}
-
-	// Minimize the amount of time that we need to hold stream.contentLock.
-	// The crucial thing to note here is that we only need the lock for the
-	// the "stream.files" slice and "stream.current". So we make our calculations
-	// on those objects, and then we can release the lock. When we go to read
-	// from the files, we'll open the video files independently, thereby
-	// relying on OS/filesystem concurrency.
-	stream.contentLock.Lock()
-	startIdx := sort.Search(len(stream.files), func(i int) bool {
-		return stream.files[i].startTime >= startTime.UnixMilli()
-	}) - 1
-	startIdx = max(startIdx, 0)
-	endIdx := sort.Search(len(stream.files), func(i int) bool {
-		return stream.files[i].startTime >= endTime.UnixMilli()
-	})
-	indexFiles := stream.files[startIdx:endIdx]
-	var useCurrent *videoFile
-	if stream.current != nil && DoTimeRangesOverlap(stream.current.startTime, stream.current.endTime, startTime, endTime) {
-		useCurrent = stream.current
-	}
-	stream.contentLock.Unlock()
-
-	// In this section, we have zero locks, so here during our most IO-heavy phase,
-	// we have no concurrency problems. Multiple threads could be reading here
-	// at the same time.
-	for _, file := range indexFiles {
-		if file.startTime > endTime.UnixMilli() {
-			break
-		}
-		videoFilename := filepath.Join(a.streamDir(streamName), file.filename)
-		videoFile, err := stream.format.Open(videoFilename)
-		if err != nil {
-			return nil, fmt.Errorf("Error opening video file %v: %v", videoFilename, err)
-		}
-		defer videoFile.Close()
-		if err := readFromVideoFile(videoFilename, videoFile); err != nil {
-			return nil, err
-		}
-	}
-
-	// Here we need to take the contentLock again, before attempting to read from 'current'.
-	// We need to manage two scenarios here:
-	// 1. Current is still open
-	// 2. Current has been closed
-	// It is tempting to always reopen a new handle to 'current', but our rf1 files aren't
-	// guaranteed to be in a consistent state if they're still being written to
-	// (i.e. index could be written before payload). Because of this, we always use
-	// our open handle for 'current'.
-	if useCurrent != nil {
-		stream.contentLock.Lock()
-		defer stream.contentLock.Unlock()
-		if useCurrent == stream.current {
-			// Current is still the same open handle that we found at the start of the Read()
-			if err := readFromVideoFile(stream.current.filename, stream.current.file); err != nil {
-				return nil, err
-			}
-		} else {
-			// Current got retired, so we need to open it from disk.
-			videoFile, err := stream.format.Open(useCurrent.filename)
-			if err != nil {
-				return nil, fmt.Errorf("Error opening video file %v: %v", useCurrent.filename, err)
-			}
-			defer videoFile.Close()
-			if err := readFromVideoFile(useCurrent.filename, videoFile); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	return tracks, nil
 }
 
 func DoTimeRangesOverlap(start1, end1, start2, end2 time.Time) bool {

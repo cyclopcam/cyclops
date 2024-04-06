@@ -14,18 +14,22 @@ import (
 func (s *LiveCameras) recorderThread() {
 	s.log.Infof("Recorder thread starting")
 
+	lastStartStop := time.Now()
+
 	keepRunning := true
 	for keepRunning {
+		// Every 2 seconds, check if we need to start/stop any cameras
+		if time.Now().Sub(lastStartStop) >= 2*time.Second {
+			s.startStopRecorderForAllCameras()
+			lastStartStop = time.Now()
+		}
 		select {
 		case <-s.shutdown:
 			keepRunning = false
-			break
 		case mm := <-s.allCameraMonitorMsg:
 			s.processMonitorMessage(mm)
 		case <-time.After(time.Second * 2):
-			s.startStopRecorderForAllCameras()
 		case <-s.recordThreadWake:
-			s.startStopRecorderForAllCameras()
 		}
 	}
 
@@ -38,10 +42,10 @@ func (s *LiveCameras) recorderThread() {
 
 // Find or create the state for this camera.
 // Assumes that you've already acquired recordStateLock
-func (s *LiveCameras) getRecordState(cameraID int64) *recordState {
+func (s *LiveCameras) getRecordState(cameraID int64) *cameraRecordState {
 	state, ok := s.recordStates[cameraID]
 	if !ok {
-		state = &recordState{}
+		state = &cameraRecordState{}
 		s.recordStates[cameraID] = state
 	}
 	return state
@@ -55,14 +59,14 @@ func (s *LiveCameras) processMonitorMessage(msg *monitor.AnalysisState) {
 	state := s.getRecordState(msg.CameraID)
 
 	// The Monitor doesn't send us messages for uninteresting object detections,
-	// so if we receive this message when a non-zero object count, then we know
+	// so if we receive this message with a non-zero object count, then we know
 	// we've got something interesting and worth recording.
 	if len(msg.Objects) != 0 {
 		state.lastDetection = time.Now()
 
 		// Start recording immediately (if applicable), instead of waiting
 		// for the periodic wakeup function that scans all cameras.
-		if state.recorder == nil && len(s.recordThreadWake) < cap(s.recordThreadWake)/2 {
+		if !state.isRecording() && len(s.recordThreadWake) < cap(s.recordThreadWake)/2 {
 			s.recordThreadWake <- true
 		}
 	}
@@ -97,6 +101,10 @@ func (s *LiveCameras) startStopRecorderForAllCameras() {
 	s.recordStateLock.Lock()
 	defer s.recordStateLock.Unlock()
 
+	// It's useful to activate this log message to verify the sanity of the wakeup system.
+	// We expect to see this log message appear once every 2 seconds.
+	//s.log.Warnf("Camera recording mode: %v", systemConfig.Recording.Mode)
+
 	for id, cam := range s.cameraFromID {
 		// Some day we might allow individual cameras to override the global recording mode,
 		// which is why I introduce this arbitrary variable here.
@@ -105,7 +113,6 @@ func (s *LiveCameras) startStopRecorderForAllCameras() {
 		recordAfter := systemConfig.Recording.RecordAfterEventDuration()
 
 		state := s.getRecordState(id)
-		isRecording := state.recorder != nil
 
 		// If reason is not empty, then we must record
 		reason := ""
@@ -121,25 +128,25 @@ func (s *LiveCameras) startStopRecorderForAllCameras() {
 
 		mustRecord := reason != ""
 
-		if mustRecord && !isRecording {
+		if mustRecord && !state.isRecording() {
 			// Start recording
 			s.log.Infof("Starting recording camera %v (%v): %v", cam.ID(), cam.Name(), reason)
-			streamName := filepath.Clean(cam.HighResRecordingStreamName())
-			state.recorder = camera.StartVideoRecorder(cam.HighDumper, streamName, s.archive, recordBefore)
-		} else if !mustRecord && isRecording {
+			state.recorderHD = camera.StartVideoRecorder(cam.HighDumper, filepath.Clean(cam.HighResRecordingStreamName()), s.archive, recordBefore)
+			state.recorderLD = camera.StartVideoRecorder(cam.LowDumper, filepath.Clean(cam.LowResRecordingStreamName()), s.archive, recordBefore)
+		} else if !mustRecord && state.isRecording() {
 			// Stop recording
 			s.log.Infof("Stop recording camera %v (%v)", cam.ID(), cam.Name())
-			state.recorder.Stop()
-			state.recorder = nil
+			state.recorderHD.Stop()
+			state.recorderLD.Stop()
+			state.recorderHD = nil
+			state.recorderLD = nil
 		}
 	}
 
 	// Stop and remove recorder state for cameras that no longer exist
 	for id, state := range s.recordStates {
 		if _, ok := s.cameraFromID[id]; !ok {
-			if state.recorder != nil {
-				state.recorder.Stop()
-			}
+			s.stopRecorder(state)
 			delete(s.recordStates, id)
 		}
 	}
@@ -152,9 +159,17 @@ func (s *LiveCameras) stopAllRecorders() {
 	defer s.recordStateLock.Unlock()
 
 	for _, state := range s.recordStates {
-		if state.recorder != nil {
-			state.recorder.Stop()
-			state.recorder = nil
-		}
+		s.stopRecorder(state)
+	}
+}
+
+func (s *LiveCameras) stopRecorder(state *cameraRecordState) {
+	if state.recorderHD != nil {
+		state.recorderHD.Stop()
+		state.recorderHD = nil
+	}
+	if state.recorderLD != nil {
+		state.recorderLD.Stop()
+		state.recorderLD = nil
 	}
 }

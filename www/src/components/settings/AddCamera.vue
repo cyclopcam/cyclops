@@ -8,7 +8,7 @@ import TextPlus from '@/icons/text-plus.svg';
 const router = useRouter();
 
 function onManual() {
-	pushRoute(router, { name: 'rtSettingsEditCamera', params: { id: 'new' } });
+	pushRoute(router, { name: 'rtSettingsEditCamera', params: { id: 'new', host: '', model: '', returnToScan: 0 } });
 }
 
 function onScan() {

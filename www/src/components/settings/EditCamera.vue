@@ -18,9 +18,9 @@ import { globals } from '@/globals';
 
 let props = defineProps<{
 	id: string, // either the ID or "new"
-	host?: string, // when 'new', this is the host to pre-fill
-	model?: string, // when 'new', this is the model to pre-fill
-	returnToScan?: string, // Instruct us to return to the ScanForCameras page when we're done
+	host: string, // when 'new', this is the host to pre-fill
+	model: string, // when 'new', this is the model to pre-fill
+	returnToScan: string, // Instruct us to return to the ScanForCameras page when we're done
 }>();
 
 let router = useRouter();
@@ -205,7 +205,7 @@ onMounted(async () => {
 		let r = await fetchOrErr(`/api/config/camera/${props.id}`);
 		if (r.ok) {
 			original.value = CameraRecord.fromJSON(await r.r.json());
-			//console.log(`Camera loaded. original=${original.value.id}, isNewCamera=${isNewCamera.value}`);
+			console.log(`Camera loaded. original=${original.value.id}, isNewCamera=${isNewCamera.value}`);
 			copyCameraRecordToLocalState(original.value);
 			lastGoodConfig.value = original.value.clone();
 		}
@@ -216,6 +216,8 @@ onMounted(async () => {
 		//	password.value = recentPasswords[recentPasswords.length - 1];
 		//}
 	} else {
+		console.log("EditCamera props.host", props.host);
+		console.log("EditCamera props.model", props.model);
 		if (props.host) {
 			host.value = props.host;
 		}

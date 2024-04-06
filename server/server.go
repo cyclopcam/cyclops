@@ -318,9 +318,11 @@ func (s *Server) ApplyConfig() {
 	s.arcCredentialsLock.Unlock()
 
 	if s.videoDB != nil {
-		maxStorage, _ := kibi.Parse(cfg.Recording.MaxStorageSize)
+		maxStorage, _ := kibi.ParseBytes(cfg.Recording.MaxStorageSize)
 		if maxStorage == 0 {
 			s.Log.Warnf("Max archive storage size is 0 (unlimited). We will eventually run out of disk space.")
+		} else {
+			s.Log.Infof("Max archive storage size is %v bytes (%v)", maxStorage, cfg.Recording.MaxStorageSize)
 		}
 		s.videoDB.SetMaxArchiveSize(maxStorage)
 	}

@@ -150,7 +150,18 @@ func Migrations(log log.Log) []migration.Migrator {
 			SELECT id, model, name, host, port, username, password, high_res_url_suffix, low_res_url_suffix, created_at, updated_at,
 				'cam-' || id AS long_lived_name
 			FROM camera_old;
+	`))
 
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		CREATE UNIQUE INDEX idx_camera_long_lived_name ON camera (long_lived_name);
+		DROP TABLE camera_old;
+
+		CREATE TABLE next_id (key TEXT PRIMARY KEY, value INT NOT NULL);
+
+		INSERT INTO next_id (key, value)
+			SELECT 'cameraLongLivedName', IFNULL(MAX(id), 0) + 1
+			FROM camera;
 	`))
 
 	return migs

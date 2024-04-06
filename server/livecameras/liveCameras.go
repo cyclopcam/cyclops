@@ -59,15 +59,23 @@ type LiveCameras struct {
 
 	// Controls access to recorderState
 	recordStateLock      sync.Mutex
-	recordStates         map[int64]*recordState // Map from CameraID to recordState
+	recordStates         map[int64]*cameraRecordState // Map from CameraID to recordState
 	recordThreadShutdown chan bool
 	recordThreadWake     chan bool
 }
 
 // State of a camera, regarding recording on/off
-type recordState struct {
-	recorder      *camera.VideoRecorder // If non-nil, then we are recording (and vice versa)
+type cameraRecordState struct {
+	recorderHD    *camera.VideoRecorder // If non-nil, then we are recording high res (and vice versa)
+	recorderLD    *camera.VideoRecorder // If non-nil, then we are recording low res (and vice versa)
 	lastDetection time.Time             // Last time when Monitor sent us an event containing an object detection
+}
+
+func (r *cameraRecordState) isRecording() bool {
+	// Right now we always record in LD and HD, but some day we might allow LD-only recording.
+	// The HD recording cost is so high, that adding LD is such a small overhead that it seems
+	// worthwhile always doing LD when doing HD (but not the other way around).
+	return r.recorderLD != nil
 }
 
 // Create a new LiveCameras object.
@@ -90,7 +98,7 @@ func NewLiveCameras(logger log.Log, configDB *configdb.ConfigDB, shutdown chan b
 		allCameraMonitorMsg:    monitor.AddWatcherAllCameras(),
 		recordThreadShutdown:   make(chan bool),
 		recordThreadWake:       make(chan bool, 50),
-		recordStates:           map[int64]*recordState{},
+		recordStates:           map[int64]*cameraRecordState{},
 	}
 	return lc
 }

@@ -10,7 +10,7 @@ import (
 var DigitRegex = regexp.MustCompile(`\d+`)
 var ErrInvalidByteSizeString = fmt.Errorf("Invalid byte size string")
 
-func Bytes(b int64) string {
+func FormatBytes(b int64) string {
 	if b < 1024 {
 		return fmt.Sprintf("%v bytes", b)
 	} else if b < 1024*1024 {
@@ -34,7 +34,7 @@ func Bytes(b int64) string {
 // 123 GB -> 123*1024*1024*1024
 // 123 T -> 123*1024*1024*1024*1024
 // 123 P -> 123*1024*1024*1024*1024*1024
-func Parse(v string) (int64, error) {
+func ParseBytes(v string) (int64, error) {
 	v = strings.TrimSpace(strings.ToLower(v))
 	digits := DigitRegex.FindString(v)
 	if digits == "" {

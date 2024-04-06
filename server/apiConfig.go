@@ -37,13 +37,23 @@ func (s *Server) httpConfigGetCameras(w http.ResponseWriter, r *http.Request, pa
 func (s *Server) httpConfigAddCamera(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	cfg := configdb.Camera{}
 	www.ReadJSON(w, r, &cfg, 1024*1024)
+
 	cfg.ID = 0
 
-	// Add to DB
-	res := s.configDB.DB.Create(&cfg)
-	if res.Error != nil {
-		www.Check(res.Error)
+	tx := s.configDB.DB.Begin()
+	www.Check(tx.Error)
+	defer tx.Rollback()
+
+	if cfg.LongLivedName == "" {
+		llid, err := s.configDB.GenerateNewID(tx, "cameraLongLivedName")
+		www.Check(err)
+		cfg.LongLivedName = "cam-" + strconv.FormatInt(llid, 10)
 	}
+
+	// Add to DB
+	www.Check(tx.Create(&cfg).Error)
+	www.Check(tx.Commit().Error)
+
 	s.Log.Infof("Added new camera to DB. Camera ID: %v", cfg.ID)
 	s.LiveCameras.CameraAdded(cfg.ID)
 

@@ -1,33 +1,50 @@
 package fsv
 
 import (
+	"path/filepath"
 	"time"
 
+	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/kibi"
 )
 
-func (a *Archive) StartSweeper() {
+func (a *Archive) startSweeper() {
 	a.sweepStop = make(chan bool)
+	a.sweeperStopped = make(chan bool)
 	go a.sweeperThread()
 }
 
-func (a *Archive) StopSweeper() {
-	close(a.sweepStop)
+// Stop the sweeper, and wait for it to exit
+func (a *Archive) stopSweeper() {
+	if a.sweepStop == nil || gen.IsChannelClosed(a.sweepStop) {
+		a.log.Infof("Sweeper is already stopped")
+	} else {
+		a.log.Infof("Stopping sweeper")
+		close(a.sweepStop)
+		<-a.sweeperStopped
+		a.log.Infof("Sweeper stopped")
+	}
 }
 
 func (a *Archive) sweeperThread() {
-	for {
+	a.log.Infof("Sweeper thread starting")
+
+	keepRunning := true
+	for keepRunning {
 		a.settingsLock.Lock()
 		interval := a.settings.SweepInterval
 		a.settingsLock.Unlock()
 
 		select {
 		case <-a.sweepStop:
-			return
+			keepRunning = false
 		case <-time.After(interval):
 			a.sweepIfNecessary()
 		}
 	}
+	close(a.sweeperStopped)
+
+	a.log.Infof("Sweeper thread exiting")
 }
 
 // Check if the archive is too large, and delete old files if necessary
@@ -52,6 +69,11 @@ func (a *Archive) sweep(totalSize, targetSize int64) {
 
 	// Keep deleting the oldest file, until we're within budget
 	for totalSize > targetSize {
+		if gen.IsChannelClosed(a.sweepStop) {
+			a.log.Infof("Sweep aborted because of shutdown request")
+			break
+		}
+
 		a.streamsLock.Lock()
 		var oldestStream *videoStream
 		oldestFile := videoFileIndex{
@@ -84,7 +106,7 @@ func (a *Archive) sweep(totalSize, targetSize int64) {
 		a.deleteOldestFile(oldestStream)
 	}
 
-	a.log.Infof("Sweep finished. Dropped size from %v to %v (%v deleted)", kibi.Bytes(initialSize), kibi.Bytes(totalSize), kibi.Bytes(initialSize-totalSize))
+	a.log.Infof("Sweep finished. Dropped size from %v to %v (%v deleted)", kibi.FormatBytes(initialSize), kibi.FormatBytes(totalSize), kibi.FormatBytes(initialSize-totalSize))
 }
 
 func (a *Archive) deleteOldestFile(stream *videoStream) {
@@ -95,8 +117,11 @@ func (a *Archive) deleteOldestFile(stream *videoStream) {
 		return
 	}
 
-	if err := a.formats[0].Delete(stream.files[0].filename, stream.files[0].tracks); err != nil {
-		a.log.Errorf("Failed to delete video file %v: %v", stream.files[0].filename, err)
+	absFilename := filepath.Join(a.streamDir(stream.name), stream.files[0].filename)
+	a.log.Infof("Deleting oldest file %v from stream %v", absFilename, stream.name)
+
+	if err := a.formats[0].Delete(absFilename, stream.files[0].tracks); err != nil {
+		a.log.Errorf("Failed to delete video file %v: %v", absFilename, err)
 	}
 
 	if cap(stream.files) > len(stream.files)*2 {

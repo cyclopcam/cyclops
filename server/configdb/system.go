@@ -81,7 +81,7 @@ func ValidateRecordingConfig(isDefaults bool, c *RecordingJSON) error {
 		}
 	}
 	if c.MaxStorageSize != "" {
-		if _, err := kibi.Parse(c.MaxStorageSize); err != nil {
+		if _, err := kibi.ParseBytes(c.MaxStorageSize); err != nil {
 			return fmt.Errorf("Invalid max storage size '%v': %w", c.MaxStorageSize, err)
 		}
 	}
@@ -101,10 +101,7 @@ func (c *ConfigDB) SetConfig(cfg ConfigJSON) (bool, error) {
 	}
 	c.configLock.Lock()
 	defer c.configLock.Unlock()
-	needsRestart := false
-	if c.config.Recording.Path != cfg.Recording.Path {
-		needsRestart = true
-	}
+	needsRestart := RestartNeeded(&c.config, &cfg)
 	c.config = cfg
 	systemConfig := SystemConfig{
 		Key:   "main",
@@ -114,6 +111,8 @@ func (c *ConfigDB) SetConfig(cfg ConfigJSON) (bool, error) {
 
 	c.Log.Infof("Config updated. Restart needed: %v", needsRestart)
 
-	// TODO: apply hot config to all the sub-systems
+	// TODO: apply hot config to all the sub-systems that don't poll the
+	// config periodically.
+
 	return needsRestart, nil
 }

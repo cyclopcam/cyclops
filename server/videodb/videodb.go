@@ -57,6 +57,8 @@ func NewVideoDB(log log.Log, root string) (*VideoDB, error) {
 	return self, nil
 }
 
+// The archive won't delete any files until this is called, because it doesn't know yet
+// what the size limit is.
 func (v *VideoDB) SetMaxArchiveSize(maxSize int64) {
 	s := v.Archive.Settings()
 	s.MaxArchiveSize = maxSize

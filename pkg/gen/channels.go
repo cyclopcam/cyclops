@@ -30,3 +30,12 @@ func DrainChannel[T any](ch chan T) {
 		}
 	}
 }
+
+func IsChannelClosed[T any](ch chan T) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
