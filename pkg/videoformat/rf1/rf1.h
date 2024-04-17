@@ -12,7 +12,8 @@ typedef struct _CommonIndexHeader {
 	uint32_t Flags;
 	uint32_t CodecFlags;
 	uint64_t TimeBase;
-	uint8_t  Other[8];
+	uint16_t IndexCount; // Number of index entries, excluding the sentinel
+	uint8_t  Other[6];
 } CommonIndexHeader;
 
 // Header of the index file for one track (audio or video)
@@ -22,7 +23,8 @@ typedef struct _AudioIndexHeader {
 	uint32_t Flags;
 	uint32_t CodecFlags;
 	uint64_t TimeBase;
-	uint8_t  Reserved[8];
+	uint16_t IndexCount;
+	uint8_t  Other[6];
 } AudioIndexHeader;
 
 typedef struct _VideoIndexHeader {
@@ -31,10 +33,15 @@ typedef struct _VideoIndexHeader {
 	uint32_t Flags;
 	uint32_t CodecFlags;
 	uint64_t TimeBase;
+	uint16_t IndexCount;
 	uint16_t Width;
 	uint16_t Height;
-	uint8_t  Reserved[4];
+	uint8_t  Reserved[2];
 } VideoIndexHeader;
+
+//inline size_t SizeOfCommonIndexHeader() {
+//	return sizeof(CommonIndexHeader);
+//}
 
 #ifdef __cplusplus
 extern "C" {

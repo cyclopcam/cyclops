@@ -90,19 +90,8 @@ func (f *File) AddTrack(track *Track) error {
 func (f *File) Close() error {
 	var firstErr error
 	for _, t := range f.Tracks {
-		if t.index != nil {
-			err := t.index.Close()
-			if firstErr == nil && err != nil {
-				firstErr = err
-			}
-			t.index = nil
-		}
-		if t.packets != nil {
-			err := t.packets.Close()
-			if firstErr == nil && err != nil {
-				firstErr = err
-			}
-			t.packets = nil
+		if err := t.Close(); firstErr == nil && err != nil {
+			firstErr = err
 		}
 	}
 	return firstErr

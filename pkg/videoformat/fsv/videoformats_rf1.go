@@ -109,16 +109,19 @@ func (v *VideoFileRF1) Read(trackName string, startTime, endTime time.Time) ([]r
 func (v *VideoFileRF1) Size() (int64, error) {
 	sum := int64(0)
 	for _, track := range v.File.Tracks {
-		f1, f2 := track.Filenames(v.File.BaseFilename)
-		s1, err := os.Stat(f1)
-		if err != nil {
-			return 0, err
-		}
-		s2, err := os.Stat(f2)
-		if err != nil {
-			return 0, err
-		}
-		sum += s1.Size() + s2.Size()
+		// Use logical (truncated) file sizes instead of the on-disk file size, which might
+		// be substantially inflated due to anti-fragmentation pre-allocation.
+		sum += track.PacketFileSize() + track.IndexFileSize()
+		//f1, f2 := track.Filenames(v.File.BaseFilename)
+		//s1, err := os.Stat(f1)
+		//if err != nil {
+		//	return 0, err
+		//}
+		//s2, err := os.Stat(f2)
+		//if err != nil {
+		//	return 0, err
+		//}
+		//sum += s1.Size() + s2.Size()
 	}
 	return sum, nil
 }

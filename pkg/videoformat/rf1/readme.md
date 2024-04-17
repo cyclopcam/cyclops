@@ -8,6 +8,7 @@ Limits:
 
     Maximim video time: 1024 seconds
     Maximum video size: 1 GB
+    Maximum frames: 65535
 
 ## Index
 
@@ -26,6 +27,13 @@ Let's say we're storing 30 FPS of low res video. In this case we're limited by
 our time limit of 1024 seconds. Our index size in such a case is 1024 \* 30 \* 8
 = 240 KB.
 
+## 16-bit Index Count
+
+Our index file header has a 16-bit value that tells us how many packets are
+inside. Is 16-bits a limitation? If we consider that our maximum number of
+seconds is 1024, and imagine a high framerate of 30 (most systems use 10 fps),
+then 1024 \* 30 = 30720. This is well within the 16-bit limit.
+
 ## Sizes and File Counts
 
 Our benchmark for a low res stream is 320 x 240, at 1000 bytes per frame
@@ -34,7 +42,7 @@ average, at 10 FPS. That yields 10000 bytes per second. At our time limit of
 file. If we record 24/7, and expect our media to cycle every 30 days, how many
 files is that?
 
-        30 * 24 * 3600 / 1024 = 2532 files
+    30 * 24 * 3600 / 1024 = 2532 files
 
 That seems like a reasonable number of files for one month of storage. Our
 benchmark case for a high res stream is 100 KB average bytes per frame. At 10
@@ -52,3 +60,23 @@ ensure that the packets and index files are written in order, or written
 atomically as a pair. If the operating system (or hardware) crashes during a
 write, then you could end up with such inconsistencies (eg index entries
 pointing to non-existent packets).
+
+## Avoiding Fragmentation
+
+I didn't consider fragmentation initially, but this turns out to be a massive
+issue, especially because we'll often be writing to good old hard drives. By the
+nature of the recorder, we're writing tiny bits of data to many files in
+sequence. This inevitably leads to fragmentation. We have slightly different
+approaches to fragmentation avoidance in our index and packet files.
+
+Index Files
+
+To avoid fragmentation in our index files, we pre-size the file before writing
+into it. The unwritten space will contain zeros. We know that these zeros are
+not valid packet indices because a real packet index cannot be all zeros. The
+'location' field of a 64-bit index entry cannot be zero, except for the very
+first packet, which we make allowance for.
+
+On my desktop linux machine, if I take zero measures to reduce fragmentation,
+and record on 3 files simultaneously, I get 8MB blocks in the HD camera packet
+files, and 4096 byte blocks in the index files.

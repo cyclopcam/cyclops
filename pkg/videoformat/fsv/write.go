@@ -145,28 +145,50 @@ func (a *Archive) write(streamName string, payload map[string]TrackPayload) erro
 		}
 	}
 
-	if minPTS.Before(stream.current.endTime) {
-		// TODO:
-		// Instead of discarding the packets, delete the prefix that overlaps.
-		// This is a legitimate condition that occurs in the following circumstance:
-		// 1. We detect something and start recording.
-		// 2. Timeout lapses and we stop recording
-		// 3. Another thing is detected, and we start recording. We include 15 seconds of history.
-		// That 15 seconds of history overlaps with the previous recording.
-		// This is not a bug.
-		// We should take the first IDR of the new payload, and walk back in history to see if we can find
-		// it in the video file. If we find it, then splice the new payload into the old payload.
-		// If we don't find it, then I'm not really sure what to do.
-		return fmt.Errorf("Video payload %v starts before the end of the current video file %v. This would cause non-contiguous frames.", minPTS, stream.current.endTime)
-	}
+	// mmmkay - I am going to push this splicing functionality down into rf1,
+	// because it's too clunky to do that from here. If we end up supporting
+	// other video file formats besides rf1 here, then a cheap fix would be
+	// to truncate the illegal prefix of the incoming data, and only write
+	// from the first IDR that is after stream.current.endTime.
+	//if minPTS.Before(stream.current.endTime) {
+	//	// TODO:
+	//	// Instead of discarding the packets, delete the suffix that overlaps.
+	//	// We delete the suffix because we're not guaranteed to have an IDR there,
+	//	// but we assume that the new payload we're receiving now starts with an IDR.
+	//	// But wait! We can't delete packets. The file format is not designed for that,
+	//	// and it seems like an unnecessarily complex feature to add. I'm betting here
+	//	// on the assumption that we WILL find the perfect splice point.
+	//	return fmt.Errorf("Video payload %v starts before the end of the current video file %v. This would cause non-contiguous frames.", minPTS, stream.current.endTime)
+	//}
+	// mmm no -- perhaps we are best suited to do that here. I think so!
 
 	for track, packets := range payload {
-		if err := stream.current.file.Write(track, packets.NALUs); err != nil {
+		startWrite := time.Now()
+
+		// If any NALUs in 'packets' have already been written, remove them from the list
+		afterSplice := a.splicePacketsBeforeWrite(stream, track, packets.NALUs)
+		if len(afterSplice) == 0 {
+			continue
+		}
+
+		// Write
+		if err := stream.current.file.Write(track, afterSplice); err != nil {
 			return fmt.Errorf("Error writing to video file %v: %v", stream.current.filename, err)
 		}
 		if !slices.Contains(stream.current.tracks, track) {
 			stream.current.tracks = append(stream.current.tracks, track)
 		}
+
+		// Add the new packets to the list of recently written packets
+		a.addPacketsToRecentWriteList(stream, track, afterSplice)
+
+		// Record performance stats
+		elapsed := time.Now().Sub(startWrite)
+		a.bytesWrittenStat.AddSample(totalPayloadBytes(afterSplice))
+		if a.firstWrite.IsZero() {
+			a.firstWrite = startWrite
+		}
+		a.writeTimeStat.AddSample(elapsed)
 	}
 
 	stream.current.endTime = maxPTS
@@ -175,6 +197,9 @@ func (a *Archive) write(streamName string, payload map[string]TrackPayload) erro
 		stream.startTime = minPTS
 	}
 	stream.endTime = maxPTS
+
+	// Write stats to log, if appropriate interval has elapsed
+	a.AutoStatsToLog()
 
 	return nil
 }

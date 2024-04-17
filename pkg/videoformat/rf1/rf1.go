@@ -18,6 +18,7 @@ var ErrInvalidCodec = errors.New("invalid codec")
 const MaxPacketsFileSize = 1<<30 - 1 // 1 GB
 const MaxDuration = 1024 * time.Second
 const MaxEncodedPTS = 1<<22 - 1
+const MaxIndexEntries = 1<<16 - 1
 
 type FileType int
 
@@ -49,7 +50,7 @@ type NALU struct {
 	PTS      time.Time
 	Flags    IndexNALUFlags
 	Position int64 // Position in packets file. Only used when reading
-	Length   int64 // Only used when reading (logically this is equal to len(Payload))
+	Length   int64 // Only used when reading (logically this is equal to len(Payload), but Payload might be nil)
 	Payload  []byte
 }
 
@@ -105,8 +106,20 @@ func SplitIndexNALU(p uint64) (pts int64, location int64, flags IndexNALUFlags) 
 	return
 }
 
+func MakeIndexSentinel(location int64) uint64 {
+	return MakeIndexNALU(0, 0, 0)
+}
+
+func SplitIndexNALUEncodedTimeOnly(p uint64) int64 {
+	return int64(p >> 42)
+}
+
 func SplitIndexNALUTimeOnly(p uint64) time.Duration {
 	return DecodeTimeOffset(int64(p >> 42))
+}
+
+func SplitIndexNALULocationOnly(p uint64) int64 {
+	return int64((p >> 12) & (1<<30 - 1))
 }
 
 func IsValidCodec(c string) bool {

@@ -27,6 +27,26 @@ const (
 	ExtractMethodDrain                             // Drain the buffer, leaving the camera's buffer empty
 )
 
+// If we're sending to a channel, and it is full, what do we do?
+type FullChannelPolicy int
+
+const (
+	FullChannelPolicyDrop  FullChannelPolicy = iota // If channel is full, drop packets
+	FullChannelPolicyStall                          // If channel is full, write the packet anyway, knowing that we'll block
+)
+
+// RingBufferListener is a listener that receives video packets from the ring buffer via a channel.
+// The name is used only for logging and debugging. The thing that uniquely identifies the listener
+// is the channel.
+type RingBufferListener struct {
+	Name       string
+	Chan       chan *videox.VideoPacket
+	Policy     FullChannelPolicy
+	lastLogMsg time.Time
+	nDropped   int
+	nStalled   int
+}
+
 /*
 SYNC-MAX-TRAIN-RECORD-TIME
 
@@ -68,7 +88,7 @@ type VideoRingBuffer struct {
 	Buffer     ringbuffer.WeightedRingT[videox.VideoPacket]
 
 	packetListenerLock sync.Mutex
-	packetListeners    []chan *videox.VideoPacket
+	packetListeners    []*RingBufferListener
 
 	incoming StreamSinkChan
 }
@@ -90,17 +110,21 @@ func (r *VideoRingBuffer) initializeBuffer() {
 	r.Buffer = ringbuffer.NewWeightedRingT[videox.VideoPacket](r.Buffer.MaxWeight)
 }
 
-func (r *VideoRingBuffer) AddPacketListener(c chan *videox.VideoPacket) {
+func (r *VideoRingBuffer) AddPacketListener(name string, c chan *videox.VideoPacket, policy FullChannelPolicy) {
 	r.packetListenerLock.Lock()
 	defer r.packetListenerLock.Unlock()
-	r.packetListeners = append(r.packetListeners, c)
+	r.packetListeners = append(r.packetListeners, &RingBufferListener{
+		Name:   name,
+		Chan:   c,
+		Policy: policy,
+	})
 }
 
 func (r *VideoRingBuffer) RemovePacketListener(c chan *videox.VideoPacket) {
 	r.packetListenerLock.Lock()
 	defer r.packetListenerLock.Unlock()
 	for i, listener := range r.packetListeners {
-		if listener == c {
+		if listener.Chan == c {
 			r.packetListeners = append(r.packetListeners[:i], r.packetListeners[i+1:]...)
 			return
 		}
@@ -120,11 +144,31 @@ func (r *VideoRingBuffer) OnPacketRTP(packet *videox.VideoPacket) {
 
 	r.Buffer.Add(packet.PayloadBytes(), packet)
 
+	now := time.Now()
+
 	// Send packet to our listeners (eg videoRecorder)
 	r.packetListenerLock.Lock()
 	defer r.packetListenerLock.Unlock()
 	for _, listener := range r.packetListeners {
-		listener <- packet
+		if len(listener.Chan) == cap(listener.Chan) {
+			if listener.Policy == FullChannelPolicyDrop {
+				listener.nDropped++
+				if now.Sub(listener.lastLogMsg) > time.Second*3 {
+					r.Log.Warnf("%v packets dropped for %v", listener.nDropped, listener.Name)
+					listener.lastLogMsg = now
+					listener.nDropped = 0
+				}
+				continue
+			} else {
+				listener.nStalled++
+				if now.Sub(listener.lastLogMsg) > time.Second*3 {
+					r.Log.Warnf("%v stalled packets for %v", listener.nStalled, listener.Name)
+					listener.lastLogMsg = now
+					listener.nStalled = 0
+				}
+			}
+		}
+		listener.Chan <- packet
 	}
 }
 

@@ -130,22 +130,20 @@ func (s *LiveCameras) startStopRecorderForAllCameras() {
 
 		if mustRecord && !state.isRecording() {
 			// Start recording
-			s.log.Infof("Starting recording camera %v (%v): %v", cam.ID(), cam.Name(), reason)
+			s.log.Infof("Starting recording on %v (%v): %v", cam.ID(), cam.Name(), reason)
 			state.recorderHD = camera.StartVideoRecorder(cam.HighDumper, filepath.Clean(cam.HighResRecordingStreamName()), s.archive, recordBefore)
 			state.recorderLD = camera.StartVideoRecorder(cam.LowDumper, filepath.Clean(cam.LowResRecordingStreamName()), s.archive, recordBefore)
 		} else if !mustRecord && state.isRecording() {
 			// Stop recording
-			s.log.Infof("Stop recording camera %v (%v)", cam.ID(), cam.Name())
-			state.recorderHD.Stop()
-			state.recorderLD.Stop()
-			state.recorderHD = nil
-			state.recorderLD = nil
+			s.log.Infof("Motion/Detection is gone - stopping recording %v (%v)", cam.ID(), cam.Name())
+			s.stopRecorder(state)
 		}
 	}
 
 	// Stop and remove recorder state for cameras that no longer exist
 	for id, state := range s.recordStates {
 		if _, ok := s.cameraFromID[id]; !ok {
+			s.log.Infof("Stopping recording (if any) of camera %v because it no longer exists", id)
 			s.stopRecorder(state)
 			delete(s.recordStates, id)
 		}

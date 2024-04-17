@@ -268,7 +268,12 @@ func (s *Stream) Listen(address string) error {
 		s.sinksLock.Lock()
 		if !s.isClosed {
 			for _, sink := range s.sinks {
+				a := time.Now()
 				s.sendSinkMsg(sink, StreamMsgTypePacket, cloned)
+				elapsed := time.Now().Sub(a)
+				if elapsed > time.Millisecond {
+					s.Log.Warnf("Slow stream sink (%v)", elapsed)
+				}
 			}
 		}
 		s.sinksLock.Unlock()

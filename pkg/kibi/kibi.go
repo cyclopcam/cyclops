@@ -26,6 +26,23 @@ func FormatBytes(b int64) string {
 	}
 }
 
+// Like FormatBytes, but with 3 decimal places of precision
+func FormatBytesHighPrecision(b int64) string {
+	if b < 1024 {
+		return fmt.Sprintf("%v bytes", b)
+	} else if b < 1024*1024 {
+		return fmt.Sprintf("%.3f KB", float64(b)/1024)
+	} else if b < 1024*1024*1024 {
+		return fmt.Sprintf("%.3f MB", float64(b)/(1024*1024))
+	} else if b < 1024*1024*1024*1024 {
+		return fmt.Sprintf("%.3f GB", float64(b)/(1024*1024*1024))
+	} else if b < 1024*1024*1024*1024*1024 {
+		return fmt.Sprintf("%.3f TB", float64(b)/(1024*1024*1024*1024))
+	} else {
+		return fmt.Sprintf("%.3f PB", float64(b)/(1024*1024*1024*1024*1024))
+	}
+}
+
 // We support suffixes 'mb', 'kb', 'gb', etc.
 // We also support suffixes of just the letter, eg 'm', 'g', etc.
 // Examples:

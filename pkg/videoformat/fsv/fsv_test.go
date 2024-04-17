@@ -25,15 +25,17 @@ func TestReaderWriter(t *testing.T) {
 	require.NotNil(t, arc1)
 
 	tbase1 := time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
-	tbase2 := tbase1.Add(arc1.MaxVideoFileDuration())         // Packets after tbase 2 will require a new file
-	packets1 := rf1.CreateTestNALUs(tbase1, 0, 100, 10.0, 13) // these go into the first file
-	packets2 := rf1.CreateTestNALUs(tbase2, 0, 50, 10.0, 15)  // these go into the second file
+	tbase2 := tbase1.Add(arc1.MaxVideoFileDuration())              // Packets after tbase 2 will require a new file
+	packets1 := rf1.CreateTestNALUs(tbase1, 0, 100, 10.0, 100, 13) // these go into the first file
+	packets2 := rf1.CreateTestNALUs(tbase2, 0, 50, 10.0, 100, 15)  // these go into the second file
 
 	require.InDelta(t, 0, arc1.TotalSize(), maxSizeDelta)
 
 	require.NoError(t, arc1.Write("stream1", map[string]TrackPayload{"videoTrack1": makeVideoPayload(packets1)}))
 
-	require.InDelta(t, expectedFilesize(packets1), arc1.TotalSize(), maxSizeDelta)
+	// After adding fragmentation avoidance, we can't verify file sizes while files are still open.
+	// rf1 files only get truncated on close.
+	//require.InDelta(t, expectedFilesize(packets1), arc1.TotalSize(), maxSizeDelta)
 
 	// No files in index yet
 	require.Equal(t, 0, len(arc1.streams["stream1"].files))
@@ -54,8 +56,6 @@ func TestReaderWriter(t *testing.T) {
 	// Read data from a file in the index, and the current file
 	verifyRead(t, arc1, "stream1", "videoTrack1", packets1[0].PTS, packets2[len(packets2)-1].PTS, len(packets1)+len(packets2), 0)
 
-	require.InDelta(t, expectedFilesize(packets1)+expectedFilesize(packets2), arc1.TotalSize(), maxSizeDelta)
-
 	arc1.Close()
 
 	// System goes down and comes up again
@@ -72,6 +72,9 @@ func TestReaderWriter(t *testing.T) {
 	require.LessOrEqual(t, AbsTimeDiff(packets1[0].PTS, stream0.StartTime), time.Millisecond)
 	require.LessOrEqual(t, AbsTimeDiff(packets2[len(packets2)-1].PTS, stream0.EndTime), time.Millisecond)
 
+	// Must verify file size after closing and re-opening (due to fragmentation avoidance in rf1)
+	t.Logf("Expect %v + %v = %v", expectedFilesize(packets1), expectedFilesize(packets2), expectedFilesize(packets1)+expectedFilesize(packets2))
+	t.Logf("Actual %v", arc2.TotalSize())
 	require.InDelta(t, expectedFilesize(packets1)+expectedFilesize(packets2), arc2.TotalSize(), maxSizeDelta)
 
 	// We expect two video files, from packets1 and packets2 respectively
@@ -98,14 +101,12 @@ func TestReaderWriter(t *testing.T) {
 	withSweep.SweepInterval = time.Millisecond
 	arc3, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}}, withSweep)
 	require.Equal(t, expectedFilesize(packets1)+expectedFilesize(packets2), arc3.TotalSize())
-	arc3.startSweeper()
 	time.Sleep(time.Millisecond * 3)
 	require.Equal(t, expectedFilesize(packets2), arc3.TotalSize())
-	arc3.stopSweeper()
 }
 
 func expectedFilesize(packets []rf1.NALU) int64 {
-	indexSize := 32 + len(packets)*8
+	indexSize := 32 + (len(packets)+1)*8
 	packetSize := 0
 	for _, p := range packets {
 		packetSize += len(p.Payload)

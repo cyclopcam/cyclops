@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"sort"
 	"strings"
 	"time"
 	"unsafe"
@@ -46,11 +45,16 @@ type Track struct {
 
 	canWrite    bool          // True if opened with write ability
 	index       *os.File      // Index file
-	indexCount  int           // Number of index entries in file
+	indexCount  int           // Number of index entries in file, excluding the sentinel
+	dirty       bool          // True if we need to write our index header and truncate files on Close()
 	packets     *os.File      // Packets file
-	packetsSize int64         // Size of packets file in bytes
+	packetsSize int64         // Size of packets file in bytes (real used space, ignoring pre-allocated space)
 	duration    time.Duration // Duration of track
-	indexCache  []uint64      // Cache of index entries
+	indexCache  []uint64      // Cache of all index entries, including sentinel
+
+	disablePreallocate  bool  // Disable preallocate of space in index and packet files to avoid fragmentation
+	indexPreallocSize   int64 // Size that we have pre-extended index file to (zero if no extension)
+	packetsPreallocSize int64 // Size that we have pre-extended packets file to (zero if no extension)
 }
 
 // Create a new track definition, but do not write anything to disk, or associate the track with a file.
@@ -92,6 +96,16 @@ func (t *Track) Filenames(baseFilename string) (string, string) {
 	return TrackFilename(baseFilename, t.Name, FileTypeIndex), TrackFilename(baseFilename, t.Name, FileTypePackets)
 }
 
+// Returns the truncated size of the packet file
+func (t *Track) PacketFileSize() int64 {
+	return t.packetsSize
+}
+
+// Returns the truncated size of the index file
+func (t *Track) IndexFileSize() int64 {
+	return int64(IndexHeaderSize) + int64(t.indexCount+1)*8
+}
+
 // Create new track files on disk
 // You will usually not call this function directly. Instead, it is called
 // for you when using [File.AddTrack].
@@ -106,30 +120,6 @@ func (t *Track) CreateTrackFiles(baseFilename string) error {
 		return err
 	}
 
-	if t.Type == TrackTypeVideo {
-		header := C.VideoIndexHeader{}
-		header.TimeBase = C.uint64_t(EncodeTimeBase(t.TimeBase))
-		cgogo.CopySlice(header.Magic[:], []byte(MagicVideoTrackBytes))
-		cgogo.CopySlice(header.Codec[:], []byte(t.Codec))
-		header.Width = C.uint16_t(t.Width)
-		header.Height = C.uint16_t(t.Height)
-		if _, err := cgogo.WriteStruct(idx, &header); err != nil {
-			idx.Close()
-			return err
-		}
-	} else if t.Type == TrackTypeAudio {
-		header := C.AudioIndexHeader{}
-		header.TimeBase = C.uint64_t(EncodeTimeBase(t.TimeBase))
-		cgogo.CopySlice(header.Magic[:], []byte(MagicAudioTrackBytes))
-		cgogo.CopySlice(header.Codec[:], []byte(t.Codec))
-		if _, err := cgogo.WriteStruct(idx, &header); err != nil {
-			idx.Close()
-			return err
-		}
-	} else {
-		return fmt.Errorf("Invalid track type: %v", t.Type)
-	}
-
 	t.canWrite = true
 	t.index = idx
 	t.indexCount = 0
@@ -137,6 +127,16 @@ func (t *Track) CreateTrackFiles(baseFilename string) error {
 	t.packetsSize = 0
 	t.duration = 0
 	t.indexCache = nil
+
+	if err := t.WriteHeader(); err != nil {
+		t.Close()
+		return err
+	}
+
+	// We always have a sentinel entry, even if the file is empty.
+	// This simplifies the code and data structures.
+	sentinel := []uint64{MakeIndexSentinel(0)}
+	cgogo.WriteSliceAt(t.index, sentinel, int64(IndexHeaderSize))
 
 	return nil
 }
@@ -165,11 +165,11 @@ func OpenTrack(baseFilename string, trackName string, mode OpenMode) (*Track, er
 		flag = os.O_RDWR
 	}
 
-	idxFile, err = os.OpenFile(TrackFilename(baseFilename, trackName, FileTypeIndex), flag, 0666)
+	idxFile, err = os.OpenFile(TrackFilename(baseFilename, trackName, FileTypeIndex), flag, 0660)
 	if err != nil {
 		return nil, err
 	}
-	pktFile, err = os.OpenFile(TrackFilename(baseFilename, trackName, FileTypePackets), flag, 0666)
+	pktFile, err = os.OpenFile(TrackFilename(baseFilename, trackName, FileTypePackets), flag, 0660)
 	if err != nil {
 		return nil, err
 	}
@@ -195,30 +195,81 @@ func OpenTrack(baseFilename string, trackName string, mode OpenMode) (*Track, er
 		return nil, fmt.Errorf("%w '%v'", ErrInvalidCodec, string(codec[:]))
 	}
 
-	// Seek to end of files, so that we can continue to write.
-	// But more importantly in most cases - this gives us the file size.
-	// I don't see opening of an existing file and appending to it as a common use case.
-	idxSize, err := idxFile.Seek(0, io.SeekEnd)
+	realIndexFileSize, err := idxFile.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, err
 	}
-	indexCount := (int(idxSize) - IndexHeaderSize) / 8
 
-	pktSize, err := pktFile.Seek(0, io.SeekEnd)
+	indexCount := int(indexHead.IndexCount)
+	sentinelPos := int64(0)
+
+	var indexCache []uint64
+	if indexCount == 0 {
+		// If the index count is zero, then we need to scan index entries to find the last non-zero entry.
+		// This happens if the file was not closed properly (eg hardware/OS/program crash).
+		indexCache, err = findAllNonZeroIndexEntries(idxFile)
+		if err != nil {
+			return nil, err
+		}
+		if len(indexCache) == 0 {
+			indexCache = []uint64{MakeIndexSentinel(0)}
+		}
+		// indexCache includs the sentinel, but indexCount excludes the sentinel
+		indexCount = max(0, len(indexCache)-1)
+		sentinelPos = SplitIndexNALULocationOnly(indexCache[len(indexCache)-1])
+	} else {
+		// Read only the sentinel
+		sentinel := []uint64{0}
+		if _, err := cgogo.ReadSliceAt(idxFile, sentinel, int64(IndexHeaderSize)+int64(indexCount)*8); err != nil {
+			return nil, fmt.Errorf("Error reading sentinel: %w", err)
+		}
+		sentinelPos = SplitIndexNALULocationOnly(sentinel[0])
+	}
+
+	realPacketFileSize, err := pktFile.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, err
 	}
+
+	// Limit the packet file size to the last index entry (sentinel).
+	// This is useful when the packet file did not get truncated (eg system crashed).
+	pktBytes := min(realPacketFileSize, sentinelPos)
+
+	// The following deals with the case where the packet file was unnaturally truncated,
+	// and the index file has entries pointing into non-existent regions of the packet file.
+	// We truncate such index entries.
+	// I don't have the energy to test this now, so rather leaving it out.
+	//if pktSize < sentinelPos {
+	//	i := len(indexCache) - 1
+	//	for ; i >= 0; i-- {
+	//		if pktSize <= SplitIndexNALULocationOnly(indexCache[i]) {
+	//			break
+	//		}
+	//	}
+	//	// i is the last valid index entry
+	//	i = max(i, 0)
+	//	if i == 0 {
+	//		// empty
+	//		indexCache = []uint64{MakeIndexSentinel(0)}
+	//	} else {
+	//		indexCache = indexCache[:i]
+	//	}
+	//	indexCount = len(indexCache) - 1
+	//}
 
 	track := &Track{
-		canWrite:    mode == OpenModeReadWrite,
-		Type:        trackType,
-		Name:        trackName,
-		Codec:       string(codec[:]),
-		TimeBase:    DecodeTimeBase(uint64(indexHead.TimeBase)),
-		index:       idxFile,
-		indexCount:  indexCount,
-		packets:     pktFile,
-		packetsSize: pktSize,
+		canWrite:            mode == OpenModeReadWrite,
+		Type:                trackType,
+		Name:                trackName,
+		Codec:               string(codec[:]),
+		TimeBase:            DecodeTimeBase(uint64(indexHead.TimeBase)),
+		index:               idxFile,
+		indexCount:          indexCount,
+		indexCache:          indexCache,
+		packets:             pktFile,
+		packetsSize:         pktBytes,
+		indexPreallocSize:   realIndexFileSize,
+		packetsPreallocSize: realPacketFileSize,
 	}
 
 	if trackType == TrackTypeVideo {
@@ -249,209 +300,37 @@ func (t *Track) Duration() time.Duration {
 	return t.duration
 }
 
-// Use the PTS of the last NALU in the index to figure out the duration of the track
-func (t *Track) readDuration() (time.Duration, error) {
-	if t.indexCount == 0 {
-		return 0, nil
-	}
-	nalus, err := t.ReadIndex(t.indexCount-1, t.indexCount)
-	if err != nil {
-		return 0, err
-	}
-	return nalus[0].PTS.Sub(t.TimeBase), nil
-}
-
-// Read a range of packet uint64 index entries, either from the file, or from our in-memory cache.
-// At present out caching strategy is simply to read the entire index the first time
-// we need any of it, and keep the whole thing in memory. The index is so small compared to
-// the payload, that it's not clear that anything else makes sense.
-func (t *Track) readRawIndex(startIdx, endIdx int) ([]uint64, error) {
-	if startIdx < 0 || endIdx <= startIdx || endIdx > t.indexCount {
-		return nil, fmt.Errorf("Invalid startIdx, endIdx: %v, %v (number of indices: %v)", startIdx, endIdx, t.indexCount)
-	}
-	if len(t.indexCache) != t.indexCount {
-		// Special exceptions for when we don't cache the entire index:
-		// 1. When reading the final index entry.
-		//    This is used to determine the duration of the track, and does not necessary imply
-		//    subsequent reading.
-		doNotCache := startIdx == t.indexCount-1
-		if doNotCache {
-			// Read only what was requested
-			raw := make([]uint64, endIdx-startIdx)
-			_, err := cgogo.ReadSliceAt(t.index, raw, int64(IndexHeaderSize)+int64(startIdx)*8)
-			if err != nil {
-				return nil, err
-			}
-			return raw, nil
-		} else {
-			// Read the whole index into the cache
-			raw := make([]uint64, t.indexCount)
-			_, err := cgogo.ReadSliceAt(t.index, raw, int64(IndexHeaderSize))
-			if err != nil {
-				return nil, err
-			}
-			t.indexCache = raw
-		}
-	}
-	return t.indexCache[startIdx:endIdx], nil
-}
-
-// Read NALU index in the range [startIdx, endIdx).
-func (t *Track) ReadIndex(startIdx, endIdx int) ([]NALU, error) {
-	if startIdx < 0 || endIdx <= startIdx || endIdx > t.indexCount {
-		return nil, fmt.Errorf("Invalid startIdx, endIdx: %v, %v (number of indices: %v)", startIdx, endIdx, t.indexCount)
-	}
-	// If plusOne is true, then we will read one more NALU than the user requested.
-	// If plusOne is false, we're reading up to the end of the file, so we need to
-	// use the packets file size to determine the size of the final NALU.
-	plusOne := endIdx < t.indexCount
-	readCount := endIdx - startIdx
-	if plusOne {
-		readCount++
-	}
-	raw, err := t.readRawIndex(startIdx, startIdx+readCount)
-	if err != nil {
-		return nil, err
-	}
-	nalus := make([]NALU, readCount)
-	for i, r := range raw {
-		pts, location, flags := SplitIndexNALU(r)
-		nalus[i].PTS = DecodePTSTime(pts, t.TimeBase)
-		nalus[i].Flags = flags
-		nalus[i].Position = int64(location)
-	}
-	for i := 0; i < len(nalus)-1; i++ {
-		nalus[i].Length = nalus[i+1].Position - nalus[i].Position
-	}
-	if plusOne {
-		// Chop off the final NALU that we artifically added in for Length computation
-		nalus = nalus[:len(nalus)-1]
-	} else {
-		// Compute the length of the final NALU by using the size of the packets file
-		nalus[len(nalus)-1].Length = t.packetsSize - nalus[len(nalus)-1].Position
-	}
-	return nalus, nil
-}
-
-// Read payloads for the given NALUs
-func (t *Track) ReadPayload(nalus []NALU) error {
-	if len(nalus) == 0 {
-		return nil
-	}
-	// Read in contiguous chunks
-	maxChunkSize := int64(1024 * 1024)
-	startByte := nalus[0].Position
-	endByte := nalus[0].Position + nalus[0].Length
-	startIdx := 0
-	for i := 1; i <= len(nalus); i++ {
-		if i == len(nalus) || nalus[i].Position != endByte || endByte+nalus[i].Length-startByte >= maxChunkSize {
-			// Read the chunk
-			buffer := make([]byte, endByte-startByte)
-			if _, err := t.packets.ReadAt(buffer, startByte); err != nil {
-				return err
-			}
-			// Divide it up
-			for j := startIdx; j < i; j++ {
-				relativePos := nalus[j].Position - startByte
-				nalus[j].Payload = buffer[relativePos : relativePos+nalus[j].Length]
-			}
-			if i < len(nalus) {
-				// Start the next chunk
-				startByte = nalus[i].Position
-				endByte = nalus[i].Position + nalus[i].Length
-				startIdx = i
-			}
-		} else {
-			endByte = nalus[i].Position + nalus[i].Length
-		}
-	}
-	return nil
-}
-
-// Read NALUs with payload by specifying time instead of packet indices
-func (t *Track) ReadAtTime(startTime, endTime time.Duration) ([]NALU, error) {
-	rawIdx, err := t.readRawIndex(0, t.indexCount)
+// Return the valid index entries, including the sentinel
+func findAllNonZeroIndexEntries(idxFile *os.File) ([]uint64, error) {
+	idxSize, err := idxFile.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, err
 	}
 
-	// Find the first packet that is after startTime
-	startIdx := sort.Search(len(rawIdx), func(i int) bool {
-		return SplitIndexNALUTimeOnly(rawIdx[i]) >= startTime
-	})
+	// Maximum number of index entries
+	maxCount := (int(idxSize) - IndexHeaderSize) / 8
 
-	// Find the first packet that is after endTime
-	endIdx := sort.Search(len(rawIdx), func(i int) bool {
-		return SplitIndexNALUTimeOnly(rawIdx[i]) > endTime
-	})
-
-	if endIdx-startIdx == 0 {
-		// Empty search
-		return nil, nil
-	}
-
-	nalus, err := t.ReadIndex(startIdx, endIdx)
+	// Read the whole index
+	raw := make([]uint64, maxCount)
+	_, err = cgogo.ReadSliceAt(idxFile, raw, int64(IndexHeaderSize))
 	if err != nil {
 		return nil, err
 	}
-	if err := t.ReadPayload(nalus); err != nil {
-		return nil, err
-	}
-	return nalus, nil
-}
 
-// Write NALUs
-func (t *Track) WriteNALUs(nalus []NALU) error {
-	if !t.canWrite {
-		return ErrReadOnly
+	// Find the first zero index entry.
+	firstZeroIdx := 0
+	if maxCount >= 2 && raw[0] == 0 && raw[1] != 0 {
+		// We make special allowance for packet[0] to be all zeroes.
+		// This is allowable for the first packet, but not for any others.
+		// The first packet will have a Location field of zero, likely
+		// a Time (PTS) field of zero, and possibly zero flags.
+		firstZeroIdx = 1
 	}
-	if len(nalus) == 0 {
-		return nil
-	}
-	index := []uint64{}
-
-	// write packets
-	for _, nalu := range nalus {
-		relativePTS := nalu.PTS.Sub(t.TimeBase)
-		if relativePTS < t.duration {
-			return fmt.Errorf("NALU occurs before the end of the track (%v < %v), '%v < %v'", relativePTS, t.duration, nalu.PTS, t.TimeBase.Add(t.duration))
+	for ; firstZeroIdx < maxCount; firstZeroIdx++ {
+		if raw[firstZeroIdx] == 0 {
+			break
 		}
-		t.duration = relativePTS
-		pos := t.packetsSize
-		n, err := t.packets.Write(nalu.Payload)
-		t.packetsSize += int64(n)
-		if err != nil {
-			return err
-		}
-		index = append(index, MakeIndexNALU(EncodeTimeOffset(relativePTS), pos, nalu.Flags))
 	}
 
-	// write to index
-	_, err := cgogo.WriteSlice(t.index, index)
-	t.indexCount += len(index)
-	return err
-}
-
-func (t *Track) HasCapacity(nalus []NALU) bool {
-	if !t.canWrite {
-		return false
-	}
-	if len(nalus) == 0 {
-		return true
-	}
-	// Check if we have enough space in the packets file
-	packetBytes := int64(0)
-	for _, nalu := range nalus {
-		packetBytes += int64(len(nalu.Payload))
-	}
-	if t.packetsSize+packetBytes > MaxPacketsFileSize {
-		return false
-	}
-	// Check if we have enough time in the index file
-	encodedTime := EncodePTSTime(nalus[len(nalus)-1].PTS, t.TimeBase)
-	if encodedTime > MaxEncodedPTS {
-		return false
-	}
-
-	return true
+	return raw[:firstZeroIdx], nil
 }

@@ -69,6 +69,7 @@ func (r *VideoRecorder) start(includeHistory time.Duration) {
 // recordFunc runs on its own thread, consuming packets from the ring buffer (via a channel),
 // and writing them to the archive.
 func (r *VideoRecorder) recordFunc(includeHistory time.Duration) {
+	r.Log.Infof("RecordFunc enter")
 	// Before we can start writing to our archive, we need to make sure that we have
 	// a SPS + PPS + IDR packet, otherwise the codec can't start.
 	// If we've been connected to the camera for a few seconds, then this phase will
@@ -99,7 +100,7 @@ func (r *VideoRecorder) recordFunc(includeHistory time.Duration) {
 					// It's crucial that we add our packet listener inside r.ringBuffer.BufferLock.
 					// This guarantees that we don't miss any packets.
 					waitingForIDR = false
-					r.ringBuffer.AddPacketListener(r.onPacket)
+					r.ringBuffer.AddPacketListener("VideoRecorder", r.onPacket, FullChannelPolicyDrop)
 				}
 			}
 			r.ringBuffer.BufferLock.Unlock()
@@ -117,6 +118,7 @@ func (r *VideoRecorder) recordFunc(includeHistory time.Duration) {
 	for {
 		select {
 		case <-r.stop:
+			r.Log.Infof("Recorder stopping")
 			r.ringBuffer.RemovePacketListener(r.onPacket)
 			gen.DrainChannel(r.onPacket)
 			r.Log.Infof("Recorder stopped after %v", time.Now().Sub(startAt))

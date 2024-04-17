@@ -25,8 +25,14 @@ async function onSubmit() {
 		return;
 	}
 
-	globals.networkError = '';
-	globals.postAuthenticateLoadSystemInfo();
+	// Just reload to make sure all state is sane, and we go through
+	// whatever automatic routing the default system would take us
+	// through on app startup.
+	window.location.reload();
+
+	// This approach is just trying too hard - not worth it.
+	//globals.networkError = '';
+	//globals.postAuthenticateLoadSystemInfo(true);
 }
 
 //onMounted(() => {

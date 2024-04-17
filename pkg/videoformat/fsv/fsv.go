@@ -11,14 +11,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cyclopcam/cyclops/pkg/kibi"
 	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/perfstats"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 )
 
 // videoFile is a single logical video file, even if it's split into multiple physical files (eg rf1)
 // A videoFile will typically have one or two tracks inside (video, or video + audio).
 type videoFile struct {
-	filename  string    // Example /var/lib/cyclops/archive/camera-0001/1708584695
+	filename  string    // Example /var/lib/cyclops/archive/camera-0001/1712815946731
 	startTime time.Time // Start time of the video file
 	endTime   time.Time // End time of the video file
 	file      VideoFile // Interface to the on-disk format. This is an open handle to the video file, and needs to be Closed() when we're done with it.
@@ -27,10 +29,14 @@ type videoFile struct {
 
 // A small-memory-footprint record that exists for every file in the archive
 type videoFileIndex struct {
-	filename  string   // Only the logical filename, such as "1708584695"
-	startTime int64    // Milliseconds UTC
-	size      int64    // Size of the file in bytes. For rf1 files, this is the sum of all rf1 files (all tracks: index files and packet files)
-	tracks    []string // Names of the tracks (necessary for rf1, so we can delete all tracks/files of the video without scanning the filesystem)
+	filename  string // Only the logical filename, such as "1712815946731"
+	startTime int64  // Milliseconds UTC, should be equal to the filename (we might consider getting rid of "filename")
+	size      int64  // Size of the file in bytes. For rf1 files, this is the sum of all rf1 files (all tracks: index files and packet files)
+
+	// Names of the tracks (necessary for rf1, so we can delete all tracks/files of the video without scanning the filesystem).
+	// Note: This array is likely shared with many (or all) other videoFileIndex objects in the same stream.
+	// We do this to save memory. So be careful if you're manipulating the 'tracks' array, or the strings inside.
+	tracks []string
 }
 
 // videoStream is a single logical video stream, usually split across many videoFiles
@@ -44,6 +50,10 @@ type videoStream struct {
 	endTime     time.Time        // End time of the stream (zero if unknown)
 	current     *videoFile       // The file we are currently writing to
 	files       []videoFileIndex // All files in the stream except for 'current'
+	// Recently written packets, with their payloads set to nil.
+	// Used to splice overlapping writes.
+	// Key is track name.
+	recentWrite map[string][]rf1.NALU
 }
 
 // Information about a stream
@@ -84,12 +94,19 @@ type Archive struct {
 	maxVideoFileDuration time.Duration // We need to know this so that it is fast to find files close to a given time period.
 	sweepStop            chan bool     // Tell the sweeper to stop
 	sweeperStopped       chan bool     // Sweeper closes this once it has stopped
+	recentWriteMaxQueue  int           // Max number of NALU headers we'll store in videoStream.recentWrite
 
 	settingsLock sync.Mutex // Guards access to settings
 	settings     ArchiveSettings
 
 	streamsLock sync.Mutex // Guards access to the streams map. Access inside a stream needs stream.contentLock.
 	streams     map[string]*videoStream
+
+	firstWrite        time.Time                  // Time when we wrote our first byte
+	bytesWrittenStat  perfstats.Int64Accumulator // All the bytes that we've written
+	writeTimeStat     perfstats.TimeAccumulator  // How long each write took
+	lastStatWriteTime time.Time                  // Last time we wrote stats to log
+	numStatWrites     int64                      // Number of times we've written stats to log
 }
 
 // Archive Settings
@@ -122,19 +139,25 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat, settings Archiv
 	// You can't arbitrarily change this constant after creating an archive, because then when
 	// you scan for video files matching a given time period, you may skip a valid file.
 	// The reason is because we round down to the previous period, and then use a filesystem glob
-	// to find files.
+	// to find files. When we do this filesystem scan, the filename tells us the start time
+	// of the video, but we don't know the duration from the filename. But if we know that the
+	// duration cannot be greater than maxVideoFileDuration, then we can figure it out, if the
+	// videos are contiguous. But if you change maxVideoFileDuration, then that knowledge is
+	// no longer valid.
 	maxVideoFileDuration := 1000 * time.Second
 
 	baseDir = strings.TrimSuffix(baseDir, "/")
 	// Scan top-level directories.
 	// Each directory is a stream (eg camera-0001).
 	archive := &Archive{
-		log:                  logger,
+		log:                  log.NewPrefixLogger(logger, "Archive:"),
 		baseDir:              baseDir,
 		formats:              formats,
 		streams:              map[string]*videoStream{},
 		maxVideoFileDuration: maxVideoFileDuration,
+		recentWriteMaxQueue:  1000, // at 30 fps, 1000/30 = 33 seconds of recent writes. My plan is to include 15 seconds of history at 10 FPS, so 33 at 30 FPS is a plenty big buffer.
 		settings:             settings,
+		lastStatWriteTime:    time.Now(),
 	}
 	err := filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -143,7 +166,8 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat, settings Archiv
 		if d.IsDir() && path != baseDir {
 			streamName := filepath.Base(path)
 			archive.streams[streamName] = &videoStream{
-				name: streamName,
+				name:        streamName,
+				recentWrite: map[string][]rf1.NALU{},
 			}
 			return filepath.SkipDir
 		}
@@ -207,6 +231,11 @@ func (a *Archive) ListStreams() []*StreamInfo {
 // of the archive, because we assume here that we have exclusive access to the
 // entire data structure - i.e. no thread safety.
 func (a *Archive) scan() error {
+	scanStart := time.Now()
+	defer func() {
+		a.log.Infof("Archive scan took %v", time.Now().Sub(scanStart))
+	}()
+
 	for _, stream := range a.streams {
 		if err := a.scanStream(stream); err != nil {
 			return err
@@ -253,11 +282,11 @@ func (a *Archive) scanStream(stream *videoStream) error {
 		// Check if this is a video file
 		onlyFilename := filepath.Base(path)
 		// We need to chop the filename up here, because for rf1, look at this example:
-		// path: /var/lib/cyclops/archive/camera-0001/1708584695_video.rf1i
+		// path: /var/lib/cyclops/archive/cam-1-HD/1708584695_video.rf1i
 		// onlyFilename: 1708584695_video.rf1i
-		// Logically, we call this file "1708584695", because there could be more
+		// Logically, we call this file "1712815946731", because there could be more
 		// tracks, such as 1708584695_audio.rf1i, and we don't want to count this video twice.
-		// It's also nice to consistent in writing and reading video files. So that's why
+		// It's also nice to be consistent in writing and reading video files. So that's why
 		// we strip all the rf1-specific filename stuff away here.
 		tMilli := int64(0)
 		startTimeUnixMilli, remainder, splitOK := strings.Cut(onlyFilename, "_")
@@ -319,6 +348,23 @@ func (a *Archive) scanStream(stream *videoStream) error {
 			file.Close()
 		}
 	}
+
+	// Remove memory duplication for all of the track name strings.
+	// These are basically all the same, so it's pointless to store N arrays, each containing M strings,
+	// and have all of those things be unique memory. For a given stream, odds are very high that
+	// every single file in the stream has the exact same track list.
+	// I hope this doesn't come back to bite us if we forget that these
+	// track lists share the same memory!
+	sig2list := map[string][]string{} // Map from concatenated track names into list of tracks
+	for i := range stream.files {
+		sig := strings.Join(stream.files[i].tracks, "|")
+		if existing, ok := sig2list[sig]; ok {
+			stream.files[i].tracks = existing
+		} else {
+			sig2list[sig] = stream.files[i].tracks
+		}
+	}
+
 	return nil
 }
 
@@ -356,8 +402,9 @@ func (a *Archive) getOrCreateStream(streamName string) (*videoStream, error) {
 	if !ok {
 		// Create the stream
 		stream = &videoStream{
-			name:   streamName,
-			format: a.formats[0],
+			name:        streamName,
+			format:      a.formats[0],
+			recentWrite: map[string][]rf1.NALU{},
 		}
 		a.streams[streamName] = stream
 
@@ -420,4 +467,37 @@ func (a *Archive) StreamSizes() map[string]int64 {
 
 func DoTimeRangesOverlap(start1, end1, start2, end2 time.Time) bool {
 	return start1.Before(end2) && start2.Before(end1)
+}
+
+func totalPayloadBytes(p []rf1.NALU) int64 {
+	total := int64(0)
+	for _, nalu := range p {
+		total += int64(len(nalu.Payload))
+	}
+	return total
+}
+
+func (a *Archive) AutoStatsToLog() {
+	interval := 60 * time.Second
+	if a.numStatWrites > 3 {
+		interval = 15 * time.Minute
+	}
+	now := time.Now()
+	if now.Sub(a.lastStatWriteTime) < interval {
+		return
+	}
+	elapsed := now.Sub(a.firstWrite)
+	if elapsed.Seconds() < 5 {
+		return
+	}
+	a.log.Infof("Bytes per second: %v (%v samples)", kibi.FormatBytesHighPrecision(a.bytesWrittenStat.Total/int64(elapsed.Seconds())), a.bytesWrittenStat.Samples)
+	a.log.Infof("Average time per write: %v (%v samples)", a.writeTimeStat.Average(), a.writeTimeStat.Samples)
+	a.lastStatWriteTime = time.Now()
+	a.numStatWrites++
+	if a.numStatWrites%10 == 0 {
+		a.log.Infof("Resetting stats")
+		a.firstWrite = time.Now()
+		a.bytesWrittenStat.Reset()
+		a.writeTimeStat.Reset()
+	}
 }

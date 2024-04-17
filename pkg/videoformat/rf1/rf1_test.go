@@ -3,6 +3,7 @@ package rf1
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 	"unsafe"
@@ -39,20 +40,27 @@ func TestReaderWriter(t *testing.T) {
 	t.Logf("sizeof(rf1.NALU) = %v", unsafe.Sizeof(NALU{}))
 
 	for closeAndReOpen := 0; closeAndReOpen < 2; closeAndReOpen++ {
-		testReaderWriter(t, closeAndReOpen == 1)
+		for enableDirtyClose := 0; enableDirtyClose < 2; enableDirtyClose++ {
+			for enablePreAllocate := 0; enablePreAllocate < 2; enablePreAllocate++ {
+				t.Logf("testReaderWriter closeAndReOpen=%v enableDirtyClose=%v, enablePreAllocate=%v", closeAndReOpen, enableDirtyClose, enablePreAllocate)
+				testReaderWriter(t, closeAndReOpen == 1, enableDirtyClose == 1, enablePreAllocate == 1)
+			}
+		}
 	}
 }
 
-func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
+func testReaderWriter(t *testing.T, enableCloseAndReOpen, enableDirtyClose, enablePreAllocate bool) {
 	tbase := time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
 	trackW, err := MakeVideoTrack("HD", tbase, CodecH264, 320, 240)
+	trackW.disablePreallocate = !enablePreAllocate
 	require.NoError(t, err)
 	fw, err := Create(BaseDir+"/test", []*Track{trackW})
 	require.NoError(t, err)
 	require.NotNil(t, fw)
 	nNALUs := 200
+	nWritten := 0
 	fps := 10.0
-	nalusW := CreateTestNALUs(trackW.TimeBase, 0, nNALUs, fps, 12345)
+	nalusW := CreateTestNALUs(trackW.TimeBase, 0, nNALUs, fps, 100, 12345)
 	chunkSize := 11
 	for i := 0; i < nNALUs; i += chunkSize {
 		end := i + chunkSize
@@ -61,20 +69,31 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
 		}
 		err := trackW.WriteNALUs(nalusW[i:end])
 		require.NoError(t, err)
+		nWritten += end - i
+		require.Equal(t, nWritten, trackW.Count())
 		if i == chunkSize*3 && enableCloseAndReOpen {
 			// Stress the fact that we can close a file and re-open it, and then continue writing to it.
-			err = fw.Close()
-			require.NoError(t, err)
+			if enableDirtyClose {
+				dirtyClose(fw)
+			} else {
+				err = fw.Close()
+				require.NoError(t, err)
+			}
 			fw, err = Open(BaseDir+"/test", OpenModeReadWrite)
 			require.NoError(t, err)
 			require.NotNil(t, fw)
 			require.Equal(t, 1, len(fw.Tracks))
 			trackW = fw.Tracks[0]
+			require.Equal(t, nWritten, trackW.Count())
 		}
 		require.LessOrEqual(t, AbsTimeDiff(nalusW[end-1].PTS, trackW.TimeBase.Add(trackW.Duration())), time.Second/4096)
 	}
-	err = fw.Close()
-	require.NoError(t, err)
+	if enableDirtyClose {
+		dirtyClose(fw)
+	} else {
+		err = fw.Close()
+		require.NoError(t, err)
+	}
 
 	// Read
 	fr, err := Open(BaseDir+"/test", OpenModeReadOnly)
@@ -91,6 +110,7 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
 	require.Equal(t, trackW.Height, trackR.Height)
 	require.Equal(t, trackR.canWrite, false)
 	require.Equal(t, trackR.indexCount, nNALUs)
+	require.Equal(t, trackR.Count(), nNALUs)
 	require.LessOrEqual(t, AbsTimeDiff(nalusW[nNALUs-1].PTS, trackR.TimeBase.Add(trackR.Duration())), time.Second/4096)
 	for i := 0; i < nNALUs; i += chunkSize {
 		end := i + chunkSize
@@ -109,7 +129,7 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
 		err = trackR.ReadPayload(nalusR)
 		require.NoError(t, err)
 		for j := 0; j < len(nalusR); j++ {
-			require.Equal(t, nalusW[i+j].Payload, nalusR[j].Payload)
+			require.Equal(t, nalusW[i+j].Payload, nalusR[j].Payload, fmt.Sprintf("NALU payload %v", j))
 		}
 	}
 	allNALUs, err := fr.Tracks[0].ReadIndex(0, fr.Tracks[0].Count())
@@ -128,6 +148,7 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
 		{allNALUs[len(allNALUs)-30].PTS, allNALUs[len(allNALUs)-1].PTS.Add(5 * time.Second), nil, -1, len(allNALUs) - 1},
 	}
 
+	// Validate the index cache by reading once where data is cached, and a second time where it is not cached.
 	for freshOpen := 0; freshOpen < 2; freshOpen++ {
 		for _, tt := range timesToRead {
 			if freshOpen == 1 {
@@ -162,6 +183,55 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen bool) {
 		}
 	}
 
+}
+
+func createTestVideo(t *testing.T, filename string) *File {
+	tbase := time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
+	trackW, err := MakeVideoTrack("HD", tbase, CodecH264, 320, 240)
+	require.NoError(t, err)
+	fw, err := Create(filepath.Join(BaseDir, filename), []*Track{trackW})
+	require.NoError(t, err)
+	require.NotNil(t, fw)
+	return fw
+}
+
+func requireEqualNALUs(t *testing.T, expected, actual []NALU) {
+	require.Equal(t, len(expected), len(actual))
+	for i := range expected {
+		require.LessOrEqual(t, AbsTimeDiff(expected[i].PTS, actual[i].PTS), time.Second/4096)
+		require.Equal(t, expected[i].Flags, actual[i].Flags)
+		require.Equal(t, expected[i].Payload, actual[i].Payload)
+	}
+}
+
+func TestBigRead(t *testing.T) {
+	fw := createTestVideo(t, "bigread")
+	nNALUs := 10000
+	nalusW := CreateTestNALUs(fw.Tracks[0].TimeBase, 0, nNALUs, 10.0, 500, 12345)
+	require.NoError(t, fw.Tracks[0].WriteNALUs(nalusW))
+	require.NoError(t, fw.Close())
+	fw, err := Open(BaseDir+"/bigread", OpenModeReadOnly)
+	require.NoError(t, err)
+	nalusR, err := fw.Tracks[0].ReadIndex(0, nNALUs)
+	require.NoError(t, err)
+	require.Equal(t, nNALUs, len(nalusR))
+	require.NoError(t, fw.Tracks[0].ReadPayload(nalusR))
+	requireEqualNALUs(t, nalusW, nalusR)
+}
+
+// Close a file without doing the regular cleanup that we do when closing a file.
+// This includes:
+// 1. Not writing the index header
+// 2. Not truncating the index file
+func dirtyClose(f *File) {
+	for _, t := range f.Tracks {
+		if t.index != nil {
+			t.index.Close()
+		}
+		if t.packets != nil {
+			t.packets.Close()
+		}
+	}
 }
 
 func AbsTimeDiff(t1, t2 time.Time) time.Duration {

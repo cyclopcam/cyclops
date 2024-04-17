@@ -19,6 +19,8 @@ import (
 	"github.com/cyclopcam/cyclops/server/eventdb"
 )
 
+// NOTE: This is defunct, now that we have our fsv archive format, and camera/videoRecorder.go
+
 // When doing long recordings, we split video files into chunks of approximately this size
 // While developing, it's nice to have smaller video files (so we can see them earlier),
 // but in production we'll probably want this to be chunkier (eg 1GB).
