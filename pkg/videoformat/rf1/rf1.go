@@ -54,6 +54,10 @@ type NALU struct {
 	Payload  []byte
 }
 
+func (n *NALU) IsKeyFrame() bool {
+	return n.Flags&IndexNALUFlagKeyFrame != 0
+}
+
 // Encode an offset-based time to units of 1/4096 of a second
 func EncodePTSTime(t time.Time, timeBase time.Time) int64 {
 	return EncodeTimeOffset(t.Sub(timeBase))

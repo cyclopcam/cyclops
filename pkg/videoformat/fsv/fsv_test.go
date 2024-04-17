@@ -14,6 +14,7 @@ import (
 const BaseDir = "test-fsv-tmp"
 
 func TestReaderWriter(t *testing.T) {
+	EraseArchive()
 	logger := log.NewTestingLog(t)
 
 	maxSizeDelta := float64(0)
@@ -138,6 +139,11 @@ func AbsTimeDiff(t1, t2 time.Time) time.Duration {
 		return -diff
 	}
 	return diff
+}
+
+func EraseArchive() {
+	os.RemoveAll(BaseDir)
+	os.MkdirAll(BaseDir, 0755)
 }
 
 func TestMain(m *testing.M) {

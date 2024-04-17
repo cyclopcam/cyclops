@@ -23,18 +23,17 @@ import (
 // needs to think about this little detail.
 
 func (a *Archive) splicePacketsBeforeWrite(stream *videoStream, track string, packets []rf1.NALU) []rf1.NALU {
-	if len(packets) == 0 {
-		return packets
-	}
 	recent := stream.recentWrite[track]
-	if len(recent) == 0 {
+	if len(recent) == 0 || len(packets) == 0 {
 		return packets
 	}
-	if recent[0].PTS.After(packets[0].PTS) {
-		return packets
-	}
-	// Find the last packet from 'recent' inside 'packets'
+
 	last := recent[len(recent)-1]
+	if last.PTS == packets[0].PTS || last.PTS.Before(packets[0].PTS) {
+		return packets
+	}
+
+	// Find the last packet from 'recent' inside 'packets'
 	for i := range packets {
 		if packets[i].PTS == last.PTS {
 			//a.debugPacketSplice("Splice found packet at matching time (%v), i = %v", packets[i].PTS, i)
@@ -44,6 +43,17 @@ func (a *Archive) splicePacketsBeforeWrite(stream *videoStream, track string, pa
 				a.log.Warnf("Splice found packet at matching time (%v), but lengths are different (old %v, new %v)", packets[i].PTS, last.Length, len(packets[i].Payload))
 			}
 			return packets[i+1:]
+		} else if packets[i].PTS.After(last.PTS) {
+			// We didn't find an exact match, but this packet is at least AFTER the last packet in 'recent'.
+			// So we find the next keyframe in packets, and return everything from that point onwards.
+			for j := i; j < len(packets); j++ {
+				if packets[j].IsKeyFrame() {
+					a.debugPacketSplice("Splice found next keyframe at i = %v", j)
+					return packets[j:]
+				}
+			}
+			a.debugPacketSplice("Splice found no keyframe after last packet in recent")
+			return nil
 		}
 	}
 	return packets
