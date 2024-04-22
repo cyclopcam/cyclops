@@ -42,6 +42,7 @@ type Camera struct {
 	// the user to override this. For example, if their system goes down, but their
 	// archive is on another disk, and they want to restore all the cameras, and
 	// still have the history intact, and matching up to the new (but same) cameras.
+	// Or perhaps you have to replace a camera, but want to retain the logical identify.
 	LongLivedName string `json:"longLivedName"`
 }
 
@@ -55,6 +56,14 @@ func (c *Camera) EqualsConnection(newCam *Camera) bool {
 		c.Password == newCam.Password &&
 		c.HighResURLSuffix == newCam.HighResURLSuffix &&
 		c.LowResURLSuffix == newCam.LowResURLSuffix
+}
+
+func (c *Camera) DeepEquals(x *Camera) bool {
+	// SYNC-RECORD-CAMERA
+	if !c.EqualsConnection(x) {
+		return false
+	}
+	return c.Name == x.Name && c.LongLivedName == x.LongLivedName
 }
 
 type Variable struct {

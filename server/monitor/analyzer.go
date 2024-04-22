@@ -31,7 +31,7 @@ the right solution.
 */
 
 // If true, then alert on all classes in the COCO set
-// If false, then only alert on the classes in cocoFilter()
+// If false, then only alert on the classes in defaultNNClassFilter()
 const includeAllClasses = false
 
 type analyzerSettings struct {
@@ -153,7 +153,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 		}
 	} else {
 		for i, det := range item.detection.Objects {
-			if m.cocoClassFilter[det.Class] {
+			if m.nnClassFilterMap[det.Class] {
 				shortList = append(shortList, i)
 			}
 		}

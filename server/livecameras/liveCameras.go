@@ -278,10 +278,14 @@ func (s *LiveCameras) startStopConfiguredCameras() {
 
 	for _, cfg := range configs {
 		// Why abort if there is a wake message?
-		// Let's say we have a big system with 10 cameras, and a few of them are timing out and not connecting. Now maybe some of their IPs have changed.
-		// The user enters the correct IP, and hits Save. At that moment, we'll get a wake message. We want to abandon our previous loop that was
-		// going through all those invalid IPs, and immediately start the new camera. That's why we sort by most recently updated, and restart
-		// this function whenever we receive a wake message.
+		// Let's say we have a big system with 10 cameras, and a few of them are timing out and
+		// not connecting. Maybe some of their IPs have changed.
+		// The user goes into the config page, and enters the correct IP, and hits Save.
+		// At that moment, we'll get a wake message. We want to abandon our previous loop that was
+		// going through all those invalid IPs, and immediately start the new camera.
+		// That's why we:
+		// 1. Sort by most recently updated.
+		// 2. Restart this function whenever we receive a wake message.
 		if s.isShuttingDown() || len(s.wake) > 0 {
 			break
 		}
@@ -289,11 +293,15 @@ func (s *LiveCameras) startStopConfiguredCameras() {
 		if cam := s.CameraFromID(cfg.ID); cam != nil {
 			if time.Now().Sub(cam.LastPacketAt()) > s.timeUntilCameraRestart {
 				s.log.Warnf("Camera %v (%v) unresponsive. Restarting", cfg.ID, cfg.Name)
-			} else if !cam.Config.EqualsConnection(cfg) {
+			} else if !cam.Config.DeepEquals(cfg) {
+				// Initially my criteria here for restarting a camera was Camera.EqualsConnection().
+				// However, when adding the concept of the long-lived name, and the VideoDB, I changed that,
+				// because the VideoDB needs to know the long-lived name when writing events to the DB.
+				// I debated hiding Camera.Config behind a mutex, so that we could update the config
+				// of a running camera, but that seemed way too messy. Simply restarting the camera
+				// is much cleaner.
 				s.log.Warnf("Camera %v (%v) configuration out of date. Restarting", cfg.ID, cfg.Name)
 			} else {
-				// camera is running and responding normally
-				//s.startStopRecorder(cam, &systemConfig)
 				continue
 			}
 			s.removeCamera(cam)
@@ -305,7 +313,7 @@ func (s *LiveCameras) startStopConfiguredCameras() {
 			s.log.Infof("Success using last tested camera '%v'", s.lastTestedCameraConfig.Host)
 			cam = s.lastTestedCamera
 			s.lastTestedCamera = nil
-			cam.Config = *cfg // Update initial test config to final config in DB (which includes, at the very least, the camera ID)
+			cam.Config = *cfg // Update initial test config to final config in DB (which includes, at the very least, the camera ID and long-lived name)
 		}
 		s.lastTestedCameraLock.Unlock()
 

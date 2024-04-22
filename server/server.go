@@ -44,18 +44,19 @@ type Server struct {
 	LiveCameras *livecameras.LiveCameras
 
 	// Private Subsystems
-	signalIn           chan os.Signal
-	httpServer         *http.Server
-	httpRouter         *httprouter.Router
-	configDB           *configdb.ConfigDB
-	videoDB            *videodb.VideoDB // Can be nil! This is version 2 of this concept, and replaces 'permanentEvents' and 'recentEvents'.
-	permanentEvents    *eventdb.EventDB // Where we store our permanent videos (deprecated)
-	recentEvents       *eventdb.EventDB // Where we store our recent event videos (deprecated)
-	train              *train.Trainer
-	wsUpgrader         websocket.Upgrader
-	monitor            *monitor.Monitor
-	arcCredentialsLock sync.Mutex
-	arcCredentials     *arc.ArcServerCredentials // If Arc server is not configured, then this is nil.
+	signalIn               chan os.Signal
+	httpServer             *http.Server
+	httpRouter             *httprouter.Router
+	configDB               *configdb.ConfigDB
+	videoDB                *videodb.VideoDB // Can be nil! This is version 2 of this concept, and replaces 'permanentEvents' and 'recentEvents'.
+	permanentEvents        *eventdb.EventDB // Where we store our permanent videos (deprecated)
+	recentEvents           *eventdb.EventDB // Where we store our recent event videos (deprecated)
+	train                  *train.Trainer
+	wsUpgrader             websocket.Upgrader
+	monitor                *monitor.Monitor
+	arcCredentialsLock     sync.Mutex
+	arcCredentials         *arc.ArcServerCredentials // If Arc server is not configured, then this is nil.
+	monitorToVideoDBClosed chan bool                 // If this channel is closed, then monitor to video DB has stopped
 
 	vpnLock sync.Mutex
 	vpn     *vpn.VPN
@@ -95,13 +96,14 @@ func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey, ker
 		return nil, err
 	}
 	s := &Server{
-		Log:              log,
-		RingBufferSize:   200 * 1024 * 1024,
-		ShutdownComplete: make(chan error, 1),
-		ShutdownStarted:  make(chan bool),
-		HotReloadWWW:     (serverFlags & ServerFlagHotReloadWWW) != 0,
-		recorders:        map[int64]*recorder{},
-		nextRecorderID:   1,
+		Log:                    log,
+		RingBufferSize:         200 * 1024 * 1024,
+		ShutdownComplete:       make(chan error, 1),
+		ShutdownStarted:        make(chan bool),
+		HotReloadWWW:           (serverFlags & ServerFlagHotReloadWWW) != 0,
+		recorders:              map[int64]*recorder{},
+		nextRecorderID:         1,
+		monitorToVideoDBClosed: make(chan bool),
 	}
 	if cfg, err := configdb.NewConfigDB(s.Log, configDBFilename, explicitPrivateKey); err != nil {
 		return nil, err
@@ -149,6 +151,12 @@ func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey, ker
 		return nil, err
 	}
 	s.monitor = monitor
+
+	if s.videoDB != nil {
+		s.attachMonitorToVideoDB()
+	} else {
+		close(s.monitorToVideoDBClosed)
+	}
 
 	s.train = train.NewTrainer(s.Log, s.permanentEvents)
 
@@ -228,6 +236,9 @@ func (s *Server) Shutdown(restart bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	err := s.httpServer.Shutdown(ctx)
 	defer cancel()
+
+	s.Log.Infof("Waiting for monitor -> videoDB thread to close")
+	<-s.monitorToVideoDBClosed
 
 	s.Log.Infof("Waiting for cameras to close")
 	<-s.LiveCameras.ShutdownComplete

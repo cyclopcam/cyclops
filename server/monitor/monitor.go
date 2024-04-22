@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -31,6 +32,17 @@ We connect these phases with channels.
 
 */
 
+// If not specified, then this is our list of classes that we pay attention to.
+// Other classes (such as potplant, frisbee, etc) are ignored.
+var defaultClassFilterList = []string{
+	nn.COCOClasses[nn.COCOPerson],
+	nn.COCOClasses[nn.COCOBicycle],
+	nn.COCOClasses[nn.COCOCar],
+	nn.COCOClasses[nn.COCOBus],
+	nn.COCOClasses[nn.COCOMotorcycle],
+	nn.COCOClasses[nn.COCOTruck],
+}
+
 type Monitor struct {
 	Log                 log.Log
 	detector            nn.ObjectDetector
@@ -45,7 +57,8 @@ type Monitor struct {
 	nnFrameTime         time.Duration          // Average time for the neural network to process a frame
 	nnThreadQueue       chan monitorQueueItem  // Queue of images to be processed by the neural network
 	avgTimeNSPerFrameNN atomic.Int64           // Average time (ns) per frame, for just the neural network (time inside a thread)
-	cocoClassFilter     map[int]bool           // COCO classes that we're interested in
+	nnClassFilterMap    map[int]bool           // NN classes that we're interested in (eg person, car)
+	nnClassFilterList   []string               // NN classes that we're interested in (eg person, car)
 	analyzerSettings    analyzerSettings       // Analyzer settings
 	nextTrackedObjectID atomic.Int64           // Next ID to assign to a tracked object
 
@@ -146,6 +159,9 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 		return nil, err
 	}
 
+	classFilterList := slices.Clone(defaultClassFilterList)
+	logger.Infof("Paying attention to the following classes: %v", strings.Join(classFilterList, ","))
+
 	// No idea what a good number is here. I expect analysis to be much
 	// faster to run than NN, so provided this queue is large enough to
 	// prevent bumps, it shouldn't matter too much.
@@ -154,13 +170,14 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	logger.Infof("Starting %v NN detection threads", nnThreads)
 
 	m := &Monitor{
-		Log:             logger,
-		detector:        detector,
-		nnThreadQueue:   make(chan monitorQueueItem, nnQueueSize),
-		analyzerQueue:   make(chan analyzerQueueItem, analysisQueueSize),
-		analyzerStopped: make(chan bool),
-		numNNThreads:    nnThreads,
-		cocoClassFilter: cocoFilter(),
+		Log:               logger,
+		detector:          detector,
+		nnThreadQueue:     make(chan monitorQueueItem, nnQueueSize),
+		analyzerQueue:     make(chan analyzerQueueItem, analysisQueueSize),
+		analyzerStopped:   make(chan bool),
+		numNNThreads:      nnThreads,
+		nnClassFilterList: classFilterList,
+		nnClassFilterMap:  makeClassFilter(classFilterList, detector.Config().Classes),
 		analyzerSettings: analyzerSettings{
 			positionHistorySize:       30,   // at 10 fps, 30 frames = 3 seconds
 			maxAnalyzeObjectsPerFrame: 20,   // We have O(n^2) analysis functions, so we need to keep this small.
@@ -210,6 +227,16 @@ func (m *Monitor) Close() {
 	m.detector.Close()
 
 	m.Log.Infof("Monitor is closed")
+}
+
+// Return the list of all classes that the NN detects
+func (m *Monitor) AllClasses() []string {
+	return m.detector.Config().Classes
+}
+
+// Return the list of classes that we're interested in
+func (m *Monitor) DetectedClasses() []string {
+	return m.nnClassFilterList
 }
 
 // Return the most recent frame and detection result for a camera
@@ -304,10 +331,26 @@ func (m *Monitor) sendToWatchers(state *AnalysisState) {
 	m.watchersLock.RUnlock()
 }
 
-func cocoFilter() map[int]bool {
-	classes := []int{nn.COCOPerson, nn.COCOBicycle, nn.COCOCar, nn.COCOBus, nn.COCOMotorcycle, nn.COCOTruck}
-	r := map[int]bool{}
+// Resolve class names to integer indices.
+// If a class is not found, it is ignored.
+func lookupClassIndices(classes []string, allClasses []string) []int {
+	clsToIndex := map[string]int{}
+	for i, c := range allClasses {
+		clsToIndex[c] = i
+	}
+	r := []int{}
 	for _, c := range classes {
+		if idx, ok := clsToIndex[c]; ok {
+			r = append(r, idx)
+		}
+	}
+	return r
+}
+
+func makeClassFilter(classes []string, allClasses []string) map[int]bool {
+	intClasses := lookupClassIndices(classes, allClasses)
+	r := map[int]bool{}
+	for _, c := range intClasses {
 		r[c] = true
 	}
 	return r

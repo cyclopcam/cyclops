@@ -56,7 +56,7 @@ func StartVideoRecorder(ringBuffer *VideoRingBuffer, streamName string, archive 
 // Stop recording.
 // Like StartVideoRecorder(), this function is expected to return immediately.
 func (r *VideoRecorder) Stop() {
-	r.Log.Infof("VideoRecorder stopped")
+	//r.Log.Infof("VideoRecorder stopped")
 	close(r.stop)
 }
 

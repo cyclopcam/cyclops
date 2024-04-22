@@ -2,6 +2,7 @@ package nn
 
 import (
 	"github.com/chewxy/math32"
+	"github.com/cyclopcam/cyclops/pkg/gen"
 )
 
 type Point struct {
@@ -18,6 +19,14 @@ type Rect struct {
 	Y      int `json:"y"`
 	Width  int `json:"width"`
 	Height int `json:"height"`
+}
+
+func (r Rect) X2() int {
+	return r.X + r.Width
+}
+
+func (r Rect) Y2() int {
+	return r.Y + r.Height
 }
 
 func (r Rect) Area() int {
@@ -66,4 +75,10 @@ func (r Rect) Center() Point {
 func (r *Rect) Offset(dx, dy int) {
 	r.X += dx
 	r.Y += dy
+}
+
+func (r *Rect) MaxDelta(b Rect) int {
+	maxP := max(gen.Abs(r.X-b.X), gen.Abs(r.Y-b.Y))
+	maxS := max(gen.Abs(r.Width-b.Width), gen.Abs(r.Height-b.Height))
+	return max(maxP, maxS)
 }

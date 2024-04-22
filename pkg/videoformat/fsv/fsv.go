@@ -373,9 +373,12 @@ func (a *Archive) streamDir(streamName string) string {
 }
 
 // Close the archive.
-// If the system is shutting down, its probably simplest to NOT call Close() on the archive,
-// because then you don't have to worry about upsetting any background readers or writers.
-// You can just let them go away naturally, as they finish.
+// It is important to close the archive, because doing so will finalize the writing of
+// any archive files. For example, rf1 files are oversized initially to avoid fragmentation,
+// and closing them will shrink them back down to their final size, and update their
+// headers with appropriate information.
+// However, the archive is designed to withstand a hard reset, and to be able to recover
+// as much data as possible in that event. It's just not the most efficient thing to do.
 func (a *Archive) Close() {
 	a.log.Infof("Archive closing")
 	a.stopSweeper()
@@ -478,7 +481,7 @@ func totalPayloadBytes(p []rf1.NALU) int64 {
 }
 
 func (a *Archive) AutoStatsToLog() {
-	interval := 60 * time.Second
+	interval := 30 * time.Second
 	if a.numStatWrites > 3 {
 		interval = 15 * time.Minute
 	}
