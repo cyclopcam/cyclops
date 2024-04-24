@@ -68,6 +68,15 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 		return stream.files[i].startTime >= endTime.UnixMilli()
 	})
 	indexFiles := stream.files[startIdx:endIdx]
+
+	// We need to be conservative in our decision of whether to flush our write buffers. If the Read() is requesting
+	// a portion of time that is close to the present, then it's very likely that we have buffered the writes that
+	// the reader is interested in. In such a case, it's even likely that stream.current is nil. So if there is any
+	// possibility that the reader is interested in buffered data, then we must first flush those buffers.
+	if DoTimeRangesOverlap(stream.writeBufferMinPTS, stream.writeBufferMaxPTS, startTime, endTime) {
+		a.flushWriteBufferForStream(stream)
+	}
+
 	var useCurrent *videoFile
 	if stream.current != nil && DoTimeRangesOverlap(stream.current.startTime, stream.current.endTime, startTime, endTime) {
 		useCurrent = stream.current

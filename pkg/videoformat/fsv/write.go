@@ -56,11 +56,28 @@ func (a *Archive) writeBuffered(streamName string, payload map[string]TrackPaylo
 		return err
 	}
 	stream.contentLock.Lock()
+
 	// Add to write buffer
+	minPTS := int64(1<<63 - 1)
+	maxPTS := int64(0)
 	for track, packets := range payload {
 		stream.writeBuffer[track] = append(stream.writeBuffer[track], packets)
 		stream.writeBufferSize += int(totalPayloadBytes(packets.NALUs))
+		if len(packets.NALUs) != 0 {
+			minPTS = min(minPTS, packets.NALUs[0].PTS.UnixMicro())
+			maxPTS = max(maxPTS, packets.NALUs[len(packets.NALUs)-1].PTS.UnixMicro())
+		}
 	}
+
+	// Update buffer start/end times. This is crucial if a Read() operation occurs before we've flushed.
+	if maxPTS != 0 {
+		// maxPTS == 0 implies this payload was empty. That would be weird, but not illegal.
+		if stream.writeBufferMinPTS.IsZero() {
+			stream.writeBufferMinPTS = time.UnixMicro(minPTS)
+		}
+		stream.writeBufferMaxPTS = time.UnixMicro(maxPTS)
+	}
+
 	// Flush write buffer if necessary
 	if a.mustFlushWriteBuffer(stream) {
 		a.flushWriteBufferForStream(stream)
@@ -258,6 +275,19 @@ func (a *Archive) mustFlushWriteBuffer(stream *videoStream) bool {
 	return false
 }
 
+func canAppendToPayload(merged, addition *TrackPayload) bool {
+	if !merged.EqualStructure(addition) {
+		return false
+	}
+	// If 'addition' overlaps 'merged' in time, then do not merge.
+	// Our splice function (splicePacketsBeforeWrite) will take care of this type of overlap,
+	// but it needs to receive them as two separate payloads.
+	if len(merged.NALUs) != 0 && len(addition.NALUs) != 0 && merged.NALUs[len(merged.NALUs)-1].PTS.After(addition.NALUs[0].PTS) {
+		return false
+	}
+	return true
+}
+
 // If necessary, flush the write buffer for the stream.
 // You must be holding the stream.contentLock before calling this function.
 func (a *Archive) flushWriteBufferForStream(stream *videoStream) {
@@ -266,7 +296,7 @@ func (a *Archive) flushWriteBufferForStream(stream *videoStream) {
 		// and also the number of calls to our 'write' function, which is quite involved.
 		merged := payloadList[0]
 		for i := 1; i <= len(payloadList); i++ {
-			if i < len(payloadList) && merged.EqualStructure(&payloadList[i]) {
+			if i < len(payloadList) && canAppendToPayload(&merged, &payloadList[i]) {
 				merged.NALUs = append(merged.NALUs, payloadList[i].NALUs...)
 			} else {
 				if err := a.writeInner(stream, map[string]TrackPayload{track: merged}); err != nil {
@@ -280,6 +310,8 @@ func (a *Archive) flushWriteBufferForStream(stream *videoStream) {
 	}
 	stream.writeBuffer = map[string][]TrackPayload{}
 	stream.writeBufferSize = 0
+	stream.writeBufferMinPTS = time.Time{}
+	stream.writeBufferMaxPTS = time.Time{}
 }
 
 func (a *Archive) flushWriteBuffers(force bool) {

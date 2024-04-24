@@ -57,8 +57,10 @@ type videoStream struct {
 	recentWrite map[string][]rf1.NALU
 	// Write buffer.
 	// Key is track name.
-	writeBuffer     map[string][]TrackPayload
-	writeBufferSize int // Payload bytes in writeBuffer
+	writeBuffer       map[string][]TrackPayload
+	writeBufferSize   int // Payload bytes in writeBuffer
+	writeBufferMinPTS time.Time
+	writeBufferMaxPTS time.Time
 }
 
 // Information about a stream

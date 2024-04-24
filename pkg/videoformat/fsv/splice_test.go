@@ -21,12 +21,28 @@ import (
 // *  keyframe
 // -  non-keyframe
 
+func staticSettingsHugeWritebuffer() StaticSettings {
+	s := DefaultStaticSettings()
+	s.MaxWriteBufferTime = 10000 * time.Hour
+	s.MaxWriteBufferSize = 1024 * 1024 * 100
+	return s
+}
+
+// Return now() but at the given hour,minute,second,nsec UTC
+// For tests that involve the write buffer, it's important that the
+// packet times are relatively close to 'now', because the write
+// buffer uses the delta between 'now' and the packet PTS to determine
+// if it should flush that buffer.
+func todayAtTime(hour, minute, second, nsec int) time.Time {
+	t := time.Now().UTC()
+	return time.Date(t.Year(), t.Month(), t.Day(), hour, minute, second, nsec, time.UTC)
+}
+
 func TestSplicePerfect(t *testing.T) {
 	EraseArchive()
-	disableWriteBuffer := DefaultStaticSettings()
-	disableWriteBuffer.MaxWriteBufferSize = 0
-	arc, _ := Open(log.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, disableWriteBuffer, DefaultDynamicSettings())
-	packets := rf1.CreateTestNALUs(time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC), 0, 300, 10.0, 50, 150, 12345)
+	staticSettings := staticSettingsHugeWritebuffer()
+	arc, _ := Open(log.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, staticSettings, DefaultDynamicSettings())
+	packets := rf1.CreateTestNALUs(todayAtTime(3, 4, 5, 7000), 0, 300, 10.0, 50, 150, 12345)
 
 	// Pattern:
 	//

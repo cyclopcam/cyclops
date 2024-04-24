@@ -37,7 +37,7 @@ func testReaderWriter(t *testing.T, enableWriteBuffer bool) {
 	require.NoError(t, err)
 	require.NotNil(t, arc1)
 
-	tbase1 := time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
+	tbase1 := todayAtTime(4, 5, 6, 7000)                               // time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
 	tbase2 := tbase1.Add(arc1.MaxVideoFileDuration())                  // Packets after tbase 2 will require a new file
 	packets1 := rf1.CreateTestNALUs(tbase1, 0, 100, 10.0, 50, 150, 13) // these go into the first file
 	packets2 := rf1.CreateTestNALUs(tbase2, 0, 50, 10.0, 50, 150, 15)  // these go into the second file
