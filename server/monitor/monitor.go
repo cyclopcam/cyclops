@@ -65,14 +65,9 @@ type Monitor struct {
 	camerasLock sync.Mutex       // Guards access to cameras
 	cameras     []*monitorCamera // Cameras that we're monitoring
 
-	watchersLock       sync.RWMutex          // Guards access to watchers, watchersAllCameras
-	watchers           map[int64][]watcher   // Keys are CameraID. Values are channels to send detection results to
-	watchersAllCameras []chan *AnalysisState // Agents watching all cameras
-}
-
-type watcher struct {
-	cameraID int64
-	ch       chan *AnalysisState
+	watchersLock       sync.RWMutex                    // Guards access to watchers, watchersAllCameras
+	watchers           map[int64][]chan *AnalysisState // Keys are CameraID. Values are channels to send detection results to
+	watchersAllCameras []chan *AnalysisState           // Agents watching all cameras
 }
 
 // monitoCamera is the internal data structure for managing a single camera that we are monitoring
@@ -186,7 +181,7 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 			objectForgetTime:          5 * time.Second,
 			verbose:                   false,
 		},
-		watchers:           map[int64][]watcher{},
+		watchers:           map[int64][]chan *AnalysisState{},
 		watchersAllCameras: []chan *AnalysisState{},
 		enabled:            true,
 	}
@@ -263,10 +258,7 @@ func (m *Monitor) AddWatcher(cameraID int64) chan *AnalysisState {
 	m.watchersLock.Lock()
 	defer m.watchersLock.Unlock()
 	ch := make(chan *AnalysisState, 100)
-	m.watchers[cameraID] = append(m.watchers[cameraID], watcher{
-		cameraID: cameraID,
-		ch:       ch,
-	})
+	m.watchers[cameraID] = append(m.watchers[cameraID], ch)
 	return ch
 }
 
@@ -275,7 +267,7 @@ func (m *Monitor) RemoveWatcher(cameraID int64, ch chan *AnalysisState) {
 	m.watchersLock.Lock()
 	defer m.watchersLock.Unlock()
 	for i, w := range m.watchers[cameraID] {
-		if w.ch == ch {
+		if w == ch {
 			m.watchers[cameraID] = gen.DeleteFromSliceUnordered(m.watchers[cameraID], i)
 			return
 		}
@@ -310,14 +302,12 @@ func (m *Monitor) sendToWatchers(state *AnalysisState) {
 	// Regarding our behaviour here to drop frames:
 	// Perhaps it would be better not to drop frames, but simply to stall.
 	// This would presumably wake up the threads that consume the analysis.
-	for _, watcher := range m.watchers[state.CameraID] {
-		if watcher.cameraID == state.CameraID {
-			if len(watcher.ch) >= cap(watcher.ch)*9/10 {
-				// This should never happen. But as a safeguard against a monitor stalls, we choose to drop frames.
-				m.Log.Warnf("Monitor watcher on camera %v is falling behind. I am going to drop frames.", watcher.cameraID)
-			} else {
-				watcher.ch <- state
-			}
+	for _, ch := range m.watchers[state.CameraID] {
+		if len(ch) >= cap(ch)*9/10 {
+			// This should never happen. But as a safeguard against a monitor stalls, we choose to drop frames.
+			m.Log.Warnf("Monitor watcher on camera %v is falling behind. I am going to drop frames.", state.CameraID)
+		} else {
+			ch <- state
 		}
 	}
 	for _, ch := range m.watchersAllCameras {
