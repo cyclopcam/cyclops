@@ -52,6 +52,8 @@ type Track struct {
 	duration    time.Duration // Duration of track
 	indexCache  []uint64      // Cache of all index entries, including sentinel
 
+	disableWriteAggregate bool // Disable aggregation of small OS writes into larger writes
+
 	disablePreallocate  bool  // Disable preallocate of space in index and packet files to avoid fragmentation
 	indexPreallocSize   int64 // Size that we have pre-extended index file to (zero if no extension)
 	packetsPreallocSize int64 // Size that we have pre-extended packets file to (zero if no extension)

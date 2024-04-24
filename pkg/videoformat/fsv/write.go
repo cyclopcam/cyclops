@@ -9,6 +9,23 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 )
 
+// Usually this thread is not needed. The calls to Write() will end up causing the buffers
+// to get flushed. However, if a caller stops calling Write() when there is still data in
+// the write buffer, then that's where we come in. Without us, that data would sit in our
+// buffer until the archive was closed.
+func (a *Archive) writeBufferThread() {
+	keepRunning := true
+	for keepRunning {
+		select {
+		case <-a.shutdown:
+			keepRunning = false
+		case <-time.After(5 * time.Second):
+			a.flushWriteBuffers(false)
+		}
+	}
+	close(a.bufferWriterStopped)
+}
+
 // Write a payload to the archive.
 // payload keys are track names.
 // The payload must always include the exact same set of tracks, even if some of
@@ -17,14 +34,67 @@ import (
 // decides to enable HD recording, then the track composition would change. Such a change
 // requires a new video file.
 func (a *Archive) Write(streamName string, payload map[string]TrackPayload) error {
-	err := a.write(streamName, payload)
+	var err error
+	if a.isWriteBufferEnabled() {
+		err = a.writeBuffered(streamName, payload)
+	} else {
+		err = a.writeOuter(streamName, payload)
+	}
 	if err != nil {
 		a.log.Errorf("Error writing to stream %v: %v", streamName, err)
 	}
 	return err
 }
 
-func (a *Archive) write(streamName string, payload map[string]TrackPayload) error {
+func (a *Archive) isWriteBufferEnabled() bool {
+	return a.staticSettings.MaxWriteBufferSize > 0 && a.staticSettings.MaxWriteBufferTime > 0
+}
+
+func (a *Archive) writeBuffered(streamName string, payload map[string]TrackPayload) error {
+	stream, err := a.getOrCreateStream(streamName)
+	if err != nil {
+		return err
+	}
+	stream.contentLock.Lock()
+	// Add to write buffer
+	for track, packets := range payload {
+		stream.writeBuffer[track] = append(stream.writeBuffer[track], packets)
+		stream.writeBufferSize += int(totalPayloadBytes(packets.NALUs))
+	}
+	// Flush write buffer if necessary
+	if a.mustFlushWriteBuffer(stream) {
+		a.flushWriteBufferForStream(stream)
+	}
+	stream.contentLock.Unlock()
+	return nil
+}
+
+// At this point, you must NOT be holding stream.contentLock.
+func (a *Archive) writeOuter(streamName string, payload map[string]TrackPayload) error {
+	stream, err := a.getOrCreateStream(streamName)
+	if err != nil {
+		return err
+	}
+
+	// This is a big lock, but there's no simple way around this. We don't want to introduce
+	// multi-threaded access into our VideoFile interface - that would be insane.
+	// I'm assuming that the write phase here will usually complete quickly, so that we don't
+	// end up starving readers. Unless something bad is happening (eg running out of disk space),
+	// writes here should complete very quickly, because they're just a copying of memory into
+	// the disk cache.
+	// Hmm AHEM! Writes do indeed become very "blocking" when writing to our
+	// test HDD that is a USB external hard disk, NTFS formatted, attached to WSL.
+	// And yes - I do have "Write Caching" enabled on the drive.
+	// My workaround to this has been to drop frames inside VideoRecorder when it detects
+	// that the channel from VideoRecorder to Archive is full.
+	stream.contentLock.Lock()
+	defer stream.contentLock.Unlock()
+
+	return a.writeInner(stream, payload)
+}
+
+// At this point, you must be holding stream.contentLock.
+func (a *Archive) writeInner(stream *videoStream, payload map[string]TrackPayload) error {
 	for track, payload := range payload {
 		if payload.TrackType != rf1.TrackTypeVideo {
 			return fmt.Errorf("Only video tracks have been implemented. Track %v has type: %v", track, payload.TrackType)
@@ -52,23 +122,9 @@ func (a *Archive) write(streamName string, payload map[string]TrackPayload) erro
 	minPTS := time.UnixMicro(minPTSMicro)
 	maxPTS := time.UnixMicro(maxPTSMicro)
 
-	stream, err := a.getOrCreateStream(streamName)
-	if err != nil {
-		return err
-	}
-
 	// Ensure that the tracks in the video file are the same set of tracks that
 	// the caller is trying to write. If the caller has altered the track composition,
 	// then we create a new file.
-
-	// This is a big lock, but there's no simple way around this. We don't want to introduce
-	// multi-threaded access into our VideoFile interface - that would be insane.
-	// I'm assuming that the write phase here will usually complete quickly, so that we don't
-	// end up starving readers. Unless something bad is happening (eg running out of disk space),
-	// writes here should complete very quickly, because they're just a copying of memory into
-	// the disk cache.
-	stream.contentLock.Lock()
-	defer stream.contentLock.Unlock()
 
 	if stream.current != nil {
 		mustCloseReason := "" // If not empty, then we close
@@ -124,7 +180,7 @@ func (a *Archive) write(streamName string, payload map[string]TrackPayload) erro
 		// lexicographic ordering. Do we need to use 11 digits? Unix time will only roll over
 		// to 11 digits on 2286-11-20 17:46:40. The world is going to look very different 262
 		// years from now. Probably not worth thinking about.
-		videoFilename := filepath.Join(a.streamDir(streamName), fmt.Sprintf("%v", minPTSMicro/1000))
+		videoFilename := filepath.Join(a.streamDir(stream.name), fmt.Sprintf("%v", minPTSMicro/1000))
 		a.log.Infof("Creating new video file %v", videoFilename)
 		file, err := stream.format.Create(videoFilename)
 		if err != nil {
@@ -145,23 +201,6 @@ func (a *Archive) write(streamName string, payload map[string]TrackPayload) erro
 		}
 	}
 
-	// mmmkay - I am going to push this splicing functionality down into rf1,
-	// because it's too clunky to do that from here. If we end up supporting
-	// other video file formats besides rf1 here, then a cheap fix would be
-	// to truncate the illegal prefix of the incoming data, and only write
-	// from the first IDR that is after stream.current.endTime.
-	//if minPTS.Before(stream.current.endTime) {
-	//	// TODO:
-	//	// Instead of discarding the packets, delete the suffix that overlaps.
-	//	// We delete the suffix because we're not guaranteed to have an IDR there,
-	//	// but we assume that the new payload we're receiving now starts with an IDR.
-	//	// But wait! We can't delete packets. The file format is not designed for that,
-	//	// and it seems like an unnecessarily complex feature to add. I'm betting here
-	//	// on the assumption that we WILL find the perfect splice point.
-	//	return fmt.Errorf("Video payload %v starts before the end of the current video file %v. This would cause non-contiguous frames.", minPTS, stream.current.endTime)
-	//}
-	// mmm no -- perhaps we are best suited to do that here. I think so!
-
 	for track, packets := range payload {
 		startWrite := time.Now()
 
@@ -171,10 +210,11 @@ func (a *Archive) write(streamName string, payload map[string]TrackPayload) erro
 			continue
 		}
 
-		// Write
+		// Write to file
 		if err := stream.current.file.Write(track, afterSplice); err != nil {
 			return fmt.Errorf("Error writing to video file %v: %v", stream.current.filename, err)
 		}
+
 		if !slices.Contains(stream.current.tracks, track) {
 			stream.current.tracks = append(stream.current.tracks, track)
 		}
@@ -202,4 +242,59 @@ func (a *Archive) write(streamName string, payload map[string]TrackPayload) erro
 	a.AutoStatsToLog()
 
 	return nil
+}
+
+func (a *Archive) mustFlushWriteBuffer(stream *videoStream) bool {
+	now := time.Now()
+	for _, buffer := range stream.writeBuffer {
+		var age time.Duration
+		if len(buffer) != 0 {
+			age = now.Sub(buffer[0].NALUs[0].PTS)
+		}
+		if age > a.staticSettings.MaxWriteBufferTime || stream.writeBufferSize > a.staticSettings.MaxWriteBufferSize {
+			return true
+		}
+	}
+	return false
+}
+
+// If necessary, flush the write buffer for the stream.
+// You must be holding the stream.contentLock before calling this function.
+func (a *Archive) flushWriteBufferForStream(stream *videoStream) {
+	for track, payloadList := range stream.writeBuffer {
+		// Merge payloads together, so that we can reduce the number of OS write calls,
+		// and also the number of calls to our 'write' function, which is quite involved.
+		merged := payloadList[0]
+		for i := 1; i <= len(payloadList); i++ {
+			if i < len(payloadList) && merged.EqualStructure(&payloadList[i]) {
+				merged.NALUs = append(merged.NALUs, payloadList[i].NALUs...)
+			} else {
+				if err := a.writeInner(stream, map[string]TrackPayload{track: merged}); err != nil {
+					a.log.Errorf("Error flushing write buffer for stream %v (%v/%v): %v", stream.name, i, len(payloadList), err)
+				}
+				if i < len(payloadList) {
+					merged = payloadList[i]
+				}
+			}
+		}
+	}
+	stream.writeBuffer = map[string][]TrackPayload{}
+	stream.writeBufferSize = 0
+}
+
+func (a *Archive) flushWriteBuffers(force bool) {
+	a.streamsLock.Lock()
+	streams := make([]*videoStream, 0, len(a.streams))
+	for _, stream := range a.streams {
+		streams = append(streams, stream)
+	}
+	a.streamsLock.Unlock()
+
+	for _, stream := range streams {
+		stream.contentLock.Lock()
+		if force || a.mustFlushWriteBuffer(stream) {
+			a.flushWriteBufferForStream(stream)
+		}
+		stream.contentLock.Unlock()
+	}
 }

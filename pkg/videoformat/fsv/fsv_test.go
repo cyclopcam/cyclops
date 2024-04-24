@@ -14,21 +14,33 @@ import (
 const BaseDir = "test-fsv-tmp"
 
 func TestReaderWriter(t *testing.T) {
+	testReaderWriter(t, false)
+	testReaderWriter(t, true)
+}
+
+func testReaderWriter(t *testing.T, enableWriteBuffer bool) {
 	EraseArchive()
 	logger := log.NewTestingLog(t)
 
 	maxSizeDelta := float64(0)
 
+	initSettings := DefaultStaticSettings()
+	if enableWriteBuffer {
+		initSettings.MaxWriteBufferSize = 1024 * 1024
+	} else {
+		initSettings.MaxWriteBufferSize = 0
+	}
+
 	// System wakes up and archive is empty
 
-	arc1, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}}, DefaultArchiveSettings())
+	arc1, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}}, initSettings, DefaultDynamicSettings())
 	require.NoError(t, err)
 	require.NotNil(t, arc1)
 
 	tbase1 := time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
-	tbase2 := tbase1.Add(arc1.MaxVideoFileDuration())              // Packets after tbase 2 will require a new file
-	packets1 := rf1.CreateTestNALUs(tbase1, 0, 100, 10.0, 100, 13) // these go into the first file
-	packets2 := rf1.CreateTestNALUs(tbase2, 0, 50, 10.0, 100, 15)  // these go into the second file
+	tbase2 := tbase1.Add(arc1.MaxVideoFileDuration())                  // Packets after tbase 2 will require a new file
+	packets1 := rf1.CreateTestNALUs(tbase1, 0, 100, 10.0, 50, 150, 13) // these go into the first file
+	packets2 := rf1.CreateTestNALUs(tbase2, 0, 50, 10.0, 50, 150, 15)  // these go into the second file
 
 	require.InDelta(t, 0, arc1.TotalSize(), maxSizeDelta)
 
@@ -63,7 +75,7 @@ func TestReaderWriter(t *testing.T) {
 	// Verify that we can read the data we just wrote.
 	// Now we expect to find 2 files in the index.
 
-	arc2, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}}, DefaultArchiveSettings())
+	arc2, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}}, initSettings, DefaultDynamicSettings())
 	require.NoError(t, err)
 	require.NotNil(t, arc2)
 	streams := arc2.ListStreams()
@@ -97,10 +109,11 @@ func TestReaderWriter(t *testing.T) {
 	arc2.Close()
 
 	// Get the sweeper to run
-	withSweep := DefaultArchiveSettings()
+	withSweep := DefaultDynamicSettings()
 	withSweep.MaxArchiveSize = expectedFilesize(packets2) * 103 / 100
-	withSweep.SweepInterval = time.Millisecond
-	arc3, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}}, withSweep)
+	initWithSweep := DefaultStaticSettings()
+	initWithSweep.SweepInterval = time.Millisecond
+	arc3, err := Open(logger, BaseDir, []VideoFormat{&VideoFormatRF1{}}, initWithSweep, withSweep)
 	require.Equal(t, expectedFilesize(packets1)+expectedFilesize(packets2), arc3.TotalSize())
 	time.Sleep(time.Millisecond * 3)
 	require.Equal(t, expectedFilesize(packets2), arc3.TotalSize())

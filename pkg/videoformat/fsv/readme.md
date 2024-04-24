@@ -40,3 +40,14 @@ cons.
 Update -- because of our rf1 multi-file architecture, we also need to store the
 list of tracks inside this index. So the data structure is more like 80 bytes
 per file. Even if we double the 24kb per stream, that's still nothing.
+
+## Write Buffer
+
+I'm experimenting with adding a per-stream write buffer into the archive. What
+got me to try this is that I'm experiencing extremely slow write times on an
+NTFS USB spinning disc drive, mounted to a WSL VM. I've tried enabling write
+caching in Windows for this disk, but it doesn't make a difference. It seems to
+be limited to about 2 MB/s. By caching writes, we can bunch up the writes to
+each stream. Let's see if this makes a difference.
+
+Yes, it does seem to make a difference, at least on my problematic USB drive.

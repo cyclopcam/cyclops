@@ -19,9 +19,12 @@ func TestNALUFlags(naluIdx int) IndexNALUFlags {
 // Generate the range of frames [startFrame, endFrame)
 // Frame flags are controlled by TestNALUFlags()
 // seed should be a prime number
-func CreateTestNALUs(timeBase time.Time, startFrame, endFrame int, fps float64, maxPacketSize int, seed int) []NALU {
+func CreateTestNALUs(timeBase time.Time, startFrame, endFrame int, fps float64, minPacketSize, maxPacketSize int, seed int) []NALU {
 	if seed <= 1 {
 		panic("seed must be a prime number")
+	}
+	if maxPacketSize < minPacketSize {
+		panic("maxPacketSize must be greater than or equal to minPacketSize")
 	}
 	nalus := make([]NALU, endFrame-startFrame)
 	rng := rand.New(rand.NewSource(int64(seed)))
@@ -32,7 +35,10 @@ func CreateTestNALUs(timeBase time.Time, startFrame, endFrame int, fps float64, 
 		}
 		nalu.Flags = TestNALUFlags(i)
 		rng.Seed(int64(i+1) * int64(seed))
-		packetSize := rng.Intn(maxPacketSize) + 50
+		packetSize := minPacketSize
+		if maxPacketSize > minPacketSize {
+			packetSize = rng.Intn(maxPacketSize-minPacketSize) + minPacketSize
+		}
 		nalu.Payload = make([]byte, packetSize)
 		_, err := rng.Read(nalu.Payload)
 		if err != nil {

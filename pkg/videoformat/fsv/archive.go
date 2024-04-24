@@ -52,8 +52,13 @@ type videoStream struct {
 	files       []videoFileIndex // All files in the stream except for 'current'
 	// Recently written packets, with their payloads set to nil.
 	// Used to splice overlapping writes.
+	// This exists at a lower level than writeBuffer.
 	// Key is track name.
 	recentWrite map[string][]rf1.NALU
+	// Write buffer.
+	// Key is track name.
+	writeBuffer     map[string][]TrackPayload
+	writeBufferSize int // Payload bytes in writeBuffer
 }
 
 // Information about a stream
@@ -74,6 +79,11 @@ type TrackPayload struct {
 	NALUs       []rf1.NALU
 }
 
+// Returns true if all parameters except the payload is identical (eg same codec,width,height,etc)
+func (t *TrackPayload) EqualStructure(b *TrackPayload) bool {
+	return t.TrackType == b.TrackType && t.Codec == b.Codec && t.VideoWidth == b.VideoWidth && t.VideoHeight == b.VideoHeight
+}
+
 func MakeVideoPayload(codec string, width, height int, nalus []rf1.NALU) TrackPayload {
 	return TrackPayload{
 		Codec:       codec,
@@ -91,13 +101,16 @@ type Archive struct {
 	log                  log.Log
 	baseDir              string
 	formats              []VideoFormat
-	maxVideoFileDuration time.Duration // We need to know this so that it is fast to find files close to a given time period.
-	sweepStop            chan bool     // Tell the sweeper to stop
-	sweeperStopped       chan bool     // Sweeper closes this once it has stopped
-	recentWriteMaxQueue  int           // Max number of NALU headers we'll store in videoStream.recentWrite
+	maxVideoFileDuration time.Duration  // We need to know this so that it is fast to find files close to a given time period.
+	shutdown             chan bool      // This is closed at the start of Archive.Close()
+	bufferWriterStopped  chan bool      // Buffer writer thread closes this when it exits
+	sweepStop            chan bool      // Tell the sweeper to stop
+	sweeperStopped       chan bool      // Sweeper closes this once it has stopped
+	recentWriteMaxQueue  int            // Max number of NALU headers we'll store in videoStream.recentWrite
+	staticSettings       StaticSettings // Initialization settings (can't be changed while Open)
 
-	settingsLock sync.Mutex // Guards access to settings
-	settings     ArchiveSettings
+	dynamicSettingsLock sync.Mutex // Guards access to dynamicSettings
+	dynamicSettings     DynamicSettings
 
 	streamsLock sync.Mutex // Guards access to the streams map. Access inside a stream needs stream.contentLock.
 	streams     map[string]*videoStream
@@ -109,18 +122,36 @@ type Archive struct {
 	numStatWrites     int64                      // Number of times we've written stats to log
 }
 
-// Archive Settings
-type ArchiveSettings struct {
-	MaxBytesPerRead int           // Maximum number of bytes that we will return from a single Read()
-	MaxArchiveSize  int64         // Maximum size of all files in the archive. We will eat into old files when we need to recycle space. Zero = no limit.
-	SweepInterval   time.Duration // How often we check if we need to recycle space
+// Dynamic Settings (can be changed while running).
+// These are settings that a user is likely to change while
+// the system is running, so we make it possible to do so.
+type DynamicSettings struct {
+	MaxArchiveSize int64 // Maximum size of all files in the archive. We will eat into old files when we need to recycle space. Zero = no limit.
 }
 
-func DefaultArchiveSettings() ArchiveSettings {
-	return ArchiveSettings{
-		MaxBytesPerRead: 256 * 1024 * 1024, // 256MB
-		MaxArchiveSize:  0,                 // No limit
-		SweepInterval:   time.Minute,
+func DefaultDynamicSettings() DynamicSettings {
+	return DynamicSettings{
+		MaxArchiveSize: 0, // No limit
+	}
+}
+
+// Static Settings (cannot be changed while archive is open).
+// These settings cannot be changed while the archive is being used.
+// If you want to change these, you must close and re-open the archive.
+type StaticSettings struct {
+	MaxBytesPerRead int           // Maximum number of bytes that we will return from a single Read()
+	SweepInterval   time.Duration // How often we check if we need to recycle space
+	// Write buffer settings
+	MaxWriteBufferSize int           // Maximum amount of memory per stream in our write buffer
+	MaxWriteBufferTime time.Duration // Maximum amount of time that we'll buffer data in memory before writing it to disk
+}
+
+func DefaultStaticSettings() StaticSettings {
+	return StaticSettings{
+		MaxBytesPerRead:    256 * 1024 * 1024, // 256MB
+		SweepInterval:      time.Minute,
+		MaxWriteBufferSize: 1024 * 1024,
+		MaxWriteBufferTime: 5 * time.Second,
 	}
 }
 
@@ -128,7 +159,7 @@ func DefaultArchiveSettings() ArchiveSettings {
 // The directory baseDir must exist, but it may be empty.
 // When creating new streams, formats[0] is used, so the ordering
 // of formats is important.
-func Open(logger log.Log, baseDir string, formats []VideoFormat, settings ArchiveSettings) (*Archive, error) {
+func Open(logger log.Log, baseDir string, formats []VideoFormat, initSettings StaticSettings, settings DynamicSettings) (*Archive, error) {
 	if len(formats) == 0 {
 		return nil, fmt.Errorf("No video formats provided")
 	}
@@ -151,12 +182,14 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat, settings Archiv
 	// Each directory is a stream (eg camera-0001).
 	archive := &Archive{
 		log:                  log.NewPrefixLogger(logger, "Archive:"),
+		shutdown:             make(chan bool),
 		baseDir:              baseDir,
 		formats:              formats,
 		streams:              map[string]*videoStream{},
 		maxVideoFileDuration: maxVideoFileDuration,
 		recentWriteMaxQueue:  1000, // at 30 fps, 1000/30 = 33 seconds of recent writes. My plan is to include 15 seconds of history at 10 FPS, so 33 at 30 FPS is a plenty big buffer.
-		settings:             settings,
+		staticSettings:       initSettings,
+		dynamicSettings:      settings,
 		lastStatWriteTime:    time.Now(),
 	}
 	err := filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
@@ -168,6 +201,7 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat, settings Archiv
 			archive.streams[streamName] = &videoStream{
 				name:        streamName,
 				recentWrite: map[string][]rf1.NALU{},
+				writeBuffer: map[string][]TrackPayload{},
 			}
 			return filepath.SkipDir
 		}
@@ -184,20 +218,21 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat, settings Archiv
 	}
 
 	archive.startSweeper()
+	go archive.writeBufferThread()
 
 	return archive, nil
 }
 
-func (a *Archive) Settings() ArchiveSettings {
-	a.settingsLock.Lock()
-	defer a.settingsLock.Unlock()
-	return a.settings
+func (a *Archive) GetDynamicSettings() DynamicSettings {
+	a.dynamicSettingsLock.Lock()
+	defer a.dynamicSettingsLock.Unlock()
+	return a.dynamicSettings
 }
 
-func (a *Archive) SetSettings(settings ArchiveSettings) {
-	a.settingsLock.Lock()
-	defer a.settingsLock.Unlock()
-	a.settings = settings
+func (a *Archive) SetDynamicSettings(settings DynamicSettings) {
+	a.dynamicSettingsLock.Lock()
+	defer a.dynamicSettingsLock.Unlock()
+	a.dynamicSettings = settings
 }
 
 func (a *Archive) MaxVideoFileDuration() time.Duration {
@@ -382,6 +417,7 @@ func (a *Archive) streamDir(streamName string) string {
 func (a *Archive) Close() {
 	a.log.Infof("Archive closing")
 	a.stopSweeper()
+	a.flushWriteBuffers(true)
 	a.streamsLock.Lock()
 	defer a.streamsLock.Unlock()
 	for _, stream := range a.streams {
@@ -408,6 +444,7 @@ func (a *Archive) getOrCreateStream(streamName string) (*videoStream, error) {
 			name:        streamName,
 			format:      a.formats[0],
 			recentWrite: map[string][]rf1.NALU{},
+			writeBuffer: map[string][]TrackPayload{},
 		}
 		a.streams[streamName] = stream
 
@@ -475,14 +512,18 @@ func DoTimeRangesOverlap(start1, end1, start2, end2 time.Time) bool {
 func totalPayloadBytes(p []rf1.NALU) int64 {
 	total := int64(0)
 	for _, nalu := range p {
-		total += int64(len(nalu.Payload))
+		if nalu.Payload != nil {
+			total += int64(len(nalu.Payload))
+		} else {
+			total += nalu.Length
+		}
 	}
 	return total
 }
 
 func (a *Archive) AutoStatsToLog() {
-	interval := 30 * time.Second
-	if a.numStatWrites > 3 {
+	interval := 15 * time.Second
+	if a.numStatWrites > 5 {
 		interval = 15 * time.Minute
 	}
 	now := time.Now()
@@ -494,10 +535,11 @@ func (a *Archive) AutoStatsToLog() {
 		return
 	}
 	a.log.Infof("Bytes per second: %v (%v samples)", kibi.FormatBytesHighPrecision(a.bytesWrittenStat.Total/int64(elapsed.Seconds())), a.bytesWrittenStat.Samples)
+	a.log.Infof("Writes per second: %.1f", float64(a.writeTimeStat.Samples)/elapsed.Seconds())
 	a.log.Infof("Average time per write: %v (%v samples)", a.writeTimeStat.Average(), a.writeTimeStat.Samples)
 	a.lastStatWriteTime = time.Now()
 	a.numStatWrites++
-	if a.numStatWrites%10 == 0 {
+	if a.numStatWrites%3 == 0 {
 		a.log.Infof("Resetting stats")
 		a.firstWrite = time.Now()
 		a.bytesWrittenStat.Reset()

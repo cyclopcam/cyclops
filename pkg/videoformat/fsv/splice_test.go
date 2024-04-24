@@ -23,8 +23,10 @@ import (
 
 func TestSplicePerfect(t *testing.T) {
 	EraseArchive()
-	arc, _ := Open(log.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, DefaultArchiveSettings())
-	packets := rf1.CreateTestNALUs(time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC), 0, 300, 10.0, 100, 12345)
+	disableWriteBuffer := DefaultStaticSettings()
+	disableWriteBuffer.MaxWriteBufferSize = 0
+	arc, _ := Open(log.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, disableWriteBuffer, DefaultDynamicSettings())
+	packets := rf1.CreateTestNALUs(time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC), 0, 300, 10.0, 50, 150, 12345)
 
 	// Pattern:
 	//
@@ -52,9 +54,11 @@ func TestSplicePerfect(t *testing.T) {
 
 func TestSpliceImperfect(t *testing.T) {
 	EraseArchive()
-	arc, err := Open(log.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, DefaultArchiveSettings())
+	disableWriteBuffer := DefaultStaticSettings()
+	disableWriteBuffer.MaxWriteBufferSize = 0
+	arc, err := Open(log.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, disableWriteBuffer, DefaultDynamicSettings())
 	require.EqualValues(t, 0, arc.TotalSize())
-	packets1 := rf1.CreateTestNALUs(time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC), 0, 300, 10.0, 100, 12345)
+	packets1 := rf1.CreateTestNALUs(time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC), 0, 300, 10.0, 50, 150, 12345)
 	packets2 := slices.Clone(packets1)
 
 	// Add just enough delay to make packets no longer equal

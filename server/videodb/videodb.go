@@ -54,10 +54,19 @@ func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
 		return nil, fmt.Errorf("Failed to open video database %v: %w", dbPath, err)
 	}
 
+	// NOTE: I'm uneasy about us using default settings here (notably max archive size),
+	// and then only later having SetMaxArchiveSize() called. We are safe, because the
+	// default size limit is 0, which means "no limit". But it would feel better to
+	// open the archive with our current settings, in case other settings creep in
+	// later, and we don't remember to update that kind of thing here.
+
 	logs.Infof("Scanning Video Archive at '%v'", videoDir)
 	formats := []fsv.VideoFormat{&fsv.VideoFormatRF1{}}
-	fsvSettings := fsv.DefaultArchiveSettings()
-	archive, err := fsv.Open(logsRaw, videoDir, formats, fsvSettings)
+	archiveInitSettings := fsv.DefaultStaticSettings()
+	// The following line disables the write buffer
+	//archiveInitSettings.MaxWriteBufferSize = 0
+	fsvSettings := fsv.DefaultDynamicSettings()
+	archive, err := fsv.Open(logsRaw, videoDir, formats, archiveInitSettings, fsvSettings)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open video archive at %v: %w", videoDir, err)
 	}
@@ -79,9 +88,9 @@ func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
 // The archive won't delete any files until this is called, because it doesn't know yet
 // what the size limit is.
 func (v *VideoDB) SetMaxArchiveSize(maxSize int64) {
-	s := v.Archive.Settings()
+	s := v.Archive.GetDynamicSettings()
 	s.MaxArchiveSize = maxSize
-	v.Archive.SetSettings(s)
+	v.Archive.SetDynamicSettings(s)
 }
 
 func (v *VideoDB) Close() {

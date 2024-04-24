@@ -33,9 +33,7 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 
 	tracks := map[string][]rf1.NALU{}
 	totalBytes := 0
-	a.settingsLock.Lock()
-	maxBytesPerRead := a.settings.MaxBytesPerRead
-	a.settingsLock.Unlock()
+	maxBytesPerRead := a.staticSettings.MaxBytesPerRead
 
 	// Read the tracks from vf, and append them to our result set
 	readFromVideoFile := func(filename string, vf VideoFile) error {
@@ -105,6 +103,10 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 	if useCurrent != nil {
 		stream.contentLock.Lock()
 		defer stream.contentLock.Unlock()
+
+		// If we have any buffered writes, flush them now
+		a.flushWriteBufferForStream(stream)
+
 		if useCurrent == stream.current {
 			// Current is still the same open handle that we found at the start of the Read()
 			if err := readFromVideoFile(stream.current.filename, stream.current.file); err != nil {

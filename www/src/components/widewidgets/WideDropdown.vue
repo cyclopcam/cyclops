@@ -97,5 +97,6 @@ function displayValue(value: any) {
 	padding: 12px 20px;
 	border-bottom: 1px solid #eee;
 	border-radius: 5px;
+	cursor: pointer;
 }
 </style>

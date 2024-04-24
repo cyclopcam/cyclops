@@ -6,7 +6,7 @@ seeking.
 
 Limits:
 
-    Maximim video time: 1024 seconds
+    Maximum video time: 1024 seconds
     Maximum video size: 1 GB
     Maximum frames: 65535
 
@@ -29,10 +29,12 @@ our time limit of 1024 seconds. Our index size in such a case is 1024 \* 30 \* 8
 
 ## 16-bit Index Count
 
-Our index file header has a 16-bit value that tells us how many packets are
-inside. Is 16-bits a limitation? If we consider that our maximum number of
+Inside the header of our index file, we store a 16-bit value that tells us how
+many packets the file has. 16 bits seems like a small number for this day and
+age, but is a limiting factor here? If we consider that our maximum number of
 seconds is 1024, and imagine a high framerate of 30 (most systems use 10 fps),
-then 1024 \* 30 = 30720. This is well within the 16-bit limit.
+then we get 1024 \* 30 = 30720 frames before we hit our 1024-second limit. This
+number is well within the 16-bit limit of 65535.
 
 ## Sizes and File Counts
 

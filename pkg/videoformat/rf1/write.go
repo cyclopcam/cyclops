@@ -1,6 +1,7 @@
 package rf1
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/cyclopcam/cyclops/pkg/cgogo"
@@ -8,6 +9,8 @@ import (
 
 // #include "rf1.h"
 import "C"
+
+const PrintAggregationStats = false
 
 func (t *Track) WriteHeader() error {
 	if t.indexCount > MaxIndexEntries {
@@ -111,19 +114,64 @@ func (t *Track) WriteNALUs(nalus []NALU) error {
 	index := []uint64{}
 
 	// write packets
-	for _, nalu := range nalus {
-		relativePTS := nalu.PTS.Sub(t.TimeBase)
-		if relativePTS < t.duration {
-			return fmt.Errorf("NALU occurs before the end of the track (%v < %v), '%v < %v'", relativePTS, t.duration, nalu.PTS, t.TimeBase.Add(t.duration))
-		}
-		t.duration = relativePTS
+
+	if !t.disableWriteAggregate && len(nalus) > 1 && int(packetBytes)/len(nalus) < 1000 {
+		// For small packets, aggregate data into larger OS writes, because inter-frames for
+		// low res streams can be as small as 50 bytes each.
+		// I have no idea what the right threshold is here.
+		// My guess is that this is worth it, but I haven't measured CPU usage on buffer vs no-buffer.
+		// My hunch is that buffering will be worth it for very small writes (eg 10 x 100 byte writes).
+		// The extra cost that we're introducing here is an additional memcpy into bytes.Buffer, but
+		// if we keep our buffer size very small, then all the in and out from the buffer will live in
+		// L2 or even L1 cache, and so that cost will be worth it (vs the cost of many small OS writes).
+		writeBuffer := bytes.Buffer{}
+		writeBufferMax := 10 * 1024
 		pos := t.packetsSize
-		n, err := t.packets.WriteAt(nalu.Payload, pos)
-		t.packetsSize += int64(n)
-		if err != nil {
-			return err
+		iLastWrite := 0
+		for i := 0; i <= len(nalus); i++ {
+			if i < len(nalus) {
+				nalu := nalus[i]
+				relativePTS := nalu.PTS.Sub(t.TimeBase)
+				if relativePTS < t.duration {
+					return fmt.Errorf("NALU occurs before the end of the track (%v < %v), '%v < %v'", relativePTS, t.duration, nalu.PTS, t.TimeBase.Add(t.duration))
+				}
+				t.duration = relativePTS
+				writeBuffer.Write(nalu.Payload)
+				index = append(index, MakeIndexNALU(EncodeTimeOffset(relativePTS), pos, nalu.Flags))
+				pos += int64(len(nalu.Payload))
+			}
+			if i == len(nalus) || writeBuffer.Len() > writeBufferMax {
+				if PrintAggregationStats {
+					fmt.Printf("Writing %v bytes over %v packets in one go\n", writeBuffer.Len(), 1+i-iLastWrite) // Debug info for stats
+				}
+				n, err := t.packets.WriteAt(writeBuffer.Bytes(), t.packetsSize)
+				t.packetsSize += int64(n)
+				if err != nil {
+					return err
+				}
+				writeBuffer.Truncate(0)
+				iLastWrite = i
+			}
 		}
-		index = append(index, MakeIndexNALU(EncodeTimeOffset(relativePTS), pos, nalu.Flags))
+	} else {
+		// Write without buffering
+		if PrintAggregationStats {
+			fmt.Printf("Writing %v bytes in %v packets directly\n", packetBytes, len(nalus))
+		}
+		for _, nalu := range nalus {
+			relativePTS := nalu.PTS.Sub(t.TimeBase)
+			if relativePTS < t.duration {
+				return fmt.Errorf("NALU occurs before the end of the track (%v < %v), '%v < %v'", relativePTS, t.duration, nalu.PTS, t.TimeBase.Add(t.duration))
+			}
+			t.duration = relativePTS
+			pos := t.packetsSize
+			n, err := t.packets.WriteAt(nalu.Payload, pos)
+			t.packetsSize += int64(n)
+			if err != nil {
+				return err
+			}
+			index = append(index, MakeIndexNALU(EncodeTimeOffset(relativePTS), pos, nalu.Flags))
+		}
 	}
 
 	// add sentinel index entry

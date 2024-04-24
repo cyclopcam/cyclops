@@ -42,17 +42,22 @@ func TestReaderWriter(t *testing.T) {
 	for closeAndReOpen := 0; closeAndReOpen < 2; closeAndReOpen++ {
 		for enableDirtyClose := 0; enableDirtyClose < 2; enableDirtyClose++ {
 			for enablePreAllocate := 0; enablePreAllocate < 2; enablePreAllocate++ {
-				t.Logf("testReaderWriter closeAndReOpen=%v enableDirtyClose=%v, enablePreAllocate=%v", closeAndReOpen, enableDirtyClose, enablePreAllocate)
-				testReaderWriter(t, closeAndReOpen == 1, enableDirtyClose == 1, enablePreAllocate == 1)
+				for enableWriteAggregate := 0; enableWriteAggregate < 2; enableWriteAggregate++ {
+					for largeNALU := 0; largeNALU < 2; largeNALU++ {
+						t.Logf("testReaderWriter closeAndReOpen=%v enableDirtyClose=%v, enablePreAllocate=%v, enableWriteAggregate=%v, largeNALU=%v", closeAndReOpen, enableDirtyClose, enablePreAllocate, enableWriteAggregate, largeNALU)
+						testReaderWriter(t, closeAndReOpen == 1, enableDirtyClose == 1, enablePreAllocate == 1, enableWriteAggregate == 1, largeNALU == 1)
+					}
+				}
 			}
 		}
 	}
 }
 
-func testReaderWriter(t *testing.T, enableCloseAndReOpen, enableDirtyClose, enablePreAllocate bool) {
+func testReaderWriter(t *testing.T, enableCloseAndReOpen, enableDirtyClose, enablePreAllocate, enableWriteAggregate, largeNALU bool) {
 	tbase := time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
 	trackW, err := MakeVideoTrack("HD", tbase, CodecH264, 320, 240)
 	trackW.disablePreallocate = !enablePreAllocate
+	trackW.disablePreallocate = !enableWriteAggregate
 	require.NoError(t, err)
 	fw, err := Create(BaseDir+"/test", []*Track{trackW})
 	require.NoError(t, err)
@@ -60,7 +65,13 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen, enableDirtyClose, enab
 	nNALUs := 200
 	nWritten := 0
 	fps := 10.0
-	nalusW := CreateTestNALUs(trackW.TimeBase, 0, nNALUs, fps, 100, 12345)
+	minPacketSize := 50
+	maxPacketSize := 150
+	if largeNALU {
+		minPacketSize = 50
+		maxPacketSize = 10000
+	}
+	nalusW := CreateTestNALUs(trackW.TimeBase, 0, nNALUs, fps, minPacketSize, maxPacketSize, 12345)
 	chunkSize := 11
 	for i := 0; i < nNALUs; i += chunkSize {
 		end := i + chunkSize
@@ -207,7 +218,7 @@ func requireEqualNALUs(t *testing.T, expected, actual []NALU) {
 func TestBigRead(t *testing.T) {
 	fw := createTestVideo(t, "bigread")
 	nNALUs := 10000
-	nalusW := CreateTestNALUs(fw.Tracks[0].TimeBase, 0, nNALUs, 10.0, 500, 12345)
+	nalusW := CreateTestNALUs(fw.Tracks[0].TimeBase, 0, nNALUs, 10.0, 500, 1500, 12345)
 	require.NoError(t, fw.Tracks[0].WriteNALUs(nalusW))
 	require.NoError(t, fw.Close())
 	fw, err := Open(BaseDir+"/bigread", OpenModeReadOnly)
