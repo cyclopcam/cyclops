@@ -93,7 +93,7 @@ func NewLiveCameras(logger log.Log, configDB *configdb.ConfigDB, shutdown chan b
 		cameraFromID:           map[int64]*camera.Camera{},
 		wake:                   make(chan bool, 50),
 		periodicWakeInterval:   10 * time.Second,
-		timeUntilCameraRestart: 15 * time.Second,
+		timeUntilCameraRestart: 5 * time.Second,
 		closeTestCameraAfter:   60 * time.Second,
 		allCameraMonitorMsg:    monitor.AddWatcherAllCameras(),
 		recordThreadShutdown:   make(chan bool),

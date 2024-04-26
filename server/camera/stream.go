@@ -99,6 +99,9 @@ type Stream struct {
 	infoLock sync.Mutex
 	info     *StreamInfo // With Go 1.19 one could use atomic.Pointer[T] here
 
+	livenessLock                 sync.Mutex
+	livenessLastPacketReceivedAt time.Time
+
 	// Used to infer real time from packet's relative timestamps
 	refTimeWall     time.Time
 	refTimeDuration time.Duration
@@ -185,20 +188,32 @@ func (s *Stream) Listen(address string) error {
 	s.Log.Infof("Connected to %v, track %v", camHost, media.ID)
 
 	recvID := atomic.Int64{}
+	nWarningsAboutNoPTS := 0
 
 	client.OnPacketRTP(media, forma, func(pkt *rtp.Packet) {
-		//if ctx.TrackID != h264TrackID || len(ctx.H264NALUs) == 0 {
-		//	return
+		now := time.Now()
+		myPacketID := recvID.Add(1)
+
+		s.livenessLock.Lock()
+		s.livenessLastPacketReceivedAt = now
+		s.livenessLock.Unlock()
+
+		//if s.CameraName == "Driveway" && s.StreamName == "high" && s.info == nil {
+		//	s.Log.Infof("Received packet %v (%v bytes)", myPacketID, len(pkt.Payload))
 		//}
+
 		pts, ok := client.PacketPTS(media, pkt)
 		if !ok {
-			if recvID.Load() != 0 {
-				s.Log.Warnf("Ignoring H264 packet, waiting for timestamp")
+			if nWarningsAboutNoPTS == 0 {
+				s.Log.Warnf("Ignoring H264 packet without PTS")
 			}
+			nWarningsAboutNoPTS = min(nWarningsAboutNoPTS+1, 1000)
 			return
 		}
 
-		// I don't seem to be getting these from my Hikvision cameras
+		nWarningsAboutNoPTS >>= 1
+
+		// I don't seem to be getting NTP info from my Hikvision cameras
 		//ntp, ntpOK := client.PacketNTP(media, pkt)
 
 		nalus, err := rtpDecoder.Decode(pkt)
@@ -208,8 +223,6 @@ func (s *Stream) Listen(address string) error {
 			}
 			return
 		}
-
-		now := time.Now()
 
 		// Note that gortsplib also has client.PacketNTP(), which we could experiment with.
 		// Perhaps we should measure NTP time from the camera, and if its close enough to our
@@ -235,8 +248,11 @@ func (s *Stream) Listen(address string) error {
 		if s.info == nil {
 			if inf := s.extractSPSInfo(nalus); inf != nil {
 				s.info = inf
-				s.Log.Infof("Size: %v x %v", inf.Width, inf.Height)
+				s.Log.Infof("Size: %v x %v (after %v packets)", inf.Width, inf.Height, myPacketID)
 			}
+			//if myPacketID == 100 && s.info == nil {
+			//	s.Log.Warnf("Failed to extract SPS info after 100 packets")
+			//}
 		}
 		s.infoLock.Unlock()
 
@@ -257,7 +273,7 @@ func (s *Stream) Listen(address string) error {
 		// A typical iframe packet from a 320x240 camera is around 100 bytes!
 		// A keyframe is between 10 and 20 KB.
 		cloned := videox.ClonePacket(nalus, pts, now, refTime)
-		cloned.RecvID = recvID.Add(1)
+		cloned.RecvID = myPacketID
 
 		// Frame size stats can be interesting
 		//if s.Ident == "driveway.low" {
@@ -347,6 +363,13 @@ func (s *Stream) RecentFrameStats() StreamStats {
 	defer s.recentFramesLock.Unlock()
 
 	return s.statsNoMutexLock()
+}
+
+// Return the wall time of the most recently received packet
+func (s *Stream) LastPacketReceivedAt() time.Time {
+	s.livenessLock.Lock()
+	defer s.livenessLock.Unlock()
+	return s.livenessLastPacketReceivedAt
 }
 
 func (s *Stream) statsNoMutexLock() StreamStats {

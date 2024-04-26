@@ -21,8 +21,6 @@ type Camera struct {
 	HighDumper *VideoRingBuffer
 	LowDecoder *VideoDecodeReader
 	LowDumper  *VideoRingBuffer
-	//HighRecorder *VideoRecorder
-	//LowRecorder  *VideoRecorder
 	lowResURL  string
 	highResURL string
 }
@@ -129,9 +127,19 @@ func (c *Camera) Close(wg *sync.WaitGroup) {
 	}
 }
 
-// Return the time of the last packet received from the camera
+// Return the time of the most recently received packet from the camera.
+// But NOTE! We return the oldest such packet of the two streams.
+// In other words, we return min(LowStream.LastPacketReceivedAt(), HighStream.LastPacketReceivedAt()).
+// This is to work around an issue where I have a camera who's HD stream
+// frequently fails to send any packets, but the LD stream works fine.
+// I'm not sure if this is a bug in gortsplib, but this seems like a robust
+// strategy to have anyway. This bug only manifests during startup.
+// Once you start receiving packets, it generally keeps going forever.
 func (c *Camera) LastPacketAt() time.Time {
-	return c.LowDecoder.LastPacketAt()
+	t1 := c.LowStream.LastPacketReceivedAt().UnixMicro()
+	t2 := c.HighStream.LastPacketReceivedAt().UnixMicro()
+	t := min(t1, t2)
+	return time.UnixMicro(t)
 }
 
 func (c *Camera) LatestImage(contentType string) []byte {
