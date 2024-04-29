@@ -109,14 +109,6 @@ func (c *Camera) Start() error {
 // Close the camera.
 // If wg is not nil, then you must use it to signal when all of your resources are closed.
 func (c *Camera) Close(wg *sync.WaitGroup) {
-	//if c.LowRecorder != nil {
-	//	c.LowRecorder.Stop()
-	//	c.LowRecorder = nil
-	//}
-	//if c.HighRecorder != nil {
-	//	c.HighRecorder.Stop()
-	//	c.HighRecorder = nil
-	//}
 	if c.LowStream != nil {
 		c.LowStream.Close(wg)
 		c.LowStream = nil
