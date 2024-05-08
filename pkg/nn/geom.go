@@ -21,6 +21,15 @@ type Rect struct {
 	Height int `json:"height"`
 }
 
+func MakeRect(x, y, width, height int) Rect {
+	return Rect{
+		X:      x,
+		Y:      y,
+		Width:  width,
+		Height: height,
+	}
+}
+
 func (r Rect) X2() int {
 	return r.X + r.Width
 }

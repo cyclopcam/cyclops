@@ -9,10 +9,11 @@ import (
 )
 
 type TrackedObject struct {
-	ID     int64
-	Camera string
-	Class  string
-	Boxes  []TrackedBox
+	ID       uint32
+	Camera   uint32
+	Class    uint32
+	Boxes    []TrackedBox
+	LastSeen time.Time // In case you're not updating Boxes, or Boxes is empty. Maybe you're not updating Boxes because the object hasn't moved.
 }
 
 type TrackedBox struct {
@@ -20,26 +21,44 @@ type TrackedBox struct {
 	Box  nn.Rect
 }
 
-func (v *VideoDB) ObjectDetected(camera string, id int64, box nn.Rect, class string) {
+// This is the way our users inform us of a new object detection.
+// We'll get one of these calls on every frame where an object is detected.
+// id must be unique for the duration of the process (i.e. it can reset to 1 after a restart).
+// Also, id must be unique across cameras.
+// This is currently the way our 'monitor' package works, but I'm just codifying it here.
+func (v *VideoDB) ObjectDetected(camera string, id uint32, box nn.Rect, class string) {
+	// See comments above objectDetectedPhase1 for why we split this into two phases.
+	trackedObjectCopy := v.objectDetectedPhase1(camera, id, box, class)
+	v.updateTileWithNewDetection(&trackedObjectCopy)
+}
+
+// Phase 1, where we hold currentLock and update our internal state.
+// We return a shallow copy of the TrackedObject. This shallow copy does not have the Box history,
+// because that is a potentially expensive copy, an we don't need that for our tile update.
+// Our goal with splitting this into two phases is to get out of 'currentLock' before passing
+// control onto the tile updater.
+func (v *VideoDB) objectDetectedPhase1(camera string, id uint32, box nn.Rect, class string) TrackedObject {
 	v.currentLock.Lock()
 	defer v.currentLock.Unlock()
 
 	now := time.Now()
-	var obj *TrackedObject
-	for _, c := range v.current {
-		if c.ID == id && c.Camera == camera {
-			obj = c
-			break
-		}
-	}
+	obj := v.current[id]
 
 	if obj == nil {
-		obj = &TrackedObject{
-			Camera: camera,
-			ID:     id,
-			Class:  class,
+		ids, err := v.StringsToID([]string{camera, class})
+		if err != nil {
+			v.log.Errorf("Failed to convert strings to ID: %v", err)
+			return TrackedObject{}
 		}
-		v.current = append(v.current, obj)
+		cameraID, classID := ids[0], ids[1]
+
+		obj = &TrackedObject{
+			ID:       id,
+			Camera:   cameraID,
+			Class:    classID,
+			LastSeen: now,
+		}
+		v.current[id] = obj
 	}
 
 	// Ignore boxes if they move less than this many pixels
@@ -51,34 +70,48 @@ func (v *VideoDB) ObjectDetected(camera string, id int64, box nn.Rect, class str
 			Box:  box,
 		})
 	}
+
+	obj.LastSeen = now
+
+	return TrackedObject{
+		ID:       obj.ID,
+		Camera:   obj.Camera,
+		Class:    obj.Class,
+		LastSeen: obj.LastSeen,
+	}
 }
 
 func (v *VideoDB) eventWriteThread() {
 	v.log.Infof("Event write thread starting")
 	keepRunning := true
-	wakeInterval := 30 * time.Second
+	wakeInterval := 31 * time.Second
 	for keepRunning {
 		select {
 		case <-v.shutdown:
 			keepRunning = false
 		case <-time.After(wakeInterval):
-			v.writeOldObjects(false)
+			v.writeAgingEventsToDB(false)
+			// TODO: Figure out how old our FSV archive is, and keep the events in here in check with that.
+			// It's a bit tricky, because the FSV archive limit is specified in bytes, not in seconds.
+			// So we basically need to ask FSV how old the oldest file is, and then delete events
+			// that are older than that.
+			// It's pointless keeping events around when we've already deleted the camera footage.
 		}
 	}
 	v.log.Infof("Flushing events")
-	v.writeOldObjects(true)
+	v.writeAgingEventsToDB(true)
 	v.log.Infof("Event write thread exiting")
 	close(v.writeThreadClosed)
 }
 
 // Determine if now is a good time to write our current state to the DB.
 // If force is true, then write all objects to the DB.
-func (v *VideoDB) writeOldObjects(force bool) {
+func (v *VideoDB) writeAgingEventsToDB(force bool) {
 	v.currentLock.Lock()
 	defer v.currentLock.Unlock()
 
 	if force {
-		cameras := map[string]bool{}
+		cameras := map[uint32]bool{}
 		for _, c := range v.current {
 			cameras[c.Camera] = true
 		}
@@ -121,7 +154,7 @@ func (v *VideoDB) writeOldObjects(force bool) {
 		nFrames       int
 	}
 
-	cameras := make(map[string]*cameraInfo)
+	cameras := make(map[uint32]*cameraInfo)
 
 	for _, c := range v.current {
 		cam := cameras[c.Camera]
@@ -151,12 +184,12 @@ func (v *VideoDB) writeOldObjects(force bool) {
 
 // Write all current objects to an Event record, and reset our state.
 // You must already be holding currentLock before calling this function
-func (v *VideoDB) flushCameraToDB(camera string) {
+func (v *VideoDB) flushCameraToDB(camera uint32) {
 	// Find the earliest time. This will be our reference time.
 	// Everything in the JSON blob is specified as milliseconds relative to base.
 	basetime := time.Now()
 	maxtime := time.Time{}
-	otherCameraObjects := []*TrackedObject{}
+	otherCameraObjects := map[uint32]*TrackedObject{}
 	for _, c := range v.current {
 		if c.Camera == camera {
 			if c.Boxes[0].Time.Before(basetime) {
@@ -166,7 +199,7 @@ func (v *VideoDB) flushCameraToDB(camera string) {
 				maxtime = c.Boxes[len(c.Boxes)-1].Time
 			}
 		} else {
-			otherCameraObjects = append(otherCameraObjects, c)
+			otherCameraObjects[c.ID] = c
 		}
 	}
 

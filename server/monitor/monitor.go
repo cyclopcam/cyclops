@@ -15,6 +15,7 @@ import (
 	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/accel"
 	"github.com/cyclopcam/cyclops/pkg/gen"
+	"github.com/cyclopcam/cyclops/pkg/idgen"
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
@@ -60,7 +61,7 @@ type Monitor struct {
 	nnClassFilterMap    map[int]bool           // NN classes that we're interested in (eg person, car)
 	nnClassFilterList   []string               // NN classes that we're interested in (eg person, car)
 	analyzerSettings    analyzerSettings       // Analyzer settings
-	nextTrackedObjectID atomic.Int64           // Next ID to assign to a tracked object
+	nextTrackedObjectID idgen.Uint32           // Next ID to assign to a tracked object
 
 	camerasLock sync.Mutex       // Guards access to cameras
 	cameras     []*monitorCamera // Cameras that we're monitoring

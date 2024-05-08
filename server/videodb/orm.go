@@ -9,12 +9,12 @@ type BaseModel struct {
 }
 
 // An event is one or more frames of motion or object detection.
-// For efficiency sake, we limit events in the database to 5 seconds.
+// For efficiency sake, we limit events in the database to a max size and duration.
 type Event struct {
 	BaseModel
 	Time       dbh.IntTime                         `json:"time"`       // Start of event
 	Duration   int32                               `json:"duration"`   // Duration of event in milliseconds
-	Camera     string                              `json:"camera"`     // LongLived camera name
+	Camera     uint32                              `json:"camera"`     // LongLived camera name (via lookup in 'strings' table)
 	Detections *dbh.JSONField[EventDetectionsJSON] `json:"detections"` // Objects detected in the event
 }
 
@@ -24,8 +24,8 @@ type EventDetectionsJSON struct {
 
 // An object detected by the camera.
 type ObjectJSON struct {
-	ID        int64                `json:"id"`       // Can be used to track objects across Events
-	Class     string               `json:"class"`    // eg "person", "car"
+	ID        uint32               `json:"id"`       // Can be used to track objects across separate Event records
+	Class     uint32               `json:"class"`    // eg "person", "car" (via lookup in 'strings' table)
 	Positions []ObjectPositionJSON `json:"position"` // Object positions throughout event
 }
 
@@ -46,9 +46,10 @@ type ObjectPositionJSON struct {
 // for 4 bytes total per segment. 4 * 288 = 1.15KB per day, or 34.5KB per month (per camera).
 // This would compress very well, so we're probably looking at about 300 bytes per day,
 // or 10KB per month, per camera.
-type EventSummary struct {
-	BaseModel
-	Camera  string      `json:"camera"`  // LongLived camera name
-	Time    dbh.IntTime `json:"time"`    // Start time of event segment
-	Classes string      `json:"classes"` // Comma-separated list of classes that were detected
-}
+//type EventSummary struct {
+//	BaseModel
+//	Level   int16       `json:"level"`   // 0=32minute, 1=16minute, 2=8minute, 3=4minute, 4=2minute, 5=1minute, 6=30seconds, 7=15seconds, 8=7.5seconds, 9=3.75seconds
+//	Camera  string      `json:"camera"`  // LongLived camera name
+//	Time    dbh.IntTime `json:"time"`    // Start time of event segment
+//	Classes string      `json:"classes"` // Comma-separated list of classes and counts that were detected, eg "person:3,car:1"
+//}

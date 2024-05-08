@@ -28,7 +28,39 @@ func Migrations(log log.Log) []migration.Migrator {
 			classes TEXT NOT NULL,
 			PRIMARY KEY (camera, time)
 		) WITHOUT ROWID;
+	`))
 
+	//	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+	//		`
+	//		DROP TABLE event_summary;
+	//
+	//		CREATE TABLE event_summary(
+	//			level INT NOT NULL,
+	//			camera TEXT NOT NULL,
+	//			start INT NOT NULL,
+	//			end INT NOT NULL,
+	//			classes TEXT NOT NULL,
+	//			PRIMARY KEY (level, camera, start)
+	//		) WITHOUT ROWID;
+	//	`))
+
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		DROP TABLE event_summary;
+
+		CREATE TABLE strings(
+			id INTEGER PRIMARY KEY,
+			value TEXT NOT NULL
+		);
+		CREATE UNIQUE INDEX idx_strings_value ON strings(value);
+
+		CREATE TABLE event_tile(
+			level INT NOT NULL,
+			camera INT NOT NULL,
+			start INT NOT NULL,
+			tile BLOB,
+			PRIMARY KEY (level, camera, start)
+		) WITHOUT ROWID;
 	`))
 
 	return migs

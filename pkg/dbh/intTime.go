@@ -12,6 +12,8 @@ import (
 // In addition, it marshals nicely into JSON, and supports omitempty.
 // By using milliseconds in JSON, you can write "new Date(x)" in Javascript, to deserialize,
 // and x.getTime() to serialize.
+// One important downside is that the zero value means nil, so we are unable to represent
+// the date 1970-01-01 00:00:00.000.
 type IntTime int64
 
 // Return a new IntTime from a time.Time
@@ -28,18 +30,26 @@ func MakeIntTimeMilli(unixMilli int64) IntTime {
 }
 
 // Yes, this seems silly. But it's nice to have it show up in your IDE after pressing '.'
-func (t *IntTime) IsZero() bool {
-	return *t == 0
+func (t IntTime) IsZero() bool {
+	return t == 0
 }
 
 // Set IntTime to time.Time
 func (t *IntTime) Set(v time.Time) {
-	*t = IntTime(v.UnixMilli())
+	if v.IsZero() {
+		*t = 0
+	} else {
+		*t = IntTime(v.UnixMilli())
+	}
 }
 
 // Get time.Time
-func (t *IntTime) Get() time.Time {
-	return time.UnixMilli(int64(*t)).UTC()
+func (t IntTime) Get() time.Time {
+	if t == 0 {
+		return time.Time{}
+	} else {
+		return time.UnixMilli(int64(t)).UTC()
+	}
 }
 
 func (i *IntTime) Scan(src any) error {
@@ -58,8 +68,9 @@ func (i *IntTime) Scan(src any) error {
 func (i IntTime) Value() (driver.Value, error) {
 	if i == 0 {
 		return nil, nil
+	} else {
+		return int64(i), nil
 	}
-	return int64(i), nil
 }
 
 // MilliTime serializes to JSON as unix milliseconds.

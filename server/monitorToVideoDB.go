@@ -1,8 +1,8 @@
 package server
 
+// It doesn't seem right to make 'videodb' dependent on 'monitor' or vice versa,
+// so we hook them up via this intermediate thread here.
 func (s *Server) attachMonitorToVideoDB() {
-	// It doesn't seem right to make 'videodb' dependent on 'monitor' or vice versa,
-	// so we hook them up via this intermediate thread here.
 	go func() {
 		s.Log.Infof("Monitor -> VideoDB thread starting")
 		incoming := s.monitor.AddWatcherAllCameras()

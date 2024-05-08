@@ -11,8 +11,8 @@ import (
 func TestJSONSize(t *testing.T) {
 	nFrames := 1000
 	j := ObjectJSON{}
-	j.Class = "monkey"
-	j.ID = 1
+	j.Class = 123
+	j.ID = 556
 	for i := 0; i < nFrames; i++ {
 		j.Positions = append(j.Positions, ObjectPositionJSON{
 			Box:  [4]int16{100, 200, 300, 400},

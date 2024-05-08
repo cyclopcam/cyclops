@@ -51,7 +51,7 @@ type timeAndPosition struct {
 
 // Internal state of an object that we're tracking
 type trackedObject struct {
-	id             int64 // every new tracked object gets a unique id
+	id             uint32 // every new tracked object gets a unique id
 	firstDetection nn.ObjectDetection
 	cameraWidth    int
 	cameraHeight   int
@@ -71,7 +71,7 @@ type analyzerCameraState struct {
 // An object that was detected by the Object Detector, and is now being tracked by a post-process
 // SYNC-TRACKED-OBJECT
 type TrackedObject struct {
-	ID      int64   `json:"id"`
+	ID      uint32  `json:"id"`
 	Class   int     `json:"class"`
 	Box     nn.Rect `json:"box"`
 	Genuine bool    `json:"genuine"`
@@ -191,7 +191,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 			// Add a new object
 			bestJ = len(cam.tracked)
 			previousHasMatch = append(previousHasMatch, true) // keep the slice length the same
-			objectID := m.nextTrackedObjectID.Add(1)
+			objectID := m.nextTrackedObjectID.Next()
 			cam.tracked = append(cam.tracked, &trackedObject{
 				id:             objectID,
 				firstDetection: det,
@@ -236,7 +236,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	cam.tracked = remaining
 
 	// Publish results so that live feed can display them in the app.
-	// This is useful for debugging the analyzer.
+	// This is useful for debugging the analyzer, and people just like to see it operate.
 	result := &AnalysisState{
 		CameraID: cam.cameraID,
 		Objects:  make([]TrackedObject, 0), // non-nil, so that we always get an array in our JSON output
