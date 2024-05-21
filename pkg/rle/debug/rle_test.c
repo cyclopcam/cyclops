@@ -109,6 +109,24 @@ void test_rle() {
 		assert(compressed_size == rle_compress_max_output_size(1));
 	}
 
+	// Verify that RLE compressed streams can be concatenated together without issue
+	{
+		const char*   raw1 = "abcdeeffff";
+		const char*   raw2 = "ffggg123";
+		unsigned char compressed1[256];
+		unsigned char compressed2[256];
+		unsigned char compressed3[256];
+		unsigned char decompressed[256];
+		size_t        compressed_size1 = rle_compress((const unsigned char*) raw1, strlen(raw1), compressed1);
+		size_t        compressed_size2 = rle_compress((const unsigned char*) raw2, strlen(raw2), compressed2);
+		memcpy(compressed3, compressed1, compressed_size1);
+		memcpy(compressed3 + compressed_size1, compressed2, compressed_size2);
+		size_t decompressed_size = rle_decompress(compressed3, compressed_size1 + compressed_size2, decompressed, sizeof(decompressed));
+		assert(decompressed_size == strlen(raw1) + strlen(raw2));
+		assert(memcmp(raw1, decompressed, strlen(raw1)) == 0);
+		assert(memcmp(raw2, decompressed + strlen(raw1), strlen(raw2)) == 0);
+	}
+
 	printf("All tests passed.\n");
 }
 
