@@ -16,6 +16,30 @@ type TrackedObject struct {
 	LastSeen time.Time // In case you're not updating Boxes, or Boxes is empty. Maybe you're not updating Boxes because the object hasn't moved.
 }
 
+// Returns the min/max observed time of this object.
+// We can have any mix of Boxes and LastSeen, but if none of them are set,
+// then we return time.Time{} for both.
+func (t *TrackedObject) TimeBounds() (time.Time, time.Time) {
+	firstSeen := t.LastSeen
+	lastSeen := t.LastSeen
+	if t.LastSeen.IsZero() {
+		if len(t.Boxes) == 0 {
+			return time.Time{}, time.Time{}
+		}
+		firstSeen = t.Boxes[0].Time
+		lastSeen = t.Boxes[len(t.Boxes)-1].Time
+	}
+	if len(t.Boxes) != 0 {
+		if t.Boxes[0].Time.Before(firstSeen) {
+			firstSeen = t.Boxes[0].Time
+		}
+		if t.Boxes[len(t.Boxes)-1].Time.After(lastSeen) {
+			lastSeen = t.Boxes[len(t.Boxes)-1].Time
+		}
+	}
+	return firstSeen, lastSeen
+}
+
 type TrackedBox struct {
 	Time time.Time
 	Box  nn.Rect
@@ -23,13 +47,16 @@ type TrackedBox struct {
 
 // This is the way our users inform us of a new object detection.
 // We'll get one of these calls on every frame where an object is detected.
-// id must be unique for the duration of the process (i.e. it can reset to 1 after a restart).
+// id must be unique enough that by the time it wraps around, the previous
+// object is no longer in frame.
 // Also, id must be unique across cameras.
 // This is currently the way our 'monitor' package works, but I'm just codifying it here.
 func (v *VideoDB) ObjectDetected(camera string, id uint32, box nn.Rect, class string) {
-	// See comments above objectDetectedPhase1 for why we split this into two phases.
-	trackedObjectCopy := v.objectDetectedPhase1(camera, id, box, class)
-	v.updateTileWithNewDetection(&trackedObjectCopy)
+	// See comments above addBoxToTrackedObject for why we split this into two phases.
+	trackedObjectCopy, err := v.addBoxToTrackedObject(camera, id, box, class)
+	if err == nil {
+		v.updateTilesWithNewDetection(&trackedObjectCopy)
+	}
 }
 
 // Phase 1, where we hold currentLock and update our internal state.
@@ -37,7 +64,7 @@ func (v *VideoDB) ObjectDetected(camera string, id uint32, box nn.Rect, class st
 // because that is a potentially expensive copy, an we don't need that for our tile update.
 // Our goal with splitting this into two phases is to get out of 'currentLock' before passing
 // control onto the tile updater.
-func (v *VideoDB) objectDetectedPhase1(camera string, id uint32, box nn.Rect, class string) TrackedObject {
+func (v *VideoDB) addBoxToTrackedObject(camera string, id uint32, box nn.Rect, class string) (TrackedObject, error) {
 	v.currentLock.Lock()
 	defer v.currentLock.Unlock()
 
@@ -48,7 +75,7 @@ func (v *VideoDB) objectDetectedPhase1(camera string, id uint32, box nn.Rect, cl
 		ids, err := v.StringsToID([]string{camera, class})
 		if err != nil {
 			v.log.Errorf("Failed to convert strings to ID: %v", err)
-			return TrackedObject{}
+			return TrackedObject{}, err
 		}
 		cameraID, classID := ids[0], ids[1]
 
@@ -78,7 +105,7 @@ func (v *VideoDB) objectDetectedPhase1(camera string, id uint32, box nn.Rect, cl
 		Camera:   obj.Camera,
 		Class:    obj.Class,
 		LastSeen: obj.LastSeen,
-	}
+	}, nil
 }
 
 func (v *VideoDB) eventWriteThread() {

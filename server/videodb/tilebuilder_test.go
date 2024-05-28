@@ -48,8 +48,8 @@ func TestBitmapLine(t *testing.T) {
 }
 
 func TestTileBuilder1(t *testing.T) {
-	base := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	b := newTileBuilder(base, 100)
+	base := tileIdxToTime(12345, 0)
+	b := newTileBuilder(0, base, 100)
 	obj := &TrackedObject{
 		ID:       1,
 		Camera:   99,
@@ -89,12 +89,13 @@ func TestTileBuilder1(t *testing.T) {
 	obj.Boxes = append([]TrackedBox{priorBox}, obj.Boxes...)
 	b.updateObject(obj)
 	require.Equal(t, "1111110000", b.classes[obj.Class].formatRange(0, 10))
+	roundtripTile(t, b)
 }
 
 // Here we're testing writing and time clamping at the end of a tile
 func TestTileBuilder2(t *testing.T) {
-	base := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	b := newTileBuilder(base, 100)
+	base := tileIdxToTime(12345, 0)
+	b := newTileBuilder(0, base, 100)
 	obj := &TrackedObject{
 		ID:     1,
 		Camera: 99,
@@ -115,12 +116,13 @@ func TestTileBuilder2(t *testing.T) {
 	})
 	b.updateObject(obj)
 	require.Equal(t, "0000000011", b.classes[obj.Class].formatRange(1014, 1024))
+	roundtripTile(t, b)
 }
 
 // Verify that we can operate without any boxes (only using LastSeen)
 func TestTileBuilder3(t *testing.T) {
-	base := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	b := newTileBuilder(base, 100)
+	base := tileIdxToTime(12345, 0)
+	b := newTileBuilder(0, base, 100)
 	obj := &TrackedObject{
 		ID:       1,
 		Camera:   99,
@@ -133,12 +135,14 @@ func TestTileBuilder3(t *testing.T) {
 	obj.LastSeen = base.Add(4 * time.Second)
 	b.updateObject(obj)
 	require.Equal(t, "0001100000", b.classes[obj.Class].formatRange(0, 10))
+
+	roundtripTile(t, b)
 }
 
 // Verify errors
 func TestTileBuilder4(t *testing.T) {
-	base := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	b := newTileBuilder(base, 1)
+	base := tileIdxToTime(12345, 0)
+	b := newTileBuilder(0, base, 1)
 	// t0 >= TileWidth
 	obj := &TrackedObject{
 		ID:       1,
@@ -154,6 +158,36 @@ func TestTileBuilder4(t *testing.T) {
 	require.NoError(t, b.updateObject(obj))
 	obj.Class = 124
 	require.Equal(t, ErrTooManyClasses, b.updateObject(obj))
+}
+
+// Verify encoding/decoding (compression) of tile bitmap
+func TestTileBuilder5(t *testing.T) {
+	base := tileIdxToTime(12345, 0)
+	A := newTileBuilder(0, base, 100)
+	line1, err := A.getBitmapForClass(1)
+	require.NoError(t, err)
+	line2, err := A.getBitmapForClass(2)
+	require.NoError(t, err)
+	// line1 is a pathologically bad case for our on/off encoder
+	for i := 0; i < TileWidth; i += 2 {
+		line1.setBit(uint32(i))
+	}
+	// line2 compresses well
+	line2.setBitRange(0, 10)
+	line2.setBitRange(7, 200)
+	roundtripTile(t, A)
+}
+
+// encode and decode a tilebuilder, and verify that our bitmaps come out the same
+func roundtripTile(t *testing.T, tb *tileBuilder) {
+	blob := tb.writeBlob()
+	B, err := readBlobIntoTileBuilder(tb.tileIdx, 0, blob, 100)
+	require.NoError(t, err)
+	require.Equal(t, len(tb.classes), len(B.classes))
+	for cls, lineA := range tb.classes {
+		lineB := B.classes[cls]
+		require.Equal(t, lineA.formatRange(0, TileWidth), lineB.formatRange(0, TileWidth))
+	}
 }
 
 func TestMisc(t *testing.T) {

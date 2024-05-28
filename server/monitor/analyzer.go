@@ -32,7 +32,7 @@ the right solution.
 
 // If true, then alert on all classes in the COCO set
 // If false, then only alert on the classes in defaultNNClassFilter()
-const includeAllClasses = false
+const includeAllClasses = true
 
 type analyzerSettings struct {
 	positionHistorySize       int           // Keep a ring buffer of the last N positions of each object

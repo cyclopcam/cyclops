@@ -53,3 +53,10 @@ type ObjectPositionJSON struct {
 //	Time    dbh.IntTime `json:"time"`    // Start time of event segment
 //	Classes string      `json:"classes"` // Comma-separated list of classes and counts that were detected, eg "person:3,car:1"
 //}
+
+type EventTile struct {
+	Level  uint32 `gorm:"primaryKey;autoIncrement:false;default=-1" json:"level"` // 0 = lowest level
+	Camera uint32 `gorm:"primaryKey;autoIncrement:false" json:"camera"`           // LongLived camera name (via lookup in 'strings' table)
+	Start  uint32 `gorm:"primaryKey;autoIncrement:false" json:"start"`            // Start time of tile (unix seconds / (1024 * 2^level))
+	Tile   []byte `json:"tile"`                                                   // Compressed tile data
+}

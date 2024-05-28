@@ -44,6 +44,10 @@ func Migrations(log log.Log) []migration.Migrator {
 	//		) WITHOUT ROWID;
 	//	`))
 
+	// We don't use "WITHOUT ROWID" on event_tile, because our rows will tend to be large,
+	// and if you read the Sqlite docs (https://www.sqlite.org/withoutrowid.html), you'll see
+	// that WITHOUT ROWID tables store all their data in a classic BTree, so the large blobs
+	// will make seeking slow.
 	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
 		`
 		DROP TABLE event_summary;
@@ -60,7 +64,7 @@ func Migrations(log log.Log) []migration.Migrator {
 			start INT NOT NULL,
 			tile BLOB,
 			PRIMARY KEY (level, camera, start)
-		) WITHOUT ROWID;
+		);
 	`))
 
 	return migs

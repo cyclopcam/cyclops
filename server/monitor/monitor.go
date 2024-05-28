@@ -250,6 +250,9 @@ func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *nn.DetectionResult,
 	return cam.lastImg, cam.lastDetection, cam.analyzerState, nil
 }
 
+// SYNC-WATCHER-CHANNEL-SIZE
+const WatcherChannelSize = 100
+
 // Register to receive detection results for a specific camera.
 // You must be careful to ensure that your receiver always processes a result
 // immediately, and keeps the channel drained. If you don't do this, then
@@ -258,7 +261,7 @@ func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *nn.DetectionResult,
 func (m *Monitor) AddWatcher(cameraID int64) chan *AnalysisState {
 	m.watchersLock.Lock()
 	defer m.watchersLock.Unlock()
-	ch := make(chan *AnalysisState, 100)
+	ch := make(chan *AnalysisState, WatcherChannelSize)
 	m.watchers[cameraID] = append(m.watchers[cameraID], ch)
 	return ch
 }
@@ -280,7 +283,7 @@ func (m *Monitor) RemoveWatcher(cameraID int64, ch chan *AnalysisState) {
 func (m *Monitor) AddWatcherAllCameras() chan *AnalysisState {
 	m.watchersLock.Lock()
 	defer m.watchersLock.Unlock()
-	ch := make(chan *AnalysisState, 100)
+	ch := make(chan *AnalysisState, WatcherChannelSize)
 	m.watchersAllCameras = append(m.watchersAllCameras, ch)
 	return ch
 }
@@ -303,7 +306,10 @@ func (m *Monitor) sendToWatchers(state *AnalysisState) {
 	// Regarding our behaviour here to drop frames:
 	// Perhaps it would be better not to drop frames, but simply to stall.
 	// This would presumably wake up the threads that consume the analysis.
+	// HOWEVER - if a watcher is waiting on IO, then waking up other threads
+	// wouldn't help.
 	for _, ch := range m.watchers[state.CameraID] {
+		// SYNC-WATCHER-CHANNEL-SIZE
 		if len(ch) >= cap(ch)*9/10 {
 			// This should never happen. But as a safeguard against a monitor stalls, we choose to drop frames.
 			m.Log.Warnf("Monitor watcher on camera %v is falling behind. I am going to drop frames.", state.CameraID)
