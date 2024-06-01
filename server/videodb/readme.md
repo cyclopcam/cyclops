@@ -104,3 +104,54 @@ performance overhead to build an up-to-date tile. The only thing that remains is
 to decide on the finest granularity. I think we might as well do tiles that are
 1024 pixels wide, at 1 second per pixel granularity, because those are such nice
 round numbers.
+
+## Building Higher Level Tiles
+
+The following diagram represents tiles being built. The dashes are moments that
+have already passed, and the x's are in the future. The blank portions are
+regions of time when the system was switched off.
+
+    Level 4 |---------------------------------------------------------xxxxxxxxxxxxxxxxxxxxxx|
+    Level 3 |---------------------------------------|-----------------xxxxxxxxxxxxxxxxxxxxxx|
+    Level 2 |-------------------|-------------------|-----------------xx|
+    Level 1 |---------|---------|---------|---------|         |-------xx|
+    Level 0 |----|----|----|----|----|----|----|----|--- |    |----|--xx|
+
+Before going on, let's consider how many levels we need in practice. Our lowest
+level (level 0) has one pixel per second. Let's use a screen with resolution of
+2000 horizontal pixels as our representative use case. This would be on the
+desktop. A phone screen would be much less (eg 300 horizontal CSS pixels).
+
+Let's consider various tile levels and the time spans that they would represent
+on a 2000 pixel wide screen. Each level is 2x the number of seconds/pixel of the
+previous level.
+
+| Level | Pixels | Seconds/Pixel | Duration |
+| ----- | ------ | ------------- | -------- |
+| 0     | 2000   | 1             | 33.3m    |
+| 1     | 2000   | 2             | 1.1h     |
+| 2     | 2000   | 4             | 2.2h     |
+| 3     | 2000   | 8             | 4.4h     |
+| 4     | 2000   | 16            | 8.8h     |
+| 5     | 2000   | 32            | 17.7h    |
+| 6     | 2000   | 64            | 1.5d     |
+| 7     | 2000   | 128           | 2.9d     |
+| 8     | 2000   | 256           | 5.9d     |
+| 9     | 2000   | 512           | 11.8d    |
+| 10    | 2000   | 1024          | 23.7d    |
+
+The bottom line is that we need to support going up to many levels. On a phone,
+it's likely to be even more levels, because of the reduced resolution.
+
+It's clear that we need a mechanism which continuously builds higher level tiles
+in the background, so that they're ready for consumption at any time. If our
+dataset was generated once-off, then this is a trivial. However, our job is
+slightly more complicated, because our tiles are constantly being generated.
+
+I'm thinking right now, that if we just do this one thing, everything will be
+OK: If a tile still has any portion of itself in the future, then we don't write
+it to disk. Whenever a caller requests tiles that aren't in the DB yet, we build
+them on the fly, from lower level tiles. I can't tell for sure, but it looks to
+me like the time to build up tiles like this should O(max_level). Our levels
+won't get higher than about 10, and merging/compacting bitmaps should be very
+fast. Let's see!

@@ -9,45 +9,63 @@ import (
 // See places where we use this constant for an explanation of what it means
 const tileWriterMaxBacktrack = 10 * time.Second
 
-const debugTileWriter = false
+// We flush tiles that are this old. We add buffer beyond tileWriterMaxBacktrack
+// to ensure we don't have any gaps.
+const tileWriterFlushThreshold = 2 * tileWriterMaxBacktrack
 
 func (v *VideoDB) tileWriteThread() {
 	v.log.Infof("Event tile write thread starting")
 	keepRunning := true
 	wakeInterval := 13 * time.Second
+	wakeCounter := 0
 	for keepRunning {
 		select {
 		case <-v.shutdown:
 			keepRunning = false
 		case <-time.After(wakeInterval):
-			if debugTileWriter {
+			if v.debugTileWriter && wakeCounter%3 == 0 {
 				v.debugDumpTilesToConsole()
 			}
-			v.flushOldTiles(false)
+			cutoff := time.Now().Add(-tileWriterFlushThreshold)
+			oldTiles := v.flushOldTiles(cutoff)
+			if len(oldTiles) != 0 {
+				v.buildHigherTiles(makeCameraTileIdxMap(oldTiles), cutoff)
+			}
+			wakeCounter++
 		}
 	}
 	v.log.Infof("Flushing all tiles")
-	v.flushOldTiles(true)
+	v.flushOldTiles(time.Now().Add(1000 * time.Hour))
 	v.log.Infof("Event tile write thread exiting")
 	close(v.tileWriteThreadClosed)
 }
 
-func (v *VideoDB) flushOldTiles(forceAll bool) {
-	oldTiles := v.findAndRemoveOldTiles(forceAll)
+// map[cameraID]*tileBuilder -> map[cameraID]tileIdx
+func makeCameraTileIdxMap(in map[uint32]*tileBuilder) map[uint32]uint32 {
+	out := map[uint32]uint32{}
+	for camera, tb := range in {
+		out[camera] = tb.tileIdx
+	}
+	return out
+}
+
+// Returns the list of tiles that were written (even if the write failed)
+// Writes all tiles who's end time is before cutoff
+func (v *VideoDB) flushOldTiles(cutoff time.Time) map[uint32]*tileBuilder {
+	oldTiles := v.findAndRemoveOldTiles(cutoff)
 	for camera, tile := range oldTiles {
 		if err := v.writeTile(camera, tile); err != nil {
 			v.log.Errorf("Failed to write tile: %v", err)
 		}
 	}
+	return oldTiles
 }
 
 // Returns a map from camera to tilebuilder
-// If forceAll is true, then we flush all tiles (this is used at shutdown).
-func (v *VideoDB) findAndRemoveOldTiles(forceAll bool) map[uint32]*tileBuilder {
+// Finds all tiles who's end time is before cutoff
+func (v *VideoDB) findAndRemoveOldTiles(cutoff time.Time) map[uint32]*tileBuilder {
 	v.currentTilesLock.Lock()
 	defer v.currentTilesLock.Unlock()
-
-	now := time.Now()
 
 	// We assume that we're never going to get more than 1 builder per camera to write.
 	// If we do, then we'll write a random one (whichever appears last), and then
@@ -60,8 +78,7 @@ func (v *VideoDB) findAndRemoveOldTiles(forceAll bool) map[uint32]*tileBuilder {
 	for camera, tiles := range v.currentTiles {
 		newTiles := []*tileBuilder{}
 		for _, tb := range tiles {
-			endOfTile := tb.baseTime.Add(TileWidth * time.Second)
-			if forceAll || now.Sub(endOfTile) > tileWriterMaxBacktrack*2 {
+			if endOfTile(tb.tileIdx, 0).Before(cutoff) {
 				// This tile is old, so write it to disk.
 				writeQueue[camera] = tb
 			} else {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/log"
@@ -28,6 +29,12 @@ type VideoDB struct {
 	writeThreadClosed     chan bool // The write thread closes this channel when it exits
 	tileWriteThreadClosed chan bool // The tile write thread closes this channel when it exits
 	maxClassesPerTile     int       // Max number of classes that we'll store in a tile
+	debugTileLevelBuild   bool      // Emit extra logs
+	debugTileWriter       bool
+
+	// At level 13, each pixel is 8192 seconds. So a 2000 pixel screen is
+	// 8192 * 2000 seconds = 190 days.
+	maxTileLevel int
 
 	// Objects that we are currently observing
 	currentLock sync.Mutex
@@ -81,6 +88,10 @@ func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
 		return nil, fmt.Errorf("Failed to open video archive at %v: %w", videoDir, err)
 	}
 
+	// At level 13, each pixel is 8192 seconds. So a 2000 pixel screen is
+	// 8192 * 2000 seconds = 190 days.
+	maxTileLevel := 13
+
 	self := &VideoDB{
 		log:                   logs,
 		db:                    vdb,
@@ -90,11 +101,15 @@ func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
 		writeThreadClosed:     make(chan bool),
 		tileWriteThreadClosed: make(chan bool),
 		maxClassesPerTile:     30, // Arbitrary constant to prevent terrible performance in pathological cases
+		maxTileLevel:          maxTileLevel,
 		current:               map[uint32]*TrackedObject{},
 		stringToID:            map[string]uint32{},
 		currentTiles:          map[uint32][]*tileBuilder{},
+		debugTileWriter:       true,
+		debugTileLevelBuild:   true,
 	}
 
+	self.fillMissingTiles(time.Now())
 	self.resumeLatestTiles()
 
 	go self.eventWriteThread()
@@ -119,4 +134,16 @@ func (v *VideoDB) Close() {
 	<-v.writeThreadClosed
 	v.log.Infof("Waiting for event summary write thread to exit")
 	<-v.tileWriteThreadClosed
+}
+
+func (v *VideoDB) setKV(key string, value any) error {
+	err := v.db.Exec("INSERT INTO kv (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value).Error
+	if err != nil {
+		v.log.Errorf("Failed to set KV %v: %v", key, err)
+	}
+	return err
+}
+
+func (v *VideoDB) getKV(key string, dest any) error {
+	return v.db.Raw("SELECT value FROM kv WHERE key = $1", key).Scan(dest).Error
 }

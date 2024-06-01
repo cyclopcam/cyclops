@@ -2,15 +2,16 @@ package dbh
 
 import "database/sql"
 
-// ScanInt64Array takes the result of db.Query()
-func ScanInt64Array(r *sql.Rows, queryErr error) ([]int64, error) {
+// ScanArray takes the result of db.Query() and returns an array of the given type.
+// This is for queries that return a single column.
+func ScanArray[T any](r *sql.Rows, queryErr error) ([]T, error) {
 	if queryErr != nil {
 		return nil, queryErr
 	}
 	defer r.Close()
-	res := []int64{}
+	res := []T{}
 	for r.Next() {
-		v := int64(0)
+		var v T
 		if err := r.Scan(&v); err != nil {
 			return nil, err
 		}

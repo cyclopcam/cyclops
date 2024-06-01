@@ -7,7 +7,8 @@
 		"functional": "cpp",
 		"new": "cpp",
 		"tuple": "cpp",
-		"type_traits": "cpp"
+		"type_traits": "cpp",
+		"stddef.h": "c"
 	},
 	"cmake.sourceDirectory": "/home/ben/dev/cyclops/ncnn/tools/mxnet"
 }

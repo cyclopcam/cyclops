@@ -2,9 +2,13 @@ package videodb
 
 import (
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/stretchr/testify/require"
 )
@@ -196,4 +200,169 @@ func TestMisc(t *testing.T) {
 	m3 := -3.0
 	mlarge := 1e15
 	fmt.Printf("uint32(%v) = %v, uint32(%v) = %v\n", m3, uint32(m3), mlarge, uint32(mlarge))
+}
+
+func TestMulticlassTile(t *testing.T) {
+	b1 := createTestTile(0, 128, map[uint32]string{
+		2: "0-9",
+		7: "2-12",
+		8: "5-7",
+	})
+	blob := b1.writeBlob()
+	b2, err := readBlobIntoTileBuilder(128, 0, blob, 100)
+	require.NoError(t, err)
+	verifyTileBits(t, b2, 0, 128, map[uint32]string{
+		2: "0-9",
+		7: "2-12",
+		8: "5-7",
+	})
+}
+
+// 0,1,4-7 -> 11001111
+func rangeStringToBits(s string, bmp *bitmapLine) {
+	for _, part := range strings.Split(s, ",") {
+		if strings.Contains(part, "-") {
+			start, end, _ := strings.Cut(part, "-")
+			istart, _ := strconv.Atoi(start)
+			iend, _ := strconv.Atoi(end)
+			bmp.setBitRange(uint32(istart), uint32(iend))
+		} else {
+			i, _ := strconv.Atoi(part)
+			bmp.setBit(uint32(i))
+		}
+	}
+}
+
+func createTestTile(level, tileIdx uint32, classToRangeString map[uint32]string) *tileBuilder {
+	tb := newTileBuilder(level, tileIdxToTime(tileIdx, level), 100)
+	for cls, bits := range classToRangeString {
+		bmp, _ := tb.getBitmapForClass(cls)
+		rangeStringToBits(bits, bmp)
+	}
+	return tb
+}
+
+func insertTestTile(t *testing.T, vdb *VideoDB, camera, level, tileIdx uint32, classToRangeString map[uint32]string) *tileBuilder {
+	tb := createTestTile(level, tileIdx, classToRangeString)
+	tile := EventTile{
+		Level:  level,
+		Camera: camera,
+		Start:  tileIdx,
+		Tile:   tb.writeBlob(),
+	}
+	err := vdb.db.Create(&tile).Error
+	require.NoError(t, err)
+	return tb
+}
+
+func verifyTileBits(t *testing.T, tb *tileBuilder, level, tileIdx uint32, classToRangeString map[uint32]string) {
+	for cls, rangeString := range classToRangeString {
+		actualBits, err := tb.getBitmapForClass(cls)
+		require.NoError(t, err)
+		expectedBits := bitmapLine{}
+		rangeStringToBits(rangeString, &expectedBits)
+		// Show a short diff first, because this is more readable, and most of our
+		// errors show up here.
+		require.Equal(t, expectedBits.formatRange(0, 80), actualBits.formatRange(0, 80), "First half, level %v, tile %v, class %v", level, tileIdx, cls)
+		require.Equal(t, expectedBits.formatRange(512, 600), actualBits.formatRange(512, 600), "Second half, level %v, tile %v, class %v", level, tileIdx, cls)
+		// Compare the full range
+		expectLong := expectedBits.formatRange(0, TileWidth)
+		actualLong := actualBits.formatRange(0, TileWidth)
+		if expectLong != actualLong {
+			require.Fail(t, "Mismatch", expectLong, actualLong)
+		}
+	}
+}
+
+func verifyTileBitsInDB(t *testing.T, vdb *VideoDB, camera, level, tileIdx uint32, classToRangeString map[uint32]string) {
+	tile := EventTile{}
+	err := vdb.db.First(&tile, "camera = ? AND level = ? AND start = ?", camera, level, tileIdx).Error
+	require.NoError(t, err)
+	tb, err := readBlobIntoTileBuilder(tileIdx, level, tile.Tile, 100)
+	require.NoError(t, err)
+	verifyTileBits(t, tb, level, tileIdx, classToRangeString)
+}
+
+func TestLevels(t *testing.T) {
+	root := "temptest"
+	os.RemoveAll(root)
+	vdb, err := NewVideoDB(log.NewTestingLog(t), root)
+	vdb.debugTileLevelBuild = true
+	vdb.maxTileLevel = 5
+	require.NoError(t, err)
+	tiles := make([]*tileBuilder, 1000)
+	tiles[128] = insertTestTile(t, vdb, 1, 0, 128, map[uint32]string{
+		2: "0-9",
+		7: "2-12",
+	})
+	tiles[129] = insertTestTile(t, vdb, 1, 0, 129, map[uint32]string{
+		2: "0-19",
+	})
+	tiles[130] = insertTestTile(t, vdb, 1, 0, 130, map[uint32]string{
+		2: "0-30",
+	})
+	tiles[131] = insertTestTile(t, vdb, 1, 0, 131, map[uint32]string{
+		2: "0-40",
+	})
+
+	bmp1, _ := tiles[128].getBitmapForClass(7)
+	require.Equal(t, "00111111111100", bmp1.formatRange(0, 14))
+
+	validateLevel0 := func() {
+		// sense check of level 0 tiles
+		verifyTileBitsInDB(t, vdb, 1, 0, 128, map[uint32]string{
+			2: "0-9",
+			7: "2-12",
+		})
+		verifyTileBitsInDB(t, vdb, 1, 0, 129, map[uint32]string{
+			2: "0-19",
+		})
+		verifyTileBitsInDB(t, vdb, 1, 0, 130, map[uint32]string{
+			2: "0-30",
+		})
+		verifyTileBitsInDB(t, vdb, 1, 0, 131, map[uint32]string{
+			2: "0-40",
+		})
+	}
+	validateLevel0()
+
+	// Simulate the passing of time, as we reach the closeout of each tile
+	for tileIdx := uint32(128); tileIdx <= uint32(131); tileIdx++ {
+		cutoff := tileIdxToTime(tileIdx+1, 0).Add(tileWriterFlushThreshold)
+		//t.Logf("TileEndTime: %v, Cutoff: %v", endOfTile(tileIdx, 0), cutoff)
+		vdb.buildHigherTiles(map[uint32]uint32{1: tileIdx}, cutoff)
+	}
+
+	validateHigherLevels := func() {
+		verifyTileBitsInDB(t, vdb, 1, 1, 64, map[uint32]string{
+			2: "0-5,512-522",
+			7: "1-6",
+		})
+		verifyTileBitsInDB(t, vdb, 1, 1, 65, map[uint32]string{
+			2: "0-15,512-532",
+		})
+		verifyTileBitsInDB(t, vdb, 1, 2, 32, map[uint32]string{
+			2: "0-3,256-261,512-520,768-778",
+			7: "0-3",
+		})
+		// and by the powers of induction... we know the rest of the levels will work ;)
+	}
+	validateHigherLevels()
+
+	// Phase 2, where we test fillMissingTiles()
+	// But first we need to get rid of the higher level tiles.
+	vdb.db.Exec("DELETE FROM event_tile WHERE level > 0")
+	vdb.setKV("lastTileIdx", 127)
+	// Before implementing scan limits in buildHigherTilesForCamera(), we had to use an artifical time
+	// here. But after implementing the limits, we can go all the way from 1970 to present without
+	// any performance hit.
+	//vdb.fillMissingTiles(endOfTile(132, 0))
+	vdb.fillMissingTiles(time.Now())
+	validateLevel0()
+	validateHigherLevels()
+
+	// repeat
+	vdb.fillMissingTiles(time.Now())
+	validateLevel0()
+	validateHigherLevels()
 }

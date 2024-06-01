@@ -30,14 +30,14 @@ size_t onoff_encode_max_output_size(size_t input_bit_size) {
 // Returns the number of bytes written to the output buffer.
 // Returns -1 if the output buffer is not large enough.
 size_t onoff_encode(const unsigned char* input, size_t input_bit_size, unsigned char* output, size_t output_byte_size) {
-	size_t        s     = 0;
-	size_t        i     = 0;
-	size_t        j     = 0;
-	int           state = 0; // assume the first run is 0s (if true, this saves us 1 byte)
-	unsigned char varintbuf[5];
+	size_t        s            = 0;
+	size_t        i            = 0;
+	size_t        j            = 0;
+	int           state        = 0; // assume the first run is 0s (if true, this saves us 1 byte)
+	unsigned char varintbuf[5] = {0};
 	for (; i <= input_bit_size; i++) {
 		if (i == input_bit_size || getbit(input, i) != state) {
-			int len = varint_encode_uint(i - s, varintbuf);
+			int len = varint_encode_uint32(i - s, varintbuf);
 			if (j + len > output_byte_size) {
 				return -1;
 			}
@@ -60,7 +60,7 @@ size_t onoff_decode(const unsigned char* input, size_t input_byte_size, unsigned
 	int    state  = 0; // must match initial state in onoff_encode
 	while (i < input_byte_size) {
 		size_t       varintlen = 1;
-		unsigned int nbits     = varint_decode_uint(input + i, input_byte_size - i, &varintlen);
+		unsigned int nbits     = varint_decode_uint32(input + i, input_byte_size - i, &varintlen);
 		if (nbits == -1) {
 			return -1;
 		}

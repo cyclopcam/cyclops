@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/mybits"
@@ -31,6 +32,12 @@ func (b *bitmapLine) setBit(i uint32) {
 
 func (b *bitmapLine) getBit(i uint32) bool {
 	return b[i/8]&(1<<(i%8)) != 0
+}
+
+// A special optimization function for bitmap downsampling
+// getBitPairOR(i) is equivalent to getBit(i) || getBit(i+1)
+func (b *bitmapLine) getBitPairOR(i uint32) bool {
+	return b[i/8]&(3<<(i%8)) != 0
 }
 
 func (b *bitmapLine) clear() {
@@ -166,10 +173,23 @@ func (b *tileBuilder) getBitmapForClass(cls uint32) (*bitmapLine, error) {
 }
 
 func (b *tileBuilder) writeBlob() []byte {
+	orderedClasses := []uint32{}
+	for cls := range b.classes {
+		orderedClasses = append(orderedClasses, cls)
+	}
+	// It's not necessary to sort by class, but I prefer it for consistency,
+	// and it makes testing easier.
+	// What IS necessary is to gather the classes into an array before iterating over them.
+	// There was a bug in here initially where we'd iterate over b.classes twice, and when
+	// those two iterations produced different ordering, we'd obviously end up with the
+	// wrong bitmap assigned to the wrong class. I didn't know that Go map iteration is random
+	// from iteration to iteration.
+	slices.Sort(orderedClasses)
+
 	blob := make([]byte, 0, 10+len(b.classes)*64)             // large enough to hold 50% compressed
 	blob = binary.AppendUvarint(blob, 1)                      // version (v1 implies tile width 1024)
 	blob = binary.AppendUvarint(blob, uint64(len(b.classes))) // number of classes
-	for cls := range b.classes {
+	for _, cls := range orderedClasses {
 		blob = binary.AppendUvarint(blob, uint64(cls))
 	}
 	// V0.1:
@@ -189,9 +209,10 @@ func (b *tileBuilder) writeBlob() []byte {
 	// such as a bit pattern of 1010101010101. So we need a fallback to raw output,
 	// which is exactly 128 bytes per line.
 
-	for _, line := range b.classes {
+	for _, cls := range orderedClasses {
 		// Limit the size to 64 bytes. We could go all the way up to 127.
 		// I don't know what's optimal here.
+		line := b.classes[cls]
 		encoded := [maxOnOffEncodedLineBytes]byte{}
 		encodedLen, err := mybits.EncodeOnoff(line[:], encoded[:])
 		if err != nil {
@@ -226,9 +247,7 @@ func readBlobIntoTileBuilder(tileIdx uint32, level uint32, blob []byte, maxClass
 	numClasses64, n := binary.Uvarint(blob)
 	blob = blob[n:]
 	numClasses := int(numClasses64)
-	if numClasses > maxClasses*4 || numClasses > 1024 {
-		// sanity check, to prevent us running out of memory in the face of a badly
-		// formed tile blob.
+	if numClasses > maxClasses {
 		return nil, fmt.Errorf("Too many classes (%v) in tile blob", numClasses)
 	}
 	tb = newTileBuilder(level, tileIdxToTime(tileIdx, level), maxClasses)
@@ -244,7 +263,7 @@ func readBlobIntoTileBuilder(tileIdx uint32, level uint32, blob []byte, maxClass
 	const tileWidthBytes = TileWidth / 8
 	for i := 0; i < numClasses; i++ {
 		cls := classes[i]
-		// Encoded length of line, which is either 128 for raw, or LTE maxOnOffEncodedLineBytes for on/off
+		// Encoded length of line, which is either 128 for raw, or less-than-or-equal-to maxOnOffEncodedLineBytes for on/off
 		encLen := blob[0]
 		blob = blob[1:]
 		if encLen == byte(tileWidthBytes) {
@@ -288,4 +307,56 @@ func timeToTileIdx(t time.Time, level uint32) uint32 {
 
 func tileIdxToTime(tileIdx uint32, level uint32) time.Time {
 	return time.Unix(int64(tileIdx<<level)*TileWidth, 0)
+}
+
+// Merge two levelX tiles into a levelX+1 tile.
+func mergeTileBlobs(newTileIdx, newLevel uint32, blobA, blobB []byte, maxClasses int) ([]byte, error) {
+	var tbA, tbB *tileBuilder
+	var err error
+	if len(blobA) != 0 {
+		tbA, err = readBlobIntoTileBuilder(newTileIdx*2, newLevel-1, blobA, maxClasses)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(blobB) != 0 {
+		tbB, err = readBlobIntoTileBuilder(newTileIdx*2+1, newLevel-1, blobB, maxClasses)
+		if err != nil {
+			return nil, err
+		}
+	}
+	merged := newTileBuilder(newLevel, tileIdxToTime(newTileIdx, newLevel), maxClasses)
+	if tbA != nil {
+		if err := mergeTileIntoParent(tbA, merged, 0); err != nil {
+			return nil, err
+		}
+	}
+	if tbB != nil {
+		if err := mergeTileIntoParent(tbB, merged, TileWidth/2); err != nil {
+			return nil, err
+		}
+	}
+	return merged.writeBlob(), nil
+}
+
+// Here we downsample a bitmap from 1024 pixels to 512 pixels.
+// The downsampling is an OR operation - in other words if bit 0 or 1 is
+// set in the input, then bit 0 is set in the output. Likwise, if bit
+// 2 or 3 is set in the input, then bit 1 is set in the output.
+// This can almost definitely be done more efficiently, but I'm just
+// running out of motivation on this chunk of code.
+func mergeTileIntoParent(src, dst *tileBuilder, offset uint32) error {
+	for srcCls, srcLine := range src.classes {
+		dstLine, err := dst.getBitmapForClass(srcCls)
+		if err != nil {
+			return err
+		}
+		for i := uint32(0); i < TileWidth/2; i++ {
+			// getBitPairOR(i*2) is equivalent to getBit(i*2) || getBit(i*2+1)
+			if srcLine.getBitPairOR(i * 2) {
+				dstLine.setBit(i + offset)
+			}
+		}
+	}
+	return nil
 }

@@ -67,5 +67,11 @@ func Migrations(log log.Log) []migration.Migrator {
 		);
 	`))
 
+	// Generic key/value store for miscellaneous data.
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		CREATE TABLE kv(key TEXT PRIMARY KEY, value TEXT);
+	`))
+
 	return migs
 }
