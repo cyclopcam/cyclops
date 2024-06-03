@@ -15,6 +15,10 @@ static inline int zigzag_decode_int32(unsigned int value) {
 int          varint_encode_uint32(unsigned int value, unsigned char* output);
 unsigned int varint_decode_uint32(const unsigned char* input, size_t input_size, size_t* len);
 
+// Returns the number of 4 bit nibbles
+void         varint_encode_4b_uint32(unsigned int value, unsigned char* output, size_t* i);
+unsigned int varint_decode_4b_uint32(const unsigned char* input, size_t input_size, size_t* i);
+
 // The signed functions do zigzag encoding
 
 int varint_encode_sint32(int value, unsigned char* output);

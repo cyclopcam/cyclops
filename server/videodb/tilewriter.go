@@ -54,9 +54,8 @@ func makeCameraTileIdxMap(in map[uint32]*tileBuilder) map[uint32]uint32 {
 func (v *VideoDB) flushOldTiles(cutoff time.Time) map[uint32]*tileBuilder {
 	oldTiles := v.findAndRemoveOldTiles(cutoff)
 	for camera, tile := range oldTiles {
-		if err := v.writeTile(camera, tile); err != nil {
-			v.log.Errorf("Failed to write tile: %v", err)
-		}
+		v.log.Infof("Writing level-0 tile for camera %v, tileIdx %v", camera, tile.tileIdx)
+		v.upsertTile(camera, tile)
 	}
 	return oldTiles
 }
@@ -91,34 +90,6 @@ func (v *VideoDB) findAndRemoveOldTiles(cutoff time.Time) map[uint32]*tileBuilde
 	v.currentTiles = newCurrentTiles
 
 	return writeQueue
-}
-
-func (v *VideoDB) writeTile(camera uint32, tb *tileBuilder) error {
-	v.log.Infof("Writing base-level tile for camera %v, tileIdx %v, resume %v", camera, tb.tileIdx, tb.isResume)
-	// The blob contains the list of classes (one per 1024-bit line),
-	// as well as the 1024-bit lines, compressed by RLE.
-	blob := tb.writeBlob()
-	et := EventTile{
-		Level:  tb.level,
-		Camera: camera,
-		Start:  tb.tileIdx,
-		Tile:   blob,
-	}
-	if tb.isResume {
-		// I can't get GORM to perform an UPDATE here - it seems to think that the object doesn't have a primary key.
-		// Perhaps it's because our 'level' field is zero. I've tried everything I could think of on the GORM metadata.
-		//if err := v.db.Save(&et).Error; err != nil {
-		//	return err
-		//}
-		if err := v.db.Exec("UPDATE event_tile SET tile = ? WHERE level = ? AND camera = ? AND start = ?", blob, tb.level, camera, tb.tileIdx).Error; err != nil {
-			return err
-		}
-	} else {
-		if err := v.db.Create(&et).Error; err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // Tiles are 1024 seconds long, so if our system restarts, then we need to resume

@@ -55,8 +55,8 @@ type ObjectPositionJSON struct {
 //}
 
 type EventTile struct {
-	Level  uint32 `gorm:"primaryKey;autoIncrement:false;default=-1" json:"level"` // 0 = lowest level
-	Camera uint32 `gorm:"primaryKey;autoIncrement:false" json:"camera"`           // LongLived camera name (via lookup in 'strings' table)
-	Start  uint32 `gorm:"primaryKey;autoIncrement:false" json:"start"`            // Start time of tile (unix seconds / (1024 * 2^level))
-	Tile   []byte `json:"tile"`                                                   // Compressed tile data
+	Camera uint32 `gorm:"primaryKey;autoIncrement:false" json:"camera"` // LongLived camera name (via lookup in 'strings' table)
+	Level  uint32 `gorm:"primaryKey;autoIncrement:false" json:"level"`  // 0 = lowest level
+	Start  uint32 `gorm:"primaryKey;autoIncrement:false" json:"start"`  // Start time of tile (unix seconds / (1024 * 2^level))
+	Tile   []byte `json:"tile"`                                         // Compressed tile data
 }

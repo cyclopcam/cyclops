@@ -136,7 +136,7 @@
 			"name": "bits test C++",
 			"type": "cppdbg",
 			"request": "launch",
-			"program": "${workspaceFolder}/pkg/bits/test-onoff",
+			"program": "${workspaceFolder}/pkg/mybits/test-onoff",
 			"args": [],
 			"stopAtEntry": false,
 			"cwd": "${workspaceFolder}",

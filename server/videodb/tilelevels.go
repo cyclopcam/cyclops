@@ -1,9 +1,12 @@
 package videodb
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"gorm.io/gorm"
 )
 
 // This function is called after any level-0 tiles are written.
@@ -32,12 +35,18 @@ func endOfTile(tileIdx, level uint32) time.Time {
 	return tileIdxToTime(tileIdx+1, level)
 }
 
+func tileKey(level, tileIdx uint32) string {
+	return fmt.Sprintf("%v:%v", level, tileIdx)
+}
+
 // Build higher level tiles for the tiles from startTileIdx to cutoffTime
 // We stop walking up the levels once we hit a tile that extends beyond cutoffTime.
 // To put it another way, we only build tiles who's end time is before cutoffTime.
 func (v *VideoDB) buildHigherTilesForCamera(camera, startTileIdx uint32, cutoffTime time.Time) {
-	//et := endOfTile(startTileIdx/2, 1)
-	//fmt.Printf("%v %v\n", et, cutoffTime)
+	// We keep a cache of tiles that we've just built, so that higher up level builds don't require us to
+	// reload them from the DB. This is especially important for building higher tile levels in real-time.
+	// The cache avoids round-trip to the DB, and also the encoding/decoding of the tile bitmaps.
+	cachedTiles := map[string]*tileBuilder{}
 
 	for level := uint32(1); level <= uint32(v.maxTileLevel); level++ {
 		startTileIdx /= 2
@@ -78,38 +87,50 @@ func (v *VideoDB) buildHigherTilesForCamera(camera, startTileIdx uint32, cutoffT
 				// We don't write empty tiles to the DB
 				continue
 			}
-			children := [2]EventTile{}
-			if validTileIndicesSet[childIdx0] {
-				if err := v.db.First(&children[0], "camera = ? AND level = ? AND start = ?", camera, level-1, childIdx0).Error; err != nil {
-					v.log.Errorf("Failed to load child tile 0 %v,%v,%v: %v", camera, level-1, childIdx0, err)
-					continue
-				}
+			children := [2]*tileBuilder{
+				cachedTiles[tileKey(level-1, childIdx0)],
+				cachedTiles[tileKey(level-1, childIdx1)],
 			}
-			if validTileIndicesSet[childIdx1] {
-				if err := v.db.First(&children[1], "camera = ? AND level = ? AND start = ?", camera, level-1, childIdx1).Error; err != nil {
-					v.log.Errorf("Failed to load child tile 0 %v,%v,%v: %v", camera, level-1, childIdx1, err)
-					continue
-				}
+			// Load left child
+			if children[0] == nil && validTileIndicesSet[childIdx0] {
+				children[0], _ = v.loadAndDecodeTile(camera, level-1, childIdx0)
+			}
+			// Load right child
+			if children[1] == nil && validTileIndicesSet[childIdx1] {
+				children[1], _ = v.loadAndDecodeTile(camera, level-1, childIdx1)
 			}
 			if v.debugTileLevelBuild {
-				v.log.Infof("Merging tiles %v,%v,%v (%v) and %v,%v,%v (%v) into %v,%v", camera, level-1, tileIdx*2, len(children[0].Tile), camera, level-1, tileIdx*2+1, len(children[1].Tile), level, tileIdx)
+				v.log.Infof("Merging tiles %v,%v,%v and %v,%v,%v into %v,%v", camera, level-1, tileIdx*2, camera, level-1, tileIdx*2+1, level, tileIdx)
 			}
-			mergedBlob, err := mergeTileBlobs(tileIdx, level, children[0].Tile, children[1].Tile, v.maxClassesPerTile)
+			mergedBuiler, err := mergeTileBuilders(tileIdx, level, children[0], children[1], v.maxClassesPerTile)
 			if err != nil {
 				v.log.Errorf("Failed to merge tile blobs: %v", err)
 				continue
 			}
-			newTile := EventTile{
-				Level:  level,
-				Camera: camera,
-				Start:  tileIdx,
-				Tile:   mergedBlob,
-			}
-			if err := v.db.Create(&newTile).Error; err != nil {
-				v.log.Errorf("Failed to save new tile: %v", err)
-			}
+			cachedTiles[tileKey(level, tileIdx)] = mergedBuiler
+			v.upsertTile(camera, mergedBuiler)
 		}
 	}
+}
+
+func (v *VideoDB) upsertTile(camera uint32, tb *tileBuilder) error {
+	err := v.db.Exec("INSERT INTO event_tile (camera, level, start, tile) VALUES (?, ?, ?, ?) ON CONFLICT(camera, level, start) DO UPDATE SET tile = excluded.tile",
+		camera, tb.level, tb.tileIdx, tb.writeBlob()).Error
+	if err != nil {
+		v.log.Errorf("Failed to upsert tile %v,%v,%v: %v", camera, tb.level, tb.tileIdx, err)
+	}
+	return err
+}
+
+func (v *VideoDB) loadAndDecodeTile(camera, level, tileIdx uint32) (*tileBuilder, error) {
+	tile := EventTile{}
+	if err := v.db.First(&tile, "camera = ? AND level = ? AND start = ?", camera, level, tileIdx).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			v.log.Errorf("Failed to load tile %v,%v,%v: %v", camera, level, tileIdx, err)
+		}
+		return nil, err
+	}
+	return readBlobIntoTileBuilder(tile.Start, tile.Level, tile.Tile, v.maxClassesPerTile)
 }
 
 // This is run once at startup, in case we've been offline for a long time.

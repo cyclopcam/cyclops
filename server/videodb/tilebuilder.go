@@ -18,8 +18,8 @@ var ErrNoTime = errors.New("no time data in TrackedObject for tileBuilder.update
 // At the highest resolution (level = 0), each pixel is 1 second.
 const TileWidth = 1024
 
-// See point of use for explanation
-const maxOnOffEncodedLineBytes = 64
+// See point of use for explanation. Must be less than TileWidth/8
+const maxOnOffEncodedLineBytes = 100
 
 // A line of a bitmap.
 // There is one line per class that we have detected (eg 'person' gets a line, 'car' gets a line, etc).
@@ -95,7 +95,6 @@ type tileBuilder struct {
 	baseTime   time.Time
 	tileIdx    uint32 // See timeToTileIdx()
 	level      uint32
-	isResume   bool // True if this tile is already in the database, and we're resuming the creation of it (due to a restart)
 }
 
 func newTileBuilder(level uint32, baseTime time.Time, maxClasses int) *tileBuilder {
@@ -110,7 +109,6 @@ func newTileBuilder(level uint32, baseTime time.Time, maxClasses int) *tileBuild
 		baseTime:   baseTime,
 		tileIdx:    timeToTileIdx(baseTime, level),
 		level:      level,
-		isResume:   false,
 	}
 }
 
@@ -210,7 +208,7 @@ func (b *tileBuilder) writeBlob() []byte {
 	// which is exactly 128 bytes per line.
 
 	for _, cls := range orderedClasses {
-		// Limit the size to 64 bytes. We could go all the way up to 127.
+		// Limit the size to maxOnOffEncodedLineBytes. We could go all the way up to 127.
 		// I don't know what's optimal here.
 		line := b.classes[cls]
 		encoded := [maxOnOffEncodedLineBytes]byte{}
@@ -220,7 +218,7 @@ func (b *tileBuilder) writeBlob() []byte {
 			blob = append(blob, TileWidth/8)
 			blob = append(blob, line[:]...)
 		} else {
-			// We know this length is 64 or less, and that's what tells the decoder that this line is compressed
+			// We know this length is maxOnOffEncodedLineBytes or less, and that's what tells the decoder that this line is compressed
 			blob = append(blob, byte(encodedLen))
 			blob = append(blob, encoded[:encodedLen]...)
 		}
@@ -251,7 +249,6 @@ func readBlobIntoTileBuilder(tileIdx uint32, level uint32, blob []byte, maxClass
 		return nil, fmt.Errorf("Too many classes (%v) in tile blob", numClasses)
 	}
 	tb = newTileBuilder(level, tileIdxToTime(tileIdx, level), maxClasses)
-	tb.isResume = true
 	classes := make([]uint32, numClasses)
 	for i := 0; i < numClasses; i++ {
 		cls, n := binary.Uvarint(blob)
@@ -325,6 +322,15 @@ func mergeTileBlobs(newTileIdx, newLevel uint32, blobA, blobB []byte, maxClasses
 			return nil, err
 		}
 	}
+	merged, err := mergeTileBuilders(newTileIdx, newLevel, tbA, tbB, maxClasses)
+	if err != nil {
+		return nil, err
+	}
+	return merged.writeBlob(), nil
+}
+
+// Merge two levelX tiles into a levelX+1 tile.
+func mergeTileBuilders(newTileIdx, newLevel uint32, tbA, tbB *tileBuilder, maxClasses int) (*tileBuilder, error) {
 	merged := newTileBuilder(newLevel, tileIdxToTime(newTileIdx, newLevel), maxClasses)
 	if tbA != nil {
 		if err := mergeTileIntoParent(tbA, merged, 0); err != nil {
@@ -336,7 +342,7 @@ func mergeTileBlobs(newTileIdx, newLevel uint32, blobA, blobB []byte, maxClasses
 			return nil, err
 		}
 	}
-	return merged.writeBlob(), nil
+	return merged, nil
 }
 
 // Here we downsample a bitmap from 1024 pixels to 512 pixels.
@@ -359,4 +365,19 @@ func mergeTileIntoParent(src, dst *tileBuilder, offset uint32) error {
 		}
 	}
 	return nil
+}
+
+// This is for debug/analysis, specifically to create an extract of raw lines so that we can test our
+// bitmap compression codecs.
+// Returns a list of 128 byte bitmaps
+func DecompressTileToRawLines(blob []byte) [][]byte {
+	tb, err := readBlobIntoTileBuilder(0, 0, blob, 1000)
+	if err != nil {
+		panic(err)
+	}
+	lines := [][]byte{}
+	for _, line := range tb.classes {
+		lines = append(lines, line[:])
+	}
+	return lines
 }
