@@ -18,8 +18,8 @@ var ErrNoTime = errors.New("no time data in TrackedObject for tileBuilder.update
 // At the highest resolution (level = 0), each pixel is 1 second.
 const TileWidth = 1024
 
-// See point of use for explanation. Must be less than TileWidth/8
-const maxOnOffEncodedLineBytes = 100
+// See point of use for explanation. Must be less than TileWidth/8 (aka 127 or less)
+const maxOnOffEncodedLineBytes = 120
 
 // A line of a bitmap.
 // There is one line per class that we have detected (eg 'person' gets a line, 'car' gets a line, etc).
@@ -380,4 +380,10 @@ func DecompressTileToRawLines(blob []byte) [][]byte {
 		lines = append(lines, line[:])
 	}
 	return lines
+}
+
+func init() {
+	if maxOnOffEncodedLineBytes >= TileWidth/8 {
+		panic("maxOnOffEncodedLineBytes must be less than TileWidth/8")
+	}
 }

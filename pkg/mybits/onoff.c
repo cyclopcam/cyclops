@@ -17,6 +17,16 @@
 // The initial state of the encoder is '0', so if the first bit is '1',
 // the first number that we output will be 0, to switch the state from '0' to '1'.
 // The numbers that we emit are varints.
+//
+// onoff_encode_2 was an abandoned experiment where each 8-bit symbol would either
+// be a run of 1s or 0s, or it would be a run of raw bytes. This ended up providing
+// worse compression on average, than onoff_encode_1.
+//
+// With onoff_encode_3, we get rid of the ability to encode raw bytes, but we
+// encode the run lengths as 4-bit symbols. This means that long runs take more
+// symbols, but we also pay less for short runs. This ends up paying off in practice,
+// and reduce the average encoded size on our dataset. It also reduces the maximum
+// encoded size on our dataset.
 
 size_t onoff_encode_max_output_size(size_t input_bit_size) {
 	// 1 in case first bit is 'on', 8 for each additional bit, if the pattern is 1010101010101010...
@@ -50,6 +60,7 @@ int is_contiguous_bit_pattern(unsigned char v) {
 // zero if the first bit is a 1.
 // Returns the number of bytes written to the output buffer.
 // Returns -1 if the output buffer is not large enough.
+// NOTE: This is no longer used, in favour of onoff_encode_3
 size_t onoff_encode_1(const unsigned char* input, size_t input_bit_size, unsigned char* output, size_t output_byte_size) {
 	size_t        s            = 0;
 	size_t        i            = 0;
@@ -74,7 +85,7 @@ size_t onoff_encode_1(const unsigned char* input, size_t input_bit_size, unsigne
 
 // Positive (or zero) varints encode on/off bits.
 // Negative varints encode runs of raw bytes
-// I abandoned this because it gives worse average performance on my test set.
+// NOTE: I abandoned this because it gives worse average performance on my test set.
 size_t onoff_encode_2(const unsigned char* input, size_t input_bit_size, unsigned char* output, size_t output_byte_size) {
 	size_t in_pos          = 0;
 	size_t out_pos         = 0;
