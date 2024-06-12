@@ -157,7 +157,7 @@
 			]
 		},
 		{
-			"name": "cyclops.go",
+			"name": "Server (cyclops.go)",
 			"type": "go",
 			"request": "launch",
 			"mode": "auto",

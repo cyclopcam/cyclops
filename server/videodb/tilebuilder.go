@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/mybits"
 )
 
@@ -50,7 +51,7 @@ func (b *bitmapLine) clear() {
 func (b *bitmapLine) setBitRange(start, end uint32) {
 	// handle start and end odd bits, and fill middle with byte writes
 	if start > end || end > uint32(len(b))*8 {
-		panic("setBitRange: out of bounds")
+		panic(fmt.Sprintf("setBitRange: out of bounds: start=%v, end=%v", start, end))
 	}
 	firstWholeByte := (start + 7) / 8
 	lastWholeByte := end / 8
@@ -112,6 +113,21 @@ func newTileBuilder(level uint32, baseTime time.Time, maxClasses int) *tileBuild
 	}
 }
 
+// Create a deep copy of the tileBuilder.
+func (b *tileBuilder) clone() *tileBuilder {
+	clone := newTileBuilder(b.level, b.baseTime, b.maxClasses)
+	for k, v := range b.classes {
+		lineCopy := &bitmapLine{}
+		copy(lineCopy[:], v[:])
+		clone.classes[k] = lineCopy
+	}
+	for k, v := range b.objects {
+		clone.objects[k] = v
+	}
+	return clone
+
+}
+
 func (b *tileBuilder) isEmpty() bool {
 	return len(b.classes) == 0
 }
@@ -119,15 +135,24 @@ func (b *tileBuilder) isEmpty() bool {
 func (b *tileBuilder) updateObject(obj *TrackedObject) error {
 	// Take the max of obj.LastSeen and the time of the most recently added Box
 	firstSeen, lastSeen := obj.TimeBounds()
-	t0f := firstSeen.Sub(b.baseTime).Seconds()
-	t1f := lastSeen.Sub(b.baseTime).Seconds()
-	t0f = max(t0f, 0)
-	t1f = min(t1f, TileWidth-1)
+	factor := float64(uint32(1) << b.level)
+	t0f := firstSeen.Sub(b.baseTime).Seconds() / factor
+	t1f := lastSeen.Sub(b.baseTime).Seconds() / factor
+	if t0f >= TileWidth {
+		// This implies a logic error to reach this point
+		return ErrInvalidTimeRange
+	}
+	//t0f = max(t0f, 0)
+	//t1f = min(t0f, TileWidth-1)
+	t0f = gen.Clamp(t0f, 0, TileWidth-1)
+	t1f = gen.Clamp(t1f, 0, TileWidth-1)
 	t0 := uint32(t0f)
 	t1 := uint32(t1f)
 	// ignore invalid ranges
-	if t0 > t1 || t0 >= TileWidth {
-		return ErrInvalidTimeRange
+	//if t0 > t1 || t0 >= TileWidth {
+	if t0 > t1 {
+		//return ErrInvalidTimeRange
+		return fmt.Errorf("%w: %v %v -> %v %v", ErrInvalidTimeRange, t0f, t1f, t0, t1)
 	}
 	line, err := b.getBitmapForClass(obj.Class)
 	if err != nil {

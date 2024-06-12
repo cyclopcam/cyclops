@@ -154,7 +154,7 @@ func TestTileBuilder4(t *testing.T) {
 		Class:    123,
 		LastSeen: base.Add(1050 * time.Second),
 	}
-	require.Equal(t, ErrInvalidTimeRange, b.updateObject(obj))
+	require.ErrorIs(t, ErrInvalidTimeRange, b.updateObject(obj))
 
 	// too many classes
 	obj.Class = 123

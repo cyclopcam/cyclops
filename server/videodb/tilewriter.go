@@ -27,10 +27,12 @@ func (v *VideoDB) tileWriteThread() {
 				v.debugDumpTilesToConsole()
 			}
 			cutoff := time.Now().Add(-tileWriterFlushThreshold)
-			oldTiles := v.flushOldTiles(cutoff)
-			if len(oldTiles) != 0 {
-				v.buildHigherTiles(makeCameraTileIdxMap(oldTiles), cutoff)
-			}
+			v.flushOldTiles(cutoff)
+			// Now that we're building higher-level tiles as we go, there's no need to build
+			// them up after writing level zeros.
+			//if len(oldTiles) != 0 {
+			//	v.buildHigherTiles(makeCameraTileIdxMap(oldTiles), cutoff)
+			//}
 			wakeCounter++
 		}
 	}
@@ -49,83 +51,173 @@ func makeCameraTileIdxMap(in map[uint32]*tileBuilder) map[uint32]uint32 {
 	return out
 }
 
+func maxTileIdxAtLevel0(oldTiles map[uint32][]*tileBuilder) uint32 {
+	maxIdx := uint32(0)
+	for _, tiles := range oldTiles {
+		for _, tb := range tiles {
+			if tb.level == 0 && tb.tileIdx > maxIdx {
+				maxIdx = tb.tileIdx
+			}
+		}
+	}
+	return maxIdx
+}
+
 // Returns the list of tiles that were written (even if the write failed)
 // Writes all tiles who's end time is before cutoff
-func (v *VideoDB) flushOldTiles(cutoff time.Time) map[uint32]*tileBuilder {
+func (v *VideoDB) flushOldTiles(cutoff time.Time) map[uint32][]*tileBuilder {
 	oldTiles := v.findAndRemoveOldTiles(cutoff)
-	for camera, tile := range oldTiles {
-		v.log.Infof("Writing level-0 tile for camera %v, tileIdx %v", camera, tile.tileIdx)
-		v.upsertTile(camera, tile)
+	for camera, tiles := range oldTiles {
+		for _, tile := range tiles {
+			v.log.Infof("Writing tile for camera %v, level %v, tileIdx %v", camera, tile.level, tile.tileIdx)
+			v.upsertTile(camera, tile)
+		}
 	}
+
+	if len(oldTiles) != 0 {
+		maxIdx := maxTileIdxAtLevel0(oldTiles)
+		if maxIdx == 0 {
+			v.log.Errorf("maxTileIdxAtLevel0 returned 0. How can high level tiles flush but not level 0?")
+		} else {
+			v.log.Infof("Setting lastTileIdx to %v", maxIdx)
+			v.setKV("lastTileIdx", maxIdx)
+		}
+	}
+
 	return oldTiles
 }
 
 // Returns a map from camera to tilebuilder
-// Finds all tiles who's end time is before cutoff
-func (v *VideoDB) findAndRemoveOldTiles(cutoff time.Time) map[uint32]*tileBuilder {
+// Finds all tiles who's end time is before cutoff.
+// The tiles that are returned are removed from the currentTiles map.
+func (v *VideoDB) findAndRemoveOldTiles(cutoff time.Time) map[uint32][]*tileBuilder {
 	v.currentTilesLock.Lock()
 	defer v.currentTilesLock.Unlock()
 
-	// We assume that we're never going to get more than 1 builder per camera to write.
-	// If we do, then we'll write a random one (whichever appears last), and then
-	// on the next call to writeOldTiles, we'll write the other one.
-	// Our write interval (13 seconds) is much faster than the duration of a tile (1024 seconds).
-	writeQueue := map[uint32]*tileBuilder{}
-
-	// Build up a completely new 'currentTiles' map, excluding any tiles that are old.
-	newCurrentTiles := map[uint32][]*tileBuilder{}
-	for camera, tiles := range v.currentTiles {
-		newTiles := []*tileBuilder{}
-		for _, tb := range tiles {
-			if endOfTile(tb.tileIdx, 0).Before(cutoff) {
-				// This tile is old, so write it to disk.
-				writeQueue[camera] = tb
-			} else {
-				newTiles = append(newTiles, tb)
+	// First do a quick scan to see if there are any old level-0 tiles.
+	// If there are no old level-0 tiles, then we can be 100% sure that there aren't any
+	// old higher-level tiles. Level 0 tiles occur most frequently, so you can't have
+	// a higher level tile ending without a level 0 tile ending.
+	// See readme.md of VideoDB to visualize this.
+	// Since this function runs every 13 seconds, we don't want to rebuild the map every time
+	// if there's nothing to do.
+	hasOldTiles := false
+	for _, levels := range v.currentTiles {
+		for _, tb := range levels[0] {
+			if endOfTile(tb.tileIdx, tb.level).Before(cutoff) {
+				hasOldTiles = true
+				break
 			}
 		}
-		newCurrentTiles[camera] = newTiles
+		if hasOldTiles {
+			break
+		}
+	}
+	if !hasOldTiles {
+		// This is the most common code path
+		return nil
+	}
+
+	// Map from CameraID to list of tiles that were written for that camera
+	oldTiles := map[uint32][]*tileBuilder{}
+
+	// Build up a completely new 'currentTiles' map, excluding any tiles that are old.
+	// At the end of this function, we throw newCurrentTiles away, if removeOldTiles is false.
+	// The performance hit of building up the new tiles list is negligible.
+	newCurrentTiles := map[uint32][][]*tileBuilder{}
+
+	for camera, levelsForCamera := range v.currentTiles {
+		nCameraTiles := 0
+		newLevels := make([][]*tileBuilder, v.maxTileLevel+1)
+		for level, tiles := range levelsForCamera {
+			newTiles := []*tileBuilder{}
+			for _, tb := range tiles {
+				if endOfTile(tb.tileIdx, tb.level).Before(cutoff) {
+					// This tile is old
+					oldTiles[camera] = append(oldTiles[camera], tb)
+				} else {
+					newTiles = append(newTiles, tb)
+					nCameraTiles++
+				}
+			}
+			newLevels[level] = newTiles
+		}
+		if nCameraTiles != 0 {
+			newCurrentTiles[camera] = newLevels
+		}
 	}
 
 	v.currentTiles = newCurrentTiles
 
-	return writeQueue
+	return oldTiles
 }
 
 // Tiles are 1024 seconds long, so if our system restarts, then we need to resume
 // the production of the latest tile.
+// This function is called when v.currentTiles is empty.
 func (v *VideoDB) resumeLatestTiles() {
 	// We take the lock to satisfy the race detector, but this function runs before
 	// any of our background threads are started
 	v.currentTilesLock.Lock()
 	defer v.currentTilesLock.Unlock()
 
-	currentTileIdx := timeToTileIdx(time.Now(), 0)
-	tiles := []*EventTile{}
-	if err := v.db.Where("level = 0 AND start = ?", currentTileIdx).Find(&tiles).Error; err != nil {
-		v.log.Errorf("Failed to find latest tiles: %v", err)
-		return
+	// Make sure this is still true (i.e. no code drift)
+	if len(v.currentTiles) != 0 {
+		v.log.Errorf("resumeLatestTiles called with non-empty currentTiles")
 	}
-	nTiles := 0
-	for _, tile := range tiles {
-		tb, err := readBlobIntoTileBuilder(tile.Start, 0, tile.Tile, v.maxClassesPerTile)
-		if err != nil {
-			v.log.Errorf("Failed to read tile blob camera:%v start:%v for resume: %v", tile.Camera, tile.Start, err)
-			continue
+
+	now := time.Now()
+	nTilesTotal := 0
+	for level := uint32(0); level <= uint32(v.maxTileLevel); level++ {
+		nTilesAtLevel := 0
+		currentTileIdx := timeToTileIdx(now, level)
+		tiles := []*EventTile{}
+		if err := v.db.Where("level = ? AND start = ?", level, currentTileIdx).Find(&tiles).Error; err != nil {
+			v.log.Errorf("Failed to find latest tiles: %v", err)
+			return
 		}
-		v.currentTiles[tile.Camera] = append(v.currentTiles[tile.Camera], tb)
-		nTiles++
+		for _, tile := range tiles {
+			tb, err := readBlobIntoTileBuilder(tile.Start, tile.Level, tile.Tile, v.maxClassesPerTile)
+			if err != nil {
+				v.log.Errorf("Failed to read tile blob camera:%v level:%v start:%v for resume: %v", tile.Camera, tile.Level, tile.Start, err)
+				continue
+			}
+			levelsForCamera := v.currentTilesForCamera(tile.Camera)
+			levelsForCamera[level] = append(levelsForCamera[tile.Level], tb)
+			nTilesAtLevel++
+			nTilesTotal++
+		}
+		if nTilesAtLevel != 0 {
+			v.log.Infof("Resumed %v tiles at level %v", nTilesAtLevel, level)
+		}
 	}
-	v.log.Infof("Resumed %v tiles", nTiles)
+	v.log.Infof("Resumed %v tiles in total", nTilesTotal)
 }
 
-// Update one or two tiles with a new detection.
+// Ensures that the current tiles slice for this camera has [maxTileLevels+1] entries,
+// and returns it.
+// WARNING! You must be holding currentTilesLock when calling this function
+func (v *VideoDB) currentTilesForCamera(camera uint32) [][]*tileBuilder {
+	levels := v.currentTiles[camera]
+	added := false
+	for len(levels) < v.maxTileLevel+1 {
+		levels = append(levels, []*tileBuilder{})
+		added = true
+	}
+	if added {
+		v.currentTiles[camera] = levels
+	}
+	return levels
+}
+
+// Update one or two level-0 tiles with a new detection.
 func (v *VideoDB) updateTilesWithNewDetection(obj *TrackedObject) {
 	// Find the current tile(s) for the camera, which span the time frame of the tracked object.
 	// If these tiles don't exist, then create them.
 	firstSeen, lastSeen := obj.TimeBounds()
+	//v.log.Infof("firstSeen: %v, lastSeen: %v", firstSeen, lastSeen)
 
-	// Move the time ranges forward if necessary, so that we're not trying to update
+	// Clamp the back end of the time range if necessary, so that we're not trying to update
 	// something far in the past. The firstSeen time on a tracked object could be
 	// hours ago, but we're only interested here in updating real-time information.
 	// The historical tiles have already been dealt with. We're only going to add
@@ -139,39 +231,39 @@ func (v *VideoDB) updateTilesWithNewDetection(obj *TrackedObject) {
 	if lastSeen.Before(maxBacktrack) {
 		lastSeen = maxBacktrack
 	}
-	tileIdx1 := timeToTileIdx(firstSeen, 0)
-	tileIdx2 := timeToTileIdx(lastSeen, 0)
-	// tileIdx1 and tileIdx2 are likely equal. At most, tileIdx2 - tileIdx1 = 1,
-	// whenever we're transitioning from one tile to the next.
-	v.updateTileWithNewDetection(tileIdx1, obj)
-	if tileIdx2 != tileIdx1 {
-		v.updateTileWithNewDetection(tileIdx2, obj)
-	}
-}
 
-func (v *VideoDB) updateTileWithNewDetection(tileIdx uint32, obj *TrackedObject) {
 	v.currentTilesLock.Lock()
 	defer v.currentTilesLock.Unlock()
 
-	tiles := v.currentTiles[obj.Camera]
-	if tiles == nil {
-		tiles = []*tileBuilder{}
+	for level := uint32(0); level <= uint32(v.maxTileLevel); level++ {
+		tileIdx1 := timeToTileIdx(firstSeen, level)
+		tileIdx2 := timeToTileIdx(lastSeen, level)
+		// tileIdx1 and tileIdx2 are likely equal. At most, tileIdx2 - tileIdx1 = 1,
+		// whenever we're transitioning from one tile to the next. The higher up we go in levels,
+		// the more likely it is that tileIdx1 == tileIdx2
+		v.updateTileWithNewDetection(level, tileIdx1, obj)
+		if tileIdx2 != tileIdx1 {
+			v.updateTileWithNewDetection(level, tileIdx2, obj)
+		}
 	}
+}
+
+func (v *VideoDB) updateTileWithNewDetection(level, tileIdx uint32, obj *TrackedObject) {
+	levelsForCamera := v.currentTilesForCamera(obj.Camera)
 	var builder *tileBuilder
-	for _, tb := range tiles {
+	for _, tb := range levelsForCamera[level] {
 		if tb.tileIdx == tileIdx {
 			builder = tb
 			break
 		}
 	}
 	if builder == nil {
-		builder = newTileBuilder(0, tileIdxToTime(tileIdx, 0), v.maxClassesPerTile)
-		tiles = append(tiles, builder)
+		builder = newTileBuilder(level, tileIdxToTime(tileIdx, level), v.maxClassesPerTile)
+		levelsForCamera[level] = append(levelsForCamera[level], builder)
 	}
 	if err := builder.updateObject(obj); err != nil {
 		v.log.Warnf("Failed to update event tile: %v", err)
 	}
-	v.currentTiles[obj.Camera] = tiles
 }
 
 // This is a debug function
@@ -181,23 +273,27 @@ func (v *VideoDB) debugDumpTilesToConsole() {
 
 	seconds := time.Now().Unix()
 	currentTileIdx := seconds / TileWidth
+	maxLevel := 3 // Arbitrary clipping to avoid filling the screen
 
 	v.log.Infof("Dumping current tiles (tileIdx %v, seconds to next: %v):", currentTileIdx, TileWidth-seconds%TileWidth)
 
-	for camera, tiles := range v.currentTiles {
-		for _, tb := range tiles {
-			// compute the current time's position inside the tile, so that we can show a relevant window.
-			// 1024 is too much to fit onto a console. If we had pixel-level control of the console, then this would
-			// be different.
-			delta := int(time.Now().Sub(tb.baseTime).Seconds())
-			startPx := gen.Clamp(delta-50, 0, TileWidth)
-			endPx := gen.Clamp(delta+50, 0, TileWidth)
-			if startPx == endPx {
-				v.log.Infof("camera %v, tile %v: %v classes -- out of time range", camera, tb.tileIdx, len(tb.classes), len(tb.objects))
-			} else {
-				v.log.Infof("camera %v, tile %v: %v classes, %v objects (%v - %v)", camera, tb.tileIdx, len(tb.classes), len(tb.objects), startPx, endPx)
-				for clsId, cls := range tb.classes {
-					v.log.Infof("  class %3d: %v", clsId, cls.formatRange(startPx, endPx))
+	for camera, levelsForCamera := range v.currentTiles {
+		for level := 0; level <= maxLevel; level++ {
+			for _, tb := range levelsForCamera[level] {
+				// compute the current time's position inside the tile, so that we can show a relevant window.
+				// 1024 is too much to fit onto a console. If we had pixel-level control of the console, then this would
+				// be different.
+				factor := float64(uint32(1) << level)
+				delta := int(time.Now().Sub(tb.baseTime).Seconds() / factor)
+				startPx := gen.Clamp(delta-50, 0, TileWidth)
+				endPx := gen.Clamp(delta+50, 0, TileWidth)
+				if startPx == endPx {
+					v.log.Infof("camera %v, level %v, tile %v: %v classes -- out of time range", camera, tb.level, tb.tileIdx, len(tb.classes))
+				} else {
+					v.log.Infof("camera %v, level %v, tile %v: %v classes, %v objects (%v - %v)", camera, tb.level, tb.tileIdx, len(tb.classes), len(tb.objects), startPx, endPx)
+					for clsId, cls := range tb.classes {
+						v.log.Infof("  class %3d: %v", clsId, cls.formatRange(startPx, endPx))
+					}
 				}
 			}
 		}
