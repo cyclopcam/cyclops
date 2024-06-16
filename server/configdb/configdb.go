@@ -30,7 +30,7 @@ type ConfigDB struct {
 
 func NewConfigDB(logger log.Log, dbFilename, explicitPrivateKey string) (*ConfigDB, error) {
 	os.MkdirAll(filepath.Dir(dbFilename), 0770)
-	configDB, err := dbh.OpenDB(logger, dbh.MakeSqliteConfig(dbFilename), Migrations(logger), 0)
+	configDB, err := dbh.OpenDB(logger, dbh.MakeSqliteConfig(dbFilename), Migrations(logger), dbh.DBConnectFlagSqliteWAL)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open database %v: %w", dbFilename, err)
 	}
