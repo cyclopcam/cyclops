@@ -67,7 +67,7 @@ func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
 
 	logs.Infof("Opening Video DB at '%v'", root)
 	dbPath := filepath.Join(root, "videos.sqlite")
-	vdb, err := dbh.OpenDB(logs, dbh.MakeSqliteConfig(dbPath), Migrations(logs), 0)
+	vdb, err := dbh.OpenDB(logs, dbh.MakeSqliteConfig(dbPath), Migrations(logs), dbh.DBConnectFlagSqliteWAL)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open video database %v: %w", dbPath, err)
 	}
@@ -106,7 +106,7 @@ func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
 		current:               map[uint32]*TrackedObject{},
 		stringToID:            map[string]uint32{},
 		currentTiles:          map[uint32][][]*tileBuilder{},
-		debugTileWriter:       true,
+		debugTileWriter:       false,
 		debugTileLevelBuild:   true,
 	}
 
@@ -137,8 +137,12 @@ func (v *VideoDB) Close() {
 	<-v.tileWriteThreadClosed
 }
 
-func (v *VideoDB) setKV(key string, value any) error {
-	err := v.db.Exec("INSERT INTO kv (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value).Error
+// tx may be nil, in which case we execute this statement outside of a transaction
+func (v *VideoDB) setKV(key string, value any, tx *gorm.DB) error {
+	if tx == nil {
+		tx = v.db
+	}
+	err := tx.Exec("INSERT INTO kv (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value).Error
 	if err != nil {
 		v.log.Errorf("Failed to set KV %v: %v", key, err)
 	}

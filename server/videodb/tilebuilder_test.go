@@ -352,7 +352,7 @@ func TestLevels(t *testing.T) {
 	// Phase 2, where we test fillMissingTiles()
 	// But first we need to get rid of the higher level tiles.
 	vdb.db.Exec("DELETE FROM event_tile WHERE level > 0")
-	vdb.setKV("lastTileIdx", 127)
+	vdb.setKV("lastTileIdx", 127, nil)
 	// Before implementing scan limits in buildHigherTilesForCamera(), we had to use an artifical time
 	// here. But after implementing the limits, we can go all the way from 1970 to present without
 	// any performance hit.

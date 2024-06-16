@@ -148,7 +148,10 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	// SYNC-NN-THREAD-QUEUE-MIN-SIZE
 	nnQueueSize := nnThreads * 3
 
-	detector, err := nnload.LoadModel(filepath.Join(basePath, "yolov8s"), nnThreadingModel)
+	modelName := "yolov8s"
+	logger.Infof("Loading NN model '%v'", modelName)
+
+	detector, err := nnload.LoadModel(filepath.Join(basePath, modelName), nnThreadingModel)
 	//detector, err := ncnn.NewDetector("yolov7", filepath.Join(basePath, "yolov7-tiny.param"), filepath.Join(basePath, "yolov7-tiny.bin"), 320, 256)
 	//detector, err := ncnn.NewDetector("yolov7", "/home/ben/dev/cyclops/models/yolov7-tiny.param", "/home/ben/dev/cyclops/models/yolov7-tiny.bin")
 	if err != nil {

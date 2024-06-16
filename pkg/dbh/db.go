@@ -31,6 +31,7 @@ const DriverSqlite = "sqlite3"
 const (
 	// DBConnectFlagWipeDB causes the entire DB to erased, and re-initialized from scratch (useful for unit tests).
 	DBConnectFlagWipeDB DBConnectFlags = 1 << iota
+	DBConnectFlagSqliteWAL
 )
 
 var DBNotExistRegex *regexp.Regexp
@@ -151,6 +152,10 @@ func OpenDB(log log.Log, dbc DBConfig, migrations []migration.Migrator, flags DB
 	// This is the common fast path, where the database has been created
 	db, err := migration.Open(dbc.Driver, dbc.DSN(), migrations)
 	if err == nil {
+		if err := ApplyPostLoadFlags(db, log, dbc, flags); err != nil {
+			db.Close()
+			return nil, err
+		}
 		db.Close()
 		gormDB, err := gormOpen(dbc.Driver, dbc.DSN())
 		//if err != nil {
@@ -181,9 +186,32 @@ func OpenDB(log log.Log, dbc DBConfig, migrations []migration.Migrator, flags DB
 	if err != nil {
 		return nil, err
 	}
+
+	// Apply any other flags
+	if err := ApplyPostLoadFlags(db, log, dbc, flags); err != nil {
+		db.Close()
+		return nil, err
+	}
+
 	db.Close()
 	// finally, open with gorm
 	return gormOpen(dbc.Driver, dbc.DSN())
+}
+
+func ApplyPostLoadFlags(db *sql.DB, log log.Log, dbc DBConfig, flags DBConnectFlags) error {
+	if flags&DBConnectFlagSqliteWAL != 0 {
+		if dbc.Driver == DriverSqlite {
+			newMode := ""
+			if err := db.QueryRow("PRAGMA journal_mode=WAL").Scan(&newMode); err != nil {
+				log.Warnf("Failed to execute PRAGMA journal_mode=WAL on SQLite database: %v", err)
+			} else if newMode != "wal" {
+				log.Warnf("Failed to set WAL mode on SQLite database. Mode remains %v", newMode)
+			} else if newMode == "wal" {
+				log.Infof("Sqlite database %v is running in WAL mode", dbc.Database)
+			}
+		}
+	}
+	return nil
 }
 
 // DropAllTables delete all tables in the given database.

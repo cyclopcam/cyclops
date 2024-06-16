@@ -67,10 +67,22 @@ func maxTileIdxAtLevel0(oldTiles map[uint32][]*tileBuilder) uint32 {
 // Writes all tiles who's end time is before cutoff
 func (v *VideoDB) flushOldTiles(cutoff time.Time) map[uint32][]*tileBuilder {
 	oldTiles := v.findAndRemoveOldTiles(cutoff)
+
+	if len(oldTiles) == 0 {
+		return oldTiles
+	}
+
+	tx := v.db.Begin()
+	if tx.Error != nil {
+		v.log.Errorf("flushOldTiles failed to start transaction: %v", tx.Error)
+		return oldTiles
+	}
+	defer tx.Rollback()
+
 	for camera, tiles := range oldTiles {
 		for _, tile := range tiles {
 			v.log.Infof("Writing tile for camera %v, level %v, tileIdx %v", camera, tile.level, tile.tileIdx)
-			v.upsertTile(camera, tile)
+			v.upsertTile(tx, camera, tile)
 		}
 	}
 
@@ -80,8 +92,12 @@ func (v *VideoDB) flushOldTiles(cutoff time.Time) map[uint32][]*tileBuilder {
 			v.log.Errorf("maxTileIdxAtLevel0 returned 0. How can high level tiles flush but not level 0?")
 		} else {
 			v.log.Infof("Setting lastTileIdx to %v", maxIdx)
-			v.setKV("lastTileIdx", maxIdx)
+			v.setKV("lastTileIdx", maxIdx, tx)
 		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		v.log.Errorf("flushOldTiles failed to commit transaction: %v", err)
 	}
 
 	return oldTiles

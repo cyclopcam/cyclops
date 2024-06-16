@@ -20,15 +20,26 @@ import (
 // bits. It means that either nothing interesting happened during
 // that period, or we were switched off during that period.
 func (v *VideoDB) buildHigherTiles(cameraToTileIdx map[uint32]uint32, cutoff time.Time) {
+	tx := v.db.Begin()
+	if tx.Error != nil {
+		v.log.Errorf("buildHigherTiles failed to start transaction: %v", tx.Error)
+		return
+	}
+	defer tx.Rollback()
+
 	maxTileIdx := uint32(0)
 	for camera, tileIdx := range cameraToTileIdx {
 		if tileIdx > maxTileIdx {
 			maxTileIdx = tileIdx
 		}
-		v.buildHigherTilesForCamera(camera, tileIdx, cutoff)
+		v.buildHigherTilesForCamera(tx, camera, tileIdx, cutoff)
 	}
 
-	v.setKV("lastTileIdx", maxTileIdx)
+	v.setKV("lastTileIdx", maxTileIdx, tx)
+
+	if err := tx.Commit().Error; err != nil {
+		v.log.Errorf("buildHigherTiles failed to commit transaction: %v", err)
+	}
 }
 
 func endOfTile(tileIdx, level uint32) time.Time {
@@ -42,7 +53,7 @@ func tileKey(level, tileIdx uint32) string {
 // Build higher level tiles for the tiles from startTileIdx to cutoffTime
 // We stop walking up the levels once we hit a tile that extends beyond cutoffTime.
 // To put it another way, we only build tiles who's end time is before cutoffTime.
-func (v *VideoDB) buildHigherTilesForCamera(camera, startTileIdx uint32, cutoffTime time.Time) {
+func (v *VideoDB) buildHigherTilesForCamera(tx *gorm.DB, camera, startTileIdx uint32, cutoffTime time.Time) {
 	// We keep a cache of tiles that we've just built, so that higher up level builds don't require us to
 	// reload them from the DB. This is especially important for building higher tile levels in real-time.
 	// The cache avoids round-trip to the DB, and also the encoding/decoding of the tile bitmaps.
@@ -93,11 +104,11 @@ func (v *VideoDB) buildHigherTilesForCamera(camera, startTileIdx uint32, cutoffT
 			}
 			// Load left child
 			if children[0] == nil && validTileIndicesSet[childIdx0] {
-				children[0], _ = v.loadAndDecodeTile(camera, level-1, childIdx0)
+				children[0], _ = v.loadAndDecodeTile(tx, camera, level-1, childIdx0)
 			}
 			// Load right child
 			if children[1] == nil && validTileIndicesSet[childIdx1] {
-				children[1], _ = v.loadAndDecodeTile(camera, level-1, childIdx1)
+				children[1], _ = v.loadAndDecodeTile(tx, camera, level-1, childIdx1)
 			}
 			if v.debugTileLevelBuild {
 				v.log.Infof("Merging tiles %v,%v,%v and %v,%v,%v into %v,%v", camera, level-1, tileIdx*2, camera, level-1, tileIdx*2+1, level, tileIdx)
@@ -108,13 +119,13 @@ func (v *VideoDB) buildHigherTilesForCamera(camera, startTileIdx uint32, cutoffT
 				continue
 			}
 			cachedTiles[tileKey(level, tileIdx)] = mergedBuiler
-			v.upsertTile(camera, mergedBuiler)
+			v.upsertTile(tx, camera, mergedBuiler)
 		}
 	}
 }
 
-func (v *VideoDB) upsertTile(camera uint32, tb *tileBuilder) error {
-	err := v.db.Exec("INSERT INTO event_tile (camera, level, start, tile) VALUES (?, ?, ?, ?) ON CONFLICT(camera, level, start) DO UPDATE SET tile = excluded.tile",
+func (v *VideoDB) upsertTile(tx *gorm.DB, camera uint32, tb *tileBuilder) error {
+	err := tx.Exec("INSERT INTO event_tile (camera, level, start, tile) VALUES (?, ?, ?, ?) ON CONFLICT(camera, level, start) DO UPDATE SET tile = excluded.tile",
 		camera, tb.level, tb.tileIdx, tb.writeBlob()).Error
 	if err != nil {
 		v.log.Errorf("Failed to upsert tile %v,%v,%v: %v", camera, tb.level, tb.tileIdx, err)
@@ -122,9 +133,9 @@ func (v *VideoDB) upsertTile(camera uint32, tb *tileBuilder) error {
 	return err
 }
 
-func (v *VideoDB) loadAndDecodeTile(camera, level, tileIdx uint32) (*tileBuilder, error) {
+func (v *VideoDB) loadAndDecodeTile(tx *gorm.DB, camera, level, tileIdx uint32) (*tileBuilder, error) {
 	tile := EventTile{}
-	if err := v.db.First(&tile, "camera = ? AND level = ? AND start = ?", camera, level, tileIdx).Error; err != nil {
+	if err := tx.First(&tile, "camera = ? AND level = ? AND start = ?", camera, level, tileIdx).Error; err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			v.log.Errorf("Failed to load tile %v,%v,%v: %v", camera, level, tileIdx, err)
 		}
@@ -151,11 +162,22 @@ func (v *VideoDB) fillMissingTiles(now time.Time) {
 	cutoff := now.Add(-tileWriterFlushThreshold)
 	mostRecentlyClosedTileIdx := timeToTileIdx(cutoff, 0) - 1 // The -1 is because we're using the end-time of tiles
 
+	tx := v.db.Begin()
+	if tx.Error != nil {
+		v.log.Errorf("fillMissingTiles failed to start transaction: %v", tx.Error)
+		return
+	}
+	defer tx.Rollback()
+
 	for _, camera := range recentCameraIDs {
-		v.buildHigherTilesForCamera(camera, lastTileIdx+1, cutoff)
+		v.buildHigherTilesForCamera(tx, camera, lastTileIdx+1, cutoff)
 	}
 
-	v.setKV("lastTileIdx", mostRecentlyClosedTileIdx)
+	v.setKV("lastTileIdx", mostRecentlyClosedTileIdx, tx)
+
+	if err := tx.Commit().Error; err != nil {
+		v.log.Errorf("fillMissingTiles failed to commit transaction: %v", err)
+	}
 }
 
 // Find recent camera IDs from level 0 tiles
