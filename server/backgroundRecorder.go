@@ -333,7 +333,7 @@ func (bg *backgroundRecorder) startBackgroundRecorder(s *Server, resolution defs
 			sink:       make(camera.StreamSinkChan, 5),
 			resolution: resolution,
 		}
-		if err := stream.ConnectSinkAndRun(bgs); err != nil {
+		if err := stream.ConnectSinkAndRun("Background recorder", bgs); err != nil {
 			return err
 		}
 	}

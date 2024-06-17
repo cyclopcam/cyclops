@@ -40,11 +40,22 @@ type videoFileIndex struct {
 }
 
 // videoStream is a single logical video stream, usually split across many videoFiles
+//
+// Lock hierarchy to avoid deadlock:
+// If you are acquiring bufferLock and contentLock, then you must acquire contentLock
+// before acquiring bufferLock.
 type videoStream struct {
 	name   string      // Name of the stream, eg "camera-0001"
 	format VideoFormat // Format of the video files
 
-	// contentLock guards all access to all the members below
+	// bufferLock guards access to the buffer members below
+	bufferLock        sync.Mutex
+	writeBuffer       map[string][]TrackPayload // Write buffer. Key is track name.
+	writeBufferSize   int                       // Total payload bytes in writeBuffer
+	writeBufferMinPTS time.Time
+	writeBufferMaxPTS time.Time
+
+	// contentLock guards access to all the members below
 	contentLock sync.Mutex
 	startTime   time.Time        // Start time of the stream (zero if unknown)
 	endTime     time.Time        // End time of the stream (zero if unknown)
@@ -55,12 +66,6 @@ type videoStream struct {
 	// This exists at a lower level than writeBuffer.
 	// Key is track name.
 	recentWrite map[string][]rf1.NALU
-	// Write buffer.
-	// Key is track name.
-	writeBuffer       map[string][]TrackPayload
-	writeBufferSize   int // Payload bytes in writeBuffer
-	writeBufferMinPTS time.Time
-	writeBufferMaxPTS time.Time
 }
 
 // Information about a stream
@@ -144,16 +149,24 @@ type StaticSettings struct {
 	MaxBytesPerRead int           // Maximum number of bytes that we will return from a single Read()
 	SweepInterval   time.Duration // How often we check if we need to recycle space
 	// Write buffer settings
-	MaxWriteBufferSize int           // Maximum amount of memory per stream in our write buffer
-	MaxWriteBufferTime time.Duration // Maximum amount of time that we'll buffer data in memory before writing it to disk
+	MaxWriteBufferSize            int           // Maximum amount of memory per stream in our write buffer before we flush
+	MaxWriteBufferDiscardMultiple int           // MaxWriteBufferSize * MaxWriteBufferDiscardMultiple is max buffer memory before we discard incoming writes
+	MaxWriteBufferTime            time.Duration // Maximum amount of time that we'll buffer data in memory before writing it to disk
+	//AsyncWrites             bool          // If enabled, then all writes are done from a background thread
+}
+
+func (s *StaticSettings) MaxWriteBufferDiscardLimit() int {
+	return s.MaxWriteBufferSize * s.MaxWriteBufferDiscardMultiple
 }
 
 func DefaultStaticSettings() StaticSettings {
 	return StaticSettings{
-		MaxBytesPerRead:    256 * 1024 * 1024, // 256MB
-		SweepInterval:      time.Minute,
-		MaxWriteBufferSize: 1024 * 1024,
-		MaxWriteBufferTime: 5 * time.Second,
+		MaxBytesPerRead:               256 * 1024 * 1024, // 256MB
+		SweepInterval:                 time.Minute,
+		MaxWriteBufferSize:            1024 * 1024,
+		MaxWriteBufferDiscardMultiple: 32, // MaxWriteBufferDiscardMultiple * MaxWriteBufferSize = total RAM per buffer
+		MaxWriteBufferTime:            5 * time.Second,
+		//AsyncWrites:             true,
 	}
 }
 
@@ -164,6 +177,10 @@ func DefaultStaticSettings() StaticSettings {
 func Open(logger log.Log, baseDir string, formats []VideoFormat, initSettings StaticSettings, settings DynamicSettings) (*Archive, error) {
 	if len(formats) == 0 {
 		return nil, fmt.Errorf("No video formats provided")
+	}
+
+	if initSettings.MaxWriteBufferDiscardMultiple < 2 {
+		return nil, fmt.Errorf("MaxWriteBufferDiscardMultiple must be at least 2")
 	}
 
 	// This must be lower or equal to the max duration of the file formats that we support.

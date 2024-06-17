@@ -94,13 +94,13 @@ func (c *Camera) Start() error {
 	if err := c.LowStream.Listen(c.lowResURL); err != nil {
 		return err
 	}
-	if err := c.HighStream.ConnectSinkAndRun(c.HighDumper); err != nil {
+	if err := c.HighStream.ConnectSinkAndRun("HD Ring", c.HighDumper); err != nil {
 		return err
 	}
-	if err := c.LowStream.ConnectSinkAndRun(c.LowDecoder); err != nil {
+	if err := c.LowStream.ConnectSinkAndRun("LD decode", c.LowDecoder); err != nil {
 		return err
 	}
-	if err := c.LowStream.ConnectSinkAndRun(c.LowDumper); err != nil {
+	if err := c.LowStream.ConnectSinkAndRun("LD Ring", c.LowDumper); err != nil {
 		return err
 	}
 	return nil

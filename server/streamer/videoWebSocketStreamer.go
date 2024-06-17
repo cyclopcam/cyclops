@@ -145,7 +145,7 @@ func (s *VideoWebSocketStreamer) run(conn *websocket.Conn, stream *camera.Stream
 		s.log.Infof("Run start, stream:%v", stream.Ident)
 	}
 
-	stream.ConnectSink(s.incoming)
+	stream.ConnectSink("WebSocket", s.incoming)
 	defer stream.RemoveSink(s.incoming)
 	defer conn.Close()
 

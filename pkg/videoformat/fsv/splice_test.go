@@ -41,7 +41,8 @@ func todayAtTime(hour, minute, second, nsec int) time.Time {
 func TestSplicePerfect(t *testing.T) {
 	EraseArchive()
 	staticSettings := staticSettingsHugeWritebuffer()
-	arc, _ := Open(log.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, staticSettings, DefaultDynamicSettings())
+	arc, err := Open(log.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, staticSettings, DefaultDynamicSettings())
+	require.NoError(t, err)
 	packets := rf1.CreateTestNALUs(todayAtTime(3, 4, 5, 7000), 0, 300, 10.0, 50, 150, 12345)
 
 	// Pattern:

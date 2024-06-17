@@ -49,7 +49,14 @@ type StreamMsg struct {
 }
 
 // There isn't much rhyme or reason behind this number
-const StreamSinkChanDefaultBufferSize = 2
+// UPDATE: While running on RPi5, 2 seems to be too small. We frequently
+// get blocking on various stream sinks. Specifically, I'm seeing blocking
+// of up to 4ms on these sinks: 'LD Decode', 'HD Ring'.
+// So I'm raising the size of this buffer from 2 to 4.
+// Blocking when sending to these sinks is very bad, because if you do it
+// enough, you end up losing incoming camera packets.
+// 4 is not enough. Trying 10.
+const StreamSinkChanDefaultBufferSize = 10
 
 type StreamInfo struct {
 	Width  int
@@ -74,6 +81,11 @@ type frameStat struct {
 	size  int
 }
 
+type streamSink struct {
+	sink StreamSinkChan
+	name string // for debugging
+}
+
 // Stream is a bridge between the RTSP library (gortsplib) and one or more "sink" objects.
 // The stream understands just enough about RTSP and video codecs to be able to receive
 // information from gortsplib, transform them into our own internal data structures,
@@ -92,7 +104,7 @@ type Stream struct {
 	//H264Track   *gortsplib.TrackH264 // track object
 
 	sinksLock sync.Mutex
-	sinks     []StreamSinkChan
+	sinks     []streamSink
 	closeWG   *sync.WaitGroup
 	isClosed  bool
 
@@ -285,10 +297,10 @@ func (s *Stream) Listen(address string) error {
 		if !s.isClosed {
 			for _, sink := range s.sinks {
 				a := time.Now()
-				s.sendSinkMsg(sink, StreamMsgTypePacket, cloned)
+				s.sendSinkMsg(sink.sink, StreamMsgTypePacket, cloned)
 				elapsed := time.Now().Sub(a)
 				if elapsed > time.Millisecond {
-					s.Log.Warnf("Slow stream sink (%v)", elapsed)
+					s.Log.Warnf("Slow stream sink '%v' (%v)", sink.name, elapsed)
 				}
 			}
 		}
@@ -326,7 +338,7 @@ func (s *Stream) Close(wg *sync.WaitGroup) {
 		wg.Add(len(s.sinks))
 	}
 	for _, sink := range s.sinks {
-		s.sendSinkMsg(sink, StreamMsgTypeClose, nil)
+		s.sendSinkMsg(sink.sink, StreamMsgTypeClose, nil)
 	}
 	s.sinksLock.Unlock()
 }
@@ -408,17 +420,17 @@ func (s *Stream) statsNoMutexLock() StreamStats {
 // The usual time to do this is when receiving StreamMsgTypeClose.
 //
 // This function will panic if you attempt to add the same sink twice.
-func (s *Stream) ConnectSink(sink StreamSinkChan) {
+func (s *Stream) ConnectSink(name string, sink StreamSinkChan) {
 	s.sinksLock.Lock()
 	defer s.sinksLock.Unlock()
 	if s.isClosed {
 		return
 	}
-	s.connectSinkNoLock(sink)
+	s.connectSinkNoLock(streamSink{name: name, sink: sink})
 }
 
-func (s *Stream) connectSinkNoLock(sink StreamSinkChan) {
-	if s.sinkIndexNoLock(sink) != -1 {
+func (s *Stream) connectSinkNoLock(sink streamSink) {
+	if s.sinkIndexNoLock(sink.sink) != -1 {
 		panic("sink has already been connected to stream")
 	}
 	s.sinks = append(s.sinks, sink)
@@ -428,7 +440,7 @@ func (s *Stream) connectSinkNoLock(sink StreamSinkChan) {
 //
 // You don't need to call RemoveSink when using ConnectSinkAndRun.
 // When RunStandardStream exits, it will call RemoveSink for you.
-func (s *Stream) ConnectSinkAndRun(sink StandardStreamSink) error {
+func (s *Stream) ConnectSinkAndRun(name string, sink StandardStreamSink) error {
 	s.sinksLock.Lock()
 	defer s.sinksLock.Unlock()
 	if s.isClosed {
@@ -439,7 +451,7 @@ func (s *Stream) ConnectSinkAndRun(sink StandardStreamSink) error {
 			return err
 		}
 
-		s.connectSinkNoLock(sinkChan)
+		s.connectSinkNoLock(streamSink{name: name, sink: sinkChan})
 
 		go RunStandardStream(s, sink, sinkChan)
 
@@ -471,7 +483,7 @@ func (s *Stream) sendSinkMsg(sink StreamSinkChan, msgType StreamMsgType, packet 
 // NOTE: This function does not take sinksLock, but assumes you have already done so
 func (s *Stream) sinkIndexNoLock(sink StreamSinkChan) int {
 	for i := 0; i < len(s.sinks); i++ {
-		if s.sinks[i] == sink {
+		if s.sinks[i].sink == sink {
 			return i
 		}
 	}

@@ -73,7 +73,13 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 	// a portion of time that is close to the present, then it's very likely that we have buffered the writes that
 	// the reader is interested in. In such a case, it's even likely that stream.current is nil. So if there is any
 	// possibility that the reader is interested in buffered data, then we must first flush those buffers.
-	if DoTimeRangesOverlap(stream.writeBufferMinPTS, stream.writeBufferMaxPTS, startTime, endTime) {
+	stream.bufferLock.Lock()
+	needBufferFlush := DoTimeRangesOverlap(stream.writeBufferMinPTS, stream.writeBufferMaxPTS, startTime, endTime)
+	stream.bufferLock.Unlock()
+	if needBufferFlush {
+		// I'm a litle bit worried about writing from this thread. It would be a cleaner design if
+		// only the writer thread did the buffer flushing. But we do have locks around everything,
+		// so I can't see why this will fail. Still uneasy...
 		a.flushWriteBufferForStream(stream)
 	}
 
@@ -112,9 +118,6 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 	if useCurrent != nil {
 		stream.contentLock.Lock()
 		defer stream.contentLock.Unlock()
-
-		// If we have any buffered writes, flush them now
-		a.flushWriteBufferForStream(stream)
 
 		if useCurrent == stream.current {
 			// Current is still the same open handle that we found at the start of the Read()

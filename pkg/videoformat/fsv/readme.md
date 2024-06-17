@@ -51,3 +51,13 @@ be limited to about 2 MB/s. By caching writes, we can bunch up the writes to
 each stream. Let's see if this makes a difference.
 
 Yes, it does seem to make a difference, at least on my problematic USB drive.
+
+## Write Buffer v2
+
+During testing of a cheap 128GB USB stick (FAT32), plugged into a Raspberry Pi
+5, I saw a lot of dropped video packets. This is probably attributable to either
+the NN processing thread, or the slow disk writes to the FSV archive, and I
+suspect it is the latter. It seems irresponsible NOT to allow asynchronous
+writes of the video feeds, so I'm going to do that.
+
+If this mode is enabled, then writes always occur from a background thread.

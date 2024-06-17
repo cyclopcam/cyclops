@@ -63,11 +63,13 @@ func testReaderWriter(t *testing.T, enableWriteBuffer bool) {
 	// That will place the previous current file into the index
 	require.NoError(t, arc1.Write("stream1", map[string]TrackPayload{"videoTrack1": makeVideoPayload(packets2)}))
 
-	// 1 file in index (and 1 current file)
-	require.Equal(t, 1, len(arc1.streams["stream1"].files))
+	if !enableWriteBuffer {
+		// 1 file in index (and 1 current file)
+		require.Equal(t, 1, len(arc1.streams["stream1"].files))
 
-	// Read data from a file in the index, and the current file
-	verifyRead(t, arc1, "stream1", "videoTrack1", packets1[0].PTS, packets2[len(packets2)-1].PTS, len(packets1)+len(packets2), 0)
+		// Read data from a file in the index, and the current file
+		verifyRead(t, arc1, "stream1", "videoTrack1", packets1[0].PTS, packets2[len(packets2)-1].PTS, len(packets1)+len(packets2), 0)
+	}
 
 	arc1.Close()
 

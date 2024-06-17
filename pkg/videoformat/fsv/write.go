@@ -9,17 +9,16 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 )
 
-// Usually this thread is not needed. The calls to Write() will end up causing the buffers
-// to get flushed. However, if a caller stops calling Write() when there is still data in
-// the write buffer, then that's where we come in. Without us, that data would sit in our
-// buffer until the archive was closed.
+// When write buffering is enabled (which it probably is), then MOST writes happen
+// from this thread. The one exception is when a Read() is issued that spans recent history,
+// and we need to flush the write buffer before proceeding.
 func (a *Archive) writeBufferThread() {
 	keepRunning := true
 	for keepRunning {
 		select {
 		case <-a.shutdown:
 			keepRunning = false
-		case <-time.After(5 * time.Second):
+		case <-time.After(1 * time.Second):
 			a.flushWriteBuffers(false)
 		}
 	}
@@ -38,7 +37,7 @@ func (a *Archive) Write(streamName string, payload map[string]TrackPayload) erro
 	if a.isWriteBufferEnabled() {
 		err = a.writeBuffered(streamName, payload)
 	} else {
-		err = a.writeOuter(streamName, payload)
+		err = a.writeUnbuffered(streamName, payload)
 	}
 	if err != nil {
 		a.log.Errorf("Error writing to stream %v: %v", streamName, err)
@@ -55,7 +54,12 @@ func (a *Archive) writeBuffered(streamName string, payload map[string]TrackPaylo
 	if err != nil {
 		return err
 	}
-	stream.contentLock.Lock()
+	stream.bufferLock.Lock()
+	defer stream.bufferLock.Unlock()
+
+	if stream.writeBufferSize > a.staticSettings.MaxWriteBufferDiscardLimit() {
+		return fmt.Errorf("Write buffer for stream %v is full. Discarding payload.", streamName)
+	}
 
 	// Add to write buffer
 	minPTS := int64(1<<63 - 1)
@@ -69,7 +73,9 @@ func (a *Archive) writeBuffered(streamName string, payload map[string]TrackPaylo
 		}
 	}
 
-	// Update buffer start/end times. This is crucial if a Read() operation occurs before we've flushed.
+	// Update buffer start/end times.
+	// This is crucial if a Read() operation occurs before we've flushed.
+	// In the event of such a Read(), it will first flush the write buffer before proceeding.
 	if maxPTS != 0 {
 		// maxPTS == 0 implies this payload was empty. That would be weird, but not illegal.
 		if stream.writeBufferMinPTS.IsZero() {
@@ -78,16 +84,11 @@ func (a *Archive) writeBuffered(streamName string, payload map[string]TrackPaylo
 		stream.writeBufferMaxPTS = time.UnixMicro(maxPTS)
 	}
 
-	// Flush write buffer if necessary
-	if a.mustFlushWriteBuffer(stream) {
-		a.flushWriteBufferForStream(stream)
-	}
-	stream.contentLock.Unlock()
 	return nil
 }
 
 // At this point, you must NOT be holding stream.contentLock.
-func (a *Archive) writeOuter(streamName string, payload map[string]TrackPayload) error {
+func (a *Archive) writeUnbuffered(streamName string, payload map[string]TrackPayload) error {
 	stream, err := a.getOrCreateStream(streamName)
 	if err != nil {
 		return err
@@ -151,7 +152,7 @@ func (a *Archive) writeInner(stream *videoStream, payload map[string]TrackPayloa
 				break
 			}
 			if !stream.current.file.HasCapacity(trackName, packets.NALUs) {
-				mustCloseReason = fmt.Sprintf("Insufficient capacity in for track %v", trackName)
+				mustCloseReason = fmt.Sprintf("Insufficient capacity for track %v", trackName)
 				break
 			}
 			if len(packets.NALUs) > 0 {
@@ -261,14 +262,18 @@ func (a *Archive) writeInner(stream *videoStream, payload map[string]TrackPayloa
 	return nil
 }
 
+// You must be holding bufferLock while calling this function
 func (a *Archive) mustFlushWriteBuffer(stream *videoStream) bool {
+	if stream.writeBufferSize > a.staticSettings.MaxWriteBufferSize {
+		return true
+	}
 	now := time.Now()
 	for _, buffer := range stream.writeBuffer {
 		var age time.Duration
 		if len(buffer) != 0 {
 			age = now.Sub(buffer[0].NALUs[0].PTS)
 		}
-		if age > a.staticSettings.MaxWriteBufferTime || stream.writeBufferSize > a.staticSettings.MaxWriteBufferSize {
+		if age > a.staticSettings.MaxWriteBufferTime {
 			return true
 		}
 	}
@@ -288,12 +293,33 @@ func canAppendToPayload(merged, addition *TrackPayload) bool {
 	return true
 }
 
-// If necessary, flush the write buffer for the stream.
+// Flush the write buffer for the stream.
 // You must be holding the stream.contentLock before calling this function.
 func (a *Archive) flushWriteBufferForStream(stream *videoStream) {
-	for track, payloadList := range stream.writeBuffer {
+	// It's important here that we don't hold the buffer lock while
+	// we're writing to disk. Doing so would cause writes to stall.
+	stream.bufferLock.Lock()
+	buffer := stream.writeBuffer
+	stream.writeBuffer = map[string][]TrackPayload{}
+	stream.writeBufferSize = 0
+	stream.writeBufferMinPTS = time.Time{}
+	stream.writeBufferMaxPTS = time.Time{}
+	stream.bufferLock.Unlock()
+
+	// Now that we've cleared the write buffer from 'stream', persist it.
+	// It's 100% fine for flushWriteBufferForStream() to be called when the buffer is empty,
+	// so we need to check for that.
+	if len(buffer) != 0 {
+		a.persistWriteBufferToStream(stream, buffer)
+	}
+}
+
+// If necessary, flush the write buffer for the stream.
+// You must be holding the stream.contentLock before calling this function.
+func (a *Archive) persistWriteBufferToStream(stream *videoStream, tracks map[string][]TrackPayload) {
+	for track, payloadList := range tracks {
 		// Merge payloads together, so that we can reduce the number of OS write calls,
-		// and also the number of calls to our 'write' function, which is quite involved.
+		// and also the number of calls to our 'writeInner' function, which is quite bulky.
 		merged := payloadList[0]
 		for i := 1; i <= len(payloadList); i++ {
 			if i < len(payloadList) && canAppendToPayload(&merged, &payloadList[i]) {
@@ -308,10 +334,6 @@ func (a *Archive) flushWriteBufferForStream(stream *videoStream) {
 			}
 		}
 	}
-	stream.writeBuffer = map[string][]TrackPayload{}
-	stream.writeBufferSize = 0
-	stream.writeBufferMinPTS = time.Time{}
-	stream.writeBufferMaxPTS = time.Time{}
 }
 
 func (a *Archive) flushWriteBuffers(force bool) {
@@ -323,10 +345,16 @@ func (a *Archive) flushWriteBuffers(force bool) {
 	a.streamsLock.Unlock()
 
 	for _, stream := range streams {
-		stream.contentLock.Lock()
-		if force || a.mustFlushWriteBuffer(stream) {
-			a.flushWriteBufferForStream(stream)
+		mustWrite := force
+		if !mustWrite {
+			stream.bufferLock.Lock()
+			mustWrite = a.mustFlushWriteBuffer(stream)
+			stream.bufferLock.Unlock()
 		}
-		stream.contentLock.Unlock()
+		if mustWrite {
+			stream.contentLock.Lock()
+			a.flushWriteBufferForStream(stream)
+			stream.contentLock.Unlock()
+		}
 	}
 }
