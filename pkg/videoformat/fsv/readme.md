@@ -58,6 +58,6 @@ During testing of a cheap 128GB USB stick (FAT32), plugged into a Raspberry Pi
 5, I saw a lot of dropped video packets. This is probably attributable to either
 the NN processing thread, or the slow disk writes to the FSV archive, and I
 suspect it is the latter. It seems irresponsible NOT to allow asynchronous
-writes of the video feeds, so I'm going to do that.
-
-If this mode is enabled, then writes always occur from a background thread.
+writes of the video feeds, so I'm going to do that. If this mode is enabled,
+then writes always occur from a background thread. OK - I ended up making
+buffered writes _always_ operate asynchronously.
