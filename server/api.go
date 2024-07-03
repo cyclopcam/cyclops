@@ -124,6 +124,7 @@ func (s *Server) SetupHTTP() error {
 	protected("v", "GET|HEAD", "/api/record/video/:resolution/:id", s.httpRecordGetVideo)
 	protected("v", "POST", "/api/record/video/:resolution/:id", s.httpRecordGetVideo)
 	protected("v", "POST", "/api/record/background/create", s.httpRecordBackgroundCreate)
+	protected("v", "GET", "/api/events/tiles", s.httpEventsGetTiles)
 	protected("v", "GET", "/api/train/getDataset", s.httpTrainGetDataset)
 	unprotected("GET", "/api/auth/hasAdmin", s.httpAuthHasAdmin)
 	protected("v", "GET", "/api/auth/whoami", s.httpAuthWhoAmi)

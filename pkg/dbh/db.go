@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/migration"
+	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/log"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
@@ -316,11 +317,11 @@ func SQLCleanIDList(raw string) string {
 }
 
 // Turn an array such as [1,2] into the string "(1,2)"
-func SQLFormatIDArray(ids []int64) string {
+func SQLFormatIDArray[T gen.Integer](ids []T) string {
 	res := strings.Builder{}
 	res.WriteRune('(')
 	for i, id := range ids {
-		res.WriteString(strconv.FormatInt(id, 10))
+		res.WriteString(strconv.FormatInt(int64(id), 10))
 		if i != len(ids)-1 {
 			res.WriteRune(',')
 		}

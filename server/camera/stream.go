@@ -299,7 +299,9 @@ func (s *Stream) Listen(address string) error {
 				a := time.Now()
 				s.sendSinkMsg(sink.sink, StreamMsgTypePacket, cloned)
 				elapsed := time.Now().Sub(a)
-				if elapsed > time.Millisecond {
+				if elapsed > 5*time.Millisecond {
+					// On my Rpi5, 5ms is a normal delay here. I suspect it's the NCNN threads hogging the CPU
+					// On my Ryzen, times are always below 1ms.
 					s.Log.Warnf("Slow stream sink '%v' (%v)", sink.name, elapsed)
 				}
 			}

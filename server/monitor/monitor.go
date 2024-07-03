@@ -127,14 +127,23 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	// On a Raspberry Pi 4, a single NN thread is best. But on my larger desktops, more threads helps.
 	// I have some numbers in a spreadsheet. Basically, on a Pi, we want to have all cores processing
 	// a single image at a time. But on desktop CPUs, we want one core per image.
+	// Raspberry Pi 4 and up share an L2/L3 cache, and this presumably aids in processing images serially,
+	// using OpenMP and whatever other threading mechanisms NCNN uses internally.
 	numCPU := runtime.NumCPU()
-	nnThreads := int(math.Max(1, float64(numCPU)/4))
+	nnThreads := numCPU
+	if numCPU > 4 {
+		nnThreads = numCPU / 2
+	} else {
+		// Raspberry Pi
+		nnThreads = 1
+	}
 	nnThreadingModel := nn.ThreadingModeSingle
 	if nnThreads == 1 {
 		// If we're only running a single detection thread, then let the NN library use however
 		// many cores it can.
 		nnThreadingModel = nn.ThreadingModeParallel
 	}
+	logger.Infof("Using %v NN threads, mode %v", nnThreads, nnThreadingModel)
 
 	// nnQueueSize should be at least equal to nnThreads, otherwise we'll never reach full utilization.
 	// But perhaps we can use nnQueueSize as a throttle, to optimize the number of active threads.

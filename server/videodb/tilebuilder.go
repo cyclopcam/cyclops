@@ -209,7 +209,7 @@ func (b *tileBuilder) writeBlob() []byte {
 	// from iteration to iteration.
 	slices.Sort(orderedClasses)
 
-	blob := make([]byte, 0, 10+len(b.classes)*64)             // large enough to hold 50% compressed
+	blob := make([]byte, 0, 10+len(b.classes)*64)             // make slice capacity large enough to hold 50% compressed
 	blob = binary.AppendUvarint(blob, 1)                      // version (v1 implies tile width 1024)
 	blob = binary.AppendUvarint(blob, uint64(len(b.classes))) // number of classes
 	for _, cls := range orderedClasses {
@@ -228,7 +228,7 @@ func (b *tileBuilder) writeBlob() []byte {
 
 	// V1:
 	// Compress every line with either on/off encoding or raw.
-	// Our on/off encoding can bloat terribly (8x raw size) for pathological inputs
+	// Our on/off encoding can bloat terribly (4x raw size) for pathological inputs
 	// such as a bit pattern of 1010101010101. So we need a fallback to raw output,
 	// which is exactly 128 bytes per line.
 
