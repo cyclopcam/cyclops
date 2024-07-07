@@ -1,0 +1,20 @@
+#!/bin/bash
+
+set -e
+
+mkdir -p bin
+
+HAILO_RT_HEADER=/usr/include/hailo/hailort.h
+BIN_DIR=bin
+
+if [ ! -f "$HAILO_RT_HEADER" ]; then
+	echo "Unable to find '$HAILO_RT_HEADER'"
+	echo "Skipping Hailo support"
+	g++ -c stub.cpp -o $BIN_DIR/stub.o
+	ar rcs $BIN_DIR/cyhailo.a $BIN_DIR/stub.o
+	exit 0
+fi
+
+echo "Building Hailo support"
+g++ -Wall -Werror -c hailo.cpp -o $BIN_DIR/hailo.o
+ar rcs $BIN_DIR/cyhailo.a $BIN_DIR/hailo.o

@@ -1,0 +1,19 @@
+#!/bin/bash
+
+set -e
+
+cd ncnn
+mkdir -p build
+cd build
+cmake -DNCNN_SIMPLEOCV=1 ..
+make -j2
+
+cd ../..
+
+cd Simd
+mkdir -p build
+cd build
+cmake ../prj/cmake
+make -j2
+
+cd ../..

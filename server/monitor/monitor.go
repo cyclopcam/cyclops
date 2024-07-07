@@ -152,7 +152,7 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	// Once we signal mustStopNNThreads, we fill the queue with dummy jobs, so that the NN threads
 	// can wake up from their channel receive operation, and exit.
 	// If the queue size was too small, then this would deadlock.
-	// nnQueueSize should not be less than 1, otherwise our backoff mechanism will never allow a
+	// nnQueueSize must not be less than 1, otherwise our backoff mechanism will never allow a
 	// frame through.
 	// SYNC-NN-THREAD-QUEUE-MIN-SIZE
 	nnQueueSize := nnThreads * 3
@@ -161,8 +161,6 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	logger.Infof("Loading NN model '%v'", modelName)
 
 	detector, err := nnload.LoadModel(filepath.Join(basePath, modelName), nnThreadingModel)
-	//detector, err := ncnn.NewDetector("yolov7", filepath.Join(basePath, "yolov7-tiny.param"), filepath.Join(basePath, "yolov7-tiny.bin"), 320, 256)
-	//detector, err := ncnn.NewDetector("yolov7", "/home/ben/dev/cyclops/models/yolov7-tiny.param", "/home/ben/dev/cyclops/models/yolov7-tiny.bin")
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +171,8 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	// No idea what a good number is here. I expect analysis to be much
 	// faster to run than NN, so provided this queue is large enough to
 	// prevent bumps, it shouldn't matter too much.
+	// Analysis is where we watch the movement of boxes, after they've
+	// been emitted by the NN.
 	analysisQueueSize := 20
 
 	logger.Infof("Starting %v NN detection threads", nnThreads)
@@ -474,7 +474,7 @@ func (m *Monitor) readFrames() {
 			}
 			// SYNC-NN-THREAD-QUEUE-MIN-SIZE
 			if len(m.nnThreadQueue) >= 2*cap(m.nnThreadQueue)/3 {
-				// Our NN queue is full, so drop frames.
+				// Our NN queue is 2/3 full, so drop frames.
 				break
 			}
 
