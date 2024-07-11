@@ -1,0 +1,74 @@
+#pragma once
+
+// For intellisense
+#include <hailo/hailort.h>
+#include <hailo/hailort_common.hpp>
+#include <hailo/vdevice.hpp>
+#include <hailo/infer_model.hpp>
+
+#include <memory>
+#include <vector>
+#include <string>
+
+#include "defs.h"
+
+inline cyStatus _make_own_status(hailo_status s) {
+	switch (s) {
+	case HAILO_SUCCESS:
+		return cySTATUS_OK;
+	case HAILO_TIMEOUT:
+		return cySTATUS_TIMEOUT;
+	default:
+		return (cyStatus) (s + cySTATUS_HAILO_STATUS_OFFSET);
+	}
+}
+
+struct NNModel {
+	int                                            BatchSize = 0;
+	std::unique_ptr<hailort::VDevice>              Device;
+	std::shared_ptr<hailort::InferModel>           InferModel;
+	std::shared_ptr<hailort::ConfiguredInferModel> ConfiguredInferModel;
+	hailort::ConfiguredInferModel::Bindings        Bindings;
+
+	~NNModel();
+};
+
+class OutTensor {
+public:
+	uint8_t*               Data;
+	std::string            Name;
+	hailo_quant_info_t     Quant;
+	hailo_3d_image_shape_t Shape;
+	hailo_format_t         Format;
+
+	OutTensor(uint8_t* data, const std::string& name, const hailo_quant_info_t& quant, const hailo_3d_image_shape_t& shape, hailo_format_t format) {
+		Data   = data;
+		Name   = name;
+		Quant  = quant;
+		Shape  = shape;
+		Format = format;
+	}
+
+	~OutTensor() {
+		free(Data);
+	}
+
+	static bool SortFunction(const OutTensor& l, const OutTensor& r) {
+		return l.Shape.width < r.Shape.width;
+	}
+};
+
+// A job that is busy executing on the Hailo TPU
+class OwnAsyncJobHandle {
+public:
+	NNModel*               Model;
+	std::vector<OutTensor> OutTensors;
+	hailort::AsyncInferJob HailoJob;
+	//hailort::AsyncInferJob* HailoJob = nullptr;
+
+	OwnAsyncJobHandle(NNModel* model, std::vector<OutTensor>&& outTensors, hailort::AsyncInferJob&& hailoJob) {
+		Model      = model;
+		OutTensors = std::move(outTensors);
+		HailoJob   = std::move(hailoJob);
+	}
+};

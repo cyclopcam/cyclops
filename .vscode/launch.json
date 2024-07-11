@@ -181,6 +181,15 @@
 			]
 		},
 		{
+			"name": "Debug module_hailo (go)",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+			"program": "debug/module_hailo/main.go",
+			"cwd": "${workspaceFolder}",
+			"args": []
+		},
+		{
 			"name": "Server (cyclops.go)",
 			"type": "go",
 			"request": "launch",

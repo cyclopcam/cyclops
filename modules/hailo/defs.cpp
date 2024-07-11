@@ -10,6 +10,13 @@ const char* _cyhailo_status_str_own(cyStatus s) {
 		return "Model not loaded";
 	case cySTATUS_INVALID_INPUT_DIMENSIONS:
 		return "Invalid input dimensions";
+	case cySTATUS_OUT_OF_CPU_MEMORY:
+		return "Out of CPU memory";
+	case cySTATUS_TIMEOUT:
+		return "Timeout";
+	case cySTATUS_CPU_NMS_NOT_IMPLEMENTED:
+		return "CPU NMS not implemented";
+	default:
+		return "Unknown status";
 	}
-	return "Unknown status";
 }
