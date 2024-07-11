@@ -35,7 +35,7 @@ struct NNModel {
 
 class OutTensor {
 public:
-	uint8_t*               Data;
+	uint8_t*               Data; // This data needs to be freed once the job is finished
 	std::string            Name;
 	hailo_quant_info_t     Quant;
 	hailo_3d_image_shape_t Shape;
@@ -50,7 +50,8 @@ public:
 	}
 
 	~OutTensor() {
-		free(Data);
+		//free(Data);
+		//Data = nullptr;
 	}
 
 	static bool SortFunction(const OutTensor& l, const OutTensor& r) {
@@ -70,5 +71,24 @@ public:
 		Model      = model;
 		OutTensors = std::move(outTensors);
 		HailoJob   = std::move(hailoJob);
+	}
+
+	~OwnAsyncJobHandle() {
+		// Wait for the job to finish.
+		// We can't free the memory until we're sure that the job is finished.
+		HailoJob = hailort::AsyncInferJob();
+
+		for (auto& outTensor : OutTensors) {
+			free(outTensor.Data);
+			outTensor.Data = nullptr;
+		}
+		//printf("~OwnAsyncJobHandle 1\n");
+		//fflush(stdout);
+		//OutTensors = std::vector<OutTensor>();
+		//printf("~OwnAsyncJobHandle 2\n");
+		//fflush(stdout);
+		//HailoJob.detach();
+		//printf("~OwnAsyncJobHandle 3\n");
+		//fflush(stdout);
 	}
 };

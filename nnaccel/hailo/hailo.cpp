@@ -220,23 +220,29 @@ int nna_run_model(void* model, int batchSize, int width, int height, int nchan, 
 	return cySTATUS_OK;
 }
 
-int nna_wait_for_job(void* async_handle, uint32_t max_wait_milliseconds) {
-	OwnAsyncJobHandle* ownJob = (OwnAsyncJobHandle*) async_handle;
+int nna_wait_for_job(void* job_handle, uint32_t max_wait_milliseconds) {
+	OwnAsyncJobHandle* ownJob = (OwnAsyncJobHandle*) job_handle;
 	hailo_status       status = ownJob->HailoJob.wait(std::chrono::milliseconds(max_wait_milliseconds));
 	return _make_own_status(status);
 }
 
-int nna_get_object_detections(void* async_handle, uint32_t max_wait_milliseconds, int maxDetections, NNMObjectDetection* detections, int* numDetections) {
-	OwnAsyncJobHandle* ownJob = (OwnAsyncJobHandle*) async_handle;
-	hailo_status       status = ownJob->HailoJob.wait(std::chrono::milliseconds(max_wait_milliseconds));
+int nna_get_object_detections(void* job_handle, size_t maxDetections, NNAObjectDetection** detections, size_t* numDetections) {
+	*detections    = nullptr;
+	*numDetections = 0;
+
+	OwnAsyncJobHandle* ownJob                = (OwnAsyncJobHandle*) job_handle;
+	uint32_t           max_wait_milliseconds = 0;
+	hailo_status       status                = ownJob->HailoJob.wait(std::chrono::milliseconds(max_wait_milliseconds));
 	if (status != HAILO_SUCCESS) {
-		return _make_own_status(status);
+		return cySTATUS_TIMEOUT;
 	}
 	NNModel* model = ownJob->Model;
 
+	int nnWidth;
+	int nnHeight;
+	_model_input_sizes(model->InferModel.get(), nnWidth, nnHeight);
+
 	bool nmsOnHailo = model->InferModel->outputs().size() == 1 && model->InferModel->outputs()[0].is_nms();
-	int  response   = cySTATUS_OK;
-	*numDetections  = 0;
 
 	if (nmsOnHailo) {
 		OutTensor* out = &ownJob->OutTensors[0];
@@ -250,42 +256,62 @@ int nna_get_object_detections(void* async_handle, uint32_t max_wait_milliseconds
 		size_t numClasses  = (size_t) out->Shape.height;
 		size_t classIdx    = 0;
 		size_t idx         = 0;
-		int    nDetections = 0;
+		size_t nDetections = 0;
+
+		// Count the total number of boxes so that we can allocate the right size output buffer
 		while (classIdx < numClasses) {
 			size_t numBoxes = (size_t) raw[idx++];
+			nDetections += numBoxes;
+			idx += numBoxes * 5;
+			classIdx++;
+		}
+		nDetections = std::min(nDetections, maxDetections);
+
+		NNAObjectDetection* dets = (NNAObjectDetection*) malloc(nDetections * sizeof(NNAObjectDetection));
+
+		classIdx    = 0;
+		idx         = 0;
+		size_t iDet = 0;
+		while (classIdx < numClasses && iDet < nDetections) {
+			size_t numBoxes = (size_t) raw[idx++];
 			for (size_t i = 0; i < numBoxes; i++) {
-				float ymin                         = raw[idx];
-				float xmin                         = raw[idx + 1];
-				float ymax                         = raw[idx + 2];
-				float xmax                         = raw[idx + 3];
-				float confidence                   = raw[idx + 4];
-				detections[nDetections].ClassID    = (uint32_t) classIdx;
-				detections[nDetections].Confidence = confidence;
-				detections[nDetections].X          = xmin;
-				detections[nDetections].Y          = ymin;
-				detections[nDetections].W          = xmax - xmin;
-				detections[nDetections].H          = ymax - ymin;
-				idx += 5;
-				nDetections++;
-				if (nDetections >= maxDetections) {
+				if (iDet >= nDetections) {
 					break;
 				}
-			}
-			if (nDetections >= maxDetections) {
-				break;
+				NNAObjectDetection det;
+				float              ymin = raw[idx];
+				float              xmin = raw[idx + 1];
+				float              ymax = raw[idx + 2];
+				float              xmax = raw[idx + 3];
+				det.Confidence          = raw[idx + 4];
+				det.ClassID             = (uint32_t) classIdx;
+				det.X                   = xmin * nnWidth;
+				det.Y                   = ymin * nnHeight;
+				det.Width               = (xmax - xmin) * nnWidth;
+				det.Height              = (ymax - ymin) * nnHeight;
+				dets[iDet++]            = det;
+				idx += 5;
 			}
 			classIdx++;
 		}
 		*numDetections = nDetections;
+		*detections    = dets;
+		//printf("FOOBAR!!!\n");
+		//fflush(stdout);
+		return cySTATUS_OK;
 	} else {
-		response = cySTATUS_CPU_NMS_NOT_IMPLEMENTED;
+		return cySTATUS_CPU_NMS_NOT_IMPLEMENTED;
 	}
-
-	return response;
 }
 
-void nna_finish_run(void* async_handle) {
-	OwnAsyncJobHandle* ownJob = (OwnAsyncJobHandle*) async_handle;
+void nna_close_job(void* job_handle) {
+	//printf("nna_close_job 1\n");
+	//fflush(stdout);
+	OwnAsyncJobHandle* ownJob = (OwnAsyncJobHandle*) job_handle;
+	//printf("nna_close_job 2\n");
+	//fflush(stdout);
 	delete ownJob;
+	//printf("nna_close_job 3\n");
+	//fflush(stdout);
 }
 }

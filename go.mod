@@ -15,7 +15,7 @@ require (
 	github.com/akamensky/argparse v1.3.1
 	github.com/asticode/go-astits v1.13.0
 	github.com/bluenviron/gortsplib/v4 v4.7.0
-	github.com/bmharper/cimg/v2 v2.0.5
+	github.com/bmharper/cimg/v2 v2.0.7
 	github.com/bmharper/ringbuffer v1.1.2
 	github.com/bmharper/tiledinference v1.0.2
 	github.com/chewxy/math32 v1.10.1

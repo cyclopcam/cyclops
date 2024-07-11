@@ -13,7 +13,7 @@ typedef struct _NNAccel {
 	nna_run_model_func             run_model;
 	nna_wait_for_job_func          wait_for_job;
 	nna_get_object_detections_func get_object_detections;
-	nna_finish_run_func            finish_run;
+	nna_close_job_func             close_job;
 } NNAccel;
 
 extern "C" {
@@ -33,7 +33,7 @@ char* LoadNNAccel(const char* filename, void** module) {
 	m.run_model             = (nna_run_model_func) dlsym(lib, "nna_run_model");
 	m.wait_for_job          = (nna_wait_for_job_func) dlsym(lib, "nna_wait_for_job");
 	m.get_object_detections = (nna_get_object_detections_func) dlsym(lib, "nna_get_object_detections");
-	m.finish_run            = (nna_finish_run_func) dlsym(lib, "nna_finish_run");
+	m.close_job             = (nna_close_job_func) dlsym(lib, "nna_close_job");
 
 	char* err = nullptr;
 
@@ -51,8 +51,8 @@ char* LoadNNAccel(const char* filename, void** module) {
 		err = strdup("Failed to find nna_wait_for_job in dynamic library");
 	else if (!m.get_object_detections)
 		err = strdup("Failed to find nna_get_object_detections in dynamic library");
-	else if (!m.finish_run)
-		err = strdup("Failed to find nna_finish_run in dynamic library");
+	else if (!m.close_job)
+		err = strdup("Failed to find nna_close_job in dynamic library");
 
 	if (err != nullptr) {
 		dlclose(lib);
@@ -87,23 +87,23 @@ const char* NAStatusStr(void* nnModule, int s) {
 	return m->status_str(s);
 }
 
-int NARunModel(void* nnModule, void* model, int batchSize, int width, int height, int nchan, const void* data, void** async_handle) {
+int NARunModel(void* nnModule, void* model, int batchSize, int width, int height, int nchan, const void* data, void** job_handle) {
 	NNAccel* m = (NNAccel*) nnModule;
-	return m->run_model(model, batchSize, width, height, nchan, data, async_handle);
+	return m->run_model(model, batchSize, width, height, nchan, data, job_handle);
 }
 
-int NAWaitForJob(void* nnModule, void* async_handle, uint32_t max_wait_milliseconds) {
+int NAWaitForJob(void* nnModule, void* job_handle, uint32_t max_wait_milliseconds) {
 	NNAccel* m = (NNAccel*) nnModule;
-	return m->wait_for_job(async_handle, max_wait_milliseconds);
+	return m->wait_for_job(job_handle, max_wait_milliseconds);
 }
 
-int NAGetObjectDetections(void* nnModule, void* async_handle, uint32_t max_wait_milliseconds, int maxDetections, NNMObjectDetection* detections, int* numDetections) {
+int NAGetObjectDetections(void* nnModule, void* job_handle, size_t maxDetections, NNAObjectDetection** detections, size_t* numDetections) {
 	NNAccel* m = (NNAccel*) nnModule;
-	return m->get_object_detections(async_handle, max_wait_milliseconds, maxDetections, detections, numDetections);
+	return m->get_object_detections(job_handle, maxDetections, detections, numDetections);
 }
 
-void NAFinishRun(void* nnModule, void* async_handle) {
+void NACloseJob(void* nnModule, void* job_handle) {
 	NNAccel* m = (NNAccel*) nnModule;
-	m->finish_run(async_handle);
+	m->close_job(job_handle);
 }
 }
