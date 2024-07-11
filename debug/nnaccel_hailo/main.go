@@ -4,19 +4,19 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cyclopcam/cyclops/pkg/nnmodule"
+	"github.com/cyclopcam/cyclops/pkg/nnaccel"
 )
 
 func main() {
-	m, err := nnmodule.Load("modules/hailo/bin/libcyhailo.so")
+	m, err := nnaccel.Load("hailo")
 	if err != nil {
-		fmt.Printf("nnmodule.Load failed: %v\n", err)
+		fmt.Printf("nnaccel.Load failed: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("Hailo module loaded\n")
 
-	setup := nnmodule.ModelSetup{
+	setup := nnaccel.ModelSetup{
 		BatchSize: 1,
 	}
 	model, err := m.LoadModel("models/hailo/8L/yolov8s.hef", &setup)

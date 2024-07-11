@@ -1,5 +1,5 @@
 #include "defs.h"
-#include "../module_prototype.h"
+#include "../nnaccel_prototype.h"
 
 #include <hailo/hailort.h>
 #include <hailo/hailort_common.hpp>
@@ -38,11 +38,11 @@ NNModel::~NNModel() {
 
 extern "C" {
 
-int nnm_load_model(const char* filename, const NNModelSetup* setup, void** model) {
+int nna_load_model(const char* filename, const NNModelSetup* setup, void** model) {
 	using namespace hailort;
 	using namespace std::chrono_literals;
 
-	debug_printf("hailo nnm_load_model 1\n");
+	debug_printf("hailo nna_load_model 1\n");
 
 	////////////////////////////////////////////////////////////////////////////////////////////
 	// Load/Init
@@ -54,7 +54,7 @@ int nnm_load_model(const char* filename, const NNModelSetup* setup, void** model
 	}
 	std::unique_ptr<hailort::VDevice> vdevice = vdevice_exp.release();
 
-	debug_printf("hailo nnm_load_model 2\n");
+	debug_printf("hailo nna_load_model 2\n");
 
 	// Create infer model from HEF file.
 	Expected<std::shared_ptr<InferModel>> infer_model_exp = vdevice->create_infer_model(filename);
@@ -66,7 +66,7 @@ int nnm_load_model(const char* filename, const NNModelSetup* setup, void** model
 	infer_model->set_hw_latency_measurement_flags(HAILO_LATENCY_MEASURE);
 	infer_model->set_batch_size(setup->BatchSize);
 
-	debug_printf("hailo nnm_load_model 3\n");
+	debug_printf("hailo nna_load_model 3\n");
 
 	// Configure the infer model
 	//infer_model->output()->set_format_type(HAILO_FORMAT_TYPE_FLOAT32);
@@ -77,7 +77,7 @@ int nnm_load_model(const char* filename, const NNModelSetup* setup, void** model
 	}
 	std::shared_ptr<hailort::ConfiguredInferModel> configured_infer_model = std::make_shared<ConfiguredInferModel>(configured_infer_model_exp.release());
 
-	debug_printf("hailo nnm_load_model 4\n");
+	debug_printf("hailo nna_load_model 4\n");
 
 	//configured_infer_model = nullptr;
 
@@ -98,29 +98,29 @@ int nnm_load_model(const char* filename, const NNModelSetup* setup, void** model
 
 	//debug_printf("Users of configured_infer_model: %d\n", (int) configured_infer_model.use_count());
 
-	debug_printf("hailo nnm_load_model 5\n");
+	debug_printf("hailo nna_load_model 5\n");
 
 	return cySTATUS_OK;
 }
 
-void nnm_close_model(void* model) {
-	debug_printf("nnm_close_model 1\n");
+void nna_close_model(void* model) {
+	debug_printf("nna_close_model 1\n");
 	NNModel* m = (NNModel*) model;
 
 	//debug_printf("Users of configured_infer_model: %d\n", (int) m->ConfiguredInferModel.use_count());
 
 	delete m;
-	debug_printf("nnm_close_model 2\n");
+	debug_printf("nna_close_model 2\n");
 }
 
-void nnm_model_info(void* model, NNModelInfo* info) {
+void nna_model_info(void* model, NNModelInfo* info) {
 	NNModel* m      = (NNModel*) model;
 	info->BatchSize = m->BatchSize;
 	info->NChan     = 3;
 	_model_input_sizes(m->InferModel.get(), info->Width, info->Height);
 }
 
-const char* nnm_status_str(int _s) {
+const char* nna_status_str(int _s) {
 	cyStatus s = (cyStatus) _s;
 	if (s >= cySTATUS_HAILO_STATUS_OFFSET) {
 		return hailo_get_status_message(hailo_status(s - cySTATUS_HAILO_STATUS_OFFSET));
@@ -128,7 +128,7 @@ const char* nnm_status_str(int _s) {
 	return _cyhailo_status_str_own(s);
 }
 
-int nnm_run_model(void* model, int batchSize, int width, int height, int nchan, const void* data, void** asyncHandle) {
+int nna_run_model(void* model, int batchSize, int width, int height, int nchan, const void* data, void** asyncHandle) {
 	using namespace hailort;
 	using namespace std::chrono_literals;
 
@@ -142,7 +142,7 @@ int nnm_run_model(void* model, int batchSize, int width, int height, int nchan, 
 
 	// Validate inputs
 	NNModelInfo info;
-	nnm_model_info(model, &info);
+	nna_model_info(model, &info);
 	if (batchSize != info.BatchSize || width != info.Width || height != info.Height || nchan != info.NChan) {
 		return cySTATUS_INVALID_INPUT_DIMENSIONS;
 	}
@@ -212,7 +212,7 @@ int nnm_run_model(void* model, int batchSize, int width, int height, int nchan, 
 	// Detaches the job. Without detaching, the job's destructor will block until the job finishes.
 	// Hmmm, but what if somebody wants to abandon an inference job. We can't delete the memory
 	// until the job finishes, so we actually want the destructor to wait.
-	// Our destructor is supposed to run on nnm_finish_run().
+	// Our destructor is supposed to run on nna_finish_run().
 	//job->detach();
 
 	*asyncHandle = new OwnAsyncJobHandle(m, std::move(outputTensors), std::move(job_exp.release()));
@@ -220,13 +220,13 @@ int nnm_run_model(void* model, int batchSize, int width, int height, int nchan, 
 	return cySTATUS_OK;
 }
 
-int nnm_wait_for_job(void* async_handle, uint32_t max_wait_milliseconds) {
+int nna_wait_for_job(void* async_handle, uint32_t max_wait_milliseconds) {
 	OwnAsyncJobHandle* ownJob = (OwnAsyncJobHandle*) async_handle;
 	hailo_status       status = ownJob->HailoJob.wait(std::chrono::milliseconds(max_wait_milliseconds));
 	return _make_own_status(status);
 }
 
-int nnm_get_object_detections(void* async_handle, uint32_t max_wait_milliseconds, int maxDetections, NNMObjectDetection* detections, int* numDetections) {
+int nna_get_object_detections(void* async_handle, uint32_t max_wait_milliseconds, int maxDetections, NNMObjectDetection* detections, int* numDetections) {
 	OwnAsyncJobHandle* ownJob = (OwnAsyncJobHandle*) async_handle;
 	hailo_status       status = ownJob->HailoJob.wait(std::chrono::milliseconds(max_wait_milliseconds));
 	if (status != HAILO_SUCCESS) {
@@ -284,7 +284,7 @@ int nnm_get_object_detections(void* async_handle, uint32_t max_wait_milliseconds
 	return response;
 }
 
-void nnm_finish_run(void* async_handle) {
+void nna_finish_run(void* async_handle) {
 	OwnAsyncJobHandle* ownJob = (OwnAsyncJobHandle*) async_handle;
 	delete ownJob;
 }

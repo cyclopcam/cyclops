@@ -1,0 +1,109 @@
+#include <dlfcn.h>
+#include <string.h>
+
+#include "interface.h"
+
+// An NN accelerator module that has been loaded dynamically from a shared library
+typedef struct _NNAccel {
+	void*                          DLHandle;
+	nna_load_model_func            load_model;
+	nna_close_model_func           close_model;
+	nna_model_info_func            model_info;
+	nna_status_str_func            status_str;
+	nna_run_model_func             run_model;
+	nna_wait_for_job_func          wait_for_job;
+	nna_get_object_detections_func get_object_detections;
+	nna_finish_run_func            finish_run;
+} NNAccel;
+
+extern "C" {
+
+char* LoadNNAccel(const char* filename, void** module) {
+	void* lib = dlopen(filename, RTLD_NOW);
+	if (lib == nullptr) {
+		return strdup(dlerror());
+	}
+
+	NNAccel m;
+	m.DLHandle              = lib;
+	m.load_model            = (nna_load_model_func) dlsym(lib, "nna_load_model");
+	m.close_model           = (nna_close_model_func) dlsym(lib, "nna_close_model");
+	m.model_info            = (nna_model_info_func) dlsym(lib, "nna_model_info");
+	m.status_str            = (nna_status_str_func) dlsym(lib, "nna_status_str");
+	m.run_model             = (nna_run_model_func) dlsym(lib, "nna_run_model");
+	m.wait_for_job          = (nna_wait_for_job_func) dlsym(lib, "nna_wait_for_job");
+	m.get_object_detections = (nna_get_object_detections_func) dlsym(lib, "nna_get_object_detections");
+	m.finish_run            = (nna_finish_run_func) dlsym(lib, "nna_finish_run");
+
+	char* err = nullptr;
+
+	if (!m.load_model)
+		err = strdup("Failed to find nna_load_model in dynamic library");
+	else if (!m.close_model)
+		err = strdup("Failed to find nna_close_model in dynamic library");
+	else if (!m.model_info)
+		err = strdup("Failed to find nna_model_info in dynamic library");
+	else if (!m.status_str)
+		err = strdup("Failed to find nna_status_str in dynamic library");
+	else if (!m.run_model)
+		err = strdup("Failed to find nna_run_model in dynamic library");
+	else if (!m.wait_for_job)
+		err = strdup("Failed to find nna_wait_for_job in dynamic library");
+	else if (!m.get_object_detections)
+		err = strdup("Failed to find nna_get_object_detections in dynamic library");
+	else if (!m.finish_run)
+		err = strdup("Failed to find nna_finish_run in dynamic library");
+
+	if (err != nullptr) {
+		dlclose(lib);
+		return err;
+	}
+
+	NNAccel* pm = new NNAccel();
+	*pm         = m;
+	*module     = pm;
+	return nullptr;
+}
+
+int NALoadModel(void* nnModule, const char* filename, const NNModelSetup* setup, void** model) {
+	NNAccel* m = (NNAccel*) nnModule;
+	//printf("NALoadModel %p\n", m->load_model);
+	return m->load_model(filename, setup, model);
+}
+
+void NACloseModel(void* nnModule, void* model) {
+	NNAccel* m = (NNAccel*) nnModule;
+	//printf("NACloseModel %p\n", m->close_model);
+	m->close_model(model);
+}
+
+void NAModelInfo(void* nnModule, void* model, NNModelInfo* info) {
+	NNAccel* m = (NNAccel*) nnModule;
+	m->model_info(model, info);
+}
+
+const char* NAStatusStr(void* nnModule, int s) {
+	NNAccel* m = (NNAccel*) nnModule;
+	return m->status_str(s);
+}
+
+int NARunModel(void* nnModule, void* model, int batchSize, int width, int height, int nchan, const void* data, void** async_handle) {
+	NNAccel* m = (NNAccel*) nnModule;
+	return m->run_model(model, batchSize, width, height, nchan, data, async_handle);
+}
+
+int NAWaitForJob(void* nnModule, void* async_handle, uint32_t max_wait_milliseconds) {
+	NNAccel* m = (NNAccel*) nnModule;
+	return m->wait_for_job(async_handle, max_wait_milliseconds);
+}
+
+int NAGetObjectDetections(void* nnModule, void* async_handle, uint32_t max_wait_milliseconds, int maxDetections, NNMObjectDetection* detections, int* numDetections) {
+	NNAccel* m = (NNAccel*) nnModule;
+	return m->get_object_detections(async_handle, max_wait_milliseconds, maxDetections, detections, numDetections);
+}
+
+void NAFinishRun(void* nnModule, void* async_handle) {
+	NNAccel* m = (NNAccel*) nnModule;
+	m->finish_run(async_handle);
+}
+}

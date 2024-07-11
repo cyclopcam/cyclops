@@ -1,4 +1,4 @@
-# Modules
+# Neural Network Accelerators
 
 In order to solve the icky problem of shipping a binary that uses rare hardware
 facilities, I decided to make an dynamically loadable NN module system.

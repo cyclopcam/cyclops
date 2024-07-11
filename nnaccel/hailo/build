@@ -6,7 +6,7 @@ mkdir -p bin
 
 HAILO_RT_HEADER=/usr/include/hailo/hailort.h
 BIN_DIR=bin
-CXX_FLAGS="-std=c++17 -fPIC -Wall -Werror"
+CXX_FLAGS="-std=c++17 -fPIC -Wall -Werror -O2"
 
 if [ ! -f "$HAILO_RT_HEADER" ]; then
 	echo "Unable to find '$HAILO_RT_HEADER'"
@@ -20,4 +20,4 @@ echo "Building Hailo support"
 g++ $CXX_FLAGS -c hailo.cpp -o $BIN_DIR/hailo.o
 g++ $CXX_FLAGS -c defs.cpp -o $BIN_DIR/defs.o
 #ar rcs $BIN_DIR/cyhailo.a $BIN_DIR/hailo.o $BIN_DIR/defs.o
-g++ -shared -o $BIN_DIR/libcyhailo.so $BIN_DIR/hailo.o $BIN_DIR/defs.o -lhailort
+g++ -shared -o $BIN_DIR/libcyclopshailo.so $BIN_DIR/hailo.o $BIN_DIR/defs.o -lhailort
