@@ -23,6 +23,8 @@ type ModelSetup struct {
 	BatchSize int
 }
 
+// Load an NN accelerator.
+// At present, the only accelerator we have is "hailo"
 func Load(accelName string) (*NNAccel, error) {
 	tryPaths := []string{
 		// When we get to binary deployment time, then we'll figure out where to place
@@ -66,7 +68,6 @@ func (m *NNAccel) StatusToErr(status C.int) error {
 		return errors.New(C.GoString(C.NAStatusStr(m.handle, status)))
 	}
 	return nil
-
 }
 
 func (m *Model) Close() {

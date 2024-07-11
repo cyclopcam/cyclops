@@ -7,6 +7,9 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/nnaccel"
 )
 
+// To build C++ and run:
+// cd nnaccel/hailo && ./build && cd ../.. && go run debug/nnaccel_hailo/testhailo.go
+
 func main() {
 	m, err := nnaccel.Load("hailo")
 	if err != nil {

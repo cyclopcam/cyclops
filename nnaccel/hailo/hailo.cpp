@@ -82,19 +82,19 @@ int nna_load_model(const char* filename, const NNModelSetup* setup, void** model
 	//configured_infer_model = nullptr;
 
 	// Create infer bindings
-	//Expected<ConfiguredInferModel::Bindings> bindings_exp = configured_infer_model->create_bindings();
-	//if (!bindings_exp) {
-	//	//LOG_ERROR("Failed to create infer bindings, status = " << bindings_exp.status());
-	//	return _make_own_status(bindings_exp.status());
-	//}
+	Expected<ConfiguredInferModel::Bindings> bindings_exp = configured_infer_model->create_bindings();
+	if (!bindings_exp) {
+		//LOG_ERROR("Failed to create infer bindings, status = " << bindings_exp.status());
+		return _make_own_status(bindings_exp.status());
+	}
 
 	NNModel* m              = new NNModel();
 	m->Device               = std::move(vdevice);
 	m->BatchSize            = setup->BatchSize;
 	m->InferModel           = infer_model;
 	m->ConfiguredInferModel = configured_infer_model;
-	//m->Bindings             = std::move(bindings_exp.release());
-	*model = m;
+	m->Bindings             = std::move(bindings_exp.release());
+	*model                  = m;
 
 	//debug_printf("Users of configured_infer_model: %d\n", (int) configured_infer_model.use_count());
 
