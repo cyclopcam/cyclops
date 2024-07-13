@@ -1,7 +1,7 @@
 package hailotest
 
 import (
-	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 	"unsafe"
@@ -12,19 +12,76 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestObjectDetection(t *testing.T) {
+const repoRoot = "../../.."
+
+// modelName is eg "yolov8s"
+func loadModel(t *testing.T, modelName string) *nnaccel.Model {
 	device, err := nnaccel.Load("hailo")
 	require.NoError(t, err)
-
-	fmt.Printf("Hailo module loaded\n")
 
 	setup := nnaccel.ModelSetup{
 		BatchSize: 1,
 	}
-	model, err := device.LoadModel("../../../models/hailo/8L/yolov8s.hef", &setup)
+	model, err := device.LoadModel(filepath.Join(repoRoot, "models/hailo/8L/"+modelName+".hef"), &setup)
 	require.NoError(t, err)
 
-	img, err := cimg.ReadFile("../../../testdata/yard-640x640.jpg")
+	return model
+}
+
+func BenchmarkObjectDetection(b *testing.B) {
+	modelName := "yolov8s"
+	batchSize := 1
+
+	device, _ := nnaccel.Load("hailo")
+	setup := nnaccel.ModelSetup{
+		BatchSize: batchSize,
+	}
+	model, _ := device.LoadModel(filepath.Join(repoRoot, "models/hailo/8L/"+modelName+".hef"), &setup)
+	img, _ := cimg.ReadFile(filepath.Join(repoRoot, "testdata/yard-640x640.jpg"))
+	rgb := img.ToRGB()
+	batch := make([]byte, batchSize*img.Width*img.Height*img.NChan())
+	for i := 0; i < batchSize; i++ {
+		copy(batch[i*img.Width*img.Height*img.NChan():], rgb.Pixels)
+	}
+
+	times := [4]time.Duration{}
+
+	for i := 0; i < b.N+1; i++ {
+		if i == 1 {
+			// The first inference run is slow
+			b.ResetTimer()
+		}
+		t1 := time.Now()
+		job, _ := model.Run(batchSize, img.Width, img.Height, img.NChan(), unsafe.Pointer(&batch[0]))
+		t2 := time.Now()
+		job.Wait(time.Second)
+		t3 := time.Now()
+		job.GetObjectDetections()
+		t4 := time.Now()
+		job.Close()
+		t5 := time.Now()
+
+		if i >= 1 {
+			times[0] += t2.Sub(t1)
+			times[1] += t3.Sub(t2)
+			times[2] += t4.Sub(t3)
+			times[3] += t5.Sub(t4)
+		}
+	}
+
+	for i := 0; i < len(times); i++ {
+		times[i] = times[i] / time.Duration(b.N)
+	}
+	b.Logf("Segment times: %v, %v, %v, %v", times[0], times[1], times[2], times[3])
+	b.Logf("FPS:           %v (%v / %v)", float64(b.N)/float64(b.Elapsed().Seconds()), b.N, b.Elapsed().Seconds())
+
+	model.Close()
+}
+
+func TestObjectDetection(t *testing.T) {
+	model := loadModel(t, "yolov8s")
+
+	img, err := cimg.ReadFile(filepath.Join(repoRoot, "testdata/yard-640x640.jpg"))
 	require.NoError(t, err)
 	rgb := img.ToRGB() // might already be RGB, but just to be sure
 
