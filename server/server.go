@@ -90,7 +90,7 @@ type StartupError struct {
 }
 
 // Create a new server, load config, start cameras, and listen on HTTP
-func NewServer(configDBFilename string, serverFlags int, explicitPrivateKey, kernelWGSecret string) (*Server, error) {
+func NewServer(logger log.Log, configDBFilename string, serverFlags int, explicitPrivateKey, kernelWGSecret string) (*Server, error) {
 	log, err := log.NewLog()
 	if err != nil {
 		return nil, err

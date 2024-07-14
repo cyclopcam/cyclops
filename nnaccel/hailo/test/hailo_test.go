@@ -15,28 +15,30 @@ import (
 const repoRoot = "../../.."
 
 // modelName is eg "yolov8s"
-func loadModel(t *testing.T, modelName string) *nnaccel.Model {
+func loadModel(modelName string, batchSize int) (*nnaccel.Accelerator, *nnaccel.Model, error) {
 	device, err := nnaccel.Load("hailo")
-	require.NoError(t, err)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	setup := nnaccel.ModelSetup{
-		BatchSize: 1,
+		BatchSize: batchSize,
 	}
-	model, err := device.LoadModel(filepath.Join(repoRoot, "models/hailo/8L/"+modelName+".hef"), &setup)
-	require.NoError(t, err)
+	model, err := device.LoadModel(filepath.Join(repoRoot, "models"), modelName, &setup)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	return model
+	return device, model, nil
 }
 
 func BenchmarkObjectDetection(b *testing.B) {
 	modelName := "yolov8s"
 	batchSize := 1
 
-	device, _ := nnaccel.Load("hailo")
-	setup := nnaccel.ModelSetup{
-		BatchSize: batchSize,
-	}
-	model, _ := device.LoadModel(filepath.Join(repoRoot, "models/hailo/8L/"+modelName+".hef"), &setup)
+	_, model, err := loadModel(modelName, batchSize)
+	require.NoError(b, err)
+
 	img, _ := cimg.ReadFile(filepath.Join(repoRoot, "testdata/yard-640x640.jpg"))
 	rgb := img.ToRGB()
 	batch := make([]byte, batchSize*img.Width*img.Height*img.NChan())
@@ -45,7 +47,7 @@ func BenchmarkObjectDetection(b *testing.B) {
 	}
 
 	// The first inference run is slow, so don't include that in the benchmark
-	job, _ := model.Run(batchSize, img.Width, img.Height, img.NChan(), unsafe.Pointer(&batch[0]))
+	job, _ := model.Run(batchSize, img.Width, img.Height, img.NChan(), 0, unsafe.Pointer(&batch[0]))
 	job.Wait(5 * time.Second)
 	job.Close()
 	b.ResetTimer()
@@ -63,7 +65,7 @@ func BenchmarkObjectDetection(b *testing.B) {
 		var job *nnaccel.AsyncJob
 		for i := 0; i < 20; i++ {
 			var err error
-			job, err = model.Run(batchSize, img.Width, img.Height, img.NChan(), unsafe.Pointer(&batch[0]))
+			job, err = model.Run(batchSize, img.Width, img.Height, img.NChan(), 0, unsafe.Pointer(&batch[0]))
 			if err == nil {
 				break
 			} else if i == 19 {
@@ -108,13 +110,16 @@ func BenchmarkObjectDetection(b *testing.B) {
 }
 
 func TestObjectDetection(t *testing.T) {
-	model := loadModel(t, "yolov8s")
+	_, model, err := loadModel("yolov8s", 1)
+	require.NoError(t, err)
 
 	img, err := cimg.ReadFile(filepath.Join(repoRoot, "testdata/yard-640x640.jpg"))
 	require.NoError(t, err)
 	rgb := img.ToRGB() // might already be RGB, but just to be sure
 
-	job, err := model.Run(1, img.Width, img.Height, img.NChan(), unsafe.Pointer(&rgb.Pixels[0]))
+	// 1st run, where everything is as straightforward and 'default' as possible
+
+	job, err := model.Run(1, img.Width, img.Height, img.NChan(), 0, unsafe.Pointer(&rgb.Pixels[0]))
 	require.NoError(t, err)
 
 	// Wait for async job to complete
@@ -131,6 +136,30 @@ func TestObjectDetection(t *testing.T) {
 		{Class: 0, Box: nn.Rect{X: 452, Y: 244, Width: 75, Height: 222}},
 		{Class: 2, Box: nn.Rect{X: 61, Y: 205, Width: 336, Height: 159}},
 	}
+	require.Equal(t, len(expectDets), len(dets))
+	for i := 0; i < len(expectDets); i++ {
+		//t.Logf("iou %v\n", expectDets[i].Box.IOU(dets[i].Box))
+		require.Equal(t, expectDets[i].Class, dets[i].Class)
+		require.GreaterOrEqualf(t, expectDets[i].Box.IOU(dets[i].Box), float32(0.9), "IOU too low")
+	}
+
+	// Test a 2nd run, where we send a crop of the image
+
+	// But first, we create a LARGER image, because we can't send the NN an image that is not
+	// the exact size it expected.
+	bigImg := cimg.NewImage(img.Width+64, img.Height+64, cimg.PixelFormatRGB)
+	err = bigImg.CopyImage(rgb, 32, 32)
+	require.NoError(t, err)
+
+	// And then out of the larger image, we crop a 640x640 rectangle.
+	// This tests the ability of the NN accelerator to handle a stride that is not equal to width*nchan.
+	cropRect := nn.MakeRect(32, 32, img.Width, img.Height)
+	cropped := nn.WholeImage(bigImg.NChan(), bigImg.Pixels, bigImg.Width, bigImg.Height).Crop(cropRect.X, cropRect.Y, cropRect.X2(), cropRect.Y2())
+	require.Equal(t, img.Width, cropped.CropWidth)
+	require.Equal(t, img.Height, cropped.CropHeight)
+	dets, err = model.DetectObjects(cropped, nn.NewDetectionParams())
+	require.NoError(t, err)
+
 	require.Equal(t, len(expectDets), len(dets))
 	for i := 0; i < len(expectDets); i++ {
 		//t.Logf("iou %v\n", expectDets[i].Box.IOU(dets[i].Box))

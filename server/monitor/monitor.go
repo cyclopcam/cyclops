@@ -160,7 +160,7 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	modelName := "yolov8s"
 	logger.Infof("Loading NN model '%v'", modelName)
 
-	detector, err := nnload.LoadModel(filepath.Join(basePath, modelName), nnThreadingModel)
+	detector, err := nnload.LoadModel(logger, basePath, modelName, nnThreadingModel)
 	if err != nil {
 		return nil, err
 	}

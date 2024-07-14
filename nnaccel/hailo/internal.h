@@ -23,6 +23,24 @@ inline cyStatus _make_own_status(hailo_status s) {
 	}
 }
 
+// List of buffers that are freed by our destructor
+class BufferList {
+public:
+	std::vector<void*> Buffers;
+
+	BufferList& operator=(BufferList&& b) = default;
+
+	~BufferList() {
+		for (auto b : Buffers) {
+			free(b);
+		}
+	}
+
+	void Add(void* p) {
+		Buffers.push_back(p);
+	}
+};
+
 struct NNModel {
 	int                                            BatchSize = 0;
 	std::unique_ptr<hailort::VDevice>              Device;
@@ -49,11 +67,6 @@ public:
 		Format = format;
 	}
 
-	~OutTensor() {
-		//free(Data);
-		//Data = nullptr;
-	}
-
 	static bool SortFunction(const OutTensor& l, const OutTensor& r) {
 		return l.Shape.width < r.Shape.width;
 	}
@@ -65,7 +78,7 @@ public:
 	NNModel*               Model;
 	std::vector<OutTensor> OutTensors;
 	hailort::AsyncInferJob HailoJob;
-	//hailort::AsyncInferJob* HailoJob = nullptr;
+	BufferList             Buffers;
 
 	OwnAsyncJobHandle(NNModel* model, std::vector<OutTensor>&& outTensors, hailort::AsyncInferJob&& hailoJob) {
 		Model      = model;
@@ -74,14 +87,12 @@ public:
 	}
 
 	~OwnAsyncJobHandle() {
-		// Wait for the job to finish.
+		// Assign a new AsyncInferJob to HailoJob, thereby invoking the destructor
+		// of our own HailoJob.
+		// This will wait for the job to finish.
 		// We can't free the memory until we're sure that the job is finished.
 		HailoJob = hailort::AsyncInferJob();
 
-		for (auto& outTensor : OutTensors) {
-			free(outTensor.Data);
-			outTensor.Data = nullptr;
-		}
 		//printf("~OwnAsyncJobHandle 1\n");
 		//fflush(stdout);
 		//OutTensors = std::vector<OutTensor>();

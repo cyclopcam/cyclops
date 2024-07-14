@@ -25,11 +25,11 @@ typedef struct _NNAObjectDetection {
 	int      Height;
 } NNAObjectDetection;
 
-typedef int (*nna_load_model_func)(const char* filename, const NNModelSetup* setup, void** model);
+typedef int (*nna_load_model_func)(const char* modelDir, const char* modelName, const NNModelSetup* setup, void** model);
 typedef void (*nna_close_model_func)(void* model);
 typedef void (*nna_model_info_func)(void* model, NNModelInfo* info);
 typedef const char* (*nna_status_str_func)(int s);
-typedef int (*nna_run_model_func)(void* model, int batchSize, int width, int height, int nchan, const void* data, void** job_handle);
+typedef int (*nna_run_model_func)(void* model, int batchSize, int width, int height, int nchan, int stride, const void* data, void** job_handle);
 typedef int (*nna_wait_for_job_func)(void* job_handle, uint32_t max_wait_milliseconds);
 typedef int (*nna_get_object_detections_func)(void* job_handle, size_t maxDetections, NNAObjectDetection** detections, size_t* numDetections);
 typedef void (*nna_close_job_func)(void* job_handle);
@@ -38,11 +38,11 @@ typedef void (*nna_close_job_func)(void* job_handle);
 extern "C" {
 #endif
 
-int         nna_load_model(const char* filename, const NNModelSetup* setup, void** model);
+int         nna_load_model(const char* modelDir, const char* modelName, const NNModelSetup* setup, void** model);
 void        nna_close_model(void* model);
 void        nna_model_info(void* model, NNModelInfo* info);
 const char* nna_status_str(int s);
-int         nna_run_model(void* model, int batchSize, int width, int height, int nchan, const void* data, void** job_handle);
+int         nna_run_model(void* model, int batchSize, int width, int height, int nchan, int stride, const void* data, void** job_handle);
 int         nna_wait_for_job(void* job_handle, uint32_t max_wait_milliseconds);
 int         nna_get_object_detections(void* job_handle, size_t maxDetections, NNAObjectDetection** detections, size_t* numDetections);
 void        nna_close_job(void* job_handle);

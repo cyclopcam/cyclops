@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/akamensky/argparse"
+	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 )
@@ -33,6 +35,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	logger, _ := log.NewLog()
+
 	options := nn.InferenceOptions{
 		MinSize:        *minSize,
 		MaxVideoHeight: *maxVideoHeight,
@@ -42,7 +46,7 @@ func main() {
 		StdOutProgress: true,
 	}
 
-	model, err := nnload.LoadModel(*modelFile, nn.ThreadingModeParallel)
+	model, err := nnload.LoadModel(logger, filepath.Dir(*modelFile), filepath.Base(*modelFile), nn.ThreadingModeParallel)
 	check(err)
 
 	videoLabels, err := nn.RunInferenceOnVideoFile(model, *input, options)

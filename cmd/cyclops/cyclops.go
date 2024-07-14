@@ -9,6 +9,8 @@ import (
 	"github.com/akamensky/argparse"
 	"github.com/coreos/go-systemd/daemon"
 	"github.com/cyclopcam/cyclops/pkg/kernelwg"
+	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/server"
 )
 
@@ -42,6 +44,12 @@ func main() {
 		return
 	}
 
+	logger, err := log.NewLog()
+	if err != nil {
+		fmt.Printf("Failed to create logger: %v\n", err)
+		os.Exit(1)
+	}
+
 	home, _ := os.UserHomeDir()
 	if home == "" {
 		// I don't know how this would happen in practice.. maybe some kind of system account.
@@ -55,16 +63,16 @@ func main() {
 	if !*disableVPN {
 		// We are running as the cyclops server, and our first step is to launch the kernel-mode wireguard sub-process.
 		if err, kernelWGSecret = kernelwg.LaunchRootModeSubProcess(); err != nil {
-			fmt.Printf("Error launching kernel wireguard sub-process: %v\n", err)
-			fmt.Printf("You can use --novpn to disable the automatic VPN system.\n")
+			logger.Errorf("Error launching kernel wireguard sub-process: %v", err)
+			logger.Errorf("You can use --novpn to disable the automatic VPN system.")
 			os.Exit(1)
 		}
 		if *username == "" && os.Getenv("SUDO_USER") != "" {
 			*username = os.Getenv("SUDO_USER")
 		}
 		if err, home = kernelwg.DropPrivileges(*username); err != nil {
-			fmt.Printf("Error dropping privileges to username '%v': %v\n", *username, err)
-			fmt.Printf("You can use --novpn to disable the automatic VPN system.\n")
+			logger.Errorf("Error dropping privileges to username '%v': %v", *username, err)
+			logger.Errorf("You can use --novpn to disable the automatic VPN system.")
 			os.Exit(1)
 		}
 	}
@@ -78,10 +86,14 @@ func main() {
 	if *ownIPStr != "" {
 		ownIP = net.ParseIP(*ownIPStr)
 		if ownIP == nil {
-			fmt.Printf("Invalid IP address: %v\n", *ownIPStr)
+			logger.Errorf("Invalid IP address: %v", *ownIPStr)
 			os.Exit(1)
 		}
 	}
+
+	// Here we dynamically optional load shared libraries that accelerate neural network
+	// inference. So we only do this once, during process startup.
+	nnload.LoadAccelerators(logger)
 
 	// Run in a continuous loop, so that the server can restart itself
 	// due to major configuration changes.
@@ -93,9 +105,9 @@ func main() {
 		if *hotReloadWWW {
 			flags |= server.ServerFlagHotReloadWWW
 		}
-		srv, err := server.NewServer(*configFile, flags, *privateKey, kernelWGSecret)
+		srv, err := server.NewServer(logger, *configFile, flags, *privateKey, kernelWGSecret)
 		if err != nil {
-			fmt.Printf("%v\n", err)
+			logger.Errorf("%v", err)
 			os.Exit(1)
 		}
 		if ownIP != nil {
@@ -113,7 +125,7 @@ func main() {
 		// SYNC-SERVER-PORT
 		err = srv.ListenHTTP(":8080")
 		if err != nil {
-			fmt.Printf("ListenHTTP returned: %v\n", err)
+			logger.Infof("ListenHTTP returned: %v\n", err)
 		}
 		err = <-srv.ShutdownComplete
 		//fmt.Printf("Server sent ShutdownComplete: %v\n", err)

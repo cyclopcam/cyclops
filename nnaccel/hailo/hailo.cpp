@@ -6,15 +6,11 @@
 #include <hailo/vdevice.hpp>
 #include <hailo/infer_model.hpp>
 #include <chrono>
+#include <string.h>
 
 #include "internal.h"
 
-//struct NNModel {
-//	int                                            BatchSize = 0;
-//	std::shared_ptr<hailort::InferModel>           InferModel;
-//	std::shared_ptr<hailort::ConfiguredInferModel> ConfiguredInferModel;
-//	hailort::ConfiguredInferModel::Bindings        Bindings;
-//};
+void CopyImageToDenseBuffer(const void* image, int width, int height, int nchan, int stride, void* denseBuffer);
 
 void _model_input_sizes(hailort::InferModel* model, int& width, int& height) {
 	width  = model->inputs()[0].shape().width;
@@ -38,7 +34,7 @@ NNModel::~NNModel() {
 
 extern "C" {
 
-int nna_load_model(const char* filename, const NNModelSetup* setup, void** model) {
+int nna_load_model(const char* modelDir, const char* modelName, const NNModelSetup* setup, void** model) {
 	using namespace hailort;
 	using namespace std::chrono_literals;
 
@@ -56,8 +52,33 @@ int nna_load_model(const char* filename, const NNModelSetup* setup, void** model
 
 	debug_printf("hailo nna_load_model 2\n");
 
+	std::string fullpath;
+	if (!modelDir || modelDir[0] == 0) {
+		// absolute path specified by modelName
+		fullpath = modelName;
+	} else {
+		// combine modelDir and modelName
+		// eg
+		//   modelDir = /var/lib/cyclops/models
+		//   modelName = "yolov8s"
+		//   fullpath = /var/lib/cyclops/models/hailo/8L/yolov8s.hef
+		// So!
+		// Here we add "hailo/8L" to the model directory. Only we can do this, because only we
+		// know that we have an 8L accelerator. If we had support for others, then we'd have
+		// more model directories, eg hailo/15
+		fullpath = modelDir;
+		if (fullpath.back() != '/') {
+			fullpath += "/";
+		}
+		fullpath += "hailo/8L/";
+		fullpath += modelName;
+		fullpath += ".hef";
+	}
+
+	debug_printf("hailo nna_load_model fullpath = %s\n", fullpath.c_str());
+
 	// Create infer model from HEF file.
-	Expected<std::shared_ptr<InferModel>> infer_model_exp = vdevice->create_infer_model(filename);
+	Expected<std::shared_ptr<InferModel>> infer_model_exp = vdevice->create_infer_model(fullpath.c_str());
 	if (!infer_model_exp) {
 		return _make_own_status(infer_model_exp.status());
 	}
@@ -128,7 +149,7 @@ const char* nna_status_str(int _s) {
 	return _cyhailo_status_str_own(s);
 }
 
-int nna_run_model(void* model, int batchSize, int width, int height, int nchan, const void* data, void** asyncHandle) {
+int nna_run_model(void* model, int batchSize, int width, int height, int nchan, int stride, const void* data, void** asyncHandle) {
 	using namespace hailort;
 	using namespace std::chrono_literals;
 
@@ -141,6 +162,9 @@ int nna_run_model(void* model, int batchSize, int width, int height, int nchan, 
 	size_t             input_frame_size = m->InferModel->input(input_name)->get_frame_size();
 
 	// Validate inputs
+	if (stride == 0) {
+		stride = width * nchan;
+	}
 	NNModelInfo info;
 	nna_model_info(model, &info);
 	if (batchSize != info.BatchSize || width != info.Width || height != info.Height || nchan != info.NChan) {
@@ -150,7 +174,21 @@ int nna_run_model(void* model, int batchSize, int width, int height, int nchan, 
 		return cySTATUS_INVALID_INPUT_DIMENSIONS;
 	}
 
-	auto status = m->Bindings.input(input_name)->set_buffer(MemoryView((void*) data, input_frame_size));
+	BufferList buffers;
+
+	uint8_t* denseInput = nullptr;
+	if (stride != width * nchan) {
+		denseInput = (uint8_t*) malloc(batchSize * width * height * nchan);
+		if (!denseInput) {
+			return cySTATUS_OUT_OF_CPU_MEMORY;
+		}
+		buffers.Add(denseInput);
+		CopyImageToDenseBuffer(data, width, height, nchan, stride, denseInput);
+	} else {
+		denseInput = (uint8_t*) data;
+	}
+
+	auto status = m->Bindings.input(input_name)->set_buffer(MemoryView(denseInput, input_frame_size));
 	if (status != HAILO_SUCCESS) {
 		return _make_own_status(status);
 	}
@@ -162,16 +200,15 @@ int nna_run_model(void* model, int batchSize, int width, int height, int nchan, 
 	for (auto const& output_name : m->InferModel->get_output_names()) {
 		size_t output_size = m->InferModel->output(output_name)->get_frame_size();
 
-		//std::shared_ptr<uint8_t> output_buffer = allocator.Allocate(output_size);
 		uint8_t* outputBuffer = (uint8_t*) malloc(output_size);
 		if (!outputBuffer) {
 			//printf("Could not allocate an output buffer!");
 			return cySTATUS_OUT_OF_CPU_MEMORY;
 		}
+		buffers.Add(outputBuffer);
 
 		status = m->Bindings.output(output_name)->set_buffer(MemoryView(outputBuffer, output_size));
 		if (status != HAILO_SUCCESS) {
-			free(outputBuffer);
 			//printf("Failed to set infer output buffer, status = %d", (int) status);
 			return _make_own_status(status);
 		}
@@ -215,7 +252,9 @@ int nna_run_model(void* model, int batchSize, int width, int height, int nchan, 
 	// Our destructor is supposed to run on nna_finish_run().
 	//job->detach();
 
-	*asyncHandle = new OwnAsyncJobHandle(m, std::move(outputTensors), std::move(job_exp.release()));
+	OwnAsyncJobHandle* myJob = new OwnAsyncJobHandle(m, std::move(outputTensors), std::move(job_exp.release()));
+	myJob->Buffers           = std::move(buffers);
+	*asyncHandle             = myJob;
 
 	return cySTATUS_OK;
 }
@@ -314,4 +353,16 @@ void nna_close_job(void* job_handle) {
 	//printf("nna_close_job 3\n");
 	//fflush(stdout);
 }
+}
+
+void CopyImageToDenseBuffer(const void* image, int width, int height, int nchan, int stride, void* denseBuffer) {
+	const uint8_t* srcRow    = (const uint8_t*) image;
+	uint8_t*       dstRow    = (uint8_t*) denseBuffer;
+	int            inStride  = stride;
+	int            outStride = width * nchan;
+	for (int y = 0; y < height; y++) {
+		memcpy(dstRow, srcRow, outStride);
+		srcRow += inStride;
+		dstRow += outStride;
+	}
 }

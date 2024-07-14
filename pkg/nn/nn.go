@@ -39,6 +39,7 @@ func NewDetectionParams() *DetectionParams {
 // In C we would represent this as a pointer and a stride, but since that's not memory safe,
 // we must resort to this kind of thing. Once we get into the C world for NN inference, then
 // we can use strides etc.
+// To create an ImageCrop, start with WholeImage(), and then use Crop() to get a sub-crop.
 type ImageCrop struct {
 	NChan       int    // Number of channels (eg 3 for RGB)
 	Pixels      []byte // The whole image

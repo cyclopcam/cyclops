@@ -65,10 +65,10 @@ char* LoadNNAccel(const char* filename, void** module) {
 	return nullptr;
 }
 
-int NALoadModel(void* nnModule, const char* filename, const NNModelSetup* setup, void** model) {
+int NALoadModel(void* nnModule, const char* modelDir, const char* modelName, const NNModelSetup* setup, void** model) {
 	NNAccel* m = (NNAccel*) nnModule;
 	//printf("NALoadModel %p\n", m->load_model);
-	return m->load_model(filename, setup, model);
+	return m->load_model(modelDir, modelName, setup, model);
 }
 
 void NACloseModel(void* nnModule, void* model) {
@@ -87,9 +87,9 @@ const char* NAStatusStr(void* nnModule, int s) {
 	return m->status_str(s);
 }
 
-int NARunModel(void* nnModule, void* model, int batchSize, int width, int height, int nchan, const void* data, void** job_handle) {
+int NARunModel(void* nnModule, void* model, int batchSize, int width, int height, int nchan, int stride, const void* data, void** job_handle) {
 	NNAccel* m = (NNAccel*) nnModule;
-	return m->run_model(model, batchSize, width, height, nchan, data, job_handle);
+	return m->run_model(model, batchSize, width, height, nchan, stride, data, job_handle);
 }
 
 int NAWaitForJob(void* nnModule, void* job_handle, uint32_t max_wait_milliseconds) {

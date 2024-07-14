@@ -50,7 +50,7 @@ func main() {
 		*serverUrl = (*serverUrl)[:len(*serverUrl)-1]
 	}
 
-	model, err := nnload.LoadModel(*modelFilename, nn.ThreadingModeParallel)
+	model, err := nnload.LoadModel(logger, filepath.Dir(*modelFilename), filepath.Base(*modelFilename), nn.ThreadingModeParallel)
 	if err != nil {
 		logger.Errorf("Failed to load NN model '%v': %v", *modelFilename, err)
 		os.Exit(1)
