@@ -269,6 +269,8 @@ int nna_get_object_detections(void* job_handle, size_t maxDetections, NNAObjectD
 	*detections    = nullptr;
 	*numDetections = 0;
 
+	// We expect the caller to have used nna_wait_for_job() before calling this function, but we call wait(0)
+	// here for safety, and return a timeout error if the job is not finished.
 	OwnAsyncJobHandle* ownJob                = (OwnAsyncJobHandle*) job_handle;
 	uint32_t           max_wait_milliseconds = 0;
 	hailo_status       status                = ownJob->HailoJob.wait(std::chrono::milliseconds(max_wait_milliseconds));

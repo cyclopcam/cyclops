@@ -17,3 +17,8 @@ cmake ../prj/cmake
 make -j2
 
 cd ../..
+
+cd nnaccel/hailo
+./build
+
+cd ../..
