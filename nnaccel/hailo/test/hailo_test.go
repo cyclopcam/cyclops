@@ -44,36 +44,65 @@ func BenchmarkObjectDetection(b *testing.B) {
 		copy(batch[i*img.Width*img.Height*img.NChan():], rgb.Pixels)
 	}
 
-	times := [4]time.Duration{}
+	// The first inference run is slow, so don't include that in the benchmark
+	job, _ := model.Run(batchSize, img.Width, img.Height, img.NChan(), unsafe.Pointer(&batch[0]))
+	job.Wait(5 * time.Second)
+	job.Close()
+	b.ResetTimer()
 
-	for i := 0; i < b.N+1; i++ {
-		if i == 1 {
-			// The first inference run is slow
-			b.ResetTimer()
+	maxParallelJobs := 1
+	jobQueue := make(chan bool, maxParallelJobs-1)
+	doneQueue := make(chan bool, 10+b.N)
+	runTicket := make(chan bool, maxParallelJobs)
+	for i := 0; i < maxParallelJobs; i++ {
+		runTicket <- true
+	}
+
+	runJob := func() {
+		<-runTicket
+		var job *nnaccel.AsyncJob
+		for i := 0; i < 20; i++ {
+			var err error
+			job, err = model.Run(batchSize, img.Width, img.Height, img.NChan(), unsafe.Pointer(&batch[0]))
+			if err == nil {
+				break
+			} else if i == 19 {
+				panic(err)
+			}
+			b.Logf("Sleeping for %v", time.Millisecond*(1<<i))
+			time.Sleep(time.Millisecond * (1 << i))
 		}
-		t1 := time.Now()
-		job, _ := model.Run(batchSize, img.Width, img.Height, img.NChan(), unsafe.Pointer(&batch[0]))
-		t2 := time.Now()
 		job.Wait(time.Second)
-		t3 := time.Now()
 		job.GetObjectDetections()
-		t4 := time.Now()
 		job.Close()
-		t5 := time.Now()
+		runTicket <- true
+		doneQueue <- true
+	}
 
-		if i >= 1 {
-			times[0] += t2.Sub(t1)
-			times[1] += t3.Sub(t2)
-			times[2] += t4.Sub(t3)
-			times[3] += t5.Sub(t4)
+	// consume the jobQueue
+	go func() {
+		for {
+			v := <-jobQueue
+			if !v {
+				// exit
+				return
+			}
+			go runJob()
 		}
+	}()
+
+	// fill the queue with N requests
+	for i := 0; i < b.N; i++ {
+		jobQueue <- true // run a job
+	}
+	jobQueue <- false // exit
+
+	// drain doneQueue
+	for i := 0; i < b.N; i++ {
+		<-doneQueue
 	}
 
-	for i := 0; i < len(times); i++ {
-		times[i] = times[i] / time.Duration(b.N)
-	}
-	b.Logf("Segment times: %v, %v, %v, %v", times[0], times[1], times[2], times[3])
-	b.Logf("FPS:           %v (%v / %v)", float64(b.N)/float64(b.Elapsed().Seconds()), b.N, b.Elapsed().Seconds())
+	b.Logf("FPS: %v (%v / %v)", float64(b.N)/float64(b.Elapsed().Seconds()), b.N, b.Elapsed().Seconds())
 
 	model.Close()
 }
