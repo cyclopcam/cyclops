@@ -67,6 +67,7 @@ func (s *Server) httpConfigChangeCamera(w http.ResponseWriter, r *http.Request, 
 	cfgOld := configdb.Camera{}
 	www.Check(s.configDB.DB.First(&cfgOld, cfgNew.ID).Error)
 
+	cfgNew.LongLivedName = cfgOld.LongLivedName
 	cfgNew.CreatedAt = cfgOld.CreatedAt
 
 	// Update DB

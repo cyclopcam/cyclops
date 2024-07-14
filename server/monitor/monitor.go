@@ -131,10 +131,15 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	// using OpenMP and whatever other threading mechanisms NCNN uses internally.
 	numCPU := runtime.NumCPU()
 	nnThreads := numCPU
-	if numCPU > 4 {
+	if nnload.HaveAccelerator() {
+		// If we can do model parallelism with NN accelerators, then we'll probably
+		// use some kind of queue issued by a single CPU thread, instead of having
+		// a bunch of CPU threads hitting the accelerator.
+		nnThreads = 1
+	} else if numCPU > 4 {
 		nnThreads = numCPU / 2
 	} else {
-		// Raspberry Pi
+		// Raspberry Pi, or some other SBC (4 cores)
 		nnThreads = 1
 	}
 	nnThreadingModel := nn.ThreadingModeSingle
@@ -534,9 +539,27 @@ func (m *Monitor) nnThread() {
 	// the bug of returning the incorrect lastImg for a camera (all cameras
 	// would share the same lastImg).
 
-	detectionParams := nn.NewDetectionParams()
+	// Resizing image for NN inference:
+	// When implementing support for the Hailo8L on Raspberry Pi5, the easiest
+	// thing to do was to use the pretrained YOLOv8 model, which has an input
+	// size of 640x640. Our cameras are typically setup to emit 2nd stream
+	// images as a lower resolution (eg 320 x 256). Until this time, my NCNN
+	// YOLOv8 used an input resolution of 320 x 256, so it perfectly matched
+	// the camera 2nd streams. So my decision at the time of implementing
+	// support for the Hailo8L was to simply add black padding around the
+	// 320x256 images, to make them 640x640. This is not ideal. We should
+	// either be using larger 2nd stream images from the camera, or creating
+	// a custom Hailo8L YOLOv8 model with a smaller input resolution.
+	// But now you know why we do it this way. It's not the best, just the
+	// easiest, an good enough for now.
 
-	for {
+	detectionParams := nn.NewDetectionParams()
+	nnConfig := m.detector.Config()
+	nnWidth := nnConfig.Width
+	nnHeight := nnConfig.Height
+	hasShownResolutionWarning := map[int64]bool{}
+
+	for frameCount := 0; true; frameCount++ {
 		item, ok := <-m.nnThreadQueue
 		if !ok || m.mustStopNNThreads.Load() {
 			break
@@ -545,7 +568,12 @@ func (m *Monitor) nnThread() {
 		rgb := cimg.NewImage(yuv.Width, yuv.Height, cimg.PixelFormatRGB)
 		start := time.Now()
 		yuv.CopyToCImageRGB(rgb)
-		objects, err := m.detector.DetectObjects(nn.WholeImage(rgb.NChan(), rgb.Pixels, rgb.Width, rgb.Height), detectionParams)
+		if (rgb.Width > nnWidth || rgb.Height > nnHeight) && !hasShownResolutionWarning[item.camera.camera.ID()] {
+			hasShownResolutionWarning[item.camera.camera.ID()] = true
+			m.Log.Warnf("Camera %v image size %vx%v is larger than NN input size %vx%v", item.camera.camera.ID(), rgb.Width, rgb.Height, nnWidth, nnHeight)
+		}
+		nnCrop := cropImageForNN(rgb, nnWidth, nnHeight)
+		objects, err := m.detector.DetectObjects(nn.WholeImage(nnCrop.NChan(), nnCrop.Pixels, nnCrop.Width, nnCrop.Height), detectionParams)
 		duration := time.Now().Sub(start)
 		if m.avgTimeNSPerFrameNN.Load() == 0 {
 			m.avgTimeNSPerFrameNN.Store(duration.Nanoseconds())
@@ -583,4 +611,13 @@ func (m *Monitor) nnThread() {
 	}
 
 	m.nnThreadStopWG.Done()
+}
+
+func cropImageForNN(src *cimg.Image, width, height int) *cimg.Image {
+	if src.Width == width && src.Height == height {
+		return src
+	}
+	dst := cimg.NewImage(width, height, src.Format)
+	dst.CopyImage(src, 0, 0)
+	return dst
 }

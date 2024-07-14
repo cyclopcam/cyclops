@@ -1,5 +1,12 @@
 package nnload
 
+// Package nnload wraps up our 'nn' interface layer, and has concrete references to our
+// neural network implementation (eg ncnn), so that you can just call one function to
+// load a model, and not need to know about the implementation details.
+//
+// This is also the place where we detect the presence of an NN accelerator (eg Hailo),
+// and then use that if it is available.
+
 import (
 	"fmt"
 	"os"
@@ -14,12 +21,10 @@ import (
 // If not nil, then we have successfully loaded the Hailo AI accelerator module
 var hailoAccel *nnaccel.Accelerator
 
-// Package nnload wraps up our 'nn' interface layer, and has concrete references to our
-// neural network implementation (eg ncnn), so that you can just call one function to
-// load a model, and not need to know about the implementation details.
-//
-// This is also the place where we detect the presence of an NN accelerator (eg Hailo),
-// and then use that if it is available.
+// Return true if we are using a hardware NN accelerator
+func HaveAccelerator() bool {
+	return hailoAccel != nil
+}
 
 // LoadModel loads a neural network from disk.
 // If the model consists of several files, then filenameBase is the base filename, without the extensions.

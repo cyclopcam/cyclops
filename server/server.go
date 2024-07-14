@@ -129,9 +129,9 @@ func NewServer(logger log.Log, configDBFilename string, serverFlags int, explici
 	// where we can accept new config. Otherwise, the system is bricked if the user enters
 	// invalid config.
 	// Also, when the system first starts up, it won't be configured at all.
-	if err := s.LoadConfigVariables(); err != nil {
-		log.Errorf("%v", err)
-	}
+	//if err := s.LoadConfigVariables(); err != nil {
+	//	log.Errorf("%v", err)
+	//}
 
 	// Since storage location needs to be configured, we can't fail to startup just because we're
 	// unable to access our video archive.
