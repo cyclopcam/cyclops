@@ -27,14 +27,13 @@ func Load(accelName string) (*Accelerator, error) {
 	srcCodeRelPath := "nnaccel/hailo/bin"
 
 	if strings.HasSuffix(cwd, "/nnaccel/hailo/test") {
-		// We're being run as a Go unit test
+		// We're being run as a Go unit test inside nnaccel/hailo/test
 		srcCodeRelPath = "../bin"
 	}
 
 	tryPaths := []string{
-		// When we get to binary deployment time, then we'll figure out where to place
-		// our loadable libraries.
 		srcCodeRelPath, // relative path from the source code root.
+		"/usr/local/lib",
 	}
 	allErrors := strings.Builder{}
 	for _, dir := range tryPaths {

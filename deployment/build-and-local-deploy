@@ -5,18 +5,33 @@
 set -e
 
 SKIP_WWW=0
+SKIP_HAILO=0
+SKIP_NCNN=0
+SKIP_SERVICE_CONFIG=0
 
 while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --skip-www)
-	  SKIP_WWW=1
-	  shift
-	  ;;
-    *)
-      echo "Unknown parameter: $1"
-      exit 1
-      ;;
-  esac
+	case "$1" in
+		--skip-www)
+			SKIP_WWW=1
+			shift
+			;;
+		--skip-hailo)
+			SKIP_HAILO=1
+			shift
+			;;
+		--skip-ncnn)
+			SKIP_NCNN=1
+			shift
+			;;
+		--skip-service-config)
+			SKIP_SERVICE_CONFIG=1
+			shift
+			;;
+		*)
+			echo "Unknown parameter: $1"
+			exit 1
+			;;
+	esac
 done
 
 if ! grep -q cyclops /etc/group; then
@@ -40,14 +55,25 @@ if [ $SKIP_WWW -eq 0 ]; then
 	cd www && npm install && npm run build && cd ..
 fi
 
+if [ $SKIP_HAILO -eq 0 ]; then
+	echo Building Hailo accelerator
+	cd nnacel/hailo && ./build && cd ../..
+fi
+
+if [ $SKIP_NCNN -eq 0 ]; then
+	echo Building NCNN
+	cd ncnn && mkdir -p build && cd build && cmake -DNCNN_SIMPLEOCV=1 .. && make -j2 && cd ../..
+fi
+
 go build -o bin/cyclops cmd/cyclops/*.go
 
 if [ -f /etc/systemd/system/cyclops.service ]; then
 	sudo systemctl stop cyclops
 fi
 
-# Always update .service file to latest
-sudo cp deployment/services/cyclops.service /etc/systemd/system
+if [ $SKIP_SERVICE_CONFIG -eq 0 ]; then
+	sudo cp deployment/services/cyclops.service /etc/systemd/system
+fi
 
 sudo systemctl daemon-reload
 sudo systemctl enable cyclops
@@ -55,9 +81,13 @@ sudo systemctl enable cyclops
 # Copy binaries
 sudo cp bin/cyclops /usr/local/bin/cyclops
 
+if [ -f nnaccel/hailo/bin/libcyclopshailo.so ]; then
+	sudo cp nnaccel/hailo/bin/libcyclopshailo.so /usr/local/lib
+fi
+
 # Copy NN models
 sudo -u cyclops mkdir -p /var/lib/cyclops/models
-sudo -u cyclops cp models/* /var/lib/cyclops/models/
+sudo -u cyclops cp -r models /var/lib/cyclops/
 
 # Start service
 sudo systemctl start cyclops

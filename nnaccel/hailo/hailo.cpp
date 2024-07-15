@@ -17,10 +17,8 @@ void _model_input_sizes(hailort::InferModel* model, int& width, int& height) {
 	height = model->inputs()[0].shape().height;
 }
 
-#define debug_printf printf
-
-// noop
-//#define debug_printf (void)
+//#define debug_printf printf
+#define debug_printf (void)
 
 NNModel::~NNModel() {
 	//debug_printf("~NNModel 1.a\n");
