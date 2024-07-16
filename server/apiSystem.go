@@ -18,8 +18,7 @@ import (
 
 // SYNC-SYSTEM-INFO-JSON
 type systemInfoJSON struct {
-	ReadyError    string         `json:"readyError,omitempty"` // (deprecated) If system is not yet ready to accept cameras, this will be populated
-	StartupErrors []StartupError `json:"startupErrors"`        // This replaces ReadyError. If system is not yet ready to run, these are the errors encountered during startup
+	StartupErrors []StartupError `json:"startupErrors"` // If system is not yet ready to run, these are the errors encountered during startup
 	Cameras       []*camInfoJSON `json:"cameras"`
 }
 
@@ -87,9 +86,6 @@ func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, param
 	}
 	if len(j.StartupErrors) == 0 {
 		j.StartupErrors = make([]StartupError, 0) // create an empty array, so the JSON gets a "[]" instead of "null"
-	}
-	if err := s.IsReady(); err != nil {
-		j.ReadyError = err.Error() // DEPRECATED, replaced by StartupErrors
 	}
 	cameras := []*configdb.Camera{}
 	www.Check(s.configDB.DB.Find(&cameras).Error)

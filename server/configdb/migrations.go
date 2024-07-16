@@ -164,5 +164,11 @@ func Migrations(log log.Log) []migration.Migrator {
 			FROM camera;
 	`))
 
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		DROP TABLE variable;
+		DROP TABLE record_instruction;
+	`))
+
 	return migs
 }

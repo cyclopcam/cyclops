@@ -120,8 +120,6 @@ func main() {
 		// See this article for more details: https://vincent.bernat.ch/en/blog/2017-systemd-golang
 		daemon.SdNotify(false, daemon.SdNotifyReady)
 
-		srv.RunBackgroundRecorderLoop()
-
 		// SYNC-SERVER-PORT
 		err = srv.ListenHTTP(":8080")
 		if err != nil {

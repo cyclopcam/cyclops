@@ -90,48 +90,6 @@ func (s *Server) httpConfigRemoveCamera(w http.ResponseWriter, r *http.Request, 
 	www.SendOK(w)
 }
 
-func (s *Server) httpConfigGetVariableDefinitions(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	www.SendJSON(w, configdb.AllVariables)
-}
-
-func (s *Server) httpConfigGetVariableValues(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	values := []configdb.Variable{}
-	www.Check(s.configDB.DB.Find(&values).Error)
-	www.SendJSON(w, values)
-}
-
-func (s *Server) httpConfigSetVariable(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	keyStr := params.ByName("key")
-	value := ""
-	if r.URL.Query().Has("value") {
-		value = r.URL.Query().Get("value")
-	} else {
-		value = www.ReadString(w, r, 1024*1024)
-	}
-
-	key := configdb.VariableKey(keyStr)
-
-	www.CheckClient(configdb.ValidateVariable(key, value))
-
-	db, err := s.configDB.DB.DB()
-	www.Check(err)
-	_, err = db.Exec("INSERT INTO variable (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value", key, value)
-	www.Check(err)
-
-	s.Log.Infof("Set config variable %v: %v", key, value)
-
-	// If you receive wantRestart:true, then you should call /api/system/restart when you're ready to restart.
-	// You may want to batch a few setVariable calls before restarting.
-	// SYNC-SET-VARIABLE-RESPONSE
-	type Response struct {
-		WantRestart bool `json:"wantRestart"`
-	}
-
-	www.SendJSON(w, &Response{
-		WantRestart: configdb.VariableSetNeedsRestart(key),
-	})
-}
-
 func (s *Server) httpConfigScanNetworkForCameras(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	timeoutMS := www.QueryInt(r, "timeout") // timeout in milliseconds
 	includeExisting := www.QueryInt(r, "includeExisting") == 1

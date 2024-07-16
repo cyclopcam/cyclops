@@ -10,6 +10,7 @@ node_modules
 /server/www
 /android/app/build
 /scripts/proxy/tmp
+/scripts/arc/tmp
 /bin
 /ncnn/build
 /Simd/build

@@ -17,11 +17,9 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/server/arc"
 	"github.com/cyclopcam/cyclops/server/configdb"
-	"github.com/cyclopcam/cyclops/server/eventdb"
 	"github.com/cyclopcam/cyclops/server/livecameras"
 	"github.com/cyclopcam/cyclops/server/monitor"
 	"github.com/cyclopcam/cyclops/server/perfstats"
-	"github.com/cyclopcam/cyclops/server/train"
 	"github.com/cyclopcam/cyclops/server/util"
 	"github.com/cyclopcam/cyclops/server/videodb"
 	"github.com/cyclopcam/cyclops/server/vpn"
@@ -48,10 +46,7 @@ type Server struct {
 	httpServer             *http.Server
 	httpRouter             *httprouter.Router
 	configDB               *configdb.ConfigDB
-	videoDB                *videodb.VideoDB // Can be nil! This is version 2 of this concept, and replaces 'permanentEvents' and 'recentEvents'.
-	permanentEvents        *eventdb.EventDB // Where we store our permanent videos (deprecated)
-	recentEvents           *eventdb.EventDB // Where we store our recent event videos (deprecated)
-	train                  *train.Trainer
+	videoDB                *videodb.VideoDB // Can be nil! If the video path is not accessible, then we can fail to create this.
 	wsUpgrader             websocket.Upgrader
 	monitor                *monitor.Monitor
 	arcCredentialsLock     sync.Mutex
@@ -60,12 +55,6 @@ type Server struct {
 
 	vpnLock sync.Mutex
 	vpn     *vpn.VPN
-
-	recordersLock  sync.Mutex          // Guards access to recorders map
-	recorders      map[int64]*recorder // key is from nextRecorderID
-	nextRecorderID int64
-
-	backgroundRecorders []*backgroundRecorder
 }
 
 const (
@@ -101,8 +90,6 @@ func NewServer(logger log.Log, configDBFilename string, serverFlags int, explici
 		ShutdownComplete:       make(chan error, 1),
 		ShutdownStarted:        make(chan bool),
 		HotReloadWWW:           (serverFlags & ServerFlagHotReloadWWW) != 0,
-		recorders:              map[int64]*recorder{},
-		nextRecorderID:         1,
 		monitorToVideoDBClosed: make(chan bool),
 	}
 	if cfg, err := configdb.NewConfigDB(s.Log, configDBFilename, explicitPrivateKey); err != nil {
@@ -120,18 +107,6 @@ func NewServer(logger log.Log, configDBFilename string, serverFlags int, explici
 			return nil, err
 		}
 	}
-
-	if err := s.configDB.GuessDefaultVariables(); err != nil {
-		log.Errorf("GuessDefaultVariables failed: %v", err)
-	}
-	// DEPRECATED
-	// If config variables fail to load, then we must still continue to boot ourselves up to the point
-	// where we can accept new config. Otherwise, the system is bricked if the user enters
-	// invalid config.
-	// Also, when the system first starts up, it won't be configured at all.
-	//if err := s.LoadConfigVariables(); err != nil {
-	//	log.Errorf("%v", err)
-	//}
 
 	// Since storage location needs to be configured, we can't fail to startup just because we're
 	// unable to access our video archive.
@@ -157,8 +132,6 @@ func NewServer(logger log.Log, configDBFilename string, serverFlags int, explici
 	} else {
 		close(s.monitorToVideoDBClosed)
 	}
-
-	s.train = train.NewTrainer(s.Log, s.permanentEvents)
 
 	s.LiveCameras = livecameras.NewLiveCameras(s.Log, s.configDB, s.ShutdownStarted, s.monitor, fsvArchive, s.RingBufferSize)
 
@@ -257,65 +230,6 @@ func (s *Server) Shutdown(restart bool) {
 	s.ShutdownComplete <- err
 }
 
-// DEPRECATED. Replaced by s.StartupErrors
-// Returns nil if the system is ready to start listening to cameras
-// Returns an error if some part of the system needs configuring
-// The idea is that the web client will continue to show the configuration page
-// until IsReady() returns true.
-func (s *Server) IsReady() error {
-	if s.TempFiles == nil {
-		return fmt.Errorf("Variable %v is not set (for temporary files location)", configdb.VarTempFilePath)
-	}
-	if s.permanentEvents == nil {
-		return fmt.Errorf("Variable %v is not set (for permanent event storage)", configdb.VarPermanentStoragePath)
-	}
-	if s.recentEvents == nil {
-		return fmt.Errorf("Variable %v is not set (for recent event storage)", configdb.VarRecentEventStoragePath)
-	}
-	return nil
-}
-
-// DEPRECATED. Replaced by ApplyConfig()
-// Load state from 'variables'
-func (s *Server) LoadConfigVariables() error {
-	vars := []configdb.Variable{}
-	if err := s.configDB.DB.Find(&vars).Error; err != nil {
-		return err
-	}
-	arcCredentials := arc.ArcServerCredentials{}
-	var firstError error
-	for _, v := range vars {
-		trimmed := strings.TrimSpace(v.Value)
-		if trimmed == "" {
-			// I added this after building the UI, where it's just so hard to avoid empty strings
-			continue
-		}
-		var err error
-		switch configdb.VariableKey(v.Key) {
-		case configdb.VarPermanentStoragePath:
-			err = s.SetPermanentStoragePath(trimmed)
-		case configdb.VarRecentEventStoragePath:
-			err = s.SetRecentEventStoragePath(trimmed)
-		case configdb.VarTempFilePath:
-			err = s.SetTempFilePath(trimmed)
-		case configdb.VarArcServer:
-			arcCredentials.ServerUrl = strings.TrimSuffix(trimmed, "/")
-		case configdb.VarArcApiKey:
-			arcCredentials.ApiKey = trimmed
-		default:
-			s.Log.Errorf("Config variable '%v' not recognized", v.Key)
-		}
-		if err != nil && firstError == nil {
-			firstError = err
-		}
-	}
-	if arcCredentials.IsConfigured() {
-		s.arcCredentials = &arcCredentials
-	}
-	return firstError
-}
-
-// NEW: This replaces LoadConfigVariables
 // This is called whenever system config changes
 func (s *Server) ApplyConfig() {
 	cfg := s.configDB.GetConfig()
