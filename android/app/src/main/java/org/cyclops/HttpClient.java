@@ -2,21 +2,32 @@ package org.cyclops;
 
 import android.util.Log;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.HashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import kotlin.text.Charsets;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
+import okio.BufferedSink;
 
 // HttpClient is a wrapper around okhttp3
 public class HttpClient {
     public final OkHttpClient client;
 
     HttpClient() {
+        // Can be used to get stack traces if we're leaking response bodies
+        //Logger.getLogger(OkHttpClient.class.getName()).setLevel(Level.FINE);
+
         this.client = new OkHttpClient();
     }
 
@@ -68,11 +79,26 @@ public class HttpClient {
         Request.Builder builder = new Request.Builder();
         try {
             builder.url(url);
-            builder.method(method, null);
             if (headers != null) {
                 for (String key : headers.keySet()) {
                     builder.addHeader(key, headers.get(key));
                 }
+            }
+            if (method.equals("POST")) {
+                // Create an empty body for POST requests
+                builder.method(method, new RequestBody() {
+                    @Nullable
+                    @Override
+                    public MediaType contentType() {
+                        return null;
+                    }
+
+                    @Override
+                    public void writeTo(@NonNull BufferedSink sink) throws IOException {
+                    }
+                });
+            } else {
+                builder.method(method, null);
             }
             return new Response(client.newCall(builder.build()).execute());
         } catch (IOException e) {

@@ -286,18 +286,35 @@ public class Scanner {
             return resp.Error;
         }
         if (resp.Resp.code() != 200) {
-            Log.i("C", "Recreate session != 200: " + resp.Resp.toString());
-            return resp.Resp.toString();
+            String err = resp.Resp.toString();
+            resp.Resp.close();
+            Log.i("C", "Recreate session != 200: " + err);
+            return err;
         }
         String cookie = resp.Resp.header("Set-Cookie");
+        resp.Resp.close();
         if (cookie == null) {
             Log.i("C", "Recreate session: no cookie");
             return "No session cookie in response";
         }
         Log.i("C", "Recreate session, New cookie is '" + cookie + "'");
-        // TODO: extract correct cookie value.. right now 'cookie' is probably something like "session=xyz; Path=/; HttpOnly"
-        org.cyclops.State.global.setServerProperty(server.publicKey, "sessionCookie", cookie);
-        return "";
+        String session = extractSessionFromCookie(cookie);
+        Log.i("C", "Recreate session, Extracted session is '" + session + "'");
+        org.cyclops.State.global.setServerProperty(server.publicKey, "sessionCookie", session);
+        return null;
+    }
+
+    // Extract just the 'xyz' from a cookie string like: "session=xyz; Path=/; HttpOnly"
+    static String extractSessionFromCookie(String cookie) {
+        String[] parts = cookie.split(";");
+        if (parts.length == 0) {
+            parts = new String[]{cookie};
+        }
+        parts = parts[0].split("=");
+        if (parts.length != 2) {
+            return "";
+        }
+        return parts[1];
     }
 
     // Issue a crypto challenge to ensure that the server owns the public key 'publicKey'
