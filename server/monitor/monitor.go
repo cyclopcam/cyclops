@@ -170,6 +170,8 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 		return nil, err
 	}
 
+	logger.Infof("NN resolution is %v x %v", detector.Config().Width, detector.Config().Height)
+
 	classFilterList := slices.Clone(defaultClassFilterList)
 	logger.Infof("Paying attention to the following classes: %v", strings.Join(classFilterList, ","))
 
