@@ -16,4 +16,5 @@ public interface Main {
     Bitmap getRemoteViewScreenGrab();
     void clearRemoteViewScreenGrab();
     void createRemoteViewScreenGrab();
+    void onNetworkDown(String errorMsg);
 }

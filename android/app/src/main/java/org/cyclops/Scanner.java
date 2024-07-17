@@ -258,6 +258,7 @@ public class Scanner {
     }
 
     static String preflightServerCheck_Session(HttpClient client, org.cyclops.State.Server server) {
+        Log.i("C", "preflightServerCheck_Session " + server.lanIP + " " + server.publicKey);
         String url = Constants.serverLanURL(server.lanIP) + "/api/auth/whoami";
         HttpClient.Response resp = client.GET(url, new HashMap<>(Map.of("X-Session-Cookie", server.sessionCookie)));
         if (resp.Error != null) {
@@ -319,6 +320,7 @@ public class Scanner {
 
     // Issue a crypto challenge to ensure that the server owns the public key 'publicKey'
     static String preflightServerCheck_PublicKey(Crypto crypto, HttpClient client, String ipAddress, String publicKey) {
+        Log.i("C", "preflightServerCheck_PublicKey " + ipAddress + " " + publicKey);
         // create 32 bytes for a challenge
         byte[] challenge = crypto.createChallenge();
         String challengeb64 = Base64.encodeToString(challenge, Base64.NO_WRAP);

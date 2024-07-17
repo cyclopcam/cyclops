@@ -42,6 +42,7 @@ public class RemoteWebViewClient extends WebViewClientCompat {
 
     @Override
     public void onPageFinished(WebView view, String url) {
+        Log.i("C", "Remote onPageFinished");
         //if (this.server != null && !this.server.publicKey.equals("") && !this.server.bearerToken.equals("")) {
         //    view.evaluateJavascript("window.cySetCredentials('" + this.server.publicKey + "' , '" + this.server.bearerToken + "')", null);
         //}
@@ -53,7 +54,21 @@ public class RemoteWebViewClient extends WebViewClientCompat {
     @Override
     public void onReceivedHttpError(@NonNull WebView view, @NonNull WebResourceRequest request, @NonNull WebResourceResponse errorResponse) {
         super.onReceivedHttpError(view, request, errorResponse);
-        Log.i("C", "Remote onReceivedHttpError: " + errorResponse.toString());
+        String errorResponseBody = "";
+        try {
+            InputStream is = errorResponse.getData();
+            if (is != null) {
+                byte[] buffer = new byte[is.available()];
+                is.read(buffer);
+                errorResponseBody = new String(buffer);
+            }
+        } catch (IOException e) {
+            //e.printStackTrace();
+        }
+        // TODO: When errorResponse.getStatusCode() returns a 502, the most likely cause is that the
+        // VPN isn't working, so perhaps their server is down. We should show a decent error page
+        // in this situation.
+        Log.i("C", "Remote onReceivedHttpError: " + errorResponse.getStatusCode() + " " + errorResponse.getReasonPhrase() + " >> " + errorResponseBody);
     }
 
     void setServer(State.Server server) {
@@ -103,15 +118,10 @@ public class RemoteWebViewClient extends WebViewClientCompat {
                     Log.i("C", "natcom/login reached");
                     activity.runOnUiThread(() -> main.onLogin(url.getQueryParameter("bearerToken"), url.getQueryParameter("sessionCookie")));
                     return sendOK();
-                /*
-                case "/natcom/login2":
-                    String err = State.global.login(url.getQueryParameter("url"), url.getQueryParameter("publicKey"), url.getQueryParameter("username"), url.getQueryParameter("password"));
-                    if (err.equals("")) {
-                        return sendOK();
-                    } else {
-                        return sendError(err);
-                    }
-                 */
+                case "/natcom/networkDown":
+                    Log.i("C", "natcom/networkDown reached");
+                    activity.runOnUiThread(() -> main.onNetworkDown(url.getQueryParameter("errorMsg")));
+                    return sendOK();
             }
         }
 

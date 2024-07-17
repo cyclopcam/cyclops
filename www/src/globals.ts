@@ -8,6 +8,7 @@ import { generateKeyPair, sharedKey } from "curve25519-js";
 import * as base64 from "base64-arraybuffer";
 import { fetchAndValidateServerPublicKey, getBearerToken } from "./auth";
 import type { Chacha20 } from "ts-chacha20";
+import { natNotifyNetworkDown } from "./nativeOut";
 
 export interface StartupError {
 	// SYNC-STARTUP-ERROR-CODES
@@ -26,7 +27,6 @@ export class Globals {
 	isFirstVideoPlay = true;
 
 	cameras: CameraInfo[] = [];
-	networkError = ""; // Most recent network error, typically shown in the top/bottom bar
 	isLoggedIn = false; // Only valid after isSystemInfoLoadFinished = true
 	readyError = ""; // DEPRECATED. Replaced by startupErrors. Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
 	startupErrors: StartupError[] = []; // Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
@@ -62,6 +62,8 @@ export class Globals {
 	lastCameraPassword = "";
 	lastCameraUsername = ""; // Username of the most recently added camera.
 
+	private _networkError = ""; // Most recent network error, typically shown in the top/bottom bar
+
 	//ownPublicKeyBase64: string;
 	//sharedTokenKey: Uint8Array | null = null;
 	//sharedNonce: Uint8Array;
@@ -80,6 +82,21 @@ export class Globals {
 		//this.sharedNonce = new Uint8Array(12);
 		//crypto.getRandomValues(this.sharedNonce);
 		//this.sharedNonceBase64 = base64.encode(this.sharedNonce);
+	}
+
+	// Most recent network error, typically shown in the top/bottom bar
+	get networkError(): string {
+		return this._networkError;
+	}
+
+	set networkError(value: string) {
+		this._networkError = value;
+		if (value && value.indexOf("<HEAD><TITLE>Connection timed out") !== -1) {
+			// Android's WebView will send us this kind of nonsense if we were connected to our
+			// server via LAN, and we lose Wefi. We need to inform the Java app that it needs
+			// to switch to the proxy.
+			natNotifyNetworkDown(value);
+		}
 	}
 
 	// Wait for public key load to finish.

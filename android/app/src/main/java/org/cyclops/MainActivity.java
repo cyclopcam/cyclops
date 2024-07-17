@@ -192,6 +192,13 @@ public class MainActivity extends AppCompatActivity implements Main {
         localClient.cyRefreshServers(localWebView);
     }
 
+    // Invoked via the Webview when it notices that it can no longer talk to the cyclops server,
+    // such as when it loses Wifi connection.
+    public void onNetworkDown(String errorMsg) {
+        Log.i("C", "onNetworkDown: " + errorMsg);
+        revalidateCurrentConnection();
+    }
+
     // This is called after the user logs in to a new server
     //public void notifyRegisteredServersChanged() {
     //    localClient.cyRefreshServers(localWebView);
