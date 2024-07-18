@@ -2,6 +2,13 @@
 
 // SYNC-SYSTEM-INFO-JSON
 export interface SystemInfoJSON {
-	readyError?: string;
+	startupErrors: StartupErrorJSON[];
 	cameras: any[]; // CameraInfo.fromJSON takes these in
+}
+
+// SYNC-STARTUP-ERROR
+export interface StartupErrorJSON {
+	// SYNC-STARTUP-ERROR-CODES
+	code: "ARCHIVE_PATH";
+	message: string;
 }

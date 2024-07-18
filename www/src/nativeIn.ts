@@ -20,8 +20,3 @@ import { popRoute } from "./router/helpers";
 	globals.isApp = true;
 	console.log("App mode activated (JS)");
 };
-
-// Ensure that we have credentials for this server
-//(window as any).cySetCredentials = (publicKey: string, bearerToken: string) => {
-//	setBearerToken(publicKey, bearerToken);
-//};

@@ -11,12 +11,6 @@ import { natLogin } from "./nativeOut";
 // If we are logged in to a server with a public wireguard key, then return the session
 // token for that server, encrypted with the key pair (Server, Ours).
 export function getBearerToken(): string {
-	//console.log("getBearerToken");
-	//return globals.encryptedBearerToken;
-	//return globals.bearerToken;
-	//if (!globals.sharedChaCha20) {
-	//	return "";
-	//}
 	let publicKey = globals.serverPublicKey;
 	if (publicKey === "") {
 		return "";
@@ -26,43 +20,7 @@ export function getBearerToken(): string {
 		return "";
 	}
 	return token;
-	/*
-
-	//let tokenRaw = new Uint8Array(base64.decode(token));
-	//return base64.encode(globals.sharedChaCha20.encrypt(tokenRaw));
-	return globals.encryptedBearerToken;
-	*/
-
-	//globals.sharedChaCha20.encrypt()
-	/*
-	// Return SHA256(SharedSecret || Token)
-	let rawMsg = new Uint8Array(globals.sharedTokenKey.length + token.length);
-	rawMsg.set(globals.sharedTokenKey, 0);
-	let j = globals.sharedTokenKey.length;
-	for (let i = 0; i < token.length; i++) {
-		rawMsg[j++] = token.charCodeAt(i);
-	}
-	return sha256(rawMsg);
-	*/
 }
-
-/*
-export function loadAndEncryptBearerToken(ownPrivateKey: Uint8Array, serverPublicKey: Uint8Array, nonce: Uint8Array): string {
-	let server64 = base64.encode(serverPublicKey);
-	let token = localStorage.getItem(server64 + "-token");
-	if (!token) {
-		return "";
-	}
-	let tokenRaw = new Uint8Array(base64.decode(token));
-	return encryptBearerToken(ownPrivateKey, serverPublicKey, nonce, tokenRaw);
-}
-
-export function encryptBearerToken(ownPrivateKey: Uint8Array, serverPublicKey: Uint8Array, nonce: Uint8Array, token: Uint8Array): string {
-	let shared = createSharedSecretKey(ownPrivateKey, serverPublicKey);
-	let chacha = new Chacha20(shared, nonce, 0);
-	return base64.encode(chacha.encrypt(token));
-}
-*/
 
 // Fetches the server's public key and validates it.
 // If validation passes, then returns the base64 encoded server's public key.
@@ -102,10 +60,6 @@ function areBuffersEqual(a: Uint8Array, b: Uint8Array): boolean {
 	}
 	return x === 0;
 }
-
-//export function setBearerToken(publicKey: string, tokenb64: string) {
-//	localStorage.setItem(publicKey + "-token", tokenb64);
-//}
 
 // Returns an error on failure, or an empty string on success
 export async function login(username: string, password: string): Promise<string> {
@@ -168,26 +122,3 @@ function getCookie(name: string) {
 	));
 	return matches ? decodeURIComponent(matches[1]) : undefined;
 }
-
-/*
-
-export function createSharedSecretKey(privateKey: Uint8Array, publicKey: Uint8Array): Uint8Array {
-	let raw = sharedKey(privateKey, publicKey);
-	return raw;
-	//return new Uint8Array(sha256.arrayBuffer(raw));
-}
-
-export function createSharedSecretChaCha20(privateKey: Uint8Array, publicKey: Uint8Array, nonce: Uint8Array): Chacha20 {
-	let raw = sharedKey(privateKey, publicKey);
-	return new Chacha20(raw, nonce, 0);
-}
-
-export function bearerTokenQuery(): { authorizationToken: string } | {} {
-	let token = getBearerToken();
-	if (token) {
-		return { authorizationToken: token };
-	} else {
-		return {};
-	}
-}
-*/

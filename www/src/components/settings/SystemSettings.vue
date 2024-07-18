@@ -8,8 +8,6 @@ import { formatByteSize, kibiSplit } from '@/util/kibi';
 import { fetchOrErr } from '@/util/util';
 import { globals } from '@/globals';
 
-// NEW! This replaces SystemVariables.vue
-
 let props = defineProps<{
 }>()
 

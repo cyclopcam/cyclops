@@ -24,8 +24,7 @@ onMounted(async () => {
 
 <template>
 	<panel>
-		<panel-button :icon="server" route-target="rtSettingsSystemOld">System Settings (old)</panel-button>
-		<panel-button :icon="server" route-target="rtSettingsSystem">System Settings (new)</panel-button>
+		<panel-button :icon="server" route-target="rtSettingsSystem">System Settings</panel-button>
 		<panel-button v-for="camera of configured" :route-target="`/settings/camera/${camera.id}/_/_/0`"
 			:icon="camera.posterURL()" icon-size="50px">
 			{{ camera.name }}</panel-button>

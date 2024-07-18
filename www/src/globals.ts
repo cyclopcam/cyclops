@@ -3,18 +3,10 @@ import { reactive } from "vue";
 import { router } from "./router/routes";
 import { replaceRoute } from "./router/helpers";
 import { fetchOrErr, sleep, type FetchResult } from "./util/util";
-import type { SystemInfoJSON } from "./api/api";
-import { generateKeyPair, sharedKey } from "curve25519-js";
-import * as base64 from "base64-arraybuffer";
-import { fetchAndValidateServerPublicKey, getBearerToken } from "./auth";
-import type { Chacha20 } from "ts-chacha20";
+import type { SystemInfoJSON, StartupErrorJSON } from "./api/api";
+import { generateKeyPair } from "curve25519-js";
+import { fetchAndValidateServerPublicKey } from "./auth";
 import { natNotifyNetworkDown } from "./nativeOut";
-
-export interface StartupError {
-	// SYNC-STARTUP-ERROR-CODES
-	code: "ARCHIVE_PATH";
-	message: string;
-}
 
 // A global reactive object used throughout the app
 export class Globals {
@@ -29,7 +21,7 @@ export class Globals {
 	cameras: CameraInfo[] = [];
 	isLoggedIn = false; // Only valid after isSystemInfoLoadFinished = true
 	readyError = ""; // DEPRECATED. Replaced by startupErrors. Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
-	startupErrors: StartupError[] = []; // Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
+	startupErrors: StartupErrorJSON[] = []; // Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
 	isSystemInfoLoadFinished = false;
 
 	// isServerPublicKeyLoaded is set to true after we've validated the server's
@@ -44,7 +36,8 @@ export class Globals {
 
 	// The only reason we generate our own key pair is for the challenge/response
 	// conversation with the server. If I knew how to use an X25519 key to
-	// sign a message, then we wouldn't need this.
+	// sign a message, then we wouldn't need this. i.e. We could get the server
+	// to sign a challenge with an X25519 key. But anyway, this is FINE.
 	ownPrivateKey: Uint8Array;
 	ownPublicKey: Uint8Array;
 
@@ -64,13 +57,6 @@ export class Globals {
 
 	private _networkError = ""; // Most recent network error, typically shown in the top/bottom bar
 
-	//ownPublicKeyBase64: string;
-	//sharedTokenKey: Uint8Array | null = null;
-	//sharedNonce: Uint8Array;
-	//sharedNonceBase64: string;
-	//sharedChaCha20: Chacha20 | null = null;
-	//encryptedBearerToken = "";
-
 	constructor() {
 		console.log("globals constructor");
 		let rnd = new Uint8Array(32);
@@ -78,10 +64,6 @@ export class Globals {
 		let kp = generateKeyPair(rnd);
 		this.ownPrivateKey = kp.private;
 		this.ownPublicKey = kp.public;
-		//this.ownPublicKeyBase64 = base64.encode(this.ownPublicKey);
-		//this.sharedNonce = new Uint8Array(12);
-		//crypto.getRandomValues(this.sharedNonce);
-		//this.sharedNonceBase64 = base64.encode(this.sharedNonce);
 	}
 
 	// Most recent network error, typically shown in the top/bottom bar
@@ -122,47 +104,13 @@ export class Globals {
 	async loadPublicKey() {
 		this.serverPublicKey = await fetchAndValidateServerPublicKey(this.ownPrivateKey, this.ownPublicKey);
 		this.isServerPublicKeyLoaded = true;
-
-		//try {
-		//	let r = await fetch("/api/keys");
-		//	if (r.status === 200) {
-		//		let j = await r.json();
-		//		//this.serverPublicKey = j.publicKey;
-		//		//this.loadAndEncryptBearerToken();
-		//	}
-		//} catch (err) {
-		//}
 	}
-
-	//loadAndEncryptBearerToken() {
-	//	let serverKey = new Uint8Array(base64.decode(this.serverPublicKey));
-	//	this.encryptedBearerToken = loadAndEncryptBearerToken(this.ownPrivateKey, serverKey, this.sharedNonce);
-	//}
 
 	async bootup(setVueRoute: boolean) {
 		await this.loadPublicKey();
 
 		try {
 			let r = await fetch("/api/auth/whoami");
-			// I've decided to move this code into the native app, because it's just so dangerous
-			// to store these long term tokens in localStorage. For example, a malicious app on the
-			// same Lan IP would be able to read from localStorage.. thereby exfiltrating all of your
-			// bearer tokens.
-			/*
-			if (r.status === 403) {
-				// try using our bearer token to login
-				// TODO: Use private key instead of bearer token for this purpose
-				if (getBearerToken() !== "") {
-					console.log("Attemping to acquire new cookie");
-					let rLogin = await fetchWithAuth("/api/auth/login?loginMode=Cookie", { method: "POST" });
-					if (rLogin.status === 200) {
-						// try again
-						r = await fetch("/api/auth/whoami");
-						console.log("whoami after cookie acquisition", r.status, r.statusText);
-					}
-				}
-			}
-			*/
 			if (r.status === 403) {
 				this.isLoggedIn = false;
 				r = await (await fetch("/api/auth/hasAdmin")).json();
@@ -184,12 +132,6 @@ export class Globals {
 
 	async postAuthenticateLoadSystemInfo(setVueRoute: boolean) {
 		let root = await (await fetch("/api/system/info")).json();
-		if (root.readyError) {
-			// OLD
-			console.log(`readyError: ${root.readyError}`);
-			this.readyError = root.readyError;
-			return;
-		}
 		this.startupErrors = root.startupErrors;
 		console.log(`startupErrors`, root.startupErrors);
 

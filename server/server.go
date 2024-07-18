@@ -73,6 +73,7 @@ const (
 	StartupErrorArchivePath StartupErrorCode = "ARCHIVE_PATH" // Could be unconfigured or invalid. The front-end can figure that out by taking the user to the config page.
 )
 
+// SYNC-STARTUP-ERROR
 type StartupError struct {
 	Code    StartupErrorCode `json:"code"`
 	Message string           `json:"message"` // Possibly detailed message. We never want to throw an error message away, in case there is only one critical code path that elicits it.

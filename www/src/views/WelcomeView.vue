@@ -7,7 +7,6 @@ import { computed } from '@vue/reactivity';
 import SetupCameras from '../components/settings/SetupCameras.vue';
 import { globals } from '@/globals';
 import { replaceRoute } from "@/router/helpers";
-import SystemVariables from "../components/settings/SystemVariables.vue";
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
@@ -62,37 +61,11 @@ async function moveToNextStage() {
 onMounted(async () => {
 	await globals.waitForPublicKeyLoad();
 
-	// I'm disabling this for now, and forcing the VPN to be working before the system will boot
-	//let ping = await (await fetch("/api/ping")).json();
-	//if (ping.publicKey === '') {
-	//	stage.value = Stages.SetupVPN;
-	//	return;
-	//}
-
 	await globals.waitForSystemInfoLoad();
 	if (!globals.isLoggedIn) {
 		stage.value = Stages.CreateFirstUser;
 		return;
 	}
-
-	if (globals.readyError !== "") {
-		stage.value = Stages.ConfigureVariables;
-		return;
-	}
-
-	/*
-	let r = await fetch("/api/auth/whoami");
-	if (!r.ok) {
-		stage.value = Stages.CreateFirstUser;
-		return;
-	}
-
-	let info = await (await fetch("/api/system/info")).json();
-	if (info.readyError) {
-		stage.value = Stages.ConfigureVariables;
-		return;
-	}
-	*/
 
 	stage.value = Stages.ConfigureCameras;
 })
@@ -106,7 +79,6 @@ onMounted(async () => {
 		</div>
 		<setup-v-p-n v-if="isSetupVPN" @finished="moveToNextStage()" />
 		<new-user v-if="isCreateFirstUser" :is-first-user="true" @finished="moveToNextStage()" />
-		<system-variables v-if="isConfigureVariables" :initial-setup="true" @finished="moveToNextStage()" />
 		<setup-cameras v-if="isConfigureCameras" :isInitialSetup="true" @finished="moveToNextStage()" />
 	</mobile-fullscreen>
 </template>
