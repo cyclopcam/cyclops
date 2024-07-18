@@ -20,7 +20,6 @@ export class Globals {
 
 	cameras: CameraInfo[] = [];
 	isLoggedIn = false; // Only valid after isSystemInfoLoadFinished = true
-	readyError = ""; // DEPRECATED. Replaced by startupErrors. Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
 	startupErrors: StartupErrorJSON[] = []; // Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
 	isSystemInfoLoadFinished = false;
 
