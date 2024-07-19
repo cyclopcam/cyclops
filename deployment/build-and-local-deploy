@@ -57,7 +57,7 @@ fi
 
 if [ $SKIP_HAILO -eq 0 ]; then
 	echo Building Hailo accelerator
-	cd nnacel/hailo && ./build && cd ../..
+	cd nnaccel/hailo && ./build && cd ../..
 fi
 
 if [ $SKIP_NCNN -eq 0 ]; then
