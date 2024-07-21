@@ -34,6 +34,8 @@ github.com/bmharper/cimg/v2 v2.0.5 h1:3zsu3Ui4ebRnGlPnDXvtrae1YX9MBt/iJPw+hbbWWc
 github.com/bmharper/cimg/v2 v2.0.5/go.mod h1:mN3fQyd0FMAPSm12xTJLKCYIray6CLm8obkm4z7qfxw=
 github.com/bmharper/cimg/v2 v2.0.7 h1:HG4QBtko6unVG5q2FF/O1Uhiamn1L7faeQ1KyOamvr8=
 github.com/bmharper/cimg/v2 v2.0.7/go.mod h1:mN3fQyd0FMAPSm12xTJLKCYIray6CLm8obkm4z7qfxw=
+github.com/bmharper/cimg/v2 v2.0.8 h1:RAiiTJXhZ7D5n8BRVgUHdmakMPyEZWVZ4qRcb8VN9+0=
+github.com/bmharper/cimg/v2 v2.0.8/go.mod h1:mN3fQyd0FMAPSm12xTJLKCYIray6CLm8obkm4z7qfxw=
 github.com/bmharper/flatbush-go v1.0.0 h1:p7xJHyKDIpzGYCaa9Zg4Du0gMNxdPcwEFJJ8KhHt5ZA=
 github.com/bmharper/flatbush-go v1.0.0/go.mod h1:Z+ze5Yql17pIeUx67EwVu5ESM0NqP4yyyYUKoNP0MUo=
 github.com/bmharper/ringbuffer v1.1.2 h1:r2QRV4KnTXxljr41TbCZYS0f/NvyU7xEJ5aGo8uQlBY=

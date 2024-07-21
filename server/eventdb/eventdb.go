@@ -380,7 +380,7 @@ func (e *EventDB) saveThumbnailFromVideo(buf *videox.PacketBuffer, targetFilenam
 
 func (e *EventDB) SaveThumbnail(img *cimg.Image, targetFilename string) error {
 	if img.Width > MaxThumbnailWidth {
-		img = cimg.ResizeNew(img, MaxThumbnailWidth, (MaxThumbnailWidth*img.Height)/img.Width)
+		img = cimg.ResizeNew(img, MaxThumbnailWidth, (MaxThumbnailWidth*img.Height)/img.Width, nil)
 	}
 	b, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, 80, 0))
 	if err != nil {

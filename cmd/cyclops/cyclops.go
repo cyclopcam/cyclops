@@ -32,6 +32,7 @@ func main() {
 	privateKey := parser.String("", "privatekey", &argparse.Options{Help: "Change private key of system (e.g. for recreating a system using a prior identity)", Default: ""})
 	kernelWG := parser.Flag("", "kernelwg", &argparse.Options{Help: "Run the kernel-mode wireguard interface", Default: false})
 	username := parser.String("", "username", &argparse.Options{Help: "After launching as root, change identity to this user (for dropping privileges of the main process)", Default: ""})
+	disableHailo := parser.Flag("", "nohailo", &argparse.Options{Help: "Disable Hailo neural network accelerator support", Default: false})
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
@@ -93,7 +94,8 @@ func main() {
 
 	// Here we dynamically optional load shared libraries that accelerate neural network
 	// inference. So we only do this once, during process startup.
-	nnload.LoadAccelerators(logger)
+	enableHailo := !*disableHailo
+	nnload.LoadAccelerators(logger, enableHailo)
 
 	// Run in a continuous loop, so that the server can restart itself
 	// due to major configuration changes.

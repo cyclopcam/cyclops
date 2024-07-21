@@ -28,7 +28,7 @@ func HaveAccelerator() bool {
 
 // LoadModel loads a neural network from disk.
 // If the model consists of several files, then filenameBase is the base filename, without the extensions.
-func LoadModel(logs log.Log, modelDir, filenameBase string, threadingMode nn.ThreadingMode) (nn.ObjectDetector, error) {
+func LoadModel(logs log.Log, modelDir, filenameBase string, threadingMode nn.ThreadingMode, modelSetup *nn.ModelSetup) (nn.ObjectDetector, error) {
 	fullPathBase := filepath.Join(modelDir, filenameBase)
 	config, err := nn.LoadModelConfig(fullPathBase + ".json")
 	if err != nil {
@@ -36,10 +36,7 @@ func LoadModel(logs log.Log, modelDir, filenameBase string, threadingMode nn.Thr
 	}
 
 	if hailoAccel != nil {
-		setup := nnaccel.ModelSetup{
-			BatchSize: 1,
-		}
-		model, err := hailoAccel.LoadModel(modelDir, filenameBase, &setup)
+		model, err := hailoAccel.LoadModel(modelDir, filenameBase, modelSetup)
 		if err == nil {
 			return model, nil
 		} else {
@@ -59,13 +56,17 @@ func LoadModel(logs log.Log, modelDir, filenameBase string, threadingMode nn.Thr
 	}
 }
 
-func LoadAccelerators(logs log.Log) {
+func LoadAccelerators(logs log.Log, enableHailo bool) {
 	logs.Infof("Loading NN accelerators")
 	var err error
-	hailoAccel, err = nnaccel.Load("hailo")
-	if err != nil {
-		logs.Infof("Failed to load Hailo NN accelerator: %v", err)
+	if enableHailo {
+		hailoAccel, err = nnaccel.Load("hailo")
+		if err != nil {
+			logs.Infof("Failed to load Hailo NN accelerator: %v", err)
+		} else {
+			logs.Infof("Loaded Hailo NN accelerator")
+		}
 	} else {
-		logs.Infof("Loaded Hailo NN accelerator")
+		logs.Infof("Hailo disabled - skipping")
 	}
 }

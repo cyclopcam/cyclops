@@ -91,3 +91,39 @@ func (r *Rect) MaxDelta(b Rect) int {
 	maxS := max(gen.Abs(r.Width-b.Width), gen.Abs(r.Height-b.Height))
 	return max(maxP, maxS)
 }
+
+// ResizeTransform expresses a transformation that we've made on an image (eg resizing, or resizing + moving)
+// When applying forward, we first scale and then offset.
+type ResizeTransform struct {
+	OffsetX int
+	OffsetY int
+	ScaleX  float32
+	ScaleY  float32
+}
+
+func IdentityResizeTransform() ResizeTransform {
+	return ResizeTransform{
+		OffsetX: 0,
+		OffsetY: 0,
+		ScaleX:  1,
+		ScaleY:  1,
+	}
+}
+
+func (r *ResizeTransform) ApplyForward(detections []ObjectDetection) {
+	for i := range detections {
+		detections[i].Box.X = int(float32(detections[i].Box.X)*r.ScaleX) + r.OffsetX
+		detections[i].Box.Y = int(float32(detections[i].Box.Y)*r.ScaleY) + r.OffsetY
+		detections[i].Box.Width = int(float32(detections[i].Box.Width) * r.ScaleX)
+		detections[i].Box.Height = int(float32(detections[i].Box.Height) * r.ScaleY)
+	}
+}
+
+func (r *ResizeTransform) ApplyBackward(detections []ObjectDetection) {
+	for i := range detections {
+		detections[i].Box.X = int(float32(detections[i].Box.X-r.OffsetX) / r.ScaleX)
+		detections[i].Box.Y = int(float32(detections[i].Box.Y-r.OffsetY) / r.ScaleY)
+		detections[i].Box.Width = int(float32(detections[i].Box.Width) / r.ScaleX)
+		detections[i].Box.Height = int(float32(detections[i].Box.Height) / r.ScaleY)
+	}
+}

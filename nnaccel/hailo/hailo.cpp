@@ -18,7 +18,7 @@ void _model_input_sizes(hailort::InferModel* model, int& width, int& height) {
 }
 
 //#define debug_printf printf
-#define debug_printf (void)
+#define debug_printf(...) ((void) 0)
 
 NNModel::~NNModel() {
 	//debug_printf("~NNModel 1.a\n");
@@ -81,9 +81,11 @@ int nna_load_model(const char* modelDir, const char* modelName, const NNModelSet
 		return _make_own_status(infer_model_exp.status());
 	}
 	std::shared_ptr<hailort::InferModel> infer_model = infer_model_exp.release();
-	// What's this for?
-	infer_model->set_hw_latency_measurement_flags(HAILO_LATENCY_MEASURE);
+
+	infer_model->set_hw_latency_measurement_flags(HAILO_LATENCY_MEASURE); // What's this for?
 	infer_model->set_batch_size(setup->BatchSize);
+	infer_model->output()->set_nms_score_threshold(setup->ProbabilityThreshold);
+	infer_model->output()->set_nms_iou_threshold(setup->NmsIouThreshold);
 
 	debug_printf("hailo nna_load_model 3\n");
 

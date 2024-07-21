@@ -20,6 +20,7 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/server/camera"
+	"github.com/cyclopcam/cyclops/server/perfstats"
 )
 
 /* monitor runs our neural networks on the camera streams
@@ -45,23 +46,29 @@ var defaultClassFilterList = []string{
 }
 
 type Monitor struct {
-	Log                 log.Log
-	detector            nn.ObjectDetector
-	enabled             bool                   // If false, then we don't run the frame reader
-	mustStopFrameReader atomic.Bool            // True if stopFrameReader() has been called
-	mustStopNNThreads   atomic.Bool            // NN threads must exit
-	analyzerQueue       chan analyzerQueueItem // Analyzer work queue. When closed, analyzer must exit.
-	analyzerStopped     chan bool              // Analyzer thread has exited
-	numNNThreads        int                    // Number of NN threads
-	nnThreadStopWG      sync.WaitGroup         // Wait for all NN threads to exit
-	frameReaderStopped  chan bool              // When frameReaderStopped channel is closed, then the frame reader has stopped
-	nnFrameTime         time.Duration          // Average time for the neural network to process a frame
-	nnThreadQueue       chan monitorQueueItem  // Queue of images to be processed by the neural network
-	avgTimeNSPerFrameNN atomic.Int64           // Average time (ns) per frame, for just the neural network (time inside a thread)
-	nnClassFilterMap    map[int]bool           // NN classes that we're interested in (eg person, car)
-	nnClassFilterList   []string               // NN classes that we're interested in (eg person, car)
-	analyzerSettings    analyzerSettings       // Analyzer settings
-	nextTrackedObjectID idgen.Uint32           // Next ID to assign to a tracked object
+	Log                       log.Log
+	detector                  nn.ObjectDetector
+	enabled                   bool                   // If false, then we don't run the frame reader
+	mustStopFrameReader       atomic.Bool            // True if stopFrameReader() has been called
+	mustStopNNThreads         atomic.Bool            // NN threads must exit
+	analyzerQueue             chan analyzerQueueItem // Analyzer work queue. When closed, analyzer must exit.
+	analyzerStopped           chan bool              // Analyzer thread has exited
+	numNNThreads              int                    // Number of NN threads
+	nnModelSetup              *nn.ModelSetup         // Configuration of NN models
+	nnThreadStopWG            sync.WaitGroup         // Wait for all NN threads to exit
+	frameReaderStopped        chan bool              // When frameReaderStopped channel is closed, then the frame reader has stopped
+	nnThreadQueue             chan monitorQueueItem  // Queue of images to be processed by the neural network
+	avgTimeNSPerFrameNNPrep   atomic.Int64           // Average time (ns) per frame, for prep of an image before it hits the NN
+	avgTimeNSPerFrameNNDet    atomic.Int64           // Average time (ns) per frame, for just the neural network (time inside a thread)
+	hasShownResolutionWarning atomic.Bool            // True if we've shown a warning about camera resolution vs NN resolution
+	nnClassFilterMap          map[int]bool           // NN classes that we're interested in (eg person, car)
+	nnClassFilterList         []string               // NN classes that we're interested in (eg person, car)
+	analyzerSettings          analyzerSettings       // Analyzer settings
+	nextTrackedObjectID       idgen.Uint32           // Next ID to assign to a tracked object
+
+	debugDumpFrames bool // Dump the first frame of each camera, immediately before it gets sent to the NN for processing.
+	dumpLock        sync.Mutex
+	hasDumpedCamera map[int64]bool
 
 	camerasLock sync.Mutex       // Guards access to cameras
 	cameras     []*monitorCamera // Cameras that we're monitoring
@@ -162,15 +169,19 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	// SYNC-NN-THREAD-QUEUE-MIN-SIZE
 	nnQueueSize := nnThreads * 3
 
-	modelName := "yolov8s"
+	modelName := "yolov8m"
 	logger.Infof("Loading NN model '%v'", modelName)
 
-	detector, err := nnload.LoadModel(logger, basePath, modelName, nnThreadingModel)
+	modelSetup := nn.NewModelSetup()
+
+	detector, err := nnload.LoadModel(logger, basePath, modelName, nnThreadingModel, modelSetup)
 	if err != nil {
 		return nil, err
 	}
 
 	logger.Infof("NN resolution is %v x %v", detector.Config().Width, detector.Config().Height)
+	logger.Infof("NN batch size %v", modelSetup.BatchSize)
+	logger.Infof("NN prob threshold %.2f, NMS IoU threshold %.2f", modelSetup.ProbabilityThreshold, modelSetup.NmsIouThreshold)
 
 	classFilterList := slices.Clone(defaultClassFilterList)
 	logger.Infof("Paying attention to the following classes: %v", strings.Join(classFilterList, ","))
@@ -190,6 +201,7 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 		nnThreadQueue:     make(chan monitorQueueItem, nnQueueSize),
 		analyzerQueue:     make(chan analyzerQueueItem, analysisQueueSize),
 		analyzerStopped:   make(chan bool),
+		nnModelSetup:      modelSetup,
 		numNNThreads:      nnThreads,
 		nnClassFilterList: classFilterList,
 		nnClassFilterMap:  makeClassFilter(classFilterList, detector.Config().Classes),
@@ -204,6 +216,8 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 		watchers:           map[int64][]chan *AnalysisState{},
 		watchersAllCameras: []chan *AnalysisState{},
 		enabled:            true,
+		debugDumpFrames:    true,
+		hasDumpedCamera:    map[int64]bool{},
 	}
 	for i := 0; i < m.numNNThreads; i++ {
 		go m.nnThread()
@@ -451,7 +465,8 @@ func frameReaderStats(cameraStates []*frameReaderCameraState) (totalFrames, tota
 	return
 }
 
-// Read camera frames and send them off for analysis
+// Read camera frames and send them off for analysis.
+// A single thread runs this operation.
 func (m *Monitor) readFrames() {
 	// Make our own private copy of cameras.
 	// If the list of cameras changes, then SetCameras() will stop and restart this function
@@ -522,11 +537,87 @@ func (m *Monitor) readFrames() {
 		if time.Now().Sub(lastStats) > time.Duration(interval)*time.Second {
 			nStats++
 			totalFrames, totalProcessed := frameReaderStats(looperCameras)
-			m.Log.Infof("%.0f%% frames analyzed by NN (%.1f ms per frame, per thread)", 100*float64(totalProcessed)/float64(totalFrames), float64(m.avgTimeNSPerFrameNN.Load())/1e6)
+			m.Log.Infof("%.0f%% frames analyzed by NN. %v Threads. Times per frame: (%.1f ms Prep, %.1f ms NN)",
+				100*float64(totalProcessed)/float64(totalFrames),
+				m.numNNThreads,
+				float64(m.avgTimeNSPerFrameNNPrep.Load())/1e6,
+				float64(m.avgTimeNSPerFrameNNDet.Load())/1e6,
+			)
 			lastStats = time.Now()
 		}
 	}
 	close(m.frameReaderStopped)
+}
+
+// Perform image format conversions and resizing so that we can send to our NN.
+// We should consider having the resizing done by ffmpeg.
+// Images returned are (originalRgb, nnScaledRgb)
+func (m *Monitor) prepareImageForNN(yuv *accel.YUVImage) (nn.ResizeTransform, *cimg.Image, *cimg.Image) {
+	start := time.Now()
+	nnConfig := m.detector.Config()
+	nnWidth := nnConfig.Width
+	nnHeight := nnConfig.Height
+
+	xform := nn.IdentityResizeTransform()
+
+	rgb := cimg.NewImage(yuv.Width, yuv.Height, cimg.PixelFormatRGB)
+	yuv.CopyToCImageRGB(rgb)
+	if (rgb.Width > nnWidth || rgb.Height > nnHeight) && m.hasShownResolutionWarning.CompareAndSwap(false, true) {
+		m.Log.Warnf("Camera image size %vx%v is larger than NN input size %vx%v", rgb.Width, rgb.Height, nnWidth, nnHeight)
+	}
+	originalRgb := rgb
+
+	if rgb.Width != nnWidth || rgb.Height != nnHeight {
+		scaleX := float32(nnWidth) / float32(rgb.Width)
+		scaleY := float32(nnHeight) / float32(rgb.Height)
+		scale := min(scaleX, scaleY)
+		xform.ScaleX = scale
+		xform.ScaleY = scale
+		newWidth := int(float32(rgb.Width)*scale + 0.5)
+		newHeight := int(float32(rgb.Height)*scale + 0.5)
+		resizeParams := cimg.ResizeParams{
+			CheapSRGBFilter: true,
+		}
+		rgb = cimg.ResizeNew(rgb, newWidth, newHeight, &resizeParams)
+		if newWidth != nnWidth || newHeight != nnHeight {
+			// Insert resized image into black canvas. There will be a block on the right
+			// or the bottom of black pixels. This is not ideal. We should really aim to
+			// have NNs that are a closer match to the aspect ratio of our camera images.
+			// We could get rid of this step if we made ResizeNew capable of accepting
+			// a 'view' instead of a contiguous image. But meh I am tired of this.
+			big := cimg.NewImage(nnWidth, nnHeight, cimg.PixelFormatRGB)
+			big.CopyImage(rgb, 0, 0)
+			rgb = big
+		}
+	}
+	perfstats.UpdateMovingAverage(&m.avgTimeNSPerFrameNNPrep, time.Now().Sub(start).Nanoseconds())
+	return xform, originalRgb, rgb
+}
+
+//func (m *Monitor) scaleDetectionsToOriginalImage(orgWidth, orgHeight, nnWidth, nnHeight int, detections []nn.ObjectDetection) {
+//	xscale := float32(orgWidth) / float32(nnWidth)
+//	yscale := float32(orgHeight) / float32(nnHeight)
+//	for i := range detections {
+//		d := &detections[i]
+//		d.Box.X = int(float32(d.Box.X) * xscale)
+//		d.Box.Y = int(float32(d.Box.Y) * yscale)
+//		d.Box.Width = int(float32(d.Box.Width) * xscale)
+//		d.Box.Height = int(float32(d.Box.Height) * yscale)
+//	}
+//}
+
+func (m *Monitor) dumpFrame(rgb *cimg.Image, cam *camera.Camera) {
+	m.dumpLock.Lock()
+	hasDumped := m.hasDumpedCamera[cam.ID()]
+	if hasDumped {
+		m.dumpLock.Unlock()
+		return
+	}
+	m.hasDumpedCamera[cam.ID()] = true
+	m.dumpLock.Unlock()
+
+	b, _ := cimg.Compress(rgb, cimg.MakeCompressParams(cimg.Sampling(cimg.Sampling420), 85, cimg.Flags(0)))
+	os.WriteFile(fmt.Sprintf("frame-%v.jpg", cam.Name()), b, 0644)
 }
 
 // An NN processing thread
@@ -555,11 +646,12 @@ func (m *Monitor) nnThread() {
 	// But now you know why we do it this way. It's not the best, just the
 	// easiest, an good enough for now.
 
+	// For Hailo/Accelerators, these parameters are defined at model setup time,
+	// but for NCNN, we control them with each detection. We should probably get
+	// rid of the per-detection mechanism so that it all goes in through one mechanism.
 	detectionParams := nn.NewDetectionParams()
-	nnConfig := m.detector.Config()
-	nnWidth := nnConfig.Width
-	nnHeight := nnConfig.Height
-	hasShownResolutionWarning := map[int64]bool{}
+	detectionParams.ProbabilityThreshold = m.nnModelSetup.ProbabilityThreshold
+	detectionParams.NmsIouThreshold = m.nnModelSetup.NmsIouThreshold
 
 	for frameCount := 0; true; frameCount++ {
 		item, ok := <-m.nnThreadQueue
@@ -567,21 +659,14 @@ func (m *Monitor) nnThread() {
 			break
 		}
 		yuv := item.image
-		rgb := cimg.NewImage(yuv.Width, yuv.Height, cimg.PixelFormatRGB)
+		xformRgbToNN, rgbPure, rgbNN := m.prepareImageForNN(yuv)
+		if m.debugDumpFrames {
+			m.dumpFrame(rgbNN, item.camera.camera)
+		}
 		start := time.Now()
-		yuv.CopyToCImageRGB(rgb)
-		if (rgb.Width > nnWidth || rgb.Height > nnHeight) && !hasShownResolutionWarning[item.camera.camera.ID()] {
-			hasShownResolutionWarning[item.camera.camera.ID()] = true
-			m.Log.Warnf("Camera %v image size %vx%v is larger than NN input size %vx%v", item.camera.camera.ID(), rgb.Width, rgb.Height, nnWidth, nnHeight)
-		}
-		nnCrop := cropImageForNN(rgb, nnWidth, nnHeight)
-		objects, err := m.detector.DetectObjects(nn.WholeImage(nnCrop.NChan(), nnCrop.Pixels, nnCrop.Width, nnCrop.Height), detectionParams)
-		duration := time.Now().Sub(start)
-		if m.avgTimeNSPerFrameNN.Load() == 0 {
-			m.avgTimeNSPerFrameNN.Store(duration.Nanoseconds())
-		} else {
-			m.avgTimeNSPerFrameNN.Store((99*m.avgTimeNSPerFrameNN.Load() + duration.Nanoseconds()) / 100)
-		}
+		objects, err := m.detector.DetectObjects(nn.WholeImage(rgbNN.NChan(), rgbNN.Pixels, rgbNN.Width, rgbNN.Height), detectionParams)
+		xformRgbToNN.ApplyBackward(objects)
+		perfstats.UpdateMovingAverage(&m.avgTimeNSPerFrameNNDet, time.Now().Sub(start).Nanoseconds())
 		if err != nil {
 			if time.Now().Sub(lastErrAt) > 15*time.Second {
 				m.Log.Errorf("Error detecting objects: %v", err)
@@ -597,7 +682,7 @@ func (m *Monitor) nnThread() {
 			}
 			item.camera.lock.Lock()
 			item.camera.lastDetection = result
-			item.camera.lastImg = rgb
+			item.camera.lastImg = rgbPure
 			item.camera.lock.Unlock()
 
 			if len(m.analyzerQueue) >= cap(m.analyzerQueue)*9/10 {
@@ -613,13 +698,4 @@ func (m *Monitor) nnThread() {
 	}
 
 	m.nnThreadStopWG.Done()
-}
-
-func cropImageForNN(src *cimg.Image, width, height int) *cimg.Image {
-	if src.Width == width && src.Height == height {
-		return src
-	}
-	dst := cimg.NewImage(width, height, src.Format)
-	dst.CopyImage(src, 0, 0)
-	return dst
 }

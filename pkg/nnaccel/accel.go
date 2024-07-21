@@ -51,14 +51,16 @@ func Load(accelName string) (*Accelerator, error) {
 	return nil, errors.New(allErrors.String())
 }
 
-func (m *Accelerator) LoadModel(modelDir, modelName string, setup *ModelSetup) (*Model, error) {
+func (m *Accelerator) LoadModel(modelDir, modelName string, setup *nn.ModelSetup) (*Model, error) {
 	model := Model{
 		accel: m,
 	}
 	cModelDir := C.CString(modelDir)
 	cModelName := C.CString(modelName)
 	cSetup := C.NNModelSetup{
-		BatchSize: C.int(setup.BatchSize),
+		BatchSize:            C.int(setup.BatchSize),
+		ProbabilityThreshold: C.float(setup.ProbabilityThreshold),
+		NmsIouThreshold:      C.float(setup.NmsIouThreshold),
 	}
 	err := m.StatusToErr(C.NALoadModel(m.handle, cModelDir, cModelName, &cSetup, &model.handle))
 	C.free(unsafe.Pointer(cModelDir))

@@ -21,10 +21,9 @@ func loadModel(modelName string, batchSize int) (*nnaccel.Accelerator, *nnaccel.
 		return nil, nil, err
 	}
 
-	setup := nnaccel.ModelSetup{
-		BatchSize: batchSize,
-	}
-	model, err := device.LoadModel(filepath.Join(repoRoot, "models"), modelName, &setup)
+	setup := nn.NewModelSetup()
+	setup.BatchSize = batchSize
+	model, err := device.LoadModel(filepath.Join(repoRoot, "models"), modelName, setup)
 	if err != nil {
 		return nil, nil, err
 	}

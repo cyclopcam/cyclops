@@ -5,8 +5,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+// Parameters that need to be configured at model compile time
 typedef struct _NNModelSetup {
-	int BatchSize;
+	int   BatchSize;
+	float ProbabilityThreshold;
+	float NmsIouThreshold;
 } NNModelSetup;
 
 typedef struct _NNModelInfo {

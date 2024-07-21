@@ -85,7 +85,7 @@ func RunInferenceOnVideoFile(model ObjectDetector, inputFile string, options Inf
 			aspect := float64(rgb.Width) / float64(rgb.Height)
 			newHeight := options.MaxVideoHeight
 			newWidth := int(float64(newHeight)*aspect + 0.5)
-			rgb = cimg.ResizeNew(rgb, newWidth, newHeight)
+			rgb = cimg.ResizeNew(rgb, newWidth, newHeight, nil)
 		}
 
 		// assume all frames are the same size

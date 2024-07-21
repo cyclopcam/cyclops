@@ -46,7 +46,7 @@ func main() {
 		StdOutProgress: true,
 	}
 
-	model, err := nnload.LoadModel(logger, filepath.Dir(*modelFile), filepath.Base(*modelFile), nn.ThreadingModeParallel)
+	model, err := nnload.LoadModel(logger, filepath.Dir(*modelFile), filepath.Base(*modelFile), nn.ThreadingModeParallel, nn.NewModelSetup())
 	check(err)
 
 	videoLabels, err := nn.RunInferenceOnVideoFile(model, *input, options)

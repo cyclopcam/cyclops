@@ -11,6 +11,9 @@ import (
 // Package nn is a Neural Network interface layer
 // To load a model, use the nnload package.
 
+const DefaultProbabilityThreshold = 0.5
+const DefaultNmsIouThreshold = 0.45
+
 // Results of an NN object detection run
 type DetectionResult struct {
 	CameraID    int64             `json:"cameraID"`
@@ -22,16 +25,31 @@ type DetectionResult struct {
 // NN object detection parameters
 type DetectionParams struct {
 	ProbabilityThreshold float32 // Value between 0 and 1. Lower values will find more objects. Zero value will use the default.
-	NmsThreshold         float32 // Value between 0 and 1. Lower values will merge more objects together into one. Zero value will use the default.
+	NmsIouThreshold      float32 // Value between 0 and 1. Lower values will merge more objects together into one. Zero value will use the default.
 	Unclipped            bool    // If true, don't clip boxes to the neural network boundaries
 }
 
 // Create a default DetectionParams object
 func NewDetectionParams() *DetectionParams {
 	return &DetectionParams{
-		ProbabilityThreshold: 0.5,
-		NmsThreshold:         0.45,
+		ProbabilityThreshold: DefaultProbabilityThreshold,
+		NmsIouThreshold:      DefaultNmsIouThreshold,
 		Unclipped:            false,
+	}
+}
+
+// This was created for the Hailo accelerator interface. Too much overlap with DetectionParams!!!
+type ModelSetup struct {
+	BatchSize            int
+	ProbabilityThreshold float32 // Same as nn.DetectionParams.ProbabilityThreshold
+	NmsIouThreshold      float32 // Same as nn.DetectionParams.NmsIouThreshold
+}
+
+func NewModelSetup() *ModelSetup {
+	return &ModelSetup{
+		BatchSize:            1,
+		ProbabilityThreshold: DefaultProbabilityThreshold,
+		NmsIouThreshold:      DefaultNmsIouThreshold,
 	}
 }
 

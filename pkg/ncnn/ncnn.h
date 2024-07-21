@@ -17,7 +17,7 @@ enum DetectorFlags {
 NcnnDetector* CreateDetector(int detectorFlags, const char* type, const char* param, const char* bin, int width, int height);
 void          DeleteDetector(NcnnDetector* detector);
 void          DetectObjects(NcnnDetector* detector, int nchan, const uint8_t* img, int width, int height, int stride,
-                            int detectFlags, float minProbability, float nmsThreshold, int maxDetections, Detection* detections, int* numDetections);
+                            int detectFlags, float minProbability, float nmsIouThreshold, int maxDetections, Detection* detections, int* numDetections);
 
 #ifdef __cplusplus
 }

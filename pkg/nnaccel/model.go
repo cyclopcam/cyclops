@@ -17,10 +17,6 @@ type Model struct {
 	config nn.ModelConfig
 }
 
-type ModelSetup struct {
-	BatchSize int
-}
-
 func (m *Model) Close() {
 	C.NACloseModel(m.accel.handle, m.handle)
 }
@@ -36,6 +32,7 @@ func (m *Model) Run(batchSize, width, height, nchan int, stride int, data unsafe
 	return job, nil
 }
 
+// Detection thresholds are ignored here. They need to be setup when the model is initially loaded.
 func (m *Model) DetectObjects(img nn.ImageCrop, params *nn.DetectionParams) ([]nn.ObjectDetection, error) {
 	job, err := m.Run(1, img.CropWidth, img.CropHeight, img.NChan, img.Stride(), img.Pointer())
 	if err != nil {

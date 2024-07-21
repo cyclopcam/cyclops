@@ -18,7 +18,8 @@ PCI Express v3.
 There are various things we could do better here:
 
 1. The Hailo has hardware support for bilinear filtering. We should use that to scale the incoming image
-	to the resolution of the NN, instead of cropping it, or blitting it onto a black canvas.
+	to the resolution of the NN, instead of cropping it, or blitting it onto a black canvas. The Hailo
+	examples don't seem to indicate how to do this yet.
 2. Use a batch size of 8 (or anything larger than 1).
 3. We should make sure that we can reach the same peak FPS that the official Hailo benchmarks achieve.
 4. Use better models. Right now we're using yolov8s, but we could probably use yolov8m or yolov8l if we

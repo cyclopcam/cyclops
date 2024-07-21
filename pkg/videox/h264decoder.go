@@ -307,6 +307,10 @@ func (d *H264Decoder) DecodeDeepRef(packet *VideoPacket) (*accel.YUVImage, error
 	// In addition, we skip the small, but not zero cost, of converting to RGB for
 	// frames that nobody will ever see. At least, this is true for the case where
 	// your computer is unable to run the neural network on every single frame.
+	//
+	// At some point, it might be worthwhile seeing of the ffmpeg scaling code
+	// does a better job of scaling to our desired NN resolution, than doing it
+	// ourselves, after the YUV-to-RGB conversion.
 
 	/*
 		useLibSimdForYUVtoRGB := true

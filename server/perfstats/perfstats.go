@@ -27,19 +27,18 @@ To get ms per second, we multiply by 10 * 4 = 40 (for 10 frames per second, and 
 */
 
 type PerfStats struct {
-	YUV420ToRGB_NanosecondsPerKibiPixel atomic.Uint64
+	YUV420ToRGB_NanosecondsPerKibiPixel atomic.Int64
 }
 
 var Stats = PerfStats{}
 
-func UpdateMovingAverage(stat *atomic.Uint64, value int64) {
-	vu := uint64(value)
+func UpdateMovingAverage(stat *atomic.Int64, value int64) {
 	// We don't bother about strict correctness here, with CompareAndSwap,
 	// because this is just sampled stats, and it's OK to miss one or two samples.
 	if stat.Load() == 0 {
-		stat.Store(vu)
+		stat.Store(value)
 	} else {
-		stat.Store((stat.Load()*63 + vu) >> 6)
+		stat.Store((stat.Load()*63 + value) >> 6)
 	}
 }
 

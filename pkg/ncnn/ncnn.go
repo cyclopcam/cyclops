@@ -55,7 +55,7 @@ func (d *Detector) DetectObjects(img nn.ImageCrop, params *nn.DetectionParams) (
 	}
 	C.DetectObjects(d.detector,
 		C.int(img.NChan), (*C.uchar)(img.Pointer()), C.int(img.CropWidth), C.int(img.CropHeight), C.int(img.Stride()),
-		flags, C.float(params.ProbabilityThreshold), C.float(params.NmsThreshold),
+		flags, C.float(params.ProbabilityThreshold), C.float(params.NmsIouThreshold),
 		C.int(len(detections)), (*C.Detection)(unsafe.Pointer(&detections[0])), &nDetections)
 	result := make([]nn.ObjectDetection, nDetections)
 

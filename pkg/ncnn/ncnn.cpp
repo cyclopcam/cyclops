@@ -47,7 +47,7 @@ void DeleteDetector(NcnnDetector* detector) {
 }
 
 void DetectObjects(NcnnDetector* detector, int nchan, const uint8_t* img, int width, int height, int stride,
-                   int detectFlags, float minProbability, float nmsThreshold, int maxDetections, Detection* detections, int* numDetections) {
+                   int detectFlags, float minProbability, float nmsIouThreshold, int maxDetections, Detection* detections, int* numDetections) {
 	// Unfortunately the NCNN input data structures don't support a custom stride (i.e. stride must be width * nchan).
 	// So we have no choice but to copy the image out.
 	uint8_t* crop = nullptr;
@@ -72,7 +72,7 @@ void DetectObjects(NcnnDetector* detector, int nchan, const uint8_t* img, int wi
 	std::vector<Detection> objects;
 	if (detector->Type == ModelTypes::YOLOv7 ||
 	    detector->Type == ModelTypes::YOLOv8) {
-		DetectYOLO(detector->Type, detector->Net, detector->Width, detector->Height, detectFlags, minProbability, nmsThreshold, mat, objects);
+		DetectYOLO(detector->Type, detector->Net, detector->Width, detector->Height, detectFlags, minProbability, nmsIouThreshold, mat, objects);
 	}
 	int n = std::min(maxDetections, (int) objects.size());
 	for (int i = 0; i < n; i++) {
