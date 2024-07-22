@@ -68,6 +68,12 @@ func DropPrivileges(username string) (e error, homeDir string) {
 	if err := syscall.Setuid(uid); err != nil {
 		return fmt.Errorf("Failed to setuid: %v", err), ""
 	}
+	if err := syscall.Setresuid(uid, uid, uid); err != nil {
+		return fmt.Errorf("Failed to setresuid: %v", err), ""
+	}
+	if err := syscall.Setresgid(gid, gid, gid); err != nil {
+		return fmt.Errorf("Failed to setresgid: %v", err), ""
+	}
 
 	return nil, userRec.HomeDir
 }

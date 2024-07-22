@@ -33,6 +33,7 @@ func main() {
 	kernelWG := parser.Flag("", "kernelwg", &argparse.Options{Help: "Run the kernel-mode wireguard interface", Default: false})
 	username := parser.String("", "username", &argparse.Options{Help: "After launching as root, change identity to this user (for dropping privileges of the main process)", Default: ""})
 	disableHailo := parser.Flag("", "nohailo", &argparse.Options{Help: "Disable Hailo neural network accelerator support", Default: false})
+	disableDrop := parser.Flag("", "nodrop", &argparse.Options{Help: "Disable dropping priviledges to non-root user", Default: false})
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
@@ -71,10 +72,12 @@ func main() {
 		if *username == "" && os.Getenv("SUDO_USER") != "" {
 			*username = os.Getenv("SUDO_USER")
 		}
-		if err, home = kernelwg.DropPrivileges(*username); err != nil {
-			logger.Errorf("Error dropping privileges to username '%v': %v", *username, err)
-			logger.Errorf("You can use --novpn to disable the automatic VPN system.")
-			os.Exit(1)
+		if !*disableDrop {
+			if err, home = kernelwg.DropPrivileges(*username); err != nil {
+				logger.Errorf("Error dropping privileges to username '%v': %v", *username, err)
+				logger.Errorf("You can use --novpn to disable the automatic VPN system.")
+				os.Exit(1)
+			}
 		}
 	}
 
