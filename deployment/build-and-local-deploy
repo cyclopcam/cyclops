@@ -62,7 +62,7 @@ fi
 
 if [ $SKIP_NCNN -eq 0 ]; then
 	echo Building NCNN
-	cd ncnn && mkdir -p build && cd build && cmake -DNCNN_SIMPLEOCV=1 .. && make -j2 && cd ../..
+	cd ncnn && mkdir -p build && cd build && cmake -DNCNN_SIMPLEOCV=1 -DNCNN_BUILD_EXAMPLES=OFF .. && make -j2 && cd ../..
 fi
 
 go build -o bin/cyclops cmd/cyclops/*.go

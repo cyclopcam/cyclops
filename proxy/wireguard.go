@@ -11,8 +11,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// We only use /etc/wireguard/cyclops.conf for configuring the WireGuard interface.
-// All peers are created and destroyed manually, by this code.
+// We use /etc/wireguard/cyclops.conf ONLY for configuring the WireGuard interface
+// (i.e. NOT for managing the peers).
+// All peers are created and destroyed programatically, by this code.
 // In order to minimize downtime, we support restarting of
 // this proxy server without recreating all the WireGuard peers.
 // When we start, we check if the 'cyclops' wireguard device is

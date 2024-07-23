@@ -78,8 +78,11 @@ func (p *Proxy) Start(config ProxyConfig) error {
 		return fmt.Errorf("Error rebuilding cache: %w", err)
 	}
 
-	p.reverseProxy = &httputil.ReverseProxy{}
-	p.reverseProxy.Director = p.proxyDirector
+	p.reverseProxy = &httputil.ReverseProxy{
+		Director:     p.proxyDirector,
+		ErrorHandler: p.errorHandler,
+		Transport:    createProxyTransport(),
+	}
 
 	return p.listenHTTP()
 }
