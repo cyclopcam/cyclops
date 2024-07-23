@@ -1,8 +1,11 @@
 # Install
 
-_Only tested on Ubuntu 22.04 and Ubuntu 23.10_
+Tested on the following platforms:
 
-    sudo apt install libavformat-dev libswscale-dev ffmpeg cmake gcc g++ pkg-config libturbojpeg0-dev wireguard wireguard-tools
+* Ubuntu 22.04, 23.10, 24.04
+* Raspberry Pi OS 64-bit
+
+> sudo apt install libavformat-dev libswscale-dev ffmpeg cmake gcc g++ pkg-config libturbojpeg0-dev wireguard wireguard-tools
 
 ## Dev environment
 
@@ -12,8 +15,9 @@ _Only tested on Ubuntu 22.04 and Ubuntu 23.10_
     -   `cd ncnn`
     -   `mkdir build`
     -   `cd build`
-    -   `cmake -DNCNN_SIMPLEOCV=1 ..`
+    -   `cmake -DNCNN_SIMPLEOCV=1 -DNCNN_BUILD_EXAMPLES=OFF ..`
     -   `make -j` (if you have 16GB RAM ...)
+    -   `make -j4` (... if you only have 8GB RAM)
     -   `make -j2` (... if you only have 4GB RAM)
 -   Build Simd (make sure you have done `git submodule update --init`)
     -   `cd Simd`
@@ -23,8 +27,8 @@ _Only tested on Ubuntu 22.04 and Ubuntu 23.10_
     -   `make -j` (if you have 16GB RAM ...)
     -   `make -j2` (... if you only have 4GB RAM)
 -   Install nvm
--   Use `nvm install v18.19.0` (The exact version is probably not important, but
-    this is the exact version I used when creating this document)
+-   Use `nvm install v18` (The exact version is probably not important, but
+    `v18.19.0` was the exact version I used when creating this document)
 -   In `www`, do `npm install`, then `npm run build`
 -   In `appui`, do `npm install`, then `npm run build`
 -   First run of `go run cmd/cyclops/cyclops.go` takes a few minutes on a
