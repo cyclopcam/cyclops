@@ -7,6 +7,7 @@ set -e
 SKIP_WWW=0
 SKIP_HAILO=0
 SKIP_NCNN=0
+SKIP_SIMD=0
 SKIP_SERVICE_CONFIG=0
 
 while [ "$#" -gt 0 ]; do
@@ -21,6 +22,10 @@ while [ "$#" -gt 0 ]; do
 			;;
 		--skip-ncnn)
 			SKIP_NCNN=1
+			shift
+			;;
+		--skip-simd)
+			SKIP_SIMD=1
 			shift
 			;;
 		--skip-service-config)
@@ -61,8 +66,13 @@ if [ $SKIP_HAILO -eq 0 ]; then
 fi
 
 if [ $SKIP_NCNN -eq 0 ]; then
-	echo Building NCNN
-	cd ncnn && mkdir -p build && cd build && cmake -DNCNN_SIMPLEOCV=1 -DNCNN_BUILD_EXAMPLES=OFF .. && make -j2 && cd ../..
+	echo Building NCNN library
+	cd ncnn && mkdir -p build && cd build && cmake -DNCNN_SIMPLEOCV=1 -DNCNN_BUILD_EXAMPLES=OFF .. && make -j4 && cd ../..
+fi
+
+if [ $SKIP_SIMD -eq 0 ]; then
+	echo Building Simd library
+	cd Simd && mkdir -p build && cd build && cmake ../prj/cmake && make -j4 && cd ../..
 fi
 
 go build -o bin/cyclops cmd/cyclops/*.go

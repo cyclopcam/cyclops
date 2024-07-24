@@ -4,7 +4,7 @@ After=network.target network-online.target
 Requires=network-online.target
  
 [Service]
-ExecStart=/usr/local/bin/cyclops --username cyclops --config /var/lib/cyclops/config.sqlite
+ExecStart=/usr/local/bin/cyclops --vpn --username cyclops --config /var/lib/cyclops/config.sqlite
 
 [Install]
 WantedBy=multi-user.target

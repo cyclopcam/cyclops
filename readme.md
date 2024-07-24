@@ -2,10 +2,11 @@
 
 Tested on the following platforms:
 
-* Ubuntu 22.04, 23.10, 24.04
-* Raspberry Pi OS 64-bit
+-   Ubuntu 22.04, 23.10, 24.04
+-   Raspberry Pi OS 64-bit
 
-> sudo apt install libavformat-dev libswscale-dev ffmpeg cmake gcc g++ pkg-config libturbojpeg0-dev wireguard wireguard-tools
+> sudo apt install libavformat-dev libswscale-dev ffmpeg cmake gcc g++
+> pkg-config libturbojpeg0-dev wireguard wireguard-tools
 
 ## Dev environment
 
@@ -37,7 +38,7 @@ Tested on the following platforms:
 
 Once setup, you should be able to run the server and the UI:
 
--   `go run cmd/cyclops/cyclops.go --novpn`
+-   `go run cmd/cyclops/cyclops.go`
 -   `npm run dev -- --host` (from the `www` directory). The `-- --host` allows
     you to connect from external devices.
 -   `npm run dev -- --host` (from the `appui` directory, for working on the
