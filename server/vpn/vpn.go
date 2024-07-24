@@ -24,23 +24,21 @@ const ProxyHost = "proxy-cpt.cyclopcam.org"
 
 // VPN is only safe to use by a single thread
 type VPN struct {
-	Log             log.Log
-	privateKey      wgtypes.Key
-	publicKey       wgtypes.Key
-	client          *kernel.Client
-	connectionOK    atomic.Bool
-	deviceIP        string // Our IP in the VPN
-	shutdownStarted chan bool
-	hasRegistered   atomic.Bool
+	Log           log.Log
+	privateKey    wgtypes.Key
+	publicKey     wgtypes.Key
+	client        *kernel.Client
+	connectionOK  atomic.Bool
+	deviceIP      string // Our IP in the VPN
+	hasRegistered atomic.Bool
 }
 
-func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key, shutdownStarted chan bool, wgkernelClientSecret string) *VPN {
+func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key, wgkernelClientSecret string) *VPN {
 	v := &VPN{
-		Log:             log,
-		privateKey:      privateKey,
-		publicKey:       publicKey,
-		client:          kernel.NewClient(wgkernelClientSecret),
-		shutdownStarted: shutdownStarted,
+		Log:        log,
+		privateKey: privateKey,
+		publicKey:  publicKey,
+		client:     kernel.NewClient(wgkernelClientSecret),
 	}
 	return v
 }
@@ -51,16 +49,12 @@ func (v *VPN) ConnectKernelWG() error {
 	return v.client.Connect()
 }
 
-// Start our Wireguard device, and save our public key
-func (v *VPN) Start() error {
-	if err := v.start(); err != nil {
-		return err
-	}
-	v.runRegisterLoop()
-	return nil
+func (v *VPN) DisconnectKernelWG() {
+	v.client.Close()
 }
 
-func (v *VPN) start() error {
+// Start our Wireguard device, and save our public key
+func (v *VPN) Start() error {
 	getResp, err := v.client.GetDevice()
 	if err == nil {
 		// Device was already up, so we're good to go, provided the key is correct
@@ -168,8 +162,8 @@ func (v *VPN) validateAndSaveDeviceDetails(resp *kernel.MsgGetDeviceResponse) er
 // Keep pinging server so that it knows we're alive.
 // Also, if we've been dormant for a long time, then the proxy may have culled us,
 // and we may not receive a new VPN IP, so that's also why this system is essential.
-func (v *VPN) runRegisterLoop() {
-	registerInterval := 12 * time.Hour
+func (v *VPN) RunRegisterLoop(exit chan bool) {
+	registerInterval := 4 * time.Hour
 
 	nextRegisterAt := time.Now().Add(time.Second)
 	if v.hasRegistered.Load() {
@@ -189,7 +183,7 @@ func (v *VPN) runRegisterLoop() {
 			select {
 			case <-time.After(sleep):
 				break inner
-			case <-v.shutdownStarted:
+			case <-exit:
 				return
 			}
 

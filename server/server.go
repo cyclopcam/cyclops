@@ -52,14 +52,10 @@ type Server struct {
 	arcCredentialsLock     sync.Mutex
 	arcCredentials         *arc.ArcServerCredentials // If Arc server is not configured, then this is nil.
 	monitorToVideoDBClosed chan bool                 // If this channel is closed, then monitor to video DB has stopped
-
-	vpnLock sync.Mutex
-	vpn     *vpn.VPN
 }
 
 const (
-	ServerFlagDisableVPN   = 1
-	ServerFlagHotReloadWWW = 2 // Don't embed the 'www' directory into our binary, but load it from disk, and assume it's not immutable. This is for dev time on the 'www' source.
+	ServerFlagHotReloadWWW = 1 // Don't embed the 'www' directory into our binary, but load it from disk, and assume it's not immutable. This is for dev time on the 'www' source.
 )
 
 // These are critical errors that prevent the system from functioning.
@@ -80,7 +76,7 @@ type StartupError struct {
 }
 
 // Create a new server, load config, start cameras, and listen on HTTP
-func NewServer(logger log.Log, configDBFilename string, serverFlags int, explicitPrivateKey, kernelWGSecret string) (*Server, error) {
+func NewServer(logger log.Log, configDBFilename string, serverFlags int, explicitPrivateKey string) (*Server, error) {
 	log, err := log.NewLog()
 	if err != nil {
 		return nil, err
@@ -99,15 +95,6 @@ func NewServer(logger log.Log, configDBFilename string, serverFlags int, explici
 		s.configDB = cfg
 	}
 	s.Log.Infof("Public key: %v", s.configDB.PublicKey)
-
-	// Setup VPN and register with proxy
-	enableVPN := (serverFlags & ServerFlagDisableVPN) == 0
-	s.vpn = vpn.NewVPN(s.Log, s.configDB.PrivateKey, s.configDB.PublicKey, s.ShutdownStarted, kernelWGSecret)
-	if enableVPN {
-		if err := s.startVPN(); err != nil {
-			return nil, err
-		}
-	}
 
 	// Since storage location needs to be configured, we can't fail to startup just because we're
 	// unable to access our video archive.
@@ -146,19 +133,21 @@ func NewServer(logger log.Log, configDBFilename string, serverFlags int, explici
 	return s, nil
 }
 
-func (s *Server) startVPN() error {
-	s.vpnLock.Lock()
-	defer s.vpnLock.Unlock()
+// Start a VPN client
+func (s *Server) StartVPN(kernelWGSecret string) (*vpn.VPN, error) {
+	// Setup VPN and register with proxy
+	vpnClient := vpn.NewVPN(s.Log, s.configDB.PrivateKey, s.configDB.PublicKey, kernelWGSecret)
 
-	if err := s.vpn.ConnectKernelWG(); err != nil {
-		return fmt.Errorf("Failed to connect to Cyclops KernelWG service: %w", err)
-	} else {
-		if err := s.vpn.Start(); err != nil {
-			return fmt.Errorf("Failed to start Wireguard VPN: %w", err)
-		} else {
-			return nil
-		}
+	if err := vpnClient.ConnectKernelWG(); err != nil {
+		return nil, fmt.Errorf("Failed to connect to Cyclops KernelWG service: %w", err)
 	}
+
+	if err := vpnClient.Start(); err != nil {
+		vpnClient.DisconnectKernelWG()
+		return nil, fmt.Errorf("Failed to start Wireguard VPN: %w", err)
+	}
+
+	return vpnClient, nil
 }
 
 // port example: ":8080"

@@ -62,7 +62,7 @@ func main() {
 	if *username == "" && os.Getenv("SUDO_USER") != "" {
 		*username = os.Getenv("SUDO_USER")
 	}
-	if err, _ = kernelwg.DropPrivileges(*username); err != nil {
+	if err = kernelwg.DropPrivileges(*username); err != nil {
 		fmt.Printf("Error dropping privileges to username '%v': %v\n", *username, err)
 		os.Exit(1)
 	}
