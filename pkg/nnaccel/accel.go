@@ -43,12 +43,17 @@ func Load(accelName string) (*Accelerator, error) {
 		err := CError(C.LoadNNAccel(cFullPath, &m.handle))
 		C.free(unsafe.Pointer(cFullPath))
 		if err != nil {
-			fmt.Fprintf(&allErrors, "Loading %v: %v\n", fullPath, err)
+			if strings.Index(err.Error(), fullPath) != -1 {
+				// If the error contains the full path, then don't add it again.
+				fmt.Fprintf(&allErrors, "%v\n", err)
+			} else {
+				fmt.Fprintf(&allErrors, "Loading %v: %v\n", fullPath, err)
+			}
 		} else {
 			return &m, nil
 		}
 	}
-	return nil, errors.New(allErrors.String())
+	return nil, errors.New(strings.TrimRight(allErrors.String(), "\n"))
 }
 
 func (m *Accelerator) LoadModel(modelDir, modelName string, setup *nn.ModelSetup) (*Model, error) {
