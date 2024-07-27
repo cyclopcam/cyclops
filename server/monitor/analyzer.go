@@ -63,7 +63,7 @@ type trackedObject struct {
 // Internal state of the analyzer for a single camera
 type analyzerCameraState struct {
 	cameraID int64
-	camera   *monitorCamera
+	monCam   *monitorCamera
 	tracked  []*trackedObject
 	lastSeen time.Time
 }
@@ -112,27 +112,29 @@ func nextPowerOf2(n int) int {
 }
 
 func (m *Monitor) analyzer() {
-	camStates := map[int64]*analyzerCameraState{} // Camera ID -> state
+	camStates := map[*monitorCamera]*analyzerCameraState{}
 
 	for {
-		item, ok := <-m.analyzerQueue
+		qItem, ok := <-m.analyzerQueue
 		if !ok {
 			break
 		}
-		cam := camStates[item.camera.camera.ID()]
-		if cam == nil {
-			cam = &analyzerCameraState{
-				cameraID: item.camera.camera.ID(),
-				camera:   item.camera,
+		// Note! Monitor will recreate it's monitorCamera objects whenever SetCameras() is called.
+		// That's why we use *monitorCamera as the key of our camStates map.
+		anzCam := camStates[qItem.monCam]
+		if anzCam == nil {
+			anzCam = &analyzerCameraState{
+				cameraID: qItem.monCam.camera.ID(),
+				monCam:   qItem.monCam,
 			}
-			camStates[item.camera.camera.ID()] = cam
+			camStates[qItem.monCam] = anzCam
 		}
-		m.analyzeFrame(cam, item)
-		cam.lastSeen = time.Now()
+		m.analyzeFrame(anzCam, qItem)
+		anzCam.lastSeen = time.Now()
 
-		// Delete cameras that we haven't been seen in a while
+		// Delete cameras that we haven't seen in a while
 		for camID, state := range camStates {
-			if time.Now().Sub(state.lastSeen) > time.Hour {
+			if time.Now().Sub(state.lastSeen) > time.Minute {
 				delete(camStates, camID)
 			}
 		}
@@ -251,9 +253,10 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 		}
 		result.Objects = append(result.Objects, obj)
 	}
-	cam.camera.lock.Lock()
-	cam.camera.analyzerState = result
-	cam.camera.lock.Unlock()
+	cam.monCam.lock.Lock()
+	//fmt.Printf("cam.camera.analyzerState = result (%v). %p = %p\n", cam.cameraID, cam.camera, result)
+	cam.monCam.analyzerState = result
+	cam.monCam.lock.Unlock()
 
 	m.sendToWatchers(result)
 }

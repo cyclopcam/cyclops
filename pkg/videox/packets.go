@@ -74,12 +74,13 @@ type NALU struct {
 
 // VideoPacket is what we store in our ring buffer
 type VideoPacket struct {
-	RecvID    int64     // Arbitrary monotonically increasing ID. Used to detect dropped packets, or other issues like that.
-	RecvTime  time.Time // Wall time when the packet was received. This is obviously subject to network jitter etc, so not a substitute for PTS
-	H264NALUs []NALU
-	H264PTS   time.Duration
-	WallPTS   time.Time // Reference wall time combined with the received PTS. We consider this the ground truth/reality of when the packet was recorded.
-	IsBacklog bool      // a bit of a hack to inject this state here. maybe an integer counter would suffice? (eg nBacklogPackets)
+	RawRecvID   int64     // Arbitrary monotonically increasing ID of raw received. Used to detect dropped packets, or other issues like that.
+	ValidRecvID int64     // Arbitrary monotonically increasing ID of useful decoded packets. Used to detect dropped packets, or other issues like that.
+	RecvTime    time.Time // Wall time when the packet was received. This is obviously subject to network jitter etc, so not a substitute for PTS
+	H264NALUs   []NALU
+	H264PTS     time.Duration
+	WallPTS     time.Time // Reference wall time combined with the received PTS. We consider this the ground truth/reality of when the packet was recorded.
+	IsBacklog   bool      // a bit of a hack to inject this state here. maybe an integer counter would suffice? (eg nBacklogPackets)
 }
 
 // A list of packets, with some helper functions
@@ -213,11 +214,12 @@ func (n *NALU) Type() h264.NALUType {
 // Deep clone of packet buffer
 func (p *VideoPacket) Clone() *VideoPacket {
 	c := &VideoPacket{
-		RecvID:    p.RecvID,
-		RecvTime:  p.RecvTime,
-		H264PTS:   p.H264PTS,
-		WallPTS:   p.WallPTS,
-		IsBacklog: p.IsBacklog,
+		RawRecvID:   p.RawRecvID,
+		ValidRecvID: p.ValidRecvID,
+		RecvTime:    p.RecvTime,
+		H264PTS:     p.H264PTS,
+		WallPTS:     p.WallPTS,
+		IsBacklog:   p.IsBacklog,
 	}
 	c.H264NALUs = make([]NALU, len(p.H264NALUs))
 	for i, n := range p.H264NALUs {

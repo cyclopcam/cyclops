@@ -199,12 +199,13 @@ func (s *Stream) Listen(address string) error {
 
 	s.Log.Infof("Connected to %v, track %v", camHost, media.ID)
 
-	recvID := atomic.Int64{}
+	rawRecvID := atomic.Int64{}
+	validRecvID := atomic.Int64{}
 	nWarningsAboutNoPTS := 0
 
 	client.OnPacketRTP(media, forma, func(pkt *rtp.Packet) {
 		now := time.Now()
-		myPacketID := recvID.Add(1)
+		myRawPacketID := rawRecvID.Add(1)
 
 		s.livenessLock.Lock()
 		s.livenessLastPacketReceivedAt = now
@@ -236,6 +237,8 @@ func (s *Stream) Listen(address string) error {
 			return
 		}
 
+		myValidPacketID := validRecvID.Add(1)
+
 		// Note that gortsplib also has client.PacketNTP(), which we could experiment with.
 		// Perhaps we should measure NTP time from the camera, and if its close enough to our
 		// perceived time, then use the camera's time.
@@ -260,7 +263,7 @@ func (s *Stream) Listen(address string) error {
 		if s.info == nil {
 			if inf := s.extractSPSInfo(nalus); inf != nil {
 				s.info = inf
-				s.Log.Infof("Size: %v x %v (after %v packets)", inf.Width, inf.Height, myPacketID)
+				s.Log.Infof("Size: %v x %v (after %v packets)", inf.Width, inf.Height, myValidPacketID)
 			}
 			//if myPacketID == 100 && s.info == nil {
 			//	s.Log.Warnf("Failed to extract SPS info after 100 packets")
@@ -285,7 +288,8 @@ func (s *Stream) Listen(address string) error {
 		// A typical iframe packet from a 320x240 camera is around 100 bytes!
 		// A keyframe is between 10 and 20 KB.
 		cloned := videox.ClonePacket(nalus, pts, now, refTime)
-		cloned.RecvID = myPacketID
+		cloned.RawRecvID = myRawPacketID
+		cloned.ValidRecvID = myValidPacketID
 
 		// Frame size stats can be interesting
 		//if s.Ident == "driveway.low" {

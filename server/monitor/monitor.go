@@ -78,7 +78,7 @@ type Monitor struct {
 	watchersAllCameras []chan *AnalysisState           // Agents watching all cameras
 }
 
-// monitoCamera is the internal data structure for managing a single camera that we are monitoring
+// monitorCamera is the internal data structure for managing a single camera that we are monitoring
 type monitorCamera struct {
 	camera *camera.Camera
 
@@ -103,12 +103,12 @@ type monitorCamera struct {
 }
 
 type monitorQueueItem struct {
-	camera *monitorCamera
+	monCam *monitorCamera
 	image  *accel.YUVImage
 }
 
 type analyzerQueueItem struct {
-	camera    *monitorCamera
+	monCam    *monitorCamera
 	detection *nn.DetectionResult
 }
 
@@ -279,6 +279,8 @@ func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *nn.DetectionResult,
 	if cam.lastImg == nil {
 		return nil, nil, nil, fmt.Errorf("No image available for camera %v", cameraID)
 	}
+
+	//fmt.Printf("LatestFrame %v = %p, analyzerState = %p\n", cameraID, cam, cam.analyzerState)
 
 	return cam.lastImg, cam.lastDetection, cam.analyzerState, nil
 }
@@ -519,7 +521,7 @@ func (m *Monitor) readFrames() {
 				camState.lastFrameID = imgID
 				idle = false
 				m.nnThreadQueue <- monitorQueueItem{
-					camera: mcam,
+					monCam: mcam,
 					image:  img,
 				}
 			}
@@ -661,7 +663,7 @@ func (m *Monitor) nnThread() {
 		yuv := item.image
 		xformRgbToNN, rgbPure, rgbNN := m.prepareImageForNN(yuv)
 		if m.debugDumpFrames {
-			m.dumpFrame(rgbNN, item.camera.camera)
+			m.dumpFrame(rgbNN, item.monCam.camera)
 		}
 		start := time.Now()
 		objects, err := m.detector.DetectObjects(nn.WholeImage(rgbNN.NChan(), rgbNN.Pixels, rgbNN.Width, rgbNN.Height), detectionParams)
@@ -675,22 +677,22 @@ func (m *Monitor) nnThread() {
 		} else {
 			//m.Log.Infof("Camera %v detected %v objects", mcam.camera.ID, len(objects))
 			result := &nn.DetectionResult{
-				CameraID:    item.camera.camera.ID(),
+				CameraID:    item.monCam.camera.ID(),
 				ImageWidth:  yuv.Width,
 				ImageHeight: yuv.Height,
 				Objects:     objects,
 			}
-			item.camera.lock.Lock()
-			item.camera.lastDetection = result
-			item.camera.lastImg = rgbPure
-			item.camera.lock.Unlock()
+			item.monCam.lock.Lock()
+			item.monCam.lastDetection = result
+			item.monCam.lastImg = rgbPure
+			item.monCam.lock.Unlock()
 
 			if len(m.analyzerQueue) >= cap(m.analyzerQueue)*9/10 {
 				// We do not expect this
 				m.Log.Warnf("NN analyzer queue is falling behind - dropping frames")
 			} else {
 				m.analyzerQueue <- analyzerQueueItem{
-					camera:    item.camera,
+					monCam:    item.monCam,
 					detection: result,
 				}
 			}

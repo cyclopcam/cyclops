@@ -415,9 +415,9 @@ export class VideoStreamer {
 			resetCanvasOnce();
 			cx.drawImage(image, 0, 0, can.width, can.height);
 
-			let jDetections = r.headers.get("X-Analysis");
-			if (jDetections) {
-				this.lastDetection = AnalysisState.fromJSON(JSON.parse(jDetections));
+			let jAnalysis = r.headers.get("X-Analysis");
+			if (jAnalysis) {
+				this.lastDetection = AnalysisState.fromJSON(JSON.parse(jAnalysis));
 			}
 			//console.log("detections", r.headers.get("X-Detections"));
 		}

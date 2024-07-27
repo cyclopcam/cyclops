@@ -59,17 +59,19 @@ type VideoWebSocketStreamer struct {
 	streamerID int64 // Intended to aid in logging/debugging
 	incoming   camera.StreamSinkChan
 	//trackID         int
-	closed          atomic.Bool
-	paused          atomic.Bool
-	fromWebSocket   chan webSocketMsg
-	sendQueue       chan webSocketSendPacket
-	detections      chan *monitor.AnalysisState
-	lastDropMsg     time.Time
-	nPacketsDropped int64
-	nPacketsSent    int64
-	lastLogTime     time.Time
-	debug           bool
-	logPacketCount  bool
+	closed            atomic.Bool
+	paused            atomic.Bool
+	fromWebSocket     chan webSocketMsg
+	sendQueue         chan webSocketSendPacket
+	detections        chan *monitor.AnalysisState
+	lastDropMsg       time.Time
+	lastPacketRecvID  int64
+	lastPacketMissMsg time.Time
+	nPacketsDropped   int64
+	nPacketsSent      int64
+	lastLogTime       time.Time
+	debug             bool
+	logPacketCount    bool
 }
 
 func RunVideoWebSocketStreamer(cameraName string, logger log.Log, conn *websocket.Conn, stream *camera.Stream, backlog *camera.VideoRingBuffer, detections chan *monitor.AnalysisState) {
@@ -101,6 +103,13 @@ func (s *VideoWebSocketStreamer) onPacketRTP(packet *videox.VideoPacket) {
 	if s.debug {
 		s.log.Infof("onPacketRTP")
 	}
+
+	// Detect if sender is dropping packets
+	if s.lastPacketRecvID != 0 && packet.ValidRecvID != s.lastPacketRecvID+1 && time.Now().Sub(s.lastPacketMissMsg) > 3*time.Second {
+		s.log.Infof("onPacketRTP packet miss %v -> %v", s.lastPacketRecvID, packet.ValidRecvID)
+		s.lastPacketMissMsg = time.Now()
+	}
+	s.lastPacketRecvID = packet.ValidRecvID
 
 	now := time.Now()
 	if len(s.sendQueue) >= WebSocketSendBufferSize {
@@ -310,7 +319,7 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 			}
 
 			binary.Write(&buf, binary.LittleEndian, flags)
-			binary.Write(&buf, binary.LittleEndian, uint32(frame.RecvID))
+			binary.Write(&buf, binary.LittleEndian, uint32(frame.ValidRecvID))
 			for _, n := range frame.H264NALUs {
 				//if n.PrefixLen == 0 {
 				//	buf.Write([]byte{0, 0, 1})
