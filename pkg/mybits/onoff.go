@@ -23,6 +23,7 @@ func DecodeOnoff(enc []byte, out []byte) (int, error) {
 	return DecodeOnoff3(enc, out)
 }
 
+/*
 // Encode the given bit stream using out on/off encoding.
 // Returns the number of bytes written into 'out'.
 // If the resulting bit stream ends up being larger than 'out',
@@ -49,8 +50,9 @@ func EncodeOnoff2(bits []byte, out []byte) (int, error) {
 	}
 	return int(outputBytes), nil
 }
+*/
 
-// Experimental version
+// Final version
 func EncodeOnoff3(bits []byte, out []byte) (int, error) {
 	if len(out) == 0 {
 		return 0, ErrOutOfSpace
