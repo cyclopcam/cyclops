@@ -1,7 +1,7 @@
-const { assert } = require("console");
-let m = require("./wasm-bin/mybits.js");
-const { decode } = require("punycode");
-m.onRuntimeInitialized = async () => {
+import raw from "./wasm-bin/tester.mjs";
+import { assert } from 'console';
+
+function test(m) {
 	let onoff_encode_3_max_output_size = m.cwrap("onoff_encode_3_max_output_size", 'number', ['number']);
 	// expect to see '21' output in the console
 	console.log(onoff_encode_3_max_output_size(5));
@@ -29,3 +29,10 @@ m.onRuntimeInitialized = async () => {
 	m._free(encodedBytesPtr);
 	m._free(decodedBytesPtr);
 }
+
+async function run() {
+	let m = await raw();
+	test(m);
+}
+
+run();

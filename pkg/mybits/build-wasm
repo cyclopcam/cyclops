@@ -1,10 +1,17 @@
 #!/bin/bash
 
-EXPORTED_FUNCTIONS=_onoff_encode_3_max_output_size,_onoff_decode_3,_malloc,_free
-EMCC_OPTIONS="-O2 -sEXPORTED_FUNCTIONS=$EXPORTED_FUNCTIONS -sEXPORTED_RUNTIME_METHODS=ccall,cwrap"
+set -e
 
-docker run --rm -v $(pwd):/src -u $(id -u):$(id -g) emscripten/emsdk emcc $EMCC_OPTIONS onoff.c varint.c bit.c -o wasm-bin/mybits.js
-cp wasm-bin/mybits.* ../../www/src/wasm
+EXPORTED_FUNCTIONS=_onoff_encode_3_max_output_size,_onoff_decode_3,_malloc,_free
+EMCC_OPTIONS_BASE="-O2 -s EXPORTED_FUNCTIONS=$EXPORTED_FUNCTIONS -s EXPORTED_RUNTIME_METHODS=ccall,cwrap -s MODULARIZE=1 -s EXPORT_ES6=1"
+EMCC_OPTIONS_WEB="$EMCC_OPTIONS_BASE -s ENVIRONMENT='web,worker'"
+EMCC_OPTIONS_NODE="$EMCC_OPTIONS_BASE"
+
+docker run --rm -v $(pwd):/src -u $(id -u):$(id -g) emscripten/emsdk emcc $EMCC_OPTIONS_WEB onoff.c varint.c bit.c -o wasm-bin/cyclops-wasm.js
+docker run --rm -v $(pwd):/src -u $(id -u):$(id -g) emscripten/emsdk emcc $EMCC_OPTIONS_NODE onoff.c varint.c bit.c -o wasm-bin/tester.mjs
+
+cp wasm-bin/cyclops-wasm.js ../../www/src/wasm/
+cp wasm-bin/cyclops-wasm.wasm ../../www/src/wasm/
 
 # To test, run this:
-# node test-wasm.js
+# node test-wasm.mjs

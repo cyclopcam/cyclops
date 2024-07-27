@@ -394,6 +394,8 @@ export class VideoStreamer {
 
 		// This function is async, so it's important that we don't clear the canvas
 		// until we're ready to paint.
+		// The point of resetCanvasOnce() is to only clear it a single time, regardless
+		// of which async operation finishes first.
 		let isCanvasReset = false;
 		let resetCanvasOnce = () => {
 			// TS thinks 'can' can be null here, but I can't see how that could happen.
@@ -430,5 +432,4 @@ export class VideoStreamer {
 
 		//console.log(`updateOverlay ${can.width}x${can.height}`);
 	}
-
 }

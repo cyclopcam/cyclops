@@ -137,6 +137,10 @@ func (v *VideoDB) Close() {
 	<-v.tileWriteThreadClosed
 }
 
+func (v *VideoDB) MaxTileLevel() int {
+	return v.maxTileLevel
+}
+
 // tx may be nil, in which case we execute this statement outside of a transaction
 func (v *VideoDB) setKV(key string, value any, tx *gorm.DB) error {
 	if tx == nil {

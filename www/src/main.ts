@@ -3,8 +3,10 @@ import App from "./App.vue";
 import { router } from "./router/routes";
 import { globals } from "./globals";
 import { loadConstants } from "./constants";
+import { loadWASM } from "./wasm/load";
 import "./nativeIn"; // nativeIn must be imported from *somewhere*, to make sure that we expose our interface to our host WebView on mobile
 
+loadWASM();
 loadConstants();
 
 const app = createApp(App);
