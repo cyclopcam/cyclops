@@ -142,6 +142,16 @@ func TestContiguousBits(t *testing.T) {
 	}
 }
 
+// I just created this function to make a little test sample for validating the WASM port
+func TestMakeTestPattern(t *testing.T) {
+	input := []byte{3, 255, 255, 255, 255, 255, 7, 127}
+	output := make([]byte, 100)
+	outputSize, err := EncodeOnoff(input, output)
+	require.NoError(t, err)
+	fmt.Printf("Input bytes: %v\n", input)
+	fmt.Printf("Output bytes: %v\n", output[:outputSize])
+}
+
 func init() {
 	bruteCheck = map[uint8]bool{
 		0b11111111: true,

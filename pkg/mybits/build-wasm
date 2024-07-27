@@ -1,3 +1,10 @@
 #!/bin/bash
 
-docker run --rm -v $(pwd):/src -u $(id -u):$(id -g) emscripten/emsdk emcc onoff.c varint.c bit.c -o mybits.js
+EXPORTED_FUNCTIONS=_onoff_encode_3_max_output_size,_onoff_decode_3,_malloc,_free
+EMCC_OPTIONS="-O2 -sEXPORTED_FUNCTIONS=$EXPORTED_FUNCTIONS -sEXPORTED_RUNTIME_METHODS=ccall,cwrap"
+
+docker run --rm -v $(pwd):/src -u $(id -u):$(id -g) emscripten/emsdk emcc $EMCC_OPTIONS onoff.c varint.c bit.c -o wasm-bin/mybits.js
+cp wasm-bin/mybits.* ../../www/src/wasm
+
+# To test, run this:
+# node test-wasm.js
