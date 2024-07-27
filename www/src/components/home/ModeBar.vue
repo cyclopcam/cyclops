@@ -55,9 +55,8 @@ onMounted(() => {
 				<svg-button v-if="showBack()" :icon="back" size="28px" style="margin-left:10px" @click="onBack" />
 			</div>
 			<div class="centerGroup">
-				<toggle-button :icon="settings" title="Settings" route="rtSettings" route-target="rtSettingsHome" />
 				<toggle-button :icon="monitor" title="Monitor" route="rtMonitor" />
-				<toggle-button :icon="bulb" title="Train" route="rtTrain" route-target="rtTrainHome" />
+				<toggle-button :icon="settings" title="Settings" route="rtSettings" route-target="rtSettingsHome" />
 				<!-- I use the item below when debugging overflow issues on top bar -->
 				<!--
 				<toggle-button :icon="wand" title="Empty" route="rtEmpty" />

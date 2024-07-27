@@ -202,7 +202,7 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 }
 
 // The user wants to know how much space is available for storing videos
-// at the given location. We return out much space is available on that
+// at the given location. We return how much space is available on that
 // volume, and also how much space is used by that location.
 func (s *Server) httpConfigMeasureStorageSpace(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	inPath := strings.TrimSpace(www.RequiredQueryValue(r, "path"))

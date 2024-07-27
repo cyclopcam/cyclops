@@ -67,12 +67,12 @@ fi
 
 if [ $SKIP_NCNN -eq 0 ]; then
 	echo Building NCNN library
-	cd ncnn && mkdir -p build && cd build && cmake -DNCNN_SIMPLEOCV=1 -DNCNN_BUILD_EXAMPLES=OFF .. && make -j4 && cd ../..
+	cd ncnn && mkdir -p build && cd build && cmake -DNCNN_SIMPLEOCV=1 -DNCNN_BUILD_EXAMPLES=OFF -DNCNN_BUILD_BENCHMARK=OFF -DNCNN_BUILD_TOOLS=OFF .. && make -j4 && cd ../..
 fi
 
 if [ $SKIP_SIMD -eq 0 ]; then
 	echo Building Simd library
-	cd Simd && mkdir -p build && cd build && cmake ../prj/cmake && make -j4 && cd ../..
+	cd Simd && mkdir -p build && cd build && cmake -DSIMD_TEST=OFF ../prj/cmake && make -j4 && cd ../..
 fi
 
 go build -o bin/cyclops cmd/cyclops/*.go
