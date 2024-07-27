@@ -181,6 +181,33 @@
 			]
 		},
 		{
+			"name": "motiondetect C++",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/debug/motiondetect/motiondetect",
+			"args": [
+				"320",
+				"240"
+			],
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}/debug/motiondetect",
+			"environment": [],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				},
+				{
+					"description": "Set Disassembly Flavor to Intel",
+					"text": "-gdb-set disassembly-flavor intel",
+					"ignoreFailures": true
+				}
+			]
+		},
+		{
 			"name": "Debug module_hailo (go)",
 			"type": "go",
 			"request": "launch",
