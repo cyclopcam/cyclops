@@ -41,9 +41,10 @@ type VideoDB struct {
 	current     map[uint32]*TrackedObject
 
 	// This is a cache of the 'strings' table in the DB
-	// Guards access to stringToIDLock
-	stringToIDLock sync.Mutex
-	stringToID     map[string]uint32 // In-memory cache of the database table 'strings'
+	// Guards access to stringTableLock
+	stringTableLock sync.Mutex
+	stringToID      map[string]uint32 // MUST BE HOLDING stringTableLock. In-memory cache of the database table 'strings'. Use StringToID() to access this.
+	idToString      map[uint32]string // MUST BE HOLDING stringTableLock. In-memory cache of the database table 'strings'. Use IDToString() to access this.
 
 	// Tiles that we are building in real-time
 	currentTilesLock sync.Mutex
@@ -105,6 +106,7 @@ func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
 		maxTileLevel:          maxTileLevel,
 		current:               map[uint32]*TrackedObject{},
 		stringToID:            map[string]uint32{},
+		idToString:            map[uint32]string{},
 		currentTiles:          map[uint32][][]*tileBuilder{},
 		debugTileWriter:       false,
 		debugTileLevelBuild:   true,

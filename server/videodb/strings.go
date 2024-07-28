@@ -10,10 +10,11 @@ import (
 
 // Get a database-wide unique ID for the given string.
 // At some point we should implement a cleanup method that gets rid of strings that are no longer used.
-// It is beneficial to keep the IDs small, because smaller numbers produce smaller DB records.
+// It is beneficial to keep the IDs small, because smaller numbers produce smaller DB records due to
+// varint encoding.
 func (v *VideoDB) StringToID(s string) (uint32, error) {
-	v.stringToIDLock.Lock()
-	defer v.stringToIDLock.Unlock()
+	v.stringTableLock.Lock()
+	defer v.stringTableLock.Unlock()
 
 	// Find in cache
 	if id, ok := v.stringToID[s]; ok {
@@ -30,8 +31,8 @@ func (v *VideoDB) StringToID(s string) (uint32, error) {
 
 // Resolve multiple strings to IDs
 func (v *VideoDB) StringsToID(s []string) ([]uint32, error) {
-	v.stringToIDLock.Lock()
-	defer v.stringToIDLock.Unlock()
+	v.stringTableLock.Lock()
+	defer v.stringTableLock.Unlock()
 
 	ids := make([]uint32, len(s))
 	for i := 0; i < len(s); i++ {
@@ -49,7 +50,36 @@ func (v *VideoDB) StringsToID(s []string) ([]uint32, error) {
 	return ids, nil
 }
 
-// You must be holding the stringToIDLock before calling this function.
+func (v *VideoDB) IDToString(id uint32) (string, error) {
+	s, err := v.IDsToString([]uint32{id})
+	if err != nil {
+		return "", err
+	}
+	return s[0], nil
+}
+
+func (v *VideoDB) IDsToString(ids []uint32) ([]string, error) {
+	v.stringTableLock.Lock()
+	defer v.stringTableLock.Unlock()
+
+	result := make([]string, len(ids))
+	for i := 0; i < len(ids); i++ {
+		if s, ok := v.idToString[ids[i]]; ok {
+			result[i] = s
+		} else {
+			var s string
+			if err := v.db.Raw("SELECT value FROM strings WHERE id = ?", ids[i]).Row().Scan(&s); err != nil {
+				return nil, err
+			}
+			v.idToString[ids[i]] = s
+			result[i] = s
+		}
+	}
+
+	return result, nil
+}
+
+// You must be holding the stringTableLock before calling this function.
 func (v *VideoDB) stringToIDFromDB(s string) (uint32, error) {
 	for iter := 0; iter < 2; iter++ {
 		// Find in DB

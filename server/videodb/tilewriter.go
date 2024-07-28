@@ -193,7 +193,7 @@ func (v *VideoDB) resumeLatestTiles() {
 			return
 		}
 		for _, tile := range tiles {
-			tb, err := readBlobIntoTileBuilder(tile.Start, tile.Level, tile.Tile, v.maxClassesPerTile)
+			tb, err := readBlobIntoTileBuilder(tile.Start, tile.Level, tile.Tile, v.maxClassesPerTile, 0)
 			if err != nil {
 				v.log.Errorf("Failed to read tile blob camera:%v level:%v start:%v for resume: %v", tile.Camera, tile.Level, tile.Start, err)
 				continue

@@ -48,7 +48,7 @@ func (v *VideoDB) ReadEventTiles(camera string, level, startIdx, endIdx uint32) 
 
 	initialLen := len(tiles)
 	if err := v.db.Where("camera = ? AND level = ? AND start >= ? AND start < ? AND start NOT IN "+dbh.SQLFormatIDArray(haveIdx),
-		camera, level, startIdx, endIdx).Find(&tiles).Error; err != nil {
+		cameraID, level, startIdx, endIdx).Find(&tiles).Error; err != nil {
 		return nil, err
 	}
 	if len(tiles) < initialLen {

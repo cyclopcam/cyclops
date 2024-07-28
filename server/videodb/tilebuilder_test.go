@@ -185,7 +185,7 @@ func TestTileBuilder5(t *testing.T) {
 // encode and decode a tilebuilder, and verify that our bitmaps come out the same
 func roundtripTile(t *testing.T, tb *tileBuilder) {
 	blob := tb.writeBlob()
-	B, err := readBlobIntoTileBuilder(tb.tileIdx, 0, blob, 100)
+	B, err := readBlobIntoTileBuilder(tb.tileIdx, 0, blob, 100, 0)
 	require.NoError(t, err)
 	require.Equal(t, len(tb.classes), len(B.classes))
 	for cls, lineA := range tb.classes {
@@ -209,7 +209,7 @@ func TestMulticlassTile(t *testing.T) {
 		8: "5-7",
 	})
 	blob := b1.writeBlob()
-	b2, err := readBlobIntoTileBuilder(128, 0, blob, 100)
+	b2, err := readBlobIntoTileBuilder(128, 0, blob, 100, 0)
 	require.NoError(t, err)
 	verifyTileBits(t, b2, 0, 128, map[uint32]string{
 		2: "0-9",
@@ -278,7 +278,7 @@ func verifyTileBitsInDB(t *testing.T, vdb *VideoDB, camera, level, tileIdx uint3
 	tile := EventTile{}
 	err := vdb.db.First(&tile, "camera = ? AND level = ? AND start = ?", camera, level, tileIdx).Error
 	require.NoError(t, err)
-	tb, err := readBlobIntoTileBuilder(tileIdx, level, tile.Tile, 100)
+	tb, err := readBlobIntoTileBuilder(tileIdx, level, tile.Tile, 100, 0)
 	require.NoError(t, err)
 	verifyTileBits(t, tb, level, tileIdx, classToRangeString)
 }

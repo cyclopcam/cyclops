@@ -141,7 +141,7 @@ func (v *VideoDB) loadAndDecodeTile(tx *gorm.DB, camera, level, tileIdx uint32) 
 		}
 		return nil, err
 	}
-	return readBlobIntoTileBuilder(tile.Start, tile.Level, tile.Tile, v.maxClassesPerTile)
+	return readBlobIntoTileBuilder(tile.Start, tile.Level, tile.Tile, v.maxClassesPerTile, 0)
 }
 
 // This is run once at startup, in case we've been offline for a long time.

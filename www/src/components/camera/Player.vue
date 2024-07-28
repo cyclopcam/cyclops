@@ -2,6 +2,7 @@
 import type { CameraInfo } from "@/camera/camera";
 import { onMounted, onUnmounted, watch, ref } from "vue";
 import { VideoStreamer } from "./videoDecode";
+import { HistoryBar } from "./historyBar";
 
 // See videoDecode.ts for an explanation of how this works
 
@@ -67,6 +68,15 @@ watch(() => props.play, (newVal, oldVal) => {
 	}
 })
 
+async function testLoadHistory() {
+	let tiles = await HistoryBar.downloadTiles(props.camera.id, 300, new Date(2024, 6, 28, 6, 0, 0), new Date(2024, 6, 28, 14, 0, 0));
+	//for (let t of tiles) {
+	//	console.log(t.level, t.tileIdx, Object.keys(t.classes));
+	//	for (let cls in t.classes) {
+	//		console.log(t.classes[cls].length);
+	//	}
+	//}
+}
 
 onUnmounted(() => {
 	streamer.close();
@@ -79,6 +89,8 @@ onMounted(() => {
 	}
 	streamer.setDOMElements(overlayCanvas.value! as HTMLCanvasElement, liveCanvas);
 	streamer.posterURLUpdateTimer();
+
+	//testLoadHistory();
 
 	if (props.play)
 		streamer.play(videoElementID());

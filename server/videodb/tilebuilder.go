@@ -253,7 +253,13 @@ func (b *tileBuilder) writeBlob() []byte {
 	return blob
 }
 
-func readBlobIntoTileBuilder(tileIdx uint32, level uint32, blob []byte, maxClasses int) (tb *tileBuilder, err error) {
+type readBlobFlags int
+
+const (
+	readBlobFlagSkipBitmaps = 1 // Do not read the bitmaps. Built for extracting the class IDs only.
+)
+
+func readBlobIntoTileBuilder(tileIdx uint32, level uint32, blob []byte, maxClasses int, flags readBlobFlags) (tb *tileBuilder, err error) {
 	// The binary.Uvarint functions will panic if they run out of buffer,
 	// so we just have a giant recover() around all of our statements.
 	defer func() {
@@ -262,6 +268,7 @@ func readBlobIntoTileBuilder(tileIdx uint32, level uint32, blob []byte, maxClass
 			err = fmt.Errorf("Buffer underflow reading tile blob: %v", r)
 		}
 	}()
+	skipBitmaps := flags&readBlobFlagSkipBitmaps != 0
 	version, n := binary.Uvarint(blob)
 	if version != 1 {
 		return nil, fmt.Errorf("Unknown tile version %v", version)
@@ -278,10 +285,17 @@ func readBlobIntoTileBuilder(tileIdx uint32, level uint32, blob []byte, maxClass
 	for i := 0; i < numClasses; i++ {
 		cls, n := binary.Uvarint(blob)
 		blob = blob[n:]
-		line := &bitmapLine{}
-		tb.classes[uint32(cls)] = line
+		if skipBitmaps {
+			tb.classes[uint32(cls)] = nil
+		} else {
+			tb.classes[uint32(cls)] = &bitmapLine{}
+		}
 		classes[i] = uint32(cls)
 	}
+	if skipBitmaps {
+		return tb, nil
+	}
+
 	const tileWidthBytes = TileWidth / 8
 	for i := 0; i < numClasses; i++ {
 		cls := classes[i]
@@ -303,23 +317,6 @@ func readBlobIntoTileBuilder(tileIdx uint32, level uint32, blob []byte, maxClass
 		blob = blob[encLen:]
 	}
 
-	/*
-		lines := make([]byte, numClasses*tileWidthBytes)
-		// V0.1 (RLE)
-		rawLineBytes, decErr := rle.Decompress(blob, lines)
-		if decErr != nil {
-			return nil, decErr
-		}
-		if rawLineBytes != numClasses*tileWidthBytes {
-			return nil, fmt.Errorf("Decompressed tile blob is wrong size: %v (expected %v)", rawLineBytes, numClasses*tileWidthBytes)
-		}
-		// Copy the decompressed lines from the single big decompression buffer,
-		// into individual bitmapLine objects, in the tb 'classes' map.
-		for i := 0; i < numClasses; i++ {
-			cls := classes[i]
-			copy(tb.classes[cls][:], lines[i*tileWidthBytes:(i+1)*tileWidthBytes])
-		}
-	*/
 	return tb, nil
 }
 
@@ -336,13 +333,13 @@ func mergeTileBlobs(newTileIdx, newLevel uint32, blobA, blobB []byte, maxClasses
 	var tbA, tbB *tileBuilder
 	var err error
 	if len(blobA) != 0 {
-		tbA, err = readBlobIntoTileBuilder(newTileIdx*2, newLevel-1, blobA, maxClasses)
+		tbA, err = readBlobIntoTileBuilder(newTileIdx*2, newLevel-1, blobA, maxClasses, 0)
 		if err != nil {
 			return nil, err
 		}
 	}
 	if len(blobB) != 0 {
-		tbB, err = readBlobIntoTileBuilder(newTileIdx*2+1, newLevel-1, blobB, maxClasses)
+		tbB, err = readBlobIntoTileBuilder(newTileIdx*2+1, newLevel-1, blobB, maxClasses, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -396,7 +393,7 @@ func mergeTileIntoParent(src, dst *tileBuilder, offset uint32) error {
 // bitmap compression codecs.
 // Returns a list of 128 byte bitmaps
 func DecompressTileToRawLines(blob []byte) [][]byte {
-	tb, err := readBlobIntoTileBuilder(0, 0, blob, 1000)
+	tb, err := readBlobIntoTileBuilder(0, 0, blob, 1000, 0)
 	if err != nil {
 		panic(err)
 	}

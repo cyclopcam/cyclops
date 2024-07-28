@@ -54,9 +54,10 @@ type ObjectPositionJSON struct {
 //	Classes string      `json:"classes"` // Comma-separated list of classes and counts that were detected, eg "person:3,car:1"
 //}
 
+// SYNC-EVENT-TILE-JSON
 type EventTile struct {
 	Camera uint32 `gorm:"primaryKey;autoIncrement:false" json:"camera"` // LongLived camera name (via lookup in 'strings' table)
 	Level  uint32 `gorm:"primaryKey;autoIncrement:false" json:"level"`  // 0 = lowest level
-	Start  uint32 `gorm:"primaryKey;autoIncrement:false" json:"start"`  // Start time of tile (unix seconds / (1024 * 2^level))
+	Start  uint32 `gorm:"primaryKey;autoIncrement:false" json:"start"`  // Start time of tile (unix seconds / (1024 * 2^level))...... Rename to tileIdx?
 	Tile   []byte `json:"tile"`                                         // Compressed tile data
 }
