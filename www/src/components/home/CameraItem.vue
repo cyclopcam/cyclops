@@ -13,7 +13,8 @@ defineEmits(['play', 'stop']);
 function style(): any {
 	// We want an aspect ratio that is the most average, because in <player> we distort the aspect ratio
 	// We use aspect = 1.5 because it's more square than 16:9 (1.777), to accomodate cameras that are more square.
-	let aspect = 1.5;
+	// BUT.. then we lower it even further, to make space for the SeekBar
+	let aspect = 1.4;
 	let width = 320;
 	if (props.size) {
 		switch (props.size) {
@@ -63,7 +64,7 @@ function iconIsRecord() { return (props.icon ?? "play") === "record"; }
 	left: 0px;
 	top: 0px;
 	width: 100%;
-	height: 100%;
+	height: 90%; // HACK! the missing 10% is for SeekBar
 	cursor: pointer;
 }
 

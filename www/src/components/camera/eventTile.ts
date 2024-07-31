@@ -62,6 +62,25 @@ export class EventTile {
 	// represents the presence of that object at that particular time point.
 	classes: { [key: string]: Uint8Array } = {};
 
+	// Uniquely identifying key for this tile
+	get key(): string {
+		return `${this.level}-${this.tileIdx}`;
+	}
+
+	get startTimeMS(): number {
+		return this.tileIdx * ((1000 * 1024) << this.level);
+	}
+
+	get endTimeMS(): number {
+		return (this.tileIdx + 1) * ((1000 * 1024) << this.level);
+	}
+
+	static getBit(bitmap: Uint8Array, bit: number): number {
+		let byteIdx = bit >> 3;
+		let bitIdx = bit & 7;
+		return (bitmap[byteIdx] & (1 << bitIdx)) ? 1 : 0;
+	}
+
 	static async fetchTiles(camera: number, level: number, startIdx: number, endIdx: number): Promise<EventTile[]> {
 		let query = {
 			camera: camera,

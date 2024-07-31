@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/julienschmidt/httprouter"
 )
@@ -86,7 +87,7 @@ func QueryValue(r *http.Request, key string) string {
 	return r.URL.Query().Get(key)
 }
 
-// Returns the named form value (typically query value), or panics if the item is empty or missing
+// Returns the named query value, or panics if the item is empty or missing
 func RequiredQueryValue(r *http.Request, key string) string {
 	v := QueryValue(r, key)
 	if v == "" {
@@ -95,7 +96,7 @@ func RequiredQueryValue(r *http.Request, key string) string {
 	return v
 }
 
-// Returns the named form value (typically query value) as an int64, or panics if the item is empty, missing, or not parseable as an integer
+// Returns the named query value as an int64, or panics if the item is empty, missing, or not parseable as an integer
 func RequiredQueryInt64(r *http.Request, key string) int64 {
 	v := RequiredQueryValue(r, key)
 	i, err := strconv.ParseInt(v, 10, 64)
@@ -105,20 +106,39 @@ func RequiredQueryInt64(r *http.Request, key string) int64 {
 	return i
 }
 
-// Returns the named form value (typically query value) as an int, or panics if the item is empty, missing, or not parseable as an integer
+// Returns the named query value as an int, or panics if the item is empty, missing, or not parseable as an integer
 func RequiredQueryInt(r *http.Request, key string) int {
 	return int(RequiredQueryInt64(r, key))
 }
 
-// Returns the named form value (typically query value) as an int64, or zero if the item is missing or not parseable as an integer
+// Returns the named query value as an int64, or zero if the item is missing or not parseable as an integer
 func QueryInt64(r *http.Request, key string) int64 {
-	i, _ := strconv.ParseInt(r.FormValue(key), 10, 64)
+	i, _ := strconv.ParseInt(QueryValue(r, key), 10, 64)
 	return i
 }
 
-// Returns the named form value (typically query value) as an int, or zero if the item is missing or not parseable as an integer
+// Returns the named query value as an int, or zero if the item is missing or not parseable as an integer
 func QueryInt(r *http.Request, key string) int {
 	return int(QueryInt64(r, key))
+}
+
+// Returns the named query value as an array of integers, split by commas.
+// Panics if the value is not parseable as an integer.
+func QueryIntArray[T gen.Integer](r *http.Request, key string) []T {
+	result := []T{}
+	raw := QueryValue(r, key)
+	if len(raw) == 0 {
+		return result
+	}
+	s := strings.Split(raw, ",")
+	for _, v := range s {
+		i, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			PanicBadRequestf("Failed to parse integer %v", v)
+		}
+		result = append(result, T(i))
+	}
+	return result
 }
 
 // EncodeQuery returns a key=value&key2=value2 string for a URL

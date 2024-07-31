@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { CameraInfo } from "@/camera/camera";
-import { onMounted, onUnmounted, watch, ref } from "vue";
+import { onMounted, onUnmounted, watch, ref, reactive } from "vue";
 import { VideoStreamer } from "./videoDecode";
-import { HistoryBar } from "./historyBar";
+import SeekBar from "./SeekBar.vue";
+import { SeekBarContext } from "./seekBarContext";
 
 // See videoDecode.ts for an explanation of how this works
 
@@ -18,6 +19,7 @@ let showLivenessCanvas = true;
 let livenessCanvas = ref(null);
 let overlayCanvas = ref(null);
 let streamer = new VideoStreamer(props.camera);
+let seekBar = reactive(new SeekBarContext(props.camera.id));
 
 function videoElementID(): string {
 	return 'vplayer-camera-' + props.camera.id;
@@ -48,17 +50,32 @@ function borderRadius(): string | undefined {
 	return props.round ? "5px" : undefined;
 }
 
-function imgStyle(): any {
+function topStyle(): any {
 	return {
-		"border-radius": borderRadius(),
+		"border-top-left-radius": borderRadius(),
+		"border-top-right-radius": borderRadius(),
 	}
 }
 
-function videoStyle(): any {
+function bottomStyle(): any {
 	return {
-		"border-radius": borderRadius(),
+		"border-bottom-left-radius": borderRadius(),
+		"border-bottom-right-radius": borderRadius(),
 	}
 }
+
+function imgStyle(): any {
+	return topStyle();
+}
+
+function videoStyle(): any {
+	return topStyle();
+}
+
+watch(() => props.camera, (newVal, oldVal) => {
+	console.log("New cameraID = ", newVal.id);
+	seekBar.cameraID = newVal.id;
+})
 
 watch(() => props.play, (newVal, oldVal) => {
 	if (newVal) {
@@ -69,7 +86,7 @@ watch(() => props.play, (newVal, oldVal) => {
 })
 
 async function testLoadHistory() {
-	let tiles = await HistoryBar.downloadTiles(props.camera.id, 300, new Date(2024, 6, 28, 6, 0, 0), new Date(2024, 6, 28, 14, 0, 0));
+	let tiles = await SeekBarContext.downloadTiles(props.camera.id, 300, new Date(2024, 6, 28, 6, 0, 0), new Date(2024, 6, 28, 14, 0, 0));
 	//for (let t of tiles) {
 	//	console.log(t.level, t.tileIdx, Object.keys(t.classes));
 	//	for (let cls in t.classes) {
@@ -90,6 +107,10 @@ onMounted(() => {
 	streamer.setDOMElements(overlayCanvas.value! as HTMLCanvasElement, liveCanvas);
 	streamer.posterURLUpdateTimer();
 
+	//console.log("On init cameraID = ", props.camera.id);
+	//seekBar.cameraID = props.camera.id;
+	//console.log("seekBar.cameraID = ", seekBar.cameraID);
+	seekBar.seekToNow();
 	//testLoadHistory();
 
 	if (props.play)
@@ -99,17 +120,29 @@ onMounted(() => {
 
 <template>
 	<div class="container">
-		<video class="video" :id="videoElementID()" autoplay :poster="streamer.posterURL()" @play="onPlay"
-			@pause="onPause" @click="onClick" :style="videoStyle()" />
-		<canvas ref="overlayCanvas" class="overlay" :style="imgStyle()" />
-		<canvas v-if="showLivenessCanvas" ref="livenessCanvas" class="livenessCanvas" />
+		<div class="videoContainer">
+			<video class="video" :id="videoElementID()" autoplay :poster="streamer.posterURL()" @play="onPlay"
+				@pause="onPause" @click="onClick" :style="videoStyle()" />
+			<canvas ref="overlayCanvas" class="overlay" :style="imgStyle()" />
+			<canvas v-if="showLivenessCanvas" ref="livenessCanvas" class="livenessCanvas" />
+		</div>
+		<seek-bar class="seekBar" :style="bottomStyle()" :camera="camera" :context="seekBar" />
 	</div>
 </template>
 
 <style lang="scss" scoped>
+$seekBarHeight: 10%;
+
 .container {
 	width: 100%;
 	height: 100%;
+	position: relative;
+	//border: solid 1px #00d;
+}
+
+.videoContainer {
+	width: 100%;
+	height: calc(100% - $seekBarHeight);
 	position: relative;
 }
 
@@ -130,6 +163,15 @@ onMounted(() => {
 	left: 0;
 	width: 100%;
 	height: 100%;
+}
+
+.seekBar {
+	position: absolute;
+	left: 0;
+	bottom: 0;
+	width: 100%;
+	height: $seekBarHeight;
+	border-bottom-left-radius: 5px;
 }
 
 .livenessCanvas {
