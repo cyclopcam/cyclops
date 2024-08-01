@@ -2,6 +2,12 @@ import { encodeQuery, fetchOrErr } from "@/util/util";
 import { cyWasm } from "@/wasm/load";
 import * as base64 from "base64-arraybuffer";
 
+export const BaseSecondsPerTile = 1024; // Expect this to be a multiple of BitsPerTile. I went with 1:1 for simplicity.
+export const BitsPerTile = 1024;
+
+// SYNC-MAX-TILE-LEVEL
+export const MaxTileLevel = 13;
+
 export class BinaryDecoder {
 	buffer: Uint8Array;
 	pos = 0;
@@ -68,11 +74,11 @@ export class EventTile {
 	}
 
 	get startTimeMS(): number {
-		return this.tileIdx * ((1000 * 1024) << this.level);
+		return this.tileIdx * ((1000 * BaseSecondsPerTile) << this.level);
 	}
 
 	get endTimeMS(): number {
-		return (this.tileIdx + 1) * ((1000 * 1024) << this.level);
+		return (this.tileIdx + 1) * ((1000 * BaseSecondsPerTile) << this.level);
 	}
 
 	static getBit(bitmap: Uint8Array, bit: number): number {
@@ -162,8 +168,8 @@ export class EventTile {
 		output.set(cyWasm.HEAPU8.subarray(decodeBuffer, decodeBuffer + output.length));
 		cyWasm._free(encodedBuffer);
 		cyWasm._free(decodeBuffer);
-		if (nDecodedBits !== 1024) {
-			throw new Error(`Expected 1024 bits of output from onoff_decode_3, got ${nDecodedBits}`);
+		if (nDecodedBits !== BitsPerTile) {
+			throw new Error(`Expected ${BitsPerTile} bits of output from onoff_decode_3, got ${nDecodedBits}`);
 		}
 	}
 }

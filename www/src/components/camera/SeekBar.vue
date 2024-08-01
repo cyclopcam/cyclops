@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { CameraInfo } from '@/camera/camera';
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { SeekBarContext } from './seekBarContext';
-import { globalTileCache } from './eventTileCache';
+import { MaxTileLevel } from './eventTile';
+import { clamp } from '@/util/util';
 
 let props = defineProps<{
 	camera: CameraInfo,
@@ -11,9 +12,9 @@ let props = defineProps<{
 
 let canvas = ref(null);
 
-// TEMP!
 function poll() {
 	if (!canvas.value) {
+		// end poll - canvas has been destroyed
 		return;
 	}
 	if (props.context.endTimeIsNow) {
@@ -25,7 +26,8 @@ function poll() {
 }
 
 function onWheel(e: WheelEvent) {
-	props.context.zoomLevel += (e.deltaY / 100) * 0.2;
+	props.context.zoomLevel += (e.deltaY / 100) * 0.3;
+	props.context.zoomLevel = clamp(props.context.zoomLevel, 0, MaxTileLevel + 2);
 	props.context.render(canvas.value! as HTMLCanvasElement);
 }
 
@@ -38,7 +40,14 @@ onMounted(() => {
 </script>
 
 <template>
-	<canvas ref="canvas" @wheel="onWheel" />
+	<canvas ref="canvas" class="seekBar" @wheel="onWheel" />
 </template>
 
-<style lang="scss" scoped></style>
+<style lang="scss" scoped>
+.seekBar {
+	box-sizing: border-box;
+	border: solid 1px #000;
+	border-top-width: 0;
+	background-color: #111;
+}
+</style>
