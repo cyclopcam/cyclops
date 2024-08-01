@@ -12,7 +12,6 @@ let props = defineProps<{
 let canvas = ref(null);
 let lastRenderFetchCount = 0;
 
-/*
 // TEMP!
 function poll() {
 	if (!canvas.value) {
@@ -20,14 +19,14 @@ function poll() {
 	}
 	let canv = canvas.value! as HTMLCanvasElement;
 
-	if (globalTileCache.fetchCount != lastRenderFetchCount) {
-		let canv = canvas.value! as HTMLCanvasElement
-		props.context.render(canv);
-	}
-	lastRenderFetchCount = globalTileCache.fetchCount;
-	setTimeout(poll, 500);
+	//if (globalTileCache.fetchCount != lastRenderFetchCount) {
+	//	let canv = canvas.value! as HTMLCanvasElement
+	props.context.seekToNow();
+	props.context.render(canv);
+	//}
+	//lastRenderFetchCount = globalTileCache.fetchCount;
+	setTimeout(poll, 5000);
 }
-*/
 
 function onWheel(e: WheelEvent) {
 	props.context.zoomLevel += (e.deltaY / 100) * 0.2;
@@ -37,7 +36,7 @@ function onWheel(e: WheelEvent) {
 onMounted(() => {
 	let canv = canvas.value! as HTMLCanvasElement
 	props.context.render(canv);
-	//poll();
+	poll();
 });
 
 </script>

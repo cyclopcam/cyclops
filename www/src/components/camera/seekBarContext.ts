@@ -11,8 +11,8 @@ const BaseSecondsPerTile = 1024;
 export class SeekBarContext {
 	cameraID = 0;
 	endTimeMS = new Date().getTime(); // Unix milliseconds at the end of the seek bar
-	tileLevel = 7; // 2^tileLevel seconds per bit. At level 0, 1 bit per second. This must be an integer.
-	zoomLevel = 4; // 2^zoom seconds per pixel. This can be an arbitrary real number.
+	tileLevel = 1; // 2^tileLevel seconds per bit. At level 0, 1 bit per second. This must be an integer.
+	zoomLevel = 1; // 2^zoom seconds per pixel. This can be an arbitrary real number.
 	needsRender = false;
 
 	constructor(cameraID = 0) {
@@ -40,8 +40,11 @@ export class SeekBarContext {
 		let dpr = window.devicePixelRatio;
 		canvas.width = canvas.clientWidth * dpr;
 		canvas.height = canvas.clientHeight * dpr;
-		//console.log("canvas width: ", canvas.width);
-		let cx = canvas.getContext("2d")!;
+		//console.log(`canvas size = ${canvas.width}x${canvas.height}`);
+		let cx = canvas.getContext("2d");
+		if (!cx) {
+			return;
+		}
 		cx.fillStyle = "rgba(255, 255, 255, 1)";
 		cx.fillRect(0, 0, canvas.width, canvas.height);
 		// Work from right to left. Our right edge is 'endTime'.
@@ -67,15 +70,19 @@ export class SeekBarContext {
 	}
 
 	renderTile(cx: CanvasRenderingContext2D, tile: EventTile, canvasWidth: number, pixelsPerSecond: number) {
+		let dpr = window.devicePixelRatio;
 		let tx1 = this.timeMSToPixel(tile.startTimeMS, canvasWidth, pixelsPerSecond);
 		let tx2 = this.timeMSToPixel(tile.endTimeMS, canvasWidth, pixelsPerSecond);
 		//console.log("Tile width in pixels = ", tx2 - tx1);
 		let bitWidth = (tx2 - tx1) / 1024;
 		let classes = ["person", "car", "truck"];
-		let colors = ["rgba(205, 0, 0, 1)", "rgba(0, 105, 0, 1)", "rgba(0, 0, 155, 1)"];
-		let y = 0;
-		let lineHeight = 8;
+		let colors = ["rgba(245, 30, 0, 1)", "rgba(0, 225, 0, 1)", "rgba(80, 80, 255, 1)"];
+		let y = 0.5;
+		let lineHeight = 4 * dpr;
 		for (let icls = 0; icls < classes.length; icls++) {
+			//cx.strokeStyle = "rgba(200, 200, 200, 1)";
+			//cx.lineWidth = 1;
+			//cx.strokeRect(tx1, y, tx2 - tx1, lineHeight);
 			cx.fillStyle = colors[icls];
 			let bitmap = tile.classes[classes[icls]];
 			if (bitmap) {
