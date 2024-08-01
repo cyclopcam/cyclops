@@ -92,6 +92,7 @@ func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
 
 	// At level 13, each pixel is 8192 seconds. So a 2000 pixel screen is
 	// 8192 * 2000 seconds = 190 days.
+	// SYNC-MAX-TILE-LEVEL
 	maxTileLevel := 13
 
 	self := &VideoDB{

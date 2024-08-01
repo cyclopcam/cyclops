@@ -10,21 +10,17 @@ let props = defineProps<{
 }>()
 
 let canvas = ref(null);
-let lastRenderFetchCount = 0;
 
 // TEMP!
 function poll() {
 	if (!canvas.value) {
 		return;
 	}
-	let canv = canvas.value! as HTMLCanvasElement;
-
-	//if (globalTileCache.fetchCount != lastRenderFetchCount) {
-	//	let canv = canvas.value! as HTMLCanvasElement
-	props.context.seekToNow();
-	props.context.render(canv);
-	//}
-	//lastRenderFetchCount = globalTileCache.fetchCount;
+	if (props.context.endTimeIsNow) {
+		let canv = canvas.value! as HTMLCanvasElement;
+		props.context.seekToNow();
+		props.context.render(canv);
+	}
 	setTimeout(poll, 5000);
 }
 

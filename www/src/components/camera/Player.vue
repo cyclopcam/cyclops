@@ -85,16 +85,6 @@ watch(() => props.play, (newVal, oldVal) => {
 	}
 })
 
-async function testLoadHistory() {
-	let tiles = await SeekBarContext.downloadTiles(props.camera.id, 300, new Date(2024, 6, 28, 6, 0, 0), new Date(2024, 6, 28, 14, 0, 0));
-	//for (let t of tiles) {
-	//	console.log(t.level, t.tileIdx, Object.keys(t.classes));
-	//	for (let cls in t.classes) {
-	//		console.log(t.classes[cls].length);
-	//	}
-	//}
-}
-
 onUnmounted(() => {
 	streamer.close();
 })
@@ -111,7 +101,6 @@ onMounted(() => {
 	//seekBar.cameraID = props.camera.id;
 	//console.log("seekBar.cameraID = ", seekBar.cameraID);
 	seekBar.seekToNow();
-	//testLoadHistory();
 
 	if (props.play)
 		streamer.play(videoElementID());

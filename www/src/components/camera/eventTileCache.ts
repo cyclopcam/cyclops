@@ -41,11 +41,11 @@ export class EventTileCache {
 	getTile(cameraID: number, level: number, tileIdx: number, afterFetch?: FetchCallback): EventTile | undefined {
 		let key = CachedEventTile.makeKey(cameraID, level, tileIdx);
 		let tile = this.tiles[key];
-		let fetchTile = true;
+		let fetchTile = afterFetch && !tile;
 		if (tile) {
 			// If the tile is stale, queue up a fetch, but return what we have in the meantime,
 			// so that the renderer doesn't flicker when we're waiting for a fresh tile.
-			fetchTile = this.isStale(tile);
+			fetchTile = afterFetch && this.isStale(tile);
 			tile.lastUsedMS = new Date().getTime();
 		}
 		if (fetchTile) {
@@ -53,12 +53,18 @@ export class EventTileCache {
 			if (afterFetch) {
 				let f = this.fetching.get(key);
 				if (f) {
-					f.push(afterFetch);
+					// 100 is just an arbitrary limit to the number of watchers. I can imagine easily
+					// hitting that limit on zooming in/out, with a high latency connection to the server.
+					// But the odds are extremely high that all the callbacks are pointing to the same function.
+					if (f.length < 100) {
+						f.push(afterFetch);
+					}
 				} else {
 					this.fetching.set(key, [afterFetch]);
 				}
 			}
 			if (!isFetching) {
+				// We don't await for this. The caller is expected to use a callback "afterFetch" to get notified when the fetch finishes.
 				this.fetchTile(cameraID, level, tileIdx);
 			}
 		}
@@ -85,6 +91,7 @@ export class EventTileCache {
 		this.fetching.delete(key);
 	}
 
+	// Return true if the tile is stale (i.e. new events have possibly been recorded since we last fetched this tile)
 	isStale(tile: CachedEventTile): boolean {
 		let now = new Date().getTime();
 		if (tile.tile.endTimeMS < now) {

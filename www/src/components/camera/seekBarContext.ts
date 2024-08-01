@@ -1,8 +1,13 @@
 
+import { spanIntersection } from "@/util/geom";
 import { EventTile } from "./eventTile";
 import { CachedEventTile, globalTileCache } from "./eventTileCache";
+import { clamp } from "@/util/util";
 
 const BaseSecondsPerTile = 1024;
+
+// SYNC-MAX-TILE-LEVEL
+const MaxTileLevel = 13;
 
 // HistoryBar draws the lines at the bottom of a video which show the moments
 // of interest when particular things were detected. For example, the bar might
@@ -11,7 +16,7 @@ const BaseSecondsPerTile = 1024;
 export class SeekBarContext {
 	cameraID = 0;
 	endTimeMS = new Date().getTime(); // Unix milliseconds at the end of the seek bar
-	tileLevel = 1; // 2^tileLevel seconds per bit. At level 0, 1 bit per second. This must be an integer.
+	endTimeIsNow = false; // If our last seek call was seekToNow()
 	zoomLevel = 1; // 2^zoom seconds per pixel. This can be an arbitrary real number.
 	needsRender = false;
 
@@ -21,7 +26,12 @@ export class SeekBarContext {
 
 	seekToNow() {
 		this.endTimeMS = new Date().getTime();
-		//console.log("seekToNow, cameraID = ", this.cameraID);
+		this.endTimeIsNow = true;
+	}
+
+	seekTo(t: Date) {
+		this.endTimeMS = t.getTime();
+		this.endTimeIsNow = false;
 	}
 
 	render(canvas: HTMLCanvasElement) {
@@ -54,31 +64,93 @@ export class SeekBarContext {
 		let pixelsPerSecond = 1 / secondsPerPixel;
 		let canvasWidth = canvas.width;
 		let startTimeMS = this.pixelToTimeMS(0, canvasWidth, secondsPerPixel);
-		// extra 1000 in the following lines is to go from milliseconds to seconds.
-		let startTileIdx = Math.floor((startTimeMS) / (1000 * BaseSecondsPerTile << this.tileLevel)); // inclusive.
-		let endTileIdx = Math.ceil((this.endTimeMS) / (1000 * BaseSecondsPerTile << this.tileLevel)); // exclusive
-		// Clamp the number of renderings/fetches, just in case we screw something up.
-		// 10 should be PLENTY of a high enough limit.
-		startTileIdx = Math.max(startTileIdx, endTileIdx - 10);
+
+		// Try a few different tile levels to see which one gives us tiles *right now*, so that we
+		// always get something reasonable on the screen, even when zooming in our out. But, on 
+		// the pass where we're trying to render our ideal zoom level, make sure we fetch tiles that
+		// are missing, so that subsequent re-renders will have the tiles they need.
+		// Note that trying levels much higher than our current level is not a big penalty, because
+		// the tiles get larger and larger, and thus the number of tiles that we need to investigate/fetch
+		// become smaller and smaller (until it's usually just 1 or 2 tiles).
+		let idealLevel = Math.floor(this.zoomLevel);
+		idealLevel = clamp(idealLevel, 0, MaxTileLevel);
+		let bestCoverage = 0;
+		let bestLevel = idealLevel;
+		for (let tileLevel = idealLevel - 2; tileLevel < idealLevel + 3; tileLevel++) {
+			let coverage = this.cachedTileCoverage(startTimeMS, this.endTimeMS, canvasWidth, pixelsPerSecond, tileLevel);
+			if (coverage > bestCoverage) {
+				bestCoverage = coverage;
+				bestLevel = tileLevel;
+			} else if (coverage === bestCoverage) {
+				// If coverage is equal, choose the level closest to the ideal level
+				if (Math.abs(tileLevel - idealLevel) < Math.abs(bestLevel - idealLevel)) {
+					bestLevel = tileLevel;
+				}
+			}
+		}
+
+		// Make sure we have tile fetches queued for the ideal level
+		{
+			let { startTileIdx, endTileIdx } = SeekBarContext.tileSpan(startTimeMS, this.endTimeMS, idealLevel);
+			for (let tileIdx = startTileIdx; tileIdx < endTileIdx; tileIdx++) {
+				globalTileCache.getTile(this.cameraID, idealLevel, tileIdx, onTileFetched);
+			}
+		}
+
+		// Render tiles using the best level. Here we don't queue up tile fetches.
+		let { startTileIdx, endTileIdx } = SeekBarContext.tileSpan(startTimeMS, this.endTimeMS, bestLevel);
 		for (let tileIdx = startTileIdx; tileIdx < endTileIdx; tileIdx++) {
-			//console.log("getTile ", this.cameraID);
-			let tile = globalTileCache.getTile(this.cameraID, this.tileLevel, tileIdx, onTileFetched);
+			let tile = globalTileCache.getTile(this.cameraID, bestLevel, tileIdx);
 			if (tile) {
 				this.renderTile(cx, tile, canvasWidth, pixelsPerSecond);
 			}
 		}
 	}
 
+	static tileSpan(startTimeMS: number, endTimeMS: number, tileLevel: number): { startTileIdx: number, endTileIdx: number } {
+		// extra 1000 in the following lines is to go from milliseconds to seconds.
+		let startTileIdx = Math.floor((startTimeMS) / (1000 * BaseSecondsPerTile << tileLevel)); // inclusive.
+		let endTileIdx = Math.ceil((endTimeMS) / (1000 * BaseSecondsPerTile << tileLevel)); // exclusive
+		// Clamp the number of renderings/fetches, just in case we screw something up.
+		// 10 should be PLENTY of a high enough limit when tileLevel is close to zoomLevel.
+		// But since we sometimes render tiles from a lower level (eg when user is busy zooming out),
+		// we relax this limit a bit.
+		startTileIdx = Math.max(startTileIdx, endTileIdx - 40);
+		return { startTileIdx, endTileIdx };
+	}
+
+	// Returns the percentage (0..1) of the screen that is covered by cached tiles at the given time span and level.
+	cachedTileCoverage(startTimeMS: number, endTimeMS: number, canvasWidth: number, pixelsPerSecond: number, tileLevel: number): number {
+		let { startTileIdx, endTileIdx } = SeekBarContext.tileSpan(startTimeMS, endTimeMS, tileLevel);
+		let nPixels = 0;
+		for (let tileIdx = startTileIdx; tileIdx < endTileIdx; tileIdx++) {
+			let tile = globalTileCache.getTile(this.cameraID, tileLevel, tileIdx);
+			if (tile) {
+				let { x1, x2 } = this.renderedTileBounds(tile, canvasWidth, pixelsPerSecond);
+				let [s1, s2] = spanIntersection(x1, x2, 0, canvasWidth);
+				nPixels += s2 - s1;
+			}
+		}
+		return nPixels / canvasWidth;
+	}
+
+	renderedTileBounds(tile: EventTile, canvasWidth: number, pixelsPerSecond: number): { x1: number, x2: number } {
+		let x1 = this.timeMSToPixel(tile.startTimeMS, canvasWidth, pixelsPerSecond);
+		let x2 = this.timeMSToPixel(tile.endTimeMS, canvasWidth, pixelsPerSecond);
+		return { x1, x2 }
+	}
+
 	renderTile(cx: CanvasRenderingContext2D, tile: EventTile, canvasWidth: number, pixelsPerSecond: number) {
 		let dpr = window.devicePixelRatio;
-		let tx1 = this.timeMSToPixel(tile.startTimeMS, canvasWidth, pixelsPerSecond);
-		let tx2 = this.timeMSToPixel(tile.endTimeMS, canvasWidth, pixelsPerSecond);
+		let { x1: tx1, x2: tx2 } = this.renderedTileBounds(tile, canvasWidth, pixelsPerSecond);
 		//console.log("Tile width in pixels = ", tx2 - tx1);
 		let bitWidth = (tx2 - tx1) / 1024;
+		// Increase this to make even the thinnest event fatter
+		let minBitWidth = dpr;
 		let classes = ["person", "car", "truck"];
 		let colors = ["rgba(245, 30, 0, 1)", "rgba(0, 225, 0, 1)", "rgba(80, 80, 255, 1)"];
 		let y = 0.5;
-		let lineHeight = 4 * dpr;
+		let lineHeight = 3 * dpr;
 		for (let icls = 0; icls < classes.length; icls++) {
 			//cx.strokeStyle = "rgba(200, 200, 200, 1)";
 			//cx.lineWidth = 1;
@@ -93,7 +165,8 @@ export class SeekBarContext {
 					if (bit === 1024 || EventTile.getBit(bitmap, bit) !== state) {
 						if (state === 1) {
 							//console.log(x1, x2);
-							cx.fillRect(x1, y, x2 - x1, lineHeight);
+							let width = Math.max(minBitWidth, x2 - x1);
+							cx.fillRect(x1, y, width, lineHeight);
 						}
 						state = state ? 0 : 1;
 						x1 = x2;
@@ -101,7 +174,7 @@ export class SeekBarContext {
 					x2 += bitWidth;
 				}
 			}
-			y += lineHeight;
+			y += lineHeight + 1;
 		}
 	}
 
