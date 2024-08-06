@@ -2,10 +2,12 @@
 import type { CameraInfo } from '@/camera/camera';
 import { globals } from '@/globals';
 import CameraItem from '@/components/home/CameraItem.vue';
-import { ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
+import { on } from 'events';
 
 let isPlaying = ref({} as { [index: number]: boolean }); // ID -> boolean
 let linkedPlay = false;
+let cameraWidth = ref(320);
 
 function cameras(): CameraInfo[] {
 	return globals.cameras;
@@ -33,6 +35,33 @@ function onStop(cam: CameraInfo) {
 	}
 }
 
+function onWindowResize() {
+	let ww = window.innerWidth;
+	//console.log("resize", ww);
+	if (ww < 450) {
+		// Cellphone screen in portrait.
+		// The largest phone screen in the Chrome debug tools is the iPhone 14 Pro Max, which is 430 pixels wide.
+		// The width of the screen is our major constraint here, and we want to maximize the width of the camera view
+		cameraWidth.value = ww - 2;
+	} else {
+		// wide screen - could be desktop/ipad/etc
+		cameraWidth.value = 360;
+	}
+}
+
+function cameraHeight(): string {
+	return `${cameraWidth.value / 1.4}px`;
+}
+
+onMounted(() => {
+	window.addEventListener('resize', onWindowResize);
+	onWindowResize();
+});
+
+onUnmounted(() => {
+	window.removeEventListener('resize', onWindowResize);
+});
+
 </script>
 
 <template>
@@ -44,7 +73,7 @@ function onStop(cam: CameraInfo) {
 		-->
 		<div class="cameras">
 			<camera-item v-for="cam of cameras()" :camera="cam" :play="isPlaying[cam.id] ?? false" @play="onPlay(cam)"
-				@stop="onStop(cam)" size="medium" />
+				@stop="onStop(cam)" :width="cameraWidth + 'px'" :height="cameraHeight()" />
 		</div>
 	</div>
 </template>
@@ -52,12 +81,12 @@ function onStop(cam: CameraInfo) {
 <style lang="scss" scoped>
 .monitor {
 	align-items: center;
-	margin: 10px 0 0 0;
+	margin: 0px 0 0 0;
 }
 
 .cameras {
-	//background-color: beige;
-	padding: 10px 10px;
+	background-color: #222;
+	padding: 5px 0px;
 
 	display: flex;
 	flex-wrap: wrap;
@@ -70,6 +99,6 @@ function onStop(cam: CameraInfo) {
 	//display: grid;
 	//grid-template-columns: repeat(auto-fill, 320px);
 
-	gap: 20px;
+	gap: 5px;
 }
 </style>

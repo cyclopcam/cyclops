@@ -60,9 +60,12 @@ export class SeekBarContext {
 		let secondsPerPixel = Math.pow(2, this.zoomLevel);
 		let pixelsPerSecond = 1 / secondsPerPixel;
 		let canvasWidth = canvas.width;
+		let canvasHeight = canvas.height;
 		let startTimeMS = this.pixelToTimeMS(0, canvasWidth, secondsPerPixel);
 
 		//if (this.zoomLevel >= 10) console.log(`StartTime = ${new Date(startTimeMS).toISOString()}, EndTime = ${new Date(this.endTimeMS).toISOString()}`);
+
+		this.renderTimeMarkers(cx, canvasWidth, canvasHeight, startTimeMS, pixelsPerSecond);
 
 		// Try a few different tile levels to see which one gives us tiles *right now*, so that we
 		// always get something reasonable on the screen, even when zooming in our out. But, on 
@@ -146,6 +149,56 @@ export class SeekBarContext {
 		return { x1, x2 }
 	}
 
+	renderTimeMarkers(cx: CanvasRenderingContext2D, canvasWidth: number, canvasHeight: number, startTimeMS: number, pixelsPerSecond: number) {
+		let startS = startTimeMS / 1000;
+		let endS = this.endTimeMS / 1000;
+
+		//let secondsPerPixel = ((this.endTimeMS - startTimeMS) / 1000) / canvasWidth;
+		let totalH = (endS - startS) / (60 * 60);
+		//console.log(totalHours);
+
+		// Interval between markers, in seconds
+		let colors = ["rgba(255, 255, 255, 0.3)", "rgba(255, 255, 255, 0.5)"];
+		let intervalS = 1;
+		let showHours = false;
+		if (totalH < 24) {
+			// hours
+			//showHours = true;
+			intervalS = 3600;
+		} else if (totalH < 24 * 7 * 60) {
+			// days
+			intervalS = 3600 * 24;
+			colors = ["rgba(255, 255, 190, 0.3)", "rgba(255, 255, 190, 0.5)"];
+		} else {
+			// Maybe do week and/or month markers?
+			return;
+		}
+
+		let dpr = window.devicePixelRatio;
+		let height = dpr * 4;
+
+		let istart = Math.floor(startS / intervalS);
+		let iend = Math.ceil(endS / intervalS);
+		//console.log(istart, iend);
+		for (let i = istart; i < iend; i++) {
+			let t1 = this.timeMSToPixel(i * intervalS * 1000, canvasWidth, pixelsPerSecond);
+			let t2 = this.timeMSToPixel((i + 1) * intervalS * 1000, canvasWidth, pixelsPerSecond);
+			//console.log(t1, t2);
+			cx.fillStyle = colors[i % 2];
+			cx.fillRect(t1, canvasHeight - height, t2 - t1, canvasHeight);
+			if (showHours) {
+				let d = new Date(i * intervalS * 1000);
+				let h = d.getHours();
+				//if (h > 12)
+				//	h -= 12;
+				cx.font = `${13 * dpr}px Arial`;
+				cx.textAlign = "center";
+				cx.fillStyle = "rgba(255, 255, 255, 0.4)";
+				cx.fillText(h.toString(), t1, canvasHeight - height - 5 * dpr);
+			}
+		}
+	}
+
 	renderTile(cx: CanvasRenderingContext2D, tile: EventTile, canvasWidth: number, pixelsPerSecond: number) {
 		let dpr = window.devicePixelRatio;
 		let { x1: tx1, x2: tx2 } = this.renderedTileBounds(tile, canvasWidth, pixelsPerSecond);
@@ -154,13 +207,16 @@ export class SeekBarContext {
 		let colors = ["rgba(255, 40, 0, 1)", "rgba(0, 255, 0, 1)", "rgba(150, 100, 255, 1)"];
 		let y = 4.5;
 		let lineHeight = 3 * dpr;
+		let boostThreshold = 2 * dpr;
+		let boostLeft = 0.5 * dpr;
+		let boostWidth = 1.75 * boostLeft; // should be about 2x boostLeft to keep the dot unbiased
 		let bitWindowCount = new Uint8Array(BitsPerTile);
 		for (let icls = 0; icls < classes.length; icls++) {
 			cx.fillStyle = colors[icls];
 			let bitmap = tile.classes[classes[icls]];
 			if (bitmap) {
 				SeekBarContext.countBitsInSlidingWindow(bitmap, bitWindowCount, 5);
-				//console.log("window", bitWindowCount);
+				//console.log(this.cameraID, "window", bitWindowCount);
 				let state = 0;
 				let x1 = tx1;
 				let x2 = tx1;
@@ -170,10 +226,10 @@ export class SeekBarContext {
 							let density = bit === BitsPerTile ? bitWindowCount[BitsPerTile - 1] : bitWindowCount[bit];
 							let rx1 = x1;
 							let width = x2 - x1;
-							if (density < 3) {
+							if (density < boostThreshold) {
 								// Boost width of detections that are sparse, so that the human eye doesn't miss them.
-								rx1 -= 2;
-								width += 3;
+								rx1 -= boostLeft;
+								width += boostWidth;
 							}
 							cx.fillRect(rx1, y, width, lineHeight);
 						}

@@ -5,7 +5,9 @@ import Player from '@/components/camera/Player.vue';
 let props = defineProps<{
 	camera: CameraInfo,
 	play: boolean,
-	size?: string,
+	//size?: string,
+	width?: string,
+	height?: string,
 	icon?: string, // 'play', 'record' (default = play)
 }>()
 defineEmits(['play', 'stop']);
@@ -14,8 +16,17 @@ function style(): any {
 	// We want an aspect ratio that is the most average, because in <player> we distort the aspect ratio
 	// We use aspect = 1.5 because it's more square than 16:9 (1.777), to accomodate cameras that are more square.
 	// BUT.. then we lower it even further, to make space for the SeekBar
-	let aspect = 1.4;
-	let width = 320;
+	//let aspect = 1.4;
+
+	return {
+		"width": props.width,
+		"height": props.height,
+	}
+
+	// Attempt 1, where camera is explicitly sized.
+	// This has the downside that it doesn't automatically grow to the size of the screen.
+	/*
+	let width = 350;
 	if (props.size) {
 		switch (props.size) {
 			case "small":
@@ -37,6 +48,7 @@ function style(): any {
 		width: width + 'px',
 		height: Math.round(width / aspect) + 'px',
 	};
+	*/
 }
 function iconIsPlay() { return (props.icon ?? "play") === "play"; }
 function iconIsRecord() { return (props.icon ?? "play") === "record"; }
