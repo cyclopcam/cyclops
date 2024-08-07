@@ -42,7 +42,8 @@ function onWindowResize() {
 		// Cellphone screen in portrait.
 		// The largest phone screen in the Chrome debug tools is the iPhone 14 Pro Max, which is 430 pixels wide.
 		// The width of the screen is our major constraint here, and we want to maximize the width of the camera view
-		cameraWidth.value = ww - 2;
+		// We need *some* margin here, otherwise scrolling your thumb to the right edge is awkward.
+		cameraWidth.value = ww - 4;
 	} else {
 		// wide screen - could be desktop/ipad/etc
 		cameraWidth.value = 360;
@@ -99,6 +100,6 @@ onUnmounted(() => {
 	//display: grid;
 	//grid-template-columns: repeat(auto-fill, 320px);
 
-	gap: 5px;
+	gap: 10px;
 }
 </style>

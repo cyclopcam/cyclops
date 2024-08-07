@@ -126,7 +126,9 @@ $seekBarHeight: 10%;
 	width: 100%;
 	height: 100%;
 	position: relative;
-	//border: solid 1px #00d;
+	border: solid 1px #446;
+	border-radius: 5px;
+	//box-shadow: 0px 0px 2px rgba(255, 255, 255, 0.4), 0px 0px 7px rgba(255, 255, 255, 0.2);
 }
 
 .videoContainer {

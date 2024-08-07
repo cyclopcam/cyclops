@@ -21,11 +21,13 @@ export class SeekBarContext {
 		this.cameraID = cameraID;
 	}
 
+	// Set the end time to now
 	seekToNow() {
 		this.endTimeMS = new Date().getTime();
 		this.endTimeIsNow = true;
 	}
 
+	// Set the end time to 't'
 	seekTo(t: Date) {
 		this.endTimeMS = t.getTime();
 		this.endTimeIsNow = false;
@@ -160,10 +162,9 @@ export class SeekBarContext {
 		// Interval between markers, in seconds
 		let colors = ["rgba(255, 255, 255, 0.3)", "rgba(255, 255, 255, 0.5)"];
 		let intervalS = 1;
-		let showHours = false;
+		let showHours = totalH < 10;
 		if (totalH < 24) {
 			// hours
-			//showHours = true;
 			intervalS = 3600;
 		} else if (totalH < 24 * 7 * 60) {
 			// days
@@ -191,10 +192,11 @@ export class SeekBarContext {
 				let h = d.getHours();
 				//if (h > 12)
 				//	h -= 12;
-				cx.font = `${13 * dpr}px Arial`;
+				cx.font = `${9 * dpr}px -apple-system, system-ui, sans-serif`;
 				cx.textAlign = "center";
-				cx.fillStyle = "rgba(255, 255, 255, 0.4)";
-				cx.fillText(h.toString(), t1, canvasHeight - height - 5 * dpr);
+				cx.fillStyle = "rgba(255, 255, 255, 0.5)";
+				let hourText = h < 12 ? h + " am" : (h - 12) + " pm";
+				cx.fillText(hourText, t1, canvasHeight - height - 5 * dpr);
 			}
 		}
 	}
