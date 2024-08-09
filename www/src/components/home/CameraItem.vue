@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CameraInfo } from '@/camera/camera';
 import Player from '@/components/camera/Player.vue';
+import { ref } from 'vue';
 
 let props = defineProps<{
 	camera: CameraInfo,
@@ -11,6 +12,10 @@ let props = defineProps<{
 	icon?: string, // 'play', 'record' (default = play)
 }>()
 defineEmits(['play', 'stop']);
+
+// This is only useful if the camera is not showing anything,
+// but how to detect that? I guess we need an API for that.
+let showCameraName = ref(false);
 
 function style(): any {
 	// We want an aspect ratio that is the most average, because in <player> we distort the aspect ratio
@@ -62,7 +67,7 @@ function iconIsRecord() { return (props.icon ?? "play") === "record"; }
 			<div :class="{ playIcon: iconIsPlay(), recordIcon: iconIsRecord() }">
 			</div>
 		</div>
-		<div class="name">{{ camera.name }}</div>
+		<div v-if="showCameraName" class="name">{{ camera.name }}</div>
 	</div>
 </template>
 

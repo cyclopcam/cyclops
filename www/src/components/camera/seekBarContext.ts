@@ -2,19 +2,26 @@
 import { spanIntersection } from "@/util/geom";
 import { EventTile } from "./eventTile";
 import { CachedEventTile, globalTileCache } from "./eventTileCache";
-import { clamp } from "@/util/util";
+import { clamp, dateTime } from "@/util/util";
 
 import { BitsPerTile, BaseSecondsPerTile, MaxTileLevel } from "./eventTile";
 
-// HistoryBar draws the lines at the bottom of a video which show the moments
+// SeekBar draws the lines at the bottom of a video which show the moments
 // of interest when particular things were detected. For example, the bar might
 // be white everywhere, but red where a person was detected.
+// The seek bar represents two different things related to time:
+// 1. The start/end time of the bar
+// 2. The current video playback position
+// We call #1 the "pan"
+// We cann #2 the "seek"
 // NOTE! This object gets made reactive, so don't store lots of state in here.
 export class SeekBarContext {
 	cameraID = 0;
-	endTimeMS = new Date().getTime(); // Unix milliseconds at the end of the seek bar
-	endTimeIsNow = false; // If our last seek call was seekToNow()
+	panTimeEndMS = new Date().getTime(); // Unix milliseconds at the end of the seek bar
+	panTimeEndIsNow = false; // If our last seek call was seekToNow()
 	zoomLevel = 3; // 2^zoom seconds per pixel. This can be an arbitrary real number.
+	desiredSeekPosMS = new Date().getTime(); // Unix milliseconds of the desired video seek position
+	actualSeekPosMS = new Date().getTime(); // Unix milliseconds of the actual playback position
 	needsRender = false;
 
 	constructor(cameraID = 0) {
@@ -22,15 +29,20 @@ export class SeekBarContext {
 	}
 
 	// Set the end time to now
-	seekToNow() {
-		this.endTimeMS = new Date().getTime();
-		this.endTimeIsNow = true;
+	panToNow() {
+		this.panTimeEndMS = new Date().getTime();
+		this.panTimeEndIsNow = true;
 	}
 
 	// Set the end time to 't'
-	seekTo(t: Date) {
-		this.endTimeMS = t.getTime();
-		this.endTimeIsNow = false;
+	panTo(t: Date) {
+		this.panToMillisecond(t.getTime());
+	}
+
+	// Set the end time to 'ms' (unix milliseconds)
+	panToMillisecond(ms: number) {
+		this.panTimeEndMS = ms;
+		this.panTimeEndIsNow = false;
 	}
 
 	render(canvas: HTMLCanvasElement) {
@@ -81,7 +93,7 @@ export class SeekBarContext {
 		let bestCoverage = 0;
 		let bestLevel = idealLevel;
 		for (let tileLevel = idealLevel - 2; tileLevel < idealLevel + 3; tileLevel++) {
-			let coverage = this.cachedTileCoverage(startTimeMS, this.endTimeMS, canvasWidth, pixelsPerSecond, tileLevel);
+			let coverage = this.cachedTileCoverage(startTimeMS, this.panTimeEndMS, canvasWidth, pixelsPerSecond, tileLevel);
 			if (coverage > bestCoverage) {
 				bestCoverage = coverage;
 				bestLevel = tileLevel;
@@ -97,14 +109,14 @@ export class SeekBarContext {
 
 		// Make sure we have tile fetches queued for the ideal level
 		{
-			let { startTileIdx, endTileIdx } = SeekBarContext.tileSpan(startTimeMS, this.endTimeMS, idealLevel);
+			let { startTileIdx, endTileIdx } = SeekBarContext.tileSpan(startTimeMS, this.panTimeEndMS, idealLevel);
 			for (let tileIdx = startTileIdx; tileIdx < endTileIdx; tileIdx++) {
 				globalTileCache.getTile(this.cameraID, idealLevel, tileIdx, onTileFetched);
 			}
 		}
 
 		// Render tiles using the best level. Here we don't queue up tile fetches.
-		let { startTileIdx, endTileIdx } = SeekBarContext.tileSpan(startTimeMS, this.endTimeMS, bestLevel);
+		let { startTileIdx, endTileIdx } = SeekBarContext.tileSpan(startTimeMS, this.panTimeEndMS, bestLevel);
 		for (let tileIdx = startTileIdx; tileIdx < endTileIdx; tileIdx++) {
 			let tile = globalTileCache.getTile(this.cameraID, bestLevel, tileIdx);
 			if (tile) {
@@ -153,7 +165,7 @@ export class SeekBarContext {
 
 	renderTimeMarkers(cx: CanvasRenderingContext2D, canvasWidth: number, canvasHeight: number, startTimeMS: number, pixelsPerSecond: number) {
 		let startS = startTimeMS / 1000;
-		let endS = this.endTimeMS / 1000;
+		let endS = this.panTimeEndMS / 1000;
 
 		//let secondsPerPixel = ((this.endTimeMS - startTimeMS) / 1000) / canvasWidth;
 		let totalH = (endS - startS) / (60 * 60);
@@ -162,13 +174,21 @@ export class SeekBarContext {
 		// Interval between markers, in seconds
 		let colors = ["rgba(255, 255, 255, 0.3)", "rgba(255, 255, 255, 0.5)"];
 		let intervalS = 1;
-		let showHours = totalH < 10;
-		if (totalH < 24) {
+		if (totalH * 60 < 15) {
+			// minute
+			intervalS = 60;
+		} else if (totalH < 0.5) {
+			// 5 minutes
+			intervalS = 5 * 60;
+		} else if (totalH < 2) {
+			// 15 minutes
+			intervalS = 15 * 60;
+		} else if (totalH < 24) {
 			// hours
-			intervalS = 3600;
+			intervalS = 60 * 60;
 		} else if (totalH < 24 * 7 * 60) {
 			// days
-			intervalS = 3600 * 24;
+			intervalS = 60 * 60 * 24;
 			colors = ["rgba(255, 255, 190, 0.3)", "rgba(255, 255, 190, 0.5)"];
 		} else {
 			// Maybe do week and/or month markers?
@@ -180,6 +200,7 @@ export class SeekBarContext {
 
 		let istart = Math.floor(startS / intervalS);
 		let iend = Math.ceil(endS / intervalS);
+		let showText = iend - istart <= 12;
 		//console.log(istart, iend);
 		for (let i = istart; i < iend; i++) {
 			let t1 = this.timeMSToPixel(i * intervalS * 1000, canvasWidth, pixelsPerSecond);
@@ -187,16 +208,21 @@ export class SeekBarContext {
 			//console.log(t1, t2);
 			cx.fillStyle = colors[i % 2];
 			cx.fillRect(t1, canvasHeight - height, t2 - t1, canvasHeight);
-			if (showHours) {
+			if (showText) {
 				let d = new Date(i * intervalS * 1000);
 				let h = d.getHours();
-				//if (h > 12)
-				//	h -= 12;
+				let minutes: string | number = d.getMinutes();
+				minutes = minutes === 0 ? "00" : minutes < 10 ? "0" + minutes : minutes;
 				cx.font = `${9 * dpr}px -apple-system, system-ui, sans-serif`;
 				cx.textAlign = "center";
 				cx.fillStyle = "rgba(255, 255, 255, 0.5)";
-				let hourText = h < 12 ? h + " am" : (h - 12) + " pm";
-				cx.fillText(hourText, t1, canvasHeight - height - 5 * dpr);
+				let text = '';
+				if (intervalS <= 60 * 60) {
+					text = h + ":" + minutes;
+				} else if (intervalS === 60 * 60 * 24) {
+					text = 'DoM';
+				}
+				cx.fillText(text, t1, canvasHeight - height - 5 * dpr);
 			}
 		}
 	}
@@ -209,15 +235,16 @@ export class SeekBarContext {
 		let colors = ["rgba(255, 40, 0, 1)", "rgba(0, 255, 0, 1)", "rgba(150, 100, 255, 1)"];
 		let y = 4.5;
 		let lineHeight = 3 * dpr;
-		let boostThreshold = 2 * dpr;
-		let boostLeft = 0.5 * dpr;
+		//let boostThreshold = 2 * dpr;
+		let boostThreshold = 4; // this is coupled to the sliding window size. If you make the window size bigger, you should make this bigger too.
+		let boostLeft = 1.0 * dpr;
 		let boostWidth = 1.75 * boostLeft; // should be about 2x boostLeft to keep the dot unbiased
 		let bitWindowCount = new Uint8Array(BitsPerTile);
 		for (let icls = 0; icls < classes.length; icls++) {
 			cx.fillStyle = colors[icls];
 			let bitmap = tile.classes[classes[icls]];
 			if (bitmap) {
-				SeekBarContext.countBitsInSlidingWindow(bitmap, bitWindowCount, 5);
+				SeekBarContext.countBitsInSlidingWindow(bitmap, bitWindowCount, 3);
 				//console.log(this.cameraID, "window", bitWindowCount);
 				let state = 0;
 				let x1 = tx1;
@@ -265,7 +292,7 @@ export class SeekBarContext {
 		if (pixelsPerSecond === undefined) {
 			pixelsPerSecond = 1 / Math.pow(2, this.zoomLevel);
 		}
-		return ((timeMS - this.endTimeMS) / 1000) * pixelsPerSecond + canvasWidth;
+		return ((timeMS - this.panTimeEndMS) / 1000) * pixelsPerSecond + canvasWidth;
 	}
 
 	// px: Distance in pixels from the left edge (left edge = 0)
@@ -276,6 +303,38 @@ export class SeekBarContext {
 		if (secondsPerPixel === undefined) {
 			secondsPerPixel = Math.pow(2, this.zoomLevel);
 		}
-		return this.endTimeMS + (px - canvasWidth) * secondsPerPixel * 1000;
+		return this.panTimeEndMS + (px - canvasWidth) * secondsPerPixel * 1000;
+	}
+}
+
+// Represents a mapping between two different 1-dimensional coordinate systems.
+// In our case of the seek bar, the two different coordinate systems are:
+// 1. Time (unix milliseconds)
+// 2. Pixels (from left edge of canvas)
+export class SeekBarTransform {
+	pixelsPerSecond = 1;
+	leftEdgeTimeMS = 0;
+	canvasWidth = 0;
+
+	static pixelsPerSecondToZoomLevel(pixelsPerSecond: number): number {
+		return Math.log2(1 / pixelsPerSecond);
+	}
+
+	static fromZoomLevelAndRightEdge(zoomLevel: number, rightEdgeTimeMS: number, canvasWidth: number): SeekBarTransform {
+		let transform = new SeekBarTransform();
+		transform.pixelsPerSecond = 1 / Math.pow(2, zoomLevel);
+		transform.leftEdgeTimeMS = rightEdgeTimeMS - (canvasWidth / transform.pixelsPerSecond) * 1000;
+		transform.canvasWidth = canvasWidth;
+		return transform;
+	}
+
+	// Given a time in milliseconds, return the distance in pixels from the left edge.
+	timeToPixel(timeMS: number): number {
+		return ((timeMS - this.leftEdgeTimeMS) / 1000) * this.pixelsPerSecond;
+	}
+
+	// Given pixels from the left edge, return the time in milliseconds.
+	pixelToTime(px: number): number {
+		return (px / this.pixelsPerSecond) * 1000 + this.leftEdgeTimeMS;
 	}
 }

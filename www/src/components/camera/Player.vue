@@ -100,7 +100,7 @@ onMounted(() => {
 	//console.log("On init cameraID = ", props.camera.id);
 	//seekBar.cameraID = props.camera.id;
 	//console.log("seekBar.cameraID = ", seekBar.cameraID);
-	seekBar.seekToNow();
+	seekBar.panToNow();
 
 	if (props.play)
 		streamer.play(videoElementID());
@@ -120,13 +120,14 @@ onMounted(() => {
 </template>
 
 <style lang="scss" scoped>
+// HACK! CameraItem.vue has to match this.
 $seekBarHeight: 10%;
 
 .container {
 	width: 100%;
 	height: 100%;
 	position: relative;
-	border: solid 1px #446;
+	border: solid 1px rgb(0, 0, 0);
 	border-radius: 5px;
 	//box-shadow: 0px 0px 2px rgba(255, 255, 255, 0.4), 0px 0px 7px rgba(255, 255, 255, 0.2);
 }
@@ -163,6 +164,7 @@ $seekBarHeight: 10%;
 	width: 100%;
 	height: $seekBarHeight;
 	border-bottom-left-radius: 5px;
+	border-bottom-right-radius: 5px;
 }
 
 .livenessCanvas {

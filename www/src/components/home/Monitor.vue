@@ -43,7 +43,7 @@ function onWindowResize() {
 		// The largest phone screen in the Chrome debug tools is the iPhone 14 Pro Max, which is 430 pixels wide.
 		// The width of the screen is our major constraint here, and we want to maximize the width of the camera view
 		// We need *some* margin here, otherwise scrolling your thumb to the right edge is awkward.
-		cameraWidth.value = ww - 4;
+		cameraWidth.value = ww - 8;
 	} else {
 		// wide screen - could be desktop/ipad/etc
 		cameraWidth.value = 360;
@@ -80,14 +80,26 @@ onUnmounted(() => {
 </template>
 
 <style lang="scss" scoped>
+@import '@/assets/vars.scss';
+
 .monitor {
 	align-items: center;
-	margin: 0px 0 0 0;
+	margin: 0;
+	width: 100%;
+	height: 100%;
+	box-sizing: border-box;
+	background-color: $darkBackground1;
+	overflow: auto;
 }
 
 .cameras {
-	background-color: #222;
-	padding: 5px 0px;
+	// We want extra padding on the bottom so that the user knows that this is the last
+	// camera, and also so that the user has thumb space to manipulate the seek bar
+	// on the last camera.
+	padding: 10px 0px 0px 0px;
+
+	// Parent has the background
+	//background-color: $darkBackground1;
 
 	display: flex;
 	flex-wrap: wrap;
@@ -100,6 +112,6 @@ onUnmounted(() => {
 	//display: grid;
 	//grid-template-columns: repeat(auto-fill, 320px);
 
-	gap: 10px;
+	gap: 12px;
 }
 </style>

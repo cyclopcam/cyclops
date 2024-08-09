@@ -12,6 +12,8 @@ import ModeBar from '../components/home/ModeBar.vue';
 </template>
 
 <style lang="scss" scoped>
+@import '@/assets/vars.scss';
+
 .home {
 	height: 100%;
 	display: flex;
@@ -26,8 +28,9 @@ import ModeBar from '../components/home/ModeBar.vue';
 	align-items: center;
 	height: 1px;
 	flex: 1 1 auto;
-	overflow: auto;
+	//overflow: auto;
 	z-index: 0; // lower than mode-bar
+	//background-color: $darkBackground1;
 }
 
 .modeBarInHome {

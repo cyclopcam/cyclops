@@ -16,9 +16,20 @@
 
 .settingsRoot {
 	box-sizing: border-box;
-	width: 300px;
+	height: 100%;
+
+	// We do this, otherwise the invocation of a vertical scrollbar on desktop causes
+	// there to be too little horizonta space, and then we get a really ugly horizontal
+	// scrollbar too.
+	overflow-x: hidden;
+
+	overflow-y: auto;
 	//padding: 10px 20px;
 
+	// for desktop
+	width: 300px;
+
+	// for mobile
 	@media (max-width: $mobileCutoff) {
 		width: 100%;
 	}
