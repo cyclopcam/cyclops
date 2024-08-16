@@ -23,7 +23,7 @@ func main() {
 		panic(err)
 	}
 	s.HotReloadWWW = *hotReloadWWW
-	s.ListenForInterruptSignal()
+	s.ListenForKillSignals()
 	if err := s.ListenHTTP(":8081"); err != nil {
 		fmt.Printf("%v\n", err)
 	}

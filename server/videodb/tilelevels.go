@@ -32,7 +32,7 @@ func (v *VideoDB) buildHigherTiles(cameraToTileIdx map[uint32]uint32, cutoff tim
 		if tileIdx > maxTileIdx {
 			maxTileIdx = tileIdx
 		}
-		v.buildHigherTilesForCamera(tx, camera, tileIdx, cutoff)
+		v.buildHigherTilesForCamera(tx, camera, tileIdx)
 	}
 
 	v.setKV("lastTileIdx", maxTileIdx, tx)
@@ -50,28 +50,31 @@ func tileKey(level, tileIdx uint32) string {
 	return fmt.Sprintf("%v:%v", level, tileIdx)
 }
 
-// Build higher level tiles for the tiles from startTileIdx to cutoffTime
-// We stop walking up the levels once we hit a tile that extends beyond cutoffTime.
-// To put it another way, we only build tiles who's end time is before cutoffTime.
-func (v *VideoDB) buildHigherTilesForCamera(tx *gorm.DB, camera, startTileIdx uint32, cutoffTime time.Time) {
+// Build higher level tiles for the tiles from startTileIdx to infinity.
+func (v *VideoDB) buildHigherTilesForCamera(tx *gorm.DB, camera, startTileIdx uint32) {
 	// We keep a cache of tiles that we've just built, so that higher up level builds don't require us to
-	// reload them from the DB. This is especially important for building higher tile levels in real-time.
+	// reload them from the DB.
 	// The cache avoids round-trip to the DB, and also the encoding/decoding of the tile bitmaps.
 	cachedTiles := map[string]*tileBuilder{}
+
+	cameraName, _ := v.IDToString(camera)
+	if v.debugTileLevelBuild {
+		v.log.Infof("Building higher tiles for camera %v", cameraName)
+	}
 
 	for level := uint32(1); level <= uint32(v.maxTileLevel); level++ {
 		startTileIdx /= 2
 
 		// Fetch the list of tiles that exist before iterating. If the system has been shutdown for a long time,
 		// and then booted up again, this scan would take very long if we didn't do this initial check.
-		cutoffTileIdxChild := timeToTileIdx(cutoffTime, level-1)
-		validTileIndices, err := dbh.ScanArray[uint32](v.db.Raw("SELECT start FROM event_tile WHERE camera = ? AND level = ? AND start >= ? AND start <= ?",
-			camera, level-1, startTileIdx*2, cutoffTileIdxChild+1).Rows())
+		validTileIndices, err := dbh.ScanArray[uint32](tx.Raw("SELECT start FROM event_tile WHERE camera = ? AND level = ? AND start >= ?",
+			camera, level-1, startTileIdx*2).Rows())
+
 		if err != nil {
 			v.log.Errorf("Failed to scan child tiles for camera %v, level %v, startTileIdx %v", camera, level-1, startTileIdx)
 		}
 		if len(validTileIndices) == 0 {
-			// Not thing to do here - child level is empty
+			// Nothing to do here - child level is empty
 			continue
 		}
 		// Build up a hash table of available tile indices.
@@ -91,7 +94,7 @@ func (v *VideoDB) buildHigherTilesForCamera(tx *gorm.DB, camera, startTileIdx ui
 		startTileIdx = max(startTileIdx, minTileIdxAvailable/2)
 		endTileIdx := maxTileIdxAvailable/2 + 1
 
-		for tileIdx := startTileIdx; endOfTile(tileIdx, level).Before(cutoffTime) && tileIdx < endTileIdx; tileIdx++ {
+		for tileIdx := startTileIdx; tileIdx < endTileIdx; tileIdx++ {
 			childIdx0 := tileIdx * 2
 			childIdx1 := tileIdx*2 + 1
 			if !validTileIndicesSet[childIdx0] && !validTileIndicesSet[childIdx1] {
@@ -159,6 +162,9 @@ func (v *VideoDB) fillMissingTiles(now time.Time) {
 		return
 	}
 
+	startTime := tileIdxToTime(lastTileIdx, 0)
+	v.log.Infof("Building higher tile levels from %v to now", startTime)
+
 	cutoff := now.Add(-tileWriterFlushThreshold)
 	mostRecentlyClosedTileIdx := timeToTileIdx(cutoff, 0) - 1 // The -1 is because we're using the end-time of tiles
 
@@ -170,7 +176,7 @@ func (v *VideoDB) fillMissingTiles(now time.Time) {
 	defer tx.Rollback()
 
 	for _, camera := range recentCameraIDs {
-		v.buildHigherTilesForCamera(tx, camera, lastTileIdx+1, cutoff)
+		v.buildHigherTilesForCamera(tx, camera, lastTileIdx+1)
 	}
 
 	v.setKV("lastTileIdx", mostRecentlyClosedTileIdx, tx)
@@ -182,6 +188,5 @@ func (v *VideoDB) fillMissingTiles(now time.Time) {
 
 // Find recent camera IDs from level 0 tiles
 func (v *VideoDB) findRecentCameras(afterTileIdx uint32) ([]uint32, error) {
-	//tileIdx := timeToTileIdx(time.Now().Add(-lookBack), 0)
 	return dbh.ScanArray[uint32](v.db.Raw("SELECT camera FROM event_tile WHERE level = 0 AND start >= ? GROUP BY camera", afterTileIdx).Rows())
 }

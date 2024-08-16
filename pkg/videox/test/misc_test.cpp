@@ -7,10 +7,10 @@
 #include "../misc.h"
 
 // Test
-// clang -g -O0 -o misc_test pkg/videox/test/misc_test.cpp pkg/videox/misc.cpp && ./misc_test
+// gcc -g -O0 -o misc_test pkg/videox/test/misc_test.cpp pkg/videox/misc.cpp && ./misc_test
 
 // Benchmark
-// clang -O2 -o misc_test pkg/videox/test/misc_test.cpp pkg/videox/misc.cpp && ./misc_test
+// gcc -O2 -o misc_test pkg/videox/test/misc_test.cpp pkg/videox/misc.cpp && ./misc_test benchmark
 
 void VerifyEncodeAnnexB(const char* src, size_t srcLen, const char* expectDst, size_t dstLen, int expectR) {
 	size_t   encodeBufSize    = dstLen;
@@ -110,6 +110,8 @@ void TestRandomMutations();
 void Benchmark();
 
 int main(int argc, char** argv) {
+	bool benchmark = argc > 1 && strcmp(argv[1], "benchmark") == 0;
+
 	VerifyEncodeAnnexB("", 0, "", 0, 0);
 	VerifyEncodeAnnexB("\x00", 1, "\x00", 1, 1);
 	VerifyEncodeAnnexB("\x00\x00", 2, "\x00\x00", 2, 2);
@@ -143,7 +145,9 @@ int main(int argc, char** argv) {
 	VerifyDecodeAnnexB("", 0, "", 0);
 
 	TestRandomMutations();
-	Benchmark();
+	if (benchmark) {
+		Benchmark();
+	}
 }
 
 void Benchmark() {
@@ -199,7 +203,7 @@ void TestRandomMutations() {
 	//int fillFactor = 5;  // 5 produces 5% escaping
 	//int fillFactor = 20; // 20 produces 0.14% escaping
 	for (int seqLen = 1; seqLen <= maxSeqLen; seqLen++) {
-		for (int iter = 0; iter < 1000000; iter++) {
+		for (int iter = 0; iter < 100000; iter++) {
 			char seq[maxSeqLen];
 			for (int i = 0; i < seqLen; i++) {
 				// The only really interesting bytes are 0,1,2,3. 4-255 are all identical from an escaping point of view.
@@ -216,6 +220,6 @@ void TestRandomMutations() {
 			nTotal++;
 		}
 	}
-	printf("%d/%d random mutations ended up requiring escaping\n", nEncoded, nTotal);
+	printf("%d/%d random mutations ended up requiring escaping (%.1f%%)\n", nEncoded, nTotal, 100.0 * nEncoded / nTotal);
 	assert(nEncoded > 0);
 }

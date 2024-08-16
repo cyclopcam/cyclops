@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/kibi"
@@ -160,13 +161,20 @@ func (s *Server) ListenHTTP(port string) error {
 	return s.httpServer.ListenAndServe()
 }
 
-func (s *Server) ListenForInterruptSignal() {
+func (s *Server) ListenForKillSignals() {
+	s.Log.Infof("ListenForKillSignals starting")
 	s.signalIn = make(chan os.Signal, 1)
-	signal.Notify(s.signalIn, os.Interrupt)
+	signal.Notify(s.signalIn, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		for sig := range s.signalIn {
-			s.Log.Infof("Received OS signal %v", sig.String())
-			s.Shutdown(false)
+		select {
+		case sig, ok := <-s.signalIn:
+			if ok {
+				s.Log.Infof("Received OS signal '%v'. ListenForKillSignals will exit after shutdown", sig.String())
+				s.Shutdown(false)
+			} else {
+				// This path gets hit when Shutdown() is called by something other than ourselves, and Shutdown() closes the signalIn channel.
+				s.Log.Infof("signalIn closed. ListenForKillSignals will exit now")
+			}
 		}
 	}()
 }
@@ -186,6 +194,9 @@ func (s *Server) Shutdown(restart bool) {
 
 	// Remove our signal handler (we'll re-enable it again if we restart)
 	signal.Stop(s.signalIn)
+
+	// If Shutdown was invoked by something *other* than a signal, then this will get ListenForKillSignals() to exit
+	close(s.signalIn)
 
 	s.monitor.Close()
 

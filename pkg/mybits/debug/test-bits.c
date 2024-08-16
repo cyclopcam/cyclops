@@ -4,7 +4,7 @@
 #include "../bit.h"
 
 // Test:
-// cd pkg/bits
+// cd pkg/mybits
 // gcc -I. -o test-bits debug/test-bits.c bit.c && ./test-bits
 
 void TestPattern(unsigned char* buf, size_t bufsize, size_t start, size_t end) {

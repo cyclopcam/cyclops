@@ -225,6 +225,7 @@ export class SeekBarContext {
 				minutes = minutes === 0 ? "00" : minutes < 10 ? "0" + minutes : minutes;
 				cx.font = `${9 * dpr}px -apple-system, system-ui, sans-serif`;
 				cx.textAlign = "center";
+				cx.textBaseline = "bottom";
 				cx.fillStyle = "rgba(255, 255, 255, 0.5)";
 				let text = '';
 				if (intervalS <= 60 * 60) {
@@ -243,6 +244,7 @@ export class SeekBarContext {
 		let bitWidth = (tx2 - tx1) / BitsPerTile;
 		let classes = ["person", "car", "truck"];
 		let colors = ["rgba(255, 40, 0, 1)", "rgba(0, 255, 0, 1)", "rgba(150, 100, 255, 1)"];
+		let debugMode = false; // Draw tile level and index onto canvas. Super useful when debugging tile creation bugs on the server.
 		let y = 4.5;
 		let lineHeight = 3 * dpr;
 		//let boostThreshold = 2 * dpr;
@@ -280,10 +282,20 @@ export class SeekBarContext {
 			}
 			y += lineHeight + 1;
 		}
+		if (debugMode) {
+			cx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+			cx.lineWidth = 1;
+			cx.strokeRect(tx1, 0, tx2 - tx1, canvasWidth);
+			cx.fillStyle = "rgba(255, 255, 255, 1)";
+			cx.textAlign = "left";
+			cx.textBaseline = "top";
+			cx.fillText(`${tile.level}:${tile.tileIdx}`, tx1 + 4, 10);
+		}
 	}
 
 	// Count the number of bits in a sliding window of windowSize size, and write that number
 	// into bitWindowCount.
+	// NOTE: The filter is not symmetrical. Should fix it.
 	static countBitsInSlidingWindow(bitmap: Uint8Array, bitWindowCount: Uint8Array, windowSize: number) {
 		let n = bitmap.length * 8;
 		let count = 0;

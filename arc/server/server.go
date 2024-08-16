@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/cyclopcam/cyclops/arc/server/auth"
@@ -102,13 +103,20 @@ func (s *Server) ListenHTTP(port string) error {
 	return s.httpServer.ListenAndServe()
 }
 
-func (s *Server) ListenForInterruptSignal() {
+func (s *Server) ListenForKillSignals() {
+	s.Log.Infof("ListenForKillSignals starting")
 	s.signalIn = make(chan os.Signal, 1)
-	signal.Notify(s.signalIn, os.Interrupt)
+	signal.Notify(s.signalIn, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		for sig := range s.signalIn {
-			s.Log.Infof("Received OS signal %v", sig.String())
-			s.Shutdown()
+		select {
+		case sig, ok := <-s.signalIn:
+			if ok {
+				s.Log.Infof("Received OS signal '%v'. ListenForKillSignals will exit after shutdown", sig.String())
+				s.Shutdown()
+			} else {
+				// This path gets hit when Shutdown() is called by something other than ourselves, and Shutdown() closes the signalIn channel.
+				s.Log.Infof("signalIn closed. ListenForKillSignals will exit now")
+			}
 		}
 	}()
 }
@@ -116,6 +124,7 @@ func (s *Server) ListenForInterruptSignal() {
 func (s *Server) Shutdown() {
 	s.Log.Infof("Shutdown")
 	signal.Stop(s.signalIn)
+	close(s.signalIn)
 	s.Log.Infof("Closing HTTP server")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	err := s.httpServer.Shutdown(ctx)

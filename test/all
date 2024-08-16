@@ -1,0 +1,36 @@
+#!/bin/bash
+
+set -e
+
+echo "accel C"
+cd pkg/accel
+g++ -g -std=c++17 -fopenmp -I../../Simd/src -L../../Simd/build -o accel_test debug/accel_test.cpp accel.cpp -lgomp -lstdc++ -lSimd && ./accel_test
+cd -
+
+echo "bits C/WASM"
+cd pkg/mybits
+gcc -I. -o test-bits debug/test-bits.c bit.c && ./test-bits
+gcc -I. -o test-onoff debug/test-onoff.c onoff.c varint.c bit.c && ./test-onoff
+if [ -x "$(command -v docker)" ]; then
+	./build-wasm && node test-wasm.mjs
+else 
+	echo "Docker not found, skipping wasm tests"
+fi
+cd -
+
+echo "videox C"
+gcc -g -O0 -o misc_test pkg/videox/test/misc_test.cpp pkg/videox/misc.cpp && ./misc_test
+
+go test ./pkg/dbh
+go test ./pkg/gen
+go test ./pkg/kibi
+go test ./pkg/nn
+go test ./pkg/rle
+go test ./pkg/staticfiles
+go test ./pkg/videoformat/rf1
+go test ./pkg/videoformat/fsv
+go test ./pkg/videox
+go test ./server/configdb
+go test ./server/videodb
+
+echo "All tests passed"

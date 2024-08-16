@@ -37,7 +37,7 @@ func (v *VideoDB) tileWriteThread() {
 		}
 	}
 	v.log.Infof("Flushing all tiles")
-	v.flushOldTiles(time.Now().Add(1000 * time.Hour))
+	v.flushOldTiles(time.Now().Add(100000 * time.Hour))
 	v.log.Infof("Event tile write thread exiting")
 	close(v.tileWriteThreadClosed)
 }

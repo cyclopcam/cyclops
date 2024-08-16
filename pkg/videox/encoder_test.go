@@ -8,7 +8,9 @@ import (
 )
 
 // This uses a disk dump of raw camera data, so that we can iterate on ffmpeg code without needing to connect to a camera and wait for a few frames.
-func TestEncoder(t *testing.T) {
+// i've renamed this so that it's not actually a unit test, because this was just for dev/iteration.
+// BUT... I guess we should make this an actual test
+func disabledTestEncoder(t *testing.T) {
 	root := "/home/ben/dev/cyclops"
 
 	enc, err := NewVideoEncoder("mp4", root+"/dump/test-go.mp4", 2048, 1536)

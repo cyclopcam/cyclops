@@ -160,7 +160,7 @@ func main() {
 		if ownIP != nil {
 			srv.OwnIP = ownIP
 		}
-		srv.ListenForInterruptSignal()
+		srv.ListenForKillSignals()
 
 		// Connect to our wireguard privileged process once, and never disconnect until we exit.
 		// The privileged process only accepts its socket connection once, and then dies.
