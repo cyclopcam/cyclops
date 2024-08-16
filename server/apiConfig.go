@@ -248,10 +248,10 @@ func (s *Server) httpConfigMeasureStorageSpace(w http.ResponseWriter, r *http.Re
 	usedB := int64(0)
 
 	// Measure the amount of space used by /path
-	// du -s /path
+	// du -s -b /path
 	// Example output:
 	// 12345678 /path
-	res, err := shell.Run("du", "-s", path)
+	res, err := shell.Run("du", "-sb", path)
 	if err != nil {
 		s.Log.Warnf("Failed to read space used: %v", err)
 		//www.PanicBadRequestf("Failed to read space used: %v", err)
