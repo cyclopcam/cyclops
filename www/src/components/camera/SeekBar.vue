@@ -21,18 +21,16 @@ interface Point {
 let canvas = ref(null);
 let grabber = ref(null);
 let points: Point[] = []; // when there are 2 points, points[0] is on the left and points[1] is on the right
-let zoomAtPinchStart = 0;
 let txAtPinchStart = new SeekBarTransform();
-//let rightEdgeMSAtPinchStart = 0;
 
 // Convert from CSS pixel (eg from PointerEvent) to our canvas coordinates, which are native device pixels
 function pxToCanvas(cssPx: number): number {
 	return cssPx * window.devicePixelRatio;
 }
 
-function poll() {
+function autoPanToEndAndRender() {
 	if (!canvas.value) {
-		// end poll - canvas has been destroyed
+		// canvas has been destroyed
 		return;
 	}
 	if (props.context.panTimeEndIsNow) {
@@ -40,6 +38,14 @@ function poll() {
 		props.context.panToNow();
 		props.context.render(canv);
 	}
+}
+
+function poll() {
+	if (!canvas.value) {
+		// end poll - canvas has been destroyed
+		return;
+	}
+	autoPanToEndAndRender();
 	setTimeout(poll, 5000);
 }
 
@@ -68,14 +74,7 @@ function onPointerDown(e: PointerEvent) {
 			points[0] = points[1];
 			points[1] = tmp;
 		}
-		zoomAtPinchStart = props.context.zoomLevel;
 		txAtPinchStart = SeekBarTransform.fromZoomLevelAndRightEdge(props.context.zoomLevel, props.context.panTimeEndMS, pxToCanvas(canv.clientWidth));
-		//rightEdgeMSAtPinchStart = props.context.panTimeEndMS;
-		//let t1 = txAtPinchStart.pixelToTime(points[0].x1);
-		//let t2 = txAtPinchStart.pixelToTime(points[1].x1);
-		//console.log("start", zoomAtPinchStart, txAtPinchStart.canvasWidth, txAtPinchStart.pixelsPerSecond);
-		//console.log(new Date(t1));
-		//console.log(new Date(t2));
 	}
 }
 
@@ -102,19 +101,29 @@ function stopZoom(e: PointerEvent) {
 }
 
 function onPointerMove(e: PointerEvent) {
-	//e.preventDefault();
 	//console.log("pointer move", e.pointerId);
-	if (points.length !== 2) {
-		return;
+	if (points.length === 1) {
+		onPointerMoveSeek(e);
+	} else if (points.length === 2) {
+		onPointerMovePinchZoom(e);
 	}
+}
+
+function onPointerMoveSeek(e: PointerEvent) {
+	let x = pxToCanvas(e.offsetX);
+	let tx = props.context.transform(canvas.value! as HTMLCanvasElement);
+	let timeMS = tx.pixelToTime(x);
+	props.context.seekToMillisecond(timeMS);
+	props.context.render(canvas.value! as HTMLCanvasElement);
+}
+
+function onPointerMovePinchZoom(e: PointerEvent) {
 	for (let p of points) {
 		if (p.id === e.pointerId) {
 			p.x2 = pxToCanvas(e.offsetX);
 			p.y2 = pxToCanvas(e.offsetY);
 		}
 	}
-	//let orgDistance = Math.hypot(points[0].x1 - points[1].x1, points[0].y1 - points[1].y1);
-	//let newDistance = Math.hypot(points[0].x2 - points[1].x2, points[0].y2 - points[1].y2);
 
 	// We need to solve two things:
 	// 1. The new zoom level
@@ -122,30 +131,39 @@ function onPointerMove(e: PointerEvent) {
 
 	// Lock the time of the two finger points, but move their pixel positions, and then
 	// solve for the zoom and offset.
+
+	// If you need a mental framework to think about what's going on here:
+	// The points in time where the fingers went down remain constant.
+	// What's being dragged by the two fingers is the pixel positions of those time points.
+
 	let orgTime1MS = txAtPinchStart.pixelToTime(points[0].x1);
 	let orgTime2MS = txAtPinchStart.pixelToTime(points[1].x1);
 	let newPixelsPerSecond = (points[1].x2 - points[0].x2) / ((orgTime2MS - orgTime1MS) / 1000);
-	//newPixelsPerSecond = txAtPinchStart.pixelsPerSecond;
 	props.context.zoomLevel = SeekBarTransform.pixelsPerSecondToZoomLevel(newPixelsPerSecond);
 
 	//console.log(new Date(orgTime1MS));
 
 	let pixelsToRightEdge = txAtPinchStart.canvasWidth - points[1].x2;
 	let timeAtRightEdgeMS = orgTime2MS + (pixelsToRightEdge / newPixelsPerSecond) * 1000;
-	//timeAtRightEdgeMS = orgTime2MS;
-	//console.log(pixelsToRightEdge, newPixelsPerSecond, (timeAtRightEdgeMS - rightEdgeMSAtPinchStart) / 1000);
 	props.context.panToMillisecond(timeAtRightEdgeMS);
 
 	//console.log(orgTime1MS / 1000, orgTime2MS / 1000, newPixelsPerSecond, props.context.zoomLevel);
 
-	//console.log("relative scale", newDistance / orgDistance);
-	//props.context.zoomLevel = zoomAtPinchStart - Math.log2(newDistance / orgDistance);
 	props.context.render(canvas.value! as HTMLCanvasElement);
 }
 
 onMounted(() => {
 	let canv = canvas.value! as HTMLCanvasElement
 	props.context.render(canv);
+
+	// On mobile there's this behaviour where the initial render has a slightly different
+	// scale to the first polled render (which comes 5 seconds after page load). This
+	// 100ms timeout is a hack to fix that. I assume we're getting some kind of layout
+	// adjustment that all happens before anything is rendered, and that's causing the
+	// discrepancy.
+	setTimeout(autoPanToEndAndRender, 100);
+
+	// Start our slow poller
 	poll();
 });
 

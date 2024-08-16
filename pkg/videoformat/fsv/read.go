@@ -9,10 +9,19 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 )
 
+// Flags for reading packets
+type ReadFlags int
+
+const (
+	// If the requested time interval does not start on a keyframe,
+	// then seek back to find the first keyframe before the requested start time.
+	ReadFlagSeekBackToKeyFrame ReadFlags = 1 << iota
+)
+
 // Read packets from the archive.
 // The map that is returned contains the tracks that were requested.
 // If no packets are found, we return an empty map and a nil error.
-func (a *Archive) Read(streamName string, trackNames []string, startTime, endTime time.Time) (map[string][]rf1.NALU, error) {
+func (a *Archive) Read(streamName string, trackNames []string, startTime, endTime time.Time, flags ReadFlags) (map[string][]rf1.NALU, error) {
 	a.streamsLock.Lock()
 	stream := a.streams[streamName]
 	a.streamsLock.Unlock()
@@ -38,7 +47,7 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 	// Read the tracks from vf, and append them to our result set
 	readFromVideoFile := func(filename string, vf VideoFile) error {
 		for _, trackName := range trackNames {
-			packets, err := vf.Read(trackName, startTime, endTime)
+			packets, err := vf.Read(trackName, startTime, endTime, flags)
 			if err != nil {
 				return fmt.Errorf("Error reading track %v from video file %v: %v", trackName, filename, err)
 			}

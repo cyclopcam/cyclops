@@ -61,7 +61,7 @@ func TestSplicePerfect(t *testing.T) {
 	require.NoError(t, arc.Write("stream1", map[string]TrackPayload{"videoTrack1": makeVideoPayload(packets[:p1])}))
 	require.NoError(t, arc.Write("stream1", map[string]TrackPayload{"videoTrack1": makeVideoPayload(packets[p2:])}))
 
-	read, err := arc.Read("stream1", []string{"videoTrack1"}, packets[0].PTS, packets[len(packets)-1].PTS.Add(time.Second))
+	read, err := arc.Read("stream1", []string{"videoTrack1"}, packets[0].PTS, packets[len(packets)-1].PTS.Add(time.Second), 0)
 	require.NoError(t, err)
 	rPackets := read["videoTrack1"]
 
@@ -105,7 +105,7 @@ func TestSpliceImperfect(t *testing.T) {
 	require.NoError(t, arc.Write("stream1", map[string]TrackPayload{"videoTrack1": makeVideoPayload(packets2[p2:])}))
 
 	// Read everything
-	read, err := arc.Read("stream1", []string{"videoTrack1"}, packets1[0].PTS, packets1[len(packets1)-1].PTS.Add(time.Second))
+	read, err := arc.Read("stream1", []string{"videoTrack1"}, packets1[0].PTS, packets1[len(packets1)-1].PTS.Add(time.Second), 0)
 	require.NoError(t, err)
 	rPackets := read["videoTrack1"]
 

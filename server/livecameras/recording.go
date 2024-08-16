@@ -1,7 +1,6 @@
 package livecameras
 
 import (
-	"path/filepath"
 	"time"
 
 	"github.com/cyclopcam/cyclops/server/camera"
@@ -131,8 +130,8 @@ func (s *LiveCameras) startStopRecorderForAllCameras() {
 		if mustRecord && !state.isRecording() {
 			// Start recording
 			s.log.Infof("Starting recording on %v (%v): %v", cam.ID(), cam.Name(), reason)
-			state.recorderHD = camera.StartVideoRecorder(cam.HighDumper, filepath.Clean(cam.HighResRecordingStreamName()), s.archive, recordBefore)
-			state.recorderLD = camera.StartVideoRecorder(cam.LowDumper, filepath.Clean(cam.LowResRecordingStreamName()), s.archive, recordBefore)
+			state.recorderHD = camera.StartVideoRecorder(cam.HighDumper, cam.HighResRecordingStreamName(), s.archive, recordBefore)
+			state.recorderLD = camera.StartVideoRecorder(cam.LowDumper, cam.LowResRecordingStreamName(), s.archive, recordBefore)
 		} else if !mustRecord && state.isRecording() {
 			// Stop recording
 			s.log.Infof("Motion/Detection is gone - stopping recording %v (%v)", cam.ID(), cam.Name())

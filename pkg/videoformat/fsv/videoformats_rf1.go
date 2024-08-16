@@ -97,10 +97,14 @@ func (v *VideoFileRF1) Write(trackName string, packets []rf1.NALU) error {
 	return fmt.Errorf("%w: '%v'", ErrTrackNotFound, trackName)
 }
 
-func (v *VideoFileRF1) Read(trackName string, startTime, endTime time.Time) ([]rf1.NALU, error) {
+func (v *VideoFileRF1) Read(trackName string, startTime, endTime time.Time, flags ReadFlags) ([]rf1.NALU, error) {
+	var rf1Flags rf1.PacketReadFlags
+	if flags&ReadFlagSeekBackToKeyFrame != 0 {
+		rf1Flags |= rf1.PacketReadFlagSeekBackToKeyFrame
+	}
 	for _, track := range v.File.Tracks {
 		if track.Name == trackName {
-			return track.ReadAtTime(startTime.Sub(track.TimeBase), endTime.Sub(track.TimeBase))
+			return track.ReadAtTime(startTime.Sub(track.TimeBase), endTime.Sub(track.TimeBase), rf1Flags)
 		}
 	}
 	return nil, fmt.Errorf("%w: '%v'", ErrTrackNotFound, trackName)

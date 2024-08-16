@@ -44,7 +44,7 @@ type VideoFile interface {
 	CreateVideoTrack(trackName string, timeBase time.Time, codec string, width, height int) error
 
 	Write(trackName string, packets []rf1.NALU) error
-	Read(trackName string, startTime, endTime time.Time) ([]rf1.NALU, error)
+	Read(trackName string, startTime, endTime time.Time, flags ReadFlags) ([]rf1.NALU, error)
 
 	// Total size of the video file(s)
 	Size() (int64, error)

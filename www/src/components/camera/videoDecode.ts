@@ -26,7 +26,7 @@ If we just do nothing, then two bad things happen:
    playing a movie, but not for a live view.
 
 Why don't we just stop the video if we receive a pause event?
-Because if the user re-activates the tab, then she will want the video to resume
+Because if a user re-activates the tab, they will want the video to resume
 playing, without having to click "play" again.
 
 Weird Android WebView issue
@@ -59,7 +59,7 @@ the true culprit here.
 
 Poster Image
 ------------
-Once a <video> element has received the first frame, then it will stop using the poster image,
+Once a <video> element has received the first frame, it will stop using the poster image,
 and instead use the first video frame for its poster. We don't want this. We want to keep
 updating our poster image every few seconds, even if the video is paused.
 
@@ -108,6 +108,7 @@ export class VideoStreamer {
 	isPaused = false;
 	posterUrlCacheBreaker = Math.round(Math.random() * 1e9);
 	showPosterImageInOverlay = true;
+	seekOverlayToMS = 0; // If not 0, then the overlay canvas is rendered with a keyframe closest to this time
 	overlayCanvas: HTMLCanvasElement | null = null;
 	livenessCanvas: HTMLCanvasElement | null = null;
 
@@ -408,8 +409,12 @@ export class VideoStreamer {
 
 		let cx = can.getContext('2d')!;
 
-		if (this.showPosterImageInOverlay) {
-			let r = await fetch(this.posterURL());
+		if (this.showPosterImageInOverlay || this.seekOverlayToMS !== 0) {
+			let url = this.posterURL();
+			if (this.seekOverlayToMS !== 0) {
+				//... 
+			}
+			let r = await fetch(url);
 			if (!r.ok)
 				return;
 			let blob = await r.blob();

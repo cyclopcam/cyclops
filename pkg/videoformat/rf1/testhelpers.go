@@ -8,9 +8,9 @@ import (
 // The first 2 NALUs are EssentialMetadata
 // The 3rd NALU is a keyframe, and every 10th frame thereafter is a keyframe
 func TestNALUFlags(naluIdx int) IndexNALUFlags {
-	if naluIdx <= 2 {
+	if naluIdx < 2 {
 		return IndexNALUFlagEssentialMeta
-	} else if naluIdx%10 == 3 {
+	} else if naluIdx%10 == 2 {
 		return IndexNALUFlagKeyFrame
 	}
 	return 0

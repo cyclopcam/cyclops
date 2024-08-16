@@ -85,6 +85,10 @@ watch(() => props.play, (newVal, oldVal) => {
 	}
 })
 
+watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
+	//console.log("Seek to ", newVal);
+})
+
 onUnmounted(() => {
 	streamer.close();
 })
@@ -97,9 +101,6 @@ onMounted(() => {
 	streamer.setDOMElements(overlayCanvas.value! as HTMLCanvasElement, liveCanvas);
 	streamer.posterURLUpdateTimer();
 
-	//console.log("On init cameraID = ", props.camera.id);
-	//seekBar.cameraID = props.camera.id;
-	//console.log("seekBar.cameraID = ", seekBar.cameraID);
 	seekBar.panToNow();
 
 	if (props.play)

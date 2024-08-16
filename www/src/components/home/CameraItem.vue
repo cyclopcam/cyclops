@@ -6,54 +6,21 @@ import { ref } from 'vue';
 let props = defineProps<{
 	camera: CameraInfo,
 	play: boolean,
-	//size?: string,
 	width?: string,
 	height?: string,
 	icon?: string, // 'play', 'record' (default = play)
 }>()
 defineEmits(['play', 'stop']);
 
-// This is only useful if the camera is not showing anything,
+// This is only useful if the camera is not showing anything (i.e. we can't connect to it),
 // but how to detect that? I guess we need an API for that.
 let showCameraName = ref(false);
 
 function style(): any {
-	// We want an aspect ratio that is the most average, because in <player> we distort the aspect ratio
-	// We use aspect = 1.5 because it's more square than 16:9 (1.777), to accomodate cameras that are more square.
-	// BUT.. then we lower it even further, to make space for the SeekBar
-	//let aspect = 1.4;
-
 	return {
 		"width": props.width,
 		"height": props.height,
 	}
-
-	// Attempt 1, where camera is explicitly sized.
-	// This has the downside that it doesn't automatically grow to the size of the screen.
-	/*
-	let width = 350;
-	if (props.size) {
-		switch (props.size) {
-			case "small":
-				width = 200;
-				break;
-			case "medium":
-				// this is the default
-				break;
-			default:
-				let n = parseFloat(props.size);
-				if (n !== 0) {
-					width = n;
-				} else {
-					console.error(`Unknown camera size ${props.size}`);
-				}
-		}
-	}
-	return {
-		width: width + 'px',
-		height: Math.round(width / aspect) + 'px',
-	};
-	*/
 }
 function iconIsPlay() { return (props.icon ?? "play") === "play"; }
 function iconIsRecord() { return (props.icon ?? "play") === "record"; }

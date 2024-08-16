@@ -2,6 +2,7 @@ package camera
 
 import (
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -79,12 +80,17 @@ func (c *Camera) LongLivedName() string {
 
 // The name of the low res recording stream in the video archive
 func (c *Camera) LowResRecordingStreamName() string {
-	return c.Config.LongLivedName + "-" + string(defs.ResLD)
+	return c.RecordingStreamName(defs.ResLD)
 }
 
 // The name of the high res recording stream in the video archive
 func (c *Camera) HighResRecordingStreamName() string {
-	return c.Config.LongLivedName + "-" + string(defs.ResHD)
+	return c.RecordingStreamName(defs.ResHD)
+}
+
+// The name of high/low res recording stream in the video archive
+func (c *Camera) RecordingStreamName(resolution defs.Resolution) string {
+	return filepath.Clean(c.Config.LongLivedName + "-" + string(resolution))
 }
 
 func (c *Camera) Start() error {

@@ -13,7 +13,7 @@ import { BitsPerTile, BaseSecondsPerTile, MaxTileLevel } from "./eventTile";
 // 1. The start/end time of the bar
 // 2. The current video playback position
 // We call #1 the "pan"
-// We cann #2 the "seek"
+// We call #2 the "seek"
 // NOTE! This object gets made reactive, so don't store lots of state in here.
 export class SeekBarContext {
 	cameraID = 0;
@@ -43,6 +43,10 @@ export class SeekBarContext {
 	panToMillisecond(ms: number) {
 		this.panTimeEndMS = ms;
 		this.panTimeEndIsNow = false;
+	}
+
+	seekToMillisecond(ms: number) {
+		this.desiredSeekPosMS = ms;
 	}
 
 	render(canvas: HTMLCanvasElement) {
@@ -123,6 +127,12 @@ export class SeekBarContext {
 				this.renderTile(cx, tile, canvasWidth, pixelsPerSecond);
 			}
 		}
+
+		// Render seek bar
+		let desiredSeekPx = this.timeMSToPixel(this.desiredSeekPosMS, canvasWidth, pixelsPerSecond);
+		cx.fillStyle = "rgba(255, 255, 255, 1)";
+		let w = 1;
+		cx.fillRect(desiredSeekPx - w, 0, 2 * w, canvasHeight);
 	}
 
 	static tileSpan(startTimeMS: number, endTimeMS: number, tileLevel: number): { startTileIdx: number, endTileIdx: number } {
@@ -222,7 +232,7 @@ export class SeekBarContext {
 				} else if (intervalS === 60 * 60 * 24) {
 					text = 'DoM';
 				}
-				cx.fillText(text, t1, canvasHeight - height - 5 * dpr);
+				cx.fillText(text, t1, canvasHeight - height - 3 * dpr);
 			}
 		}
 	}
@@ -304,6 +314,11 @@ export class SeekBarContext {
 			secondsPerPixel = Math.pow(2, this.zoomLevel);
 		}
 		return this.panTimeEndMS + (px - canvasWidth) * secondsPerPixel * 1000;
+	}
+
+	// Return a SeekBarTransform object for translating between pixel and time coordinates.
+	transform(canvasEl: HTMLCanvasElement): SeekBarTransform {
+		return SeekBarTransform.fromZoomLevelAndRightEdge(this.zoomLevel, this.panTimeEndMS, canvasEl.clientWidth * window.devicePixelRatio);
 	}
 }
 

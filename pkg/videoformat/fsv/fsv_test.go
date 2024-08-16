@@ -131,7 +131,7 @@ func expectedFilesize(packets []rf1.NALU) int64 {
 }
 
 func verifyRead(t *testing.T, arc *Archive, streamName string, trackName string, startTime time.Time, endTime time.Time, numExpectedPackets, maxPacketCountDelta int) {
-	tracksR, err := arc.Read(streamName, []string{trackName}, startTime, endTime)
+	tracksR, err := arc.Read(streamName, []string{trackName}, startTime, endTime, 0)
 	require.NoError(t, err)
 	packets := tracksR[trackName]
 	require.InDelta(t, numExpectedPackets, len(packets), float64(maxPacketCountDelta))

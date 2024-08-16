@@ -126,6 +126,10 @@ func SplitIndexNALULocationOnly(p uint64) int64 {
 	return int64((p >> 12) & (1<<30 - 1))
 }
 
+func SplitIndexNALUFlagsOnly(p uint64) IndexNALUFlags {
+	return IndexNALUFlags(p & 0xfff)
+}
+
 func IsValidCodec(c string) bool {
 	return len(c) == 4 && c == CodecH264
 }

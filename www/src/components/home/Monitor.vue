@@ -51,6 +51,9 @@ function onWindowResize() {
 }
 
 function cameraHeight(): string {
+	// We want an aspect ratio that is the most average, because in <player> we distort the aspect ratio
+	// We use aspect = 1.5 because it's more square than 16:9 (1.777), to accomodate cameras that are more square.
+	// BUT.. then we lower it even further, to make space for the SeekBar
 	return `${cameraWidth.value / 1.4}px`;
 }
 

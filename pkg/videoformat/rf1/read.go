@@ -8,6 +8,15 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/cgogo"
 )
 
+// Flags for reading packets
+type PacketReadFlags int
+
+const (
+	// If the requested time interval does not start on a keyframe,
+	// then seek back to find the first keyframe before the requested start time.
+	PacketReadFlagSeekBackToKeyFrame PacketReadFlags = 1 << iota
+)
+
 // Use the PTS of the last NALU in the index to figure out the duration of the track
 func (t *Track) readDuration() (time.Duration, error) {
 	if t.indexCount == 0 {
@@ -21,9 +30,11 @@ func (t *Track) readDuration() (time.Duration, error) {
 }
 
 // Read a range of uint64 index entries, either from the file, or from our in-memory cache.
-// At present out caching strategy is simply to read the entire index the first time
+// At present our caching strategy is simply to read the entire index the first time
 // we need any of it, and keep the whole thing in memory. The index is so small compared to
 // the payload, that it's not clear that anything else makes sense.
+// For reference, looking at a bunch of example files on my current test system, the largest
+// index I can see is 80KB. That's at 10 FPS. At 30 FPS, it would be 3x that size.
 func (t *Track) readRawIndex(startIdx, endIdx int) ([]uint64, error) {
 	if startIdx < 0 || endIdx <= startIdx || endIdx > t.indexCount+1 {
 		return nil, fmt.Errorf("Invalid readRawIndex startIdx, endIdx: %v, %v (number of indices: %v)", startIdx, endIdx, t.indexCount+1)
@@ -119,7 +130,8 @@ func (t *Track) ReadPayload(nalus []NALU) error {
 }
 
 // Read NALUs with payload by specifying time instead of packet indices
-func (t *Track) ReadAtTime(startTime, endTime time.Duration) ([]NALU, error) {
+func (t *Track) ReadAtTime(startTime, endTime time.Duration, flags PacketReadFlags) ([]NALU, error) {
+	// Read the entire index. See readRawIndex for justification.
 	rawIdx, err := t.readRawIndex(0, t.indexCount)
 	if err != nil {
 		return nil, err
@@ -141,6 +153,28 @@ func (t *Track) ReadAtTime(startTime, endTime time.Duration) ([]NALU, error) {
 	endIdx := sort.Search(len(rawIdx), func(i int) bool {
 		return SplitIndexNALUEncodedTimeOnly(rawIdx[i]) > endTimeEncoded
 	})
+
+	if flags&PacketReadFlagSeekBackToKeyFrame != 0 {
+		// If the requested time interval does not start on a keyframe,
+		// then seek back to find the first keyframe before the requested start time.
+		// Also, if the frames immediately preceding the keyframe are
+		// EssentialMetadata, then include them too (eg SPS/PPS).
+		for startIdx > 0 && (SplitIndexNALUFlagsOnly(rawIdx[startIdx])&IndexNALUFlagKeyFrame == 0) {
+			startIdx--
+		}
+		// We're now on a keyframe (or at the start of the video, which the writer shouldn't have done).
+
+		// Walk onto the first frame behind the keyframe
+		startIdx--
+
+		// Keep walking until we're no longer on an EssentialMeta frame
+		for startIdx >= 0 && (SplitIndexNALUFlagsOnly(rawIdx[startIdx])&IndexNALUFlagEssentialMeta != 0) {
+			startIdx--
+		}
+
+		// And take one step forward
+		startIdx++
+	}
 
 	if endIdx-startIdx == 0 {
 		// Empty search

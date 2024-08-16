@@ -166,7 +166,7 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen, enableDirtyClose, enab
 				fr.Close()
 				fr, _ = Open(BaseDir+"/test", OpenModeReadOnly)
 			}
-			result, err := fr.Tracks[0].ReadAtTime(tt.start.Sub(trackR.TimeBase), tt.end.Sub(trackR.TimeBase))
+			result, err := fr.Tracks[0].ReadAtTime(tt.start.Sub(trackR.TimeBase), tt.end.Sub(trackR.TimeBase), 0)
 			if tt.expectErr != nil {
 				require.Error(t, err)
 				require.Nil(t, result)
@@ -228,6 +228,54 @@ func TestBigRead(t *testing.T) {
 	require.Equal(t, nNALUs, len(nalusR))
 	require.NoError(t, fw.Tracks[0].ReadPayload(nalusR))
 	requireEqualNALUs(t, nalusW, nalusR)
+}
+
+func TestReadBackToKeyframe(t *testing.T) {
+	var err error
+	fw := createTestVideo(t, "keyframe")
+	nNALUs := 100
+	timeBase := fw.Tracks[0].TimeBase
+	nalusW := CreateTestNALUs(timeBase, 0, nNALUs, 10.0, 500, 1500, 12345)
+	require.NoError(t, fw.Tracks[0].WriteNALUs(nalusW))
+	for iter := 0; iter < 2; iter++ {
+		if iter == 1 {
+			require.NoError(t, fw.Close())
+			fw, err = Open(BaseDir+"/keyframe", OpenModeReadOnly)
+			require.NoError(t, err)
+		}
+		// 0,1 are EssentialMetadata.
+		// 2 is keyframe.
+		// 12 is keyframe.
+		// 22 is keyframe.
+		// and so on.
+		// If the keyframe is immediately preceded by EssentialMetadata NALUs (i.e. SPS/PPS),
+		// then we want the function to continue reading back to include that EssentialMetadata.
+		// So we have two different test cases - one for frames 2-12, and one for frames 12-22.
+		nalus, err := fw.Tracks[0].ReadAtTime(nalusW[0].PTS.Sub(timeBase), nalusW[5].PTS.Sub(timeBase), PacketReadFlagSeekBackToKeyFrame)
+		require.NoError(t, err)
+		require.Equal(t, 6, len(nalus))
+		require.LessOrEqual(t, AbsTimeDiff(timeBase, nalus[0].PTS), time.Second/4096)
+
+		// This returns the exact same result as above, walking backwards through the keyframe,
+		// and including the EssentialMetadata.
+		nalus, err = fw.Tracks[0].ReadAtTime(nalusW[4].PTS.Sub(timeBase), nalusW[5].PTS.Sub(timeBase), PacketReadFlagSeekBackToKeyFrame)
+		require.NoError(t, err)
+		require.Equal(t, 6, len(nalus))
+		require.LessOrEqual(t, AbsTimeDiff(timeBase, nalus[0].PTS), time.Second/4096)
+
+		// Here we don't have an EssentialMetadata behind the keyframes, so just seek back to the keyframe
+		nalus, err = fw.Tracks[0].ReadAtTime(nalusW[15].PTS.Sub(timeBase), nalusW[16].PTS.Sub(timeBase), PacketReadFlagSeekBackToKeyFrame)
+		require.NoError(t, err)
+		require.Equal(t, 5, len(nalus))
+		require.LessOrEqual(t, AbsTimeDiff(nalusW[12].PTS, nalus[0].PTS), time.Second/4096)
+
+		// And here we don't include the flag at all
+		nalus, err = fw.Tracks[0].ReadAtTime(nalusW[15].PTS.Sub(timeBase), nalusW[16].PTS.Sub(timeBase), 0)
+		require.NoError(t, err)
+		require.Equal(t, 2, len(nalus))
+		require.LessOrEqual(t, AbsTimeDiff(nalusW[15].PTS, nalus[0].PTS), time.Second/4096)
+
+	}
 }
 
 // Close a file without doing the regular cleanup that we do when closing a file.
