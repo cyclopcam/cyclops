@@ -1,4 +1,4 @@
-package kernelwg
+package wgroot
 
 import (
 	"bytes"

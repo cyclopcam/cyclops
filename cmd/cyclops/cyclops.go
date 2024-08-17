@@ -9,9 +9,9 @@ import (
 
 	"github.com/akamensky/argparse"
 	"github.com/coreos/go-systemd/daemon"
-	"github.com/cyclopcam/cyclops/pkg/kernelwg"
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
+	kernelwg "github.com/cyclopcam/cyclops/pkg/wireguard/wgroot"
 	"github.com/cyclopcam/cyclops/server"
 	"github.com/cyclopcam/cyclops/server/vpn"
 )

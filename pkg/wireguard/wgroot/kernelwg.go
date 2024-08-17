@@ -1,4 +1,4 @@
-package kernelwg
+package wgroot
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 	"os/exec"
 
 	"github.com/cyclopcam/cyclops/pkg/log"
-	"github.com/cyclopcam/cyclops/proxy/kernel"
+	"github.com/cyclopcam/cyclops/pkg/wireguard/wguser"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -33,7 +33,7 @@ type handler struct {
 	clientSecret    string
 }
 
-func (h *handler) handleAuthenticate(request *kernel.MsgAuthenticate) error {
+func (h *handler) handleAuthenticate(request *wguser.MsgAuthenticate) error {
 	if request.Secret != h.clientSecret {
 		return errors.New("Invalid authentication secret")
 	}
@@ -48,7 +48,7 @@ func (h *handler) handleBringDeviceUp() error {
 	// Check first if the config file exists, so that we can return a definitive "does not exist" error.
 	if _, err := os.Stat(configFilename()); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return kernel.ErrWireguardDeviceNotExist
+			return wguser.ErrWireguardDeviceNotExist
 		}
 	}
 
@@ -68,7 +68,7 @@ func (h *handler) handleTakeDeviceDown() error {
 	// Check first if the config file exists, so that we can return a definitive "does not exist" error.
 	if _, err := os.Stat(configFilename()); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return kernel.ErrWireguardDeviceNotExist
+			return wguser.ErrWireguardDeviceNotExist
 		}
 	}
 
@@ -85,7 +85,7 @@ func (h *handler) handleTakeDeviceDown() error {
 func (h *handler) handleIsDeviceAlive() error {
 	_, err := h.wg.Device(WireguardDeviceName)
 	if errors.Is(err, os.ErrNotExist) {
-		return kernel.ErrWireguardDeviceNotExist
+		return wguser.ErrWireguardDeviceNotExist
 	}
 	return err
 }
@@ -94,7 +94,7 @@ func (h *handler) handleGetDevice() (any, error) {
 	device, err := h.wg.Device(WireguardDeviceName)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, kernel.ErrWireguardDeviceNotExist
+			return nil, wguser.ErrWireguardDeviceNotExist
 		}
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func (h *handler) handleGetDevice() (any, error) {
 		}
 	}
 
-	resp := kernel.MsgGetDeviceResponse{
+	resp := wguser.MsgGetDeviceResponse{
 		PrivateKey: device.PrivateKey,
 		ListenPort: device.ListenPort,
 		Address:    address,
@@ -128,13 +128,13 @@ func (h *handler) handleGetPeers() (any, error) {
 	device, err := h.wg.Device(WireguardDeviceName)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, kernel.ErrWireguardDeviceNotExist
+			return nil, wguser.ErrWireguardDeviceNotExist
 		}
 		return nil, err
 	}
-	resp := kernel.MsgGetPeersResponse{}
+	resp := wguser.MsgGetPeersResponse{}
 	for _, pi := range device.Peers {
-		resp.Peers = append(resp.Peers, kernel.Peer{
+		resp.Peers = append(resp.Peers, wguser.Peer{
 			PublicKey:                   pi.PublicKey,
 			PersistentKeepaliveInterval: pi.PersistentKeepaliveInterval,
 			LastHandshakeTime:           pi.LastHandshakeTime,
@@ -148,7 +148,7 @@ func (h *handler) handleGetPeers() (any, error) {
 
 // Create peers in memory. They are not saved to the config file.
 // This is used by the proxy for bringing peers online.
-func (h *handler) handleCreatePeersInMemory(request *kernel.MsgCreatePeersInMemory) error {
+func (h *handler) handleCreatePeersInMemory(request *wguser.MsgCreatePeersInMemory) error {
 	h.log.Infof("Creating %v peers", len(request.Peers))
 	cfg := wgtypes.Config{
 		ReplacePeers: false, // If this is false, then we append peers, which is what we want
@@ -175,7 +175,7 @@ func (h *handler) handleCreatePeersInMemory(request *kernel.MsgCreatePeersInMemo
 	return nil
 }
 
-func (h *handler) handleRemovePeerInMemory(request *kernel.MsgRemovePeerInMemory) error {
+func (h *handler) handleRemovePeerInMemory(request *wguser.MsgRemovePeerInMemory) error {
 	h.log.Infof("Removing peer %v", request.PublicKey)
 	cfg := wgtypes.Config{}
 	cfg.Peers = append(cfg.Peers, wgtypes.PeerConfig{
@@ -203,7 +203,7 @@ func configFilename() string {
 // This is used on a Cyclops server when it is setting up it's Wireguard interface to
 // the proxy server. The purpose of this function is to create the initial /etc/wireguard/cyclops.conf
 // file, and/or set the [Interface] section at the top of that file.
-func (h *handler) handleCreateDeviceInConfigFile(request *kernel.MsgCreateDeviceInConfigFile) error {
+func (h *handler) handleCreateDeviceInConfigFile(request *wguser.MsgCreateDeviceInConfigFile) error {
 	h.log.Infof("Creating %v", configFilename())
 	cfg, err := loadConfigFile(configFilename())
 	if errors.Is(err, os.ErrNotExist) {
@@ -226,7 +226,7 @@ func (h *handler) handleCreateDeviceInConfigFile(request *kernel.MsgCreateDevice
 // This is used on a Cyclops server when it is setting up it's Wireguard interface to
 // the proxy server. The purpose of this function is to add the [Peer] section to
 // /etc/wireguard/cyclops.conf that points to our proxy server.
-func (h *handler) handleSetProxyPeerInConfigFile(request *kernel.MsgSetProxyPeerInConfigFile) error {
+func (h *handler) handleSetProxyPeerInConfigFile(request *wguser.MsgSetProxyPeerInConfigFile) error {
 	h.log.Infof("Setting proxy peer in cyclops.conf")
 	cfg, err := loadConfigFile(configFilename())
 	if err != nil {
@@ -246,7 +246,7 @@ func (h *handler) handleSetProxyPeerInConfigFile(request *kernel.MsgSetProxyPeer
 	return cfg.writeFile(configFilename())
 }
 
-func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
+func (h *handler) handleMessage(msgType wguser.MsgType, msgLen int) error {
 	if Debug {
 		h.log.Infof("handleMessage %v, %v bytes", msgType, msgLen)
 	}
@@ -254,16 +254,16 @@ func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 	// Decode request, if any
 	var request any
 	switch msgType {
-	case kernel.MsgTypeAuthenticate:
-		request = &kernel.MsgAuthenticate{}
-	case kernel.MsgTypeCreatePeersInMemory:
-		request = &kernel.MsgCreatePeersInMemory{}
-	case kernel.MsgTypeRemovePeerInMemory:
-		request = &kernel.MsgRemovePeerInMemory{}
-	case kernel.MsgTypeCreateDeviceInConfigFile:
-		request = &kernel.MsgCreateDeviceInConfigFile{}
-	case kernel.MsgTypeSetProxyPeerInConfigFile:
-		request = &kernel.MsgSetProxyPeerInConfigFile{}
+	case wguser.MsgTypeAuthenticate:
+		request = &wguser.MsgAuthenticate{}
+	case wguser.MsgTypeCreatePeersInMemory:
+		request = &wguser.MsgCreatePeersInMemory{}
+	case wguser.MsgTypeRemovePeerInMemory:
+		request = &wguser.MsgRemovePeerInMemory{}
+	case wguser.MsgTypeCreateDeviceInConfigFile:
+		request = &wguser.MsgCreateDeviceInConfigFile{}
+	case wguser.MsgTypeSetProxyPeerInConfigFile:
+		request = &wguser.MsgSetProxyPeerInConfigFile{}
 	}
 	if request != nil {
 		err := h.decoder.Decode(request)
@@ -273,33 +273,33 @@ func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 		}
 	}
 
-	respType := kernel.MsgTypeNone
+	respType := wguser.MsgTypeNone
 	var resp any
 	var err error
 
-	if !h.isAuthenticated && msgType != kernel.MsgTypeAuthenticate {
+	if !h.isAuthenticated && msgType != wguser.MsgTypeAuthenticate {
 		err = errors.New("Not authenticated")
 	} else {
 		switch msgType {
-		case kernel.MsgTypeAuthenticate:
-			err = h.handleAuthenticate(request.(*kernel.MsgAuthenticate))
-		case kernel.MsgTypeGetPeers:
-			respType = kernel.MsgTypeGetPeersResponse
+		case wguser.MsgTypeAuthenticate:
+			err = h.handleAuthenticate(request.(*wguser.MsgAuthenticate))
+		case wguser.MsgTypeGetPeers:
+			respType = wguser.MsgTypeGetPeersResponse
 			resp, err = h.handleGetPeers()
-		case kernel.MsgTypeGetDevice:
-			respType = kernel.MsgTypeGetDeviceResponse
+		case wguser.MsgTypeGetDevice:
+			respType = wguser.MsgTypeGetDeviceResponse
 			resp, err = h.handleGetDevice()
-		case kernel.MsgTypeCreatePeersInMemory:
-			err = h.handleCreatePeersInMemory(request.(*kernel.MsgCreatePeersInMemory))
-		case kernel.MsgTypeRemovePeerInMemory:
-			err = h.handleRemovePeerInMemory(request.(*kernel.MsgRemovePeerInMemory))
-		case kernel.MsgTypeCreateDeviceInConfigFile:
-			err = h.handleCreateDeviceInConfigFile(request.(*kernel.MsgCreateDeviceInConfigFile))
-		case kernel.MsgTypeSetProxyPeerInConfigFile:
-			err = h.handleSetProxyPeerInConfigFile(request.(*kernel.MsgSetProxyPeerInConfigFile))
-		case kernel.MsgTypeBringDeviceUp:
+		case wguser.MsgTypeCreatePeersInMemory:
+			err = h.handleCreatePeersInMemory(request.(*wguser.MsgCreatePeersInMemory))
+		case wguser.MsgTypeRemovePeerInMemory:
+			err = h.handleRemovePeerInMemory(request.(*wguser.MsgRemovePeerInMemory))
+		case wguser.MsgTypeCreateDeviceInConfigFile:
+			err = h.handleCreateDeviceInConfigFile(request.(*wguser.MsgCreateDeviceInConfigFile))
+		case wguser.MsgTypeSetProxyPeerInConfigFile:
+			err = h.handleSetProxyPeerInConfigFile(request.(*wguser.MsgSetProxyPeerInConfigFile))
+		case wguser.MsgTypeBringDeviceUp:
 			err = h.handleBringDeviceUp()
-		case kernel.MsgTypeIsDeviceAlive:
+		case wguser.MsgTypeIsDeviceAlive:
 			err = h.handleIsDeviceAlive()
 		default:
 			err = fmt.Errorf("Invalid request message %v", int(msgType))
@@ -307,8 +307,8 @@ func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 	}
 	if err != nil {
 		// Send error response
-		respType = kernel.MsgTypeError
-		resp = &kernel.MsgError{Error: err.Error()}
+		respType = wguser.MsgTypeError
+		resp = &wguser.MsgError{Error: err.Error()}
 		err = nil
 	}
 
@@ -317,20 +317,20 @@ func (h *handler) handleMessage(msgType kernel.MsgType, msgLen int) error {
 	h.responseBuffer.Reset()
 	h.responseBuffer.Write(headerPlaceholder[:])
 	if resp != nil {
-		if respType == kernel.MsgTypeNone {
+		if respType == wguser.MsgTypeNone {
 			panic("Response type not populated")
 		}
 		if err := h.encoder.Encode(resp); err != nil {
 			return fmt.Errorf("Response encoding failed: %v", err)
 		}
 	}
-	if h.responseBuffer.Len() > kernel.MaxMsgSize {
+	if h.responseBuffer.Len() > wguser.MaxMsgSize {
 		// Send an error response
 		h.log.Errorf("Response too large (%v bytes)", h.responseBuffer.Len())
 		h.responseBuffer.Reset()
 		h.responseBuffer.Write(headerPlaceholder[:])
-		respType = kernel.MsgTypeError
-		if err := h.encoder.Encode(&kernel.MsgError{Error: "Response too large"}); err != nil {
+		respType = wguser.MsgTypeError
+		if err := h.encoder.Encode(&wguser.MsgError{Error: "Response too large"}); err != nil {
 			// This is not expected
 			return fmt.Errorf("Double fault: %v", err)
 		}
@@ -376,11 +376,11 @@ func handleConnection(conn net.Conn, log log.Log, clientSecret string) {
 			// This little chunk of code will run over and over until len(raw) == expectedRawLen
 			req := h.requestBuffer.Bytes()
 			msgLen := int(binary.LittleEndian.Uint32(req[:4]))
-			if msgLen > kernel.MaxMsgSize {
+			if msgLen > wguser.MaxMsgSize {
 				log.Errorf("Request payload is too large (%v bytes)", msgLen)
 				return
 			}
-			msgType := kernel.MsgType(binary.LittleEndian.Uint32(req[4:8]))
+			msgType := wguser.MsgType(binary.LittleEndian.Uint32(req[4:8]))
 			if h.requestBuffer.Len() > msgLen {
 				log.Errorf("Request is larger than specified (%v > %v)", h.requestBuffer.Len(), msgLen)
 				return
@@ -450,7 +450,7 @@ func Main() {
 	//listenAddr := "127.0.0.1:666"
 	listenAddr := net.UnixAddr{
 		Net:  "unix",
-		Name: kernel.UnixSocketName,
+		Name: wguser.UnixSocketName,
 	}
 
 	logger.Infof("Listening on %v", listenAddr)

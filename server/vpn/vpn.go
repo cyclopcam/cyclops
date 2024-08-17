@@ -10,16 +10,18 @@ import (
 
 	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/requests"
-	"github.com/cyclopcam/cyclops/proxy/kernel"
+	"github.com/cyclopcam/cyclops/pkg/wireguard/wguser"
 	"github.com/cyclopcam/cyclops/proxy/proxymsg"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// package vpn manages our Wireguard setup
+// package vpn manages our Wireguard client setup
 // It will create /etc/wireguard/cyclops.conf if necessary, and populate it with
 // all the relevant details. Before doing so, it must contact the proxy server,
 // which will assign it a VPN IP address.
 
+// At some point, if we have multiple geo-relevant proxies, then we'd choose the closest
+// server instead of just hard-coding to a single one.
 const ProxyHost = "proxy-cpt.cyclopcam.org"
 
 // VPN is only safe to use by a single thread
@@ -27,7 +29,7 @@ type VPN struct {
 	Log           log.Log
 	privateKey    wgtypes.Key
 	publicKey     wgtypes.Key
-	client        *kernel.Client
+	client        *wguser.Client
 	connectionOK  atomic.Bool
 	deviceIP      string // Our IP in the VPN
 	hasRegistered atomic.Bool
@@ -38,7 +40,7 @@ func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key, wgkernelClientSecret
 		Log:        log,
 		privateKey: privateKey,
 		publicKey:  publicKey,
-		client:     kernel.NewClient(wgkernelClientSecret),
+		client:     wguser.NewClient(wgkernelClientSecret),
 	}
 	return v
 }
@@ -59,27 +61,27 @@ func (v *VPN) Start() error {
 	if err == nil {
 		// Device was already up, so we're good to go, provided the key is correct
 		return v.validateAndSaveDeviceDetails(getResp)
-	} else if !errors.Is(err, kernel.ErrWireguardDeviceNotExist) {
-		return err
+	} else if !errors.Is(err, wguser.ErrWireguardDeviceNotExist) {
+		return fmt.Errorf("client.GetDevice (#1) failed: %w", err)
 	}
 
 	// Try bringing up device
 	if err := v.client.BringDeviceUp(); err != nil {
-		if !errors.Is(err, kernel.ErrWireguardDeviceNotExist) {
-			return err
+		if !errors.Is(err, wguser.ErrWireguardDeviceNotExist) {
+			return fmt.Errorf("client.BringDeviceUp (#1) failed: %w", err)
 		}
 		// The device does not exist, so we must create it
 		if err := v.registerAndCreateDevice(); err != nil {
-			return err
+			return fmt.Errorf("v.registerAndCreateDevice failed: %w", err)
 		}
 		if err := v.client.BringDeviceUp(); err != nil {
-			return err
+			return fmt.Errorf("client.BringDeviceUp (#2) failed: %w", err)
 		}
 	}
 
 	getResp, err = v.client.GetDevice()
 	if err != nil {
-		return err
+		return fmt.Errorf("client.GetDevice (#2) failed: %w", err)
 	}
 	return v.validateAndSaveDeviceDetails(getResp)
 }
@@ -102,7 +104,7 @@ func (v *VPN) registerAndCreateDevice() error {
 func (v *VPN) createDevice(resp *proxymsg.RegisterResponseJSON) error {
 	// Extract the proxy's Wireguard data, for later
 	var err error
-	peer := kernel.MsgSetProxyPeerInConfigFile{}
+	peer := wguser.MsgSetProxyPeerInConfigFile{}
 	peer.PublicKey, err = wgtypes.ParseKey(resp.ProxyPublicKey)
 	if err != nil {
 		return err
@@ -119,7 +121,7 @@ func (v *VPN) createDevice(resp *proxymsg.RegisterResponseJSON) error {
 	peer.Endpoint = fmt.Sprintf("%v:%v", ProxyHost, resp.ProxyListenPort)
 
 	// We needed to know our VPN IP address before we could do this.
-	createMsg := &kernel.MsgCreateDeviceInConfigFile{
+	createMsg := &wguser.MsgCreateDeviceInConfigFile{
 		PrivateKey: v.privateKey,
 		Address:    resp.ServerVpnIP,
 	}
@@ -137,7 +139,7 @@ func (v *VPN) createDevice(resp *proxymsg.RegisterResponseJSON) error {
 	return nil
 }
 
-func (v *VPN) validateAndSaveDeviceDetails(resp *kernel.MsgGetDeviceResponse) error {
+func (v *VPN) validateAndSaveDeviceDetails(resp *wguser.MsgGetDeviceResponse) error {
 	if subtle.ConstantTimeCompare(resp.PrivateKey[:], v.privateKey[:]) == 0 {
 		color := "\033[0;32m"
 		reset := " \033[0m"
@@ -222,7 +224,7 @@ func (v *VPN) RunRegisterLoop(exit chan bool) {
 
 func (v *VPN) recreateDevice(register *proxymsg.RegisterResponseJSON) error {
 	err := v.client.TakeDeviceDown()
-	if err != nil && !errors.Is(err, kernel.ErrWireguardDeviceNotExist) {
+	if err != nil && !errors.Is(err, wguser.ErrWireguardDeviceNotExist) {
 		return err
 	}
 

@@ -6,8 +6,8 @@ import (
 
 	"github.com/akamensky/argparse"
 	"github.com/cyclopcam/cyclops/pkg/dbh"
-	"github.com/cyclopcam/cyclops/pkg/kernelwg"
 	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/cyclops/pkg/wireguard/wgroot"
 	"github.com/cyclopcam/cyclops/proxy"
 )
 
@@ -47,7 +47,7 @@ func main() {
 	if *kernelWG {
 		// The main proxy process has launched us, and our role is to control the wireguard interface.
 		// We run with elevated permissions.
-		kernelwg.Main()
+		wgroot.Main()
 		return
 	}
 
@@ -55,14 +55,14 @@ func main() {
 	kernelWGSecret := ""
 
 	// We are running as the HTTPS proxy server, and our first step is to launch the kernel-mode wireguard sub-process.
-	if err, kernelWGSecret = kernelwg.LaunchRootModeSubProcess(); err != nil {
+	if err, kernelWGSecret = wgroot.LaunchRootModeSubProcess(); err != nil {
 		fmt.Printf("Error launching root mode wireguard sub-process: %v\n", err)
 		os.Exit(1)
 	}
 	if *username == "" && os.Getenv("SUDO_USER") != "" {
 		*username = os.Getenv("SUDO_USER")
 	}
-	if err = kernelwg.DropPrivileges(*username); err != nil {
+	if err = wgroot.DropPrivileges(*username); err != nil {
 		fmt.Printf("Error dropping privileges to username '%v': %v\n", *username, err)
 		os.Exit(1)
 	}

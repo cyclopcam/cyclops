@@ -6,7 +6,7 @@ import (
 	"net"
 
 	"github.com/cyclopcam/cyclops/pkg/log"
-	"github.com/cyclopcam/cyclops/proxy/kernel"
+	"github.com/cyclopcam/cyclops/pkg/wireguard/wguser"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gorm.io/gorm"
 )
@@ -30,11 +30,11 @@ type wireGuard struct {
 
 	log    log.Log
 	db     *gorm.DB
-	client *kernel.Client
+	client *wguser.Client
 }
 
 func newWireGuard(proxy *Proxy, kernelWGSecret string) (*wireGuard, error) {
-	client := kernel.NewClient(kernelWGSecret)
+	client := wguser.NewClient(kernelWGSecret)
 	if err := client.Connect(); err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func newWireGuard(proxy *Proxy, kernelWGSecret string) (*wireGuard, error) {
 func (w *wireGuard) boot() error {
 	device, err := w.client.GetDevice()
 
-	if err != nil && errors.Is(err, kernel.ErrWireguardDeviceNotExist) {
+	if err != nil && errors.Is(err, wguser.ErrWireguardDeviceNotExist) {
 		w.log.Infof("Starting Wireguard")
 
 		// Create the Wireguard device
@@ -104,9 +104,9 @@ func (w *wireGuard) createPeers(servers []Server) error {
 		return nil
 	}
 
-	msg := kernel.MsgCreatePeersInMemory{}
+	msg := wguser.MsgCreatePeersInMemory{}
 	for _, server := range servers {
-		peer := kernel.CreatePeerInMemory{}
+		peer := wguser.CreatePeerInMemory{}
 		copy(peer.PublicKey[:], server.PublicKey)
 		peer.AllowedIP.IP = net.ParseIP(server.VpnIP)
 		if peer.AllowedIP.IP == nil {
@@ -125,7 +125,7 @@ func (w *wireGuard) removePeer(server Server) error {
 	}
 	w.log.Infof("Removing Wireguard peer %v %v", key, server.VpnIP)
 
-	msg := kernel.MsgRemovePeerInMemory{}
+	msg := wguser.MsgRemovePeerInMemory{}
 	copy(msg.PublicKey[:], key[:])
 	msg.AllowedIP.IP = net.ParseIP(server.VpnIP)
 	if msg.AllowedIP.IP == nil {
