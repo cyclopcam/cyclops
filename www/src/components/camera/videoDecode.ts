@@ -213,6 +213,7 @@ export class VideoStreamer {
 		let isPlaying = this.muxer !== null;
 		console.log("play(). isPlaying: " + (isPlaying ? "yes" : "no"));
 		this.showPosterImageInOverlay = false;
+		this.seekImage = null;
 		this.updateOverlay();
 		if (isPlaying)
 			return;
