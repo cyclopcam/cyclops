@@ -4,6 +4,7 @@ import { onMounted, onUnmounted, watch, ref, reactive } from "vue";
 import { VideoStreamer } from "./videoDecode";
 import SeekBar from "./SeekBar.vue";
 import { SeekBarContext } from "./seekBarContext";
+import { debounce } from "@/util/util";
 
 // See videoDecode.ts for an explanation of how this works
 
@@ -85,8 +86,13 @@ watch(() => props.play, (newVal, oldVal) => {
 	}
 })
 
+let seekDebounce = debounce((seekTo: number) => {
+	streamer.seekTo(seekTo);
+}, 30);
+
 watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
 	//console.log("Seek to ", newVal);
+	seekDebounce(newVal);
 })
 
 onUnmounted(() => {

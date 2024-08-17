@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/bmharper/cimg/v2"
+	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
+	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/configdb"
@@ -181,4 +183,56 @@ func (s *Server) httpCamStreamVideo(w http.ResponseWriter, r *http.Request, para
 	s.monitor.RemoveWatcher(cam.ID(), newDetections)
 
 	s.Log.Infof("httpCamStreamVideo done")
+}
+
+func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	cam := s.getCameraFromIDOrPanic(params.ByName("cameraID"))
+	res := parseResolutionOrPanic(params.ByName("resolution"))
+	timeMS, _ := strconv.ParseInt(params.ByName("time"), 10, 64)
+	compressQuality := www.QueryInt(r, "quality")
+	if compressQuality < 0 || compressQuality > 100 {
+		compressQuality = 75
+	}
+	if s.videoDB == nil {
+		www.PanicServerErrorf("VideoDB not initialized")
+	}
+	startTime := time.UnixMilli(timeMS)
+	streamName := "video"
+	packets, err := s.videoDB.Archive.Read(cam.RecordingStreamName(res), []string{streamName}, startTime, startTime, fsv.ReadFlagSeekBackToKeyFrame)
+	if err != nil {
+		www.PanicServerErrorf("Failed to read video: %v", err)
+	}
+	if len(packets[streamName]) == 0 {
+		www.PanicBadRequestf("No video available at that time")
+	}
+	// A BIG thing I've realized now:
+	// * rf1/fsv doesn't specify whether packets are annex-b encoded. This is a big oversight, and I must probably include it in the packet flags.
+	packet := &videox.VideoPacket{
+		WallPTS: packets[streamName][0].PTS,
+	}
+	outPackets := []*videox.VideoPacket{}
+	for _, p := range packets[streamName] {
+		if packet.WallPTS != p.PTS {
+			outPackets = append(outPackets, packet)
+			packet = &videox.VideoPacket{
+				WallPTS: p.PTS,
+			}
+		}
+		n := videox.NALU{
+			PrefixLen: 0,
+			Emulation: videox.EmulationStateUnknown,
+			Payload:   p.Payload,
+		}
+		packet.H264NALUs = append(packet.H264NALUs, n)
+	}
+	outPackets = append(outPackets, packet)
+	img, err := videox.DecodeClosestImageInPacketList(outPackets, startTime)
+	if err != nil {
+		www.PanicServerErrorf("Failed to decode video: %v", err)
+	}
+	encodedImg, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, compressQuality, 0))
+	www.Check(err)
+	www.CacheSeconds(w, 3600) // could cache forever - but need to test different things like LD/HD and quality
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Write(encodedImg)
 }

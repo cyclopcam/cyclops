@@ -108,9 +108,13 @@ export class VideoStreamer {
 	isPaused = false;
 	posterUrlCacheBreaker = Math.round(Math.random() * 1e9);
 	showPosterImageInOverlay = true;
-	seekOverlayToMS = 0; // If not 0, then the overlay canvas is rendered with a keyframe closest to this time
 	overlayCanvas: HTMLCanvasElement | null = null;
 	livenessCanvas: HTMLCanvasElement | null = null;
+
+	seekOverlayToMS = 0; // If not 0, then the overlay canvas is rendered with a keyframe closest to this time. This is for seeking back in time.
+	seekIndexNext = 1; // Used to tell if we should discard a fetch (eg if an older seek finished AFTER a newer seek, then discard the older result)
+	seekImage: ImageBitmap | null = null; // Most recent seek frame
+	seekImageIndex = 0; // seekCount at the time when the fetch of this seekImage was initiated
 
 	constructor(camera: CameraInfo) {
 		this.camera = camera;
@@ -176,6 +180,28 @@ export class VideoStreamer {
 		}
 	}
 
+	async seekTo(posMS: number) {
+		posMS = Math.round(posMS);
+		this.seekOverlayToMS = posMS;
+		let myIndex = this.seekIndexNext;
+		this.seekIndexNext++;
+
+		let resolution = "LD";
+		let url = `/api/camera/image/${this.camera.id}/${resolution}/${posMS}?quality=70`;
+		let r = await fetch(url);
+		if (!r.ok)
+			return;
+		let blob = await r.blob();
+		let img = await createImageBitmap(blob);
+		if (this.seekImageIndex > myIndex) {
+			// A newer image has already been fetched and decoded
+			return;
+		}
+		this.seekImageIndex = myIndex;
+		this.seekImage = img;
+		this.updateOverlay();
+	}
+
 	destroyMuxer() {
 		if (this.muxer) {
 			this.muxer.destroy();
@@ -194,7 +220,8 @@ export class VideoStreamer {
 		this.isPaused = false;
 
 		let scheme = window.location.origin.startsWith("https") ? "wss://" : "ws://";
-		let socketURL = scheme + window.location.host + "/api/ws/camera/stream/LD/" + this.camera.id;
+		let resolution = "LD";
+		let socketURL = `${scheme}${window.location.host}/api/ws/camera/stream/${this.camera.id}/${resolution}`;
 		console.log("Play " + socketURL);
 
 		let firstPackets: parsedPacket[] = [];
@@ -409,24 +436,27 @@ export class VideoStreamer {
 
 		let cx = can.getContext('2d')!;
 
-		if (this.showPosterImageInOverlay || this.seekOverlayToMS !== 0) {
-			let url = this.posterURL();
-			if (this.seekOverlayToMS !== 0) {
-				//... 
+		if (this.showPosterImageInOverlay || this.seekImage) {
+			let image = this.seekImage;
+			let r: Response | null = null;
+			if (!image) {
+				let url = this.posterURL();
+				r = await fetch(url);
+				if (!r.ok)
+					return;
+				let blob = await r.blob();
+				image = await createImageBitmap(blob);
 			}
-			let r = await fetch(url);
-			if (!r.ok)
-				return;
-			let blob = await r.blob();
-			let image = await createImageBitmap(blob);
 			resetCanvasOnce();
 			cx.drawImage(image, 0, 0, can.width, can.height);
 
-			let jAnalysis = r.headers.get("X-Analysis");
-			if (jAnalysis) {
-				this.lastDetection = AnalysisState.fromJSON(JSON.parse(jAnalysis));
+			if (r) {
+				let jAnalysis = r.headers.get("X-Analysis");
+				if (jAnalysis) {
+					this.lastDetection = AnalysisState.fromJSON(JSON.parse(jAnalysis));
+				}
+				//console.log("detections", r.headers.get("X-Detections"));
 			}
-			//console.log("detections", r.headers.get("X-Detections"));
 		}
 
 		if (this.lastDetection.cameraID === this.camera.id && this.lastDetection.input) {

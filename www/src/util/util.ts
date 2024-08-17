@@ -173,3 +173,17 @@ export function clamp(v: number, min: number, max: number): number {
 	}
 	return v;
 }
+
+export function debounce(func: Function, waitMS: number): Function {
+	let timeout: number;
+	return function (this: any) {
+		let context = this;
+		let args = arguments;
+		let later = function () {
+			timeout = 0;
+			func.apply(context, args);
+		};
+		clearTimeout(timeout);
+		timeout = window.setTimeout(later, waitMS);
+	};
+}

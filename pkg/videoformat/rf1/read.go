@@ -159,6 +159,9 @@ func (t *Track) ReadAtTime(startTime, endTime time.Duration, flags PacketReadFla
 		// then seek back to find the first keyframe before the requested start time.
 		// Also, if the frames immediately preceding the keyframe are
 		// EssentialMetadata, then include them too (eg SPS/PPS).
+		if startIdx == len(rawIdx) {
+			startIdx--
+		}
 		for startIdx > 0 && (SplitIndexNALUFlagsOnly(rawIdx[startIdx])&IndexNALUFlagKeyFrame == 0) {
 			startIdx--
 		}

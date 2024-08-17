@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 	"unsafe"
 
 	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
@@ -404,7 +405,7 @@ func (d *H264Decoder) sendPacket(packet []byte) error {
 
 // Creates a decoder and attempts to decode a single IDR packet.
 // This was built for extracting a thumbnail during a long recording.
-// Obviously this is quite expensive, because you're creating a decoder
+// Obviously this is a bit expensive, because you're creating a decoder
 // for just a single frame.
 func DecodeSinglePacketToImage(packet *VideoPacket) (*cimg.Image, error) {
 	decoder, err := NewH264StreamDecoder("h264")
@@ -417,6 +418,40 @@ func DecodeSinglePacketToImage(packet *VideoPacket) (*cimg.Image, error) {
 		return nil, err
 	}
 	return img.ToCImageRGB(), nil
+}
+
+func DecodeClosestImageInPacketList(packets []*VideoPacket, targetTime time.Time) (*cimg.Image, error) {
+	decoder, err := NewH264StreamDecoder("h264")
+	if err != nil {
+		return nil, err
+	}
+	defer decoder.Close()
+	var bestImg *accel.YUVImage
+	bestDelta := time.Duration(1<<63 - 1)
+	var firstError error
+	for _, p := range packets {
+		img, err := decoder.Decode(p)
+		if err != nil && firstError == nil {
+			firstError = err
+		}
+		if img != nil {
+			timeDelta := p.WallPTS.Sub(targetTime)
+			if timeDelta < 0 {
+				timeDelta = -timeDelta
+			}
+			if timeDelta < bestDelta {
+				bestDelta = timeDelta
+				bestImg = img
+			}
+		}
+	}
+	if bestImg != nil {
+		return bestImg.ToCImageRGB(), nil
+	}
+	if firstError == nil {
+		firstError = fmt.Errorf("No image found")
+	}
+	return nil, firstError
 }
 
 // Create a deep (and unsafe) reference to the YUV 420 frame from ffmpeg.
