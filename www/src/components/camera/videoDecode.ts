@@ -4,6 +4,7 @@ import JMuxer from "jmuxer";
 import { globals } from "@/globals";
 import { drawAnalyzedObjects } from "./detections";
 import { encodeQuery } from "@/util/util";
+import { FrameCache } from "./frameCache";
 
 /*
 
@@ -115,6 +116,7 @@ export class VideoStreamer {
 	seekIndexNext = 1; // Used to tell if we should discard a fetch (eg if an older seek finished AFTER a newer seek, then discard the older result)
 	seekImage: ImageBitmap | null = null; // Most recent seek frame
 	seekImageIndex = 0; // seekCount at the time when the fetch of this seekImage was initiated
+	seekCache = new FrameCache();
 
 	constructor(camera: CameraInfo) {
 		this.camera = camera;
@@ -180,18 +182,39 @@ export class VideoStreamer {
 		}
 	}
 
+	clearSeek() {
+		this.seekImage = null;
+		this.seekCache.clear();
+	}
+
+	hasCachedSeekFrame(posMS: number, resolution: string): boolean {
+		posMS = this.seekCache.suggestNearestFrameTime(posMS);
+		let cacheKey = FrameCache.makeKey(this.camera.id, resolution, posMS);
+		return this.seekCache.get(cacheKey) !== undefined;
+	}
+
 	async seekTo(posMS: number) {
-		posMS = Math.round(posMS);
+		posMS = this.seekCache.suggestNearestFrameTime(posMS);
 		this.seekOverlayToMS = posMS;
 		let myIndex = this.seekIndexNext;
 		this.seekIndexNext++;
 
 		let resolution = "LD";
-		let url = `/api/camera/image/${this.camera.id}/${resolution}/${posMS}?quality=70`;
-		let r = await fetch(url);
-		if (!r.ok)
-			return;
-		let blob = await r.blob();
+		let cacheKey = FrameCache.makeKey(this.camera.id, resolution, posMS);
+		let fromCache = this.seekCache.get(cacheKey);
+		let blob: Blob | null = null;
+		if (fromCache) {
+			blob = fromCache.blob;
+		} else {
+			let url = `/api/camera/image/${this.camera.id}/${resolution}/${posMS}?quality=70`;
+			let r = await fetch(url);
+			if (!r.ok)
+				return;
+			blob = await r.blob();
+			let estimatedFPS = parseInt(r.headers.get("X-Cyclops-FPS") ?? '0', 10);
+			let frameTime = parseInt(r.headers.get("X-Cyclops-Frame-Time") ?? '0', 10);
+			this.seekCache.add(cacheKey, blob, estimatedFPS, frameTime);
+		}
 		let img = await createImageBitmap(blob);
 		if (this.seekImageIndex > myIndex) {
 			// A newer image has already been fetched and decoded
@@ -213,7 +236,7 @@ export class VideoStreamer {
 		let isPlaying = this.muxer !== null;
 		console.log("play(). isPlaying: " + (isPlaying ? "yes" : "no"));
 		this.showPosterImageInOverlay = false;
-		this.seekImage = null;
+		this.clearSeek();
 		this.updateOverlay();
 		if (isPlaying)
 			return;

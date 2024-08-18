@@ -420,13 +420,14 @@ func DecodeSinglePacketToImage(packet *VideoPacket) (*cimg.Image, error) {
 	return img.ToCImageRGB(), nil
 }
 
-func DecodeClosestImageInPacketList(packets []*VideoPacket, targetTime time.Time) (*cimg.Image, error) {
+func DecodeClosestImageInPacketList(packets []*VideoPacket, targetTime time.Time) (*cimg.Image, time.Time, error) {
 	decoder, err := NewH264StreamDecoder("h264")
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 	defer decoder.Close()
 	var bestImg *accel.YUVImage
+	bestTime := time.Time{}
 	bestDelta := time.Duration(1<<63 - 1)
 	var firstError error
 	for _, p := range packets {
@@ -440,18 +441,19 @@ func DecodeClosestImageInPacketList(packets []*VideoPacket, targetTime time.Time
 				timeDelta = -timeDelta
 			}
 			if timeDelta < bestDelta {
+				bestTime = p.WallPTS
 				bestDelta = timeDelta
 				bestImg = img
 			}
 		}
 	}
 	if bestImg != nil {
-		return bestImg.ToCImageRGB(), nil
+		return bestImg.ToCImageRGB(), bestTime, nil
 	}
 	if firstError == nil {
 		firstError = fmt.Errorf("No image found")
 	}
-	return nil, firstError
+	return nil, time.Time{}, firstError
 }
 
 // Create a deep (and unsafe) reference to the YUV 420 frame from ffmpeg.

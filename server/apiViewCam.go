@@ -211,8 +211,10 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 		WallPTS: packets[streamName][0].PTS,
 	}
 	outPackets := []*videox.VideoPacket{}
+	packetIntervals := []time.Duration{}
 	for _, p := range packets[streamName] {
-		if packet.WallPTS != p.PTS {
+		if p.PTS != packet.WallPTS {
+			packetIntervals = append(packetIntervals, p.PTS.Sub(packet.WallPTS))
 			outPackets = append(outPackets, packet)
 			packet = &videox.VideoPacket{
 				WallPTS: p.PTS,
@@ -226,7 +228,7 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 		packet.H264NALUs = append(packet.H264NALUs, n)
 	}
 	outPackets = append(outPackets, packet)
-	img, err := videox.DecodeClosestImageInPacketList(outPackets, startTime)
+	img, imgTime, err := videox.DecodeClosestImageInPacketList(outPackets, startTime)
 	if err != nil {
 		www.PanicServerErrorf("Failed to decode video: %v", err)
 	}
@@ -234,5 +236,9 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	www.Check(err)
 	www.CacheSeconds(w, 3600) // could cache forever - but need to test different things like LD/HD and quality
 	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("X-Cyclops-Frame-Time", strconv.FormatInt(imgTime.UnixMicro(), 10))
+	if len(packetIntervals) != 0 {
+		w.Header().Set("X-Cyclops-FPS", strconv.FormatFloat(camera.EstimateFPS(packetIntervals), 'f', 2, 64))
+	}
 	w.Write(encodedImg)
 }

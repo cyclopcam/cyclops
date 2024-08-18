@@ -92,7 +92,11 @@ let seekDebounce = debounce((seekTo: number) => {
 
 watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
 	//console.log("Seek to ", newVal);
-	seekDebounce(newVal);
+	if (streamer.hasCachedSeekFrame(newVal, "LD")) {
+		streamer.seekTo(newVal);
+	} else {
+		seekDebounce(newVal);
+	}
 })
 
 onUnmounted(() => {
