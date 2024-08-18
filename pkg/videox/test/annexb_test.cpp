@@ -7,10 +7,10 @@
 #include "../annexb.h"
 
 // Test
-// gcc -g -O0 -o misc_test pkg/videox/test/misc_test.cpp pkg/videox/misc.cpp && ./misc_test
+// gcc -g -O0 -o misc_test pkg/videox/test/annexb_test.cpp pkg/videox/annexb.cpp && ./annexb_test
 
 // Benchmark
-// gcc -O2 -o misc_test pkg/videox/test/misc_test.cpp pkg/videox/misc.cpp && ./misc_test benchmark
+// gcc -O2 -o annexb_test pkg/videox/test/annexb_test.cpp pkg/videox/annexb.cpp && ./annexb_test benchmark
 
 void VerifyEncodeAnnexB(const char* src, size_t srcLen, const char* expectDst, size_t dstLen, int expectR) {
 	size_t   encodeBufSize    = dstLen;
@@ -106,50 +106,6 @@ void VerifyDecodeAnnexB(const char* src, size_t srcLen, const char* expectDst, i
 	free(dstRef);
 }
 
-void TestRandomMutations();
-void Benchmark();
-
-int main(int argc, char** argv) {
-	bool benchmark = argc > 1 && strcmp(argv[1], "benchmark") == 0;
-
-	VerifyEncodeAnnexB("", 0, "", 0, 0);
-	VerifyEncodeAnnexB("\x00", 1, "\x00", 1, 1);
-	VerifyEncodeAnnexB("\x00\x00", 2, "\x00\x00", 2, 2);
-	VerifyEncodeAnnexB("\x00\x00\x04", 3, "\x00\x00\x04", 3, 3);
-	VerifyEncodeAnnexB("\x00\x00\x04\x00", 4, "\x00\x00\x04\x00", 4, 4);
-	VerifyEncodeAnnexB("\x00\x00\x01", 3, "", 0, 0);
-	VerifyEncodeAnnexB("\x00\x00\x01", 3, "", 1, 0);
-	VerifyEncodeAnnexB("\x00\x00\x01", 3, "", 2, 0);
-	VerifyEncodeAnnexB("\x00\x00\x01", 3, "", 3, 0);
-	VerifyEncodeAnnexB("\x00\x00\x01", 3, "\x00\x00\x03\x01", 4, 4);
-	VerifyEncodeAnnexB("\x00\x00\x01\x88\x99", 5, "", 5, 0);
-	VerifyEncodeAnnexB("\x00\x00\x01\x88\x99", 5, "\x00\x00\x03\x01\x88\x99", 6, 6);
-	VerifyEncodeAnnexB("\x00\x00\x01\x00\x00\x02", 6, "\x00\x00\x03\x01\x00\x00\x03\x02", 8, 8);
-	VerifyEncodeAnnexB("\x00\x00\x00\x00\x00\x00", 6, "\x00\x00\x03\x00\x00\x03\x00\x00", 8, 8);
-	//VerifyEncodeAnnexB("\x01\x00\x00\x02", 4, "", 4, 0);
-	VerifyEncodeAnnexB("\x01\x00\x00\x02", 4, "\x01\x00\x00\x03\x02", 5, 5);
-	VerifyEncodeAnnexB("\x00\x00\x04", 3, "\x00\x00\x04", 3, 3);
-	VerifyEncodeAnnexB("\x00\x00\x00\x04", 4, "\x00\x00\x03\x00\x04", 5, 5);
-	VerifyEncodeAnnexB("\x01\x00\x01\x00", 4, "\x01\x00\x01\x00", 4, 4);
-	VerifyEncodeAnnexB("\x00\x00\x03", 3, "\x00\x00\x03\x03", 4, 4);
-
-	// Incorrect:
-	//VerifyDecodeAnnexB("\x00\x00\x03\x00\x00\x03\x01", 7, "\x00\x00\x00\x00\x03\x01", 6); // ensure we don't "double dip" on the 00 after the 03
-	// Correct:
-	VerifyDecodeAnnexB("\x00\x00\x03\x00\x00\x03\x01", 7, "\x00\x00\x00\x00\x01", 5);
-
-	VerifyDecodeAnnexB("\x00\x00\x03\x00", 4, "\x00\x00\x00", 3);
-	VerifyDecodeAnnexB("\x00\x00\x00", 3, "\x00\x00\x00", 3);
-	VerifyDecodeAnnexB("\x00\x00", 2, "\x00\x00", 2);
-	VerifyDecodeAnnexB("\x00", 1, "\x00", 1);
-	VerifyDecodeAnnexB("", 0, "", 0);
-
-	TestRandomMutations();
-	if (benchmark) {
-		Benchmark();
-	}
-}
-
 void Benchmark() {
 	printf("Benchmark speed\n");
 	srand(0);
@@ -222,4 +178,45 @@ void TestRandomMutations() {
 	}
 	printf("%d/%d random mutations ended up requiring escaping (%.1f%%)\n", nEncoded, nTotal, 100.0 * nEncoded / nTotal);
 	assert(nEncoded > 0);
+}
+
+int main(int argc, char** argv) {
+	bool benchmark = argc > 1 && strcmp(argv[1], "benchmark") == 0;
+
+	VerifyEncodeAnnexB("", 0, "", 0, 0);
+	VerifyEncodeAnnexB("\x00", 1, "\x00", 1, 1);
+	VerifyEncodeAnnexB("\x00\x00", 2, "\x00\x00", 2, 2);
+	VerifyEncodeAnnexB("\x00\x00\x04", 3, "\x00\x00\x04", 3, 3);
+	VerifyEncodeAnnexB("\x00\x00\x04\x00", 4, "\x00\x00\x04\x00", 4, 4);
+	VerifyEncodeAnnexB("\x00\x00\x01", 3, "", 0, 0);
+	VerifyEncodeAnnexB("\x00\x00\x01", 3, "", 1, 0);
+	VerifyEncodeAnnexB("\x00\x00\x01", 3, "", 2, 0);
+	VerifyEncodeAnnexB("\x00\x00\x01", 3, "", 3, 0);
+	VerifyEncodeAnnexB("\x00\x00\x01", 3, "\x00\x00\x03\x01", 4, 4);
+	VerifyEncodeAnnexB("\x00\x00\x01\x88\x99", 5, "", 5, 0);
+	VerifyEncodeAnnexB("\x00\x00\x01\x88\x99", 5, "\x00\x00\x03\x01\x88\x99", 6, 6);
+	VerifyEncodeAnnexB("\x00\x00\x01\x00\x00\x02", 6, "\x00\x00\x03\x01\x00\x00\x03\x02", 8, 8);
+	VerifyEncodeAnnexB("\x00\x00\x00\x00\x00\x00", 6, "\x00\x00\x03\x00\x00\x03\x00\x00", 8, 8);
+	//VerifyEncodeAnnexB("\x01\x00\x00\x02", 4, "", 4, 0);
+	VerifyEncodeAnnexB("\x01\x00\x00\x02", 4, "\x01\x00\x00\x03\x02", 5, 5);
+	VerifyEncodeAnnexB("\x00\x00\x04", 3, "\x00\x00\x04", 3, 3);
+	VerifyEncodeAnnexB("\x00\x00\x00\x04", 4, "\x00\x00\x03\x00\x04", 5, 5);
+	VerifyEncodeAnnexB("\x01\x00\x01\x00", 4, "\x01\x00\x01\x00", 4, 4);
+	VerifyEncodeAnnexB("\x00\x00\x03", 3, "\x00\x00\x03\x03", 4, 4);
+
+	// Incorrect:
+	//VerifyDecodeAnnexB("\x00\x00\x03\x00\x00\x03\x01", 7, "\x00\x00\x00\x00\x03\x01", 6); // ensure we don't "double dip" on the 00 after the 03
+	// Correct:
+	VerifyDecodeAnnexB("\x00\x00\x03\x00\x00\x03\x01", 7, "\x00\x00\x00\x00\x01", 5);
+
+	VerifyDecodeAnnexB("\x00\x00\x03\x00", 4, "\x00\x00\x00", 3);
+	VerifyDecodeAnnexB("\x00\x00\x00", 3, "\x00\x00\x00", 3);
+	VerifyDecodeAnnexB("\x00\x00", 2, "\x00\x00", 2);
+	VerifyDecodeAnnexB("\x00", 1, "\x00", 1);
+	VerifyDecodeAnnexB("", 0, "", 0);
+
+	TestRandomMutations();
+	if (benchmark) {
+		Benchmark();
+	}
 }
