@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "../misc.h"
+#include "../annexb.h"
 
 // Test
 // gcc -g -O0 -o misc_test pkg/videox/test/misc_test.cpp pkg/videox/misc.cpp && ./misc_test
