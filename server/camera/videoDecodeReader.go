@@ -33,6 +33,7 @@ type VideoDecodeReader struct {
 	lastImgLock sync.Mutex
 	lastImg     *accel.YUVImage // We store the YUV image, so that we can run motion analysis on Y only, and only pay YUV -> RGB cost on demand
 	lastImgID   int64           // If zero, then no frames decoded. The first decoded frame is 1, and it increases with each new frame
+	lastImgPTS  time.Time       // Presentation time of the last image
 }
 
 func NewVideoDecodeReader() *VideoDecodeReader {
@@ -74,13 +75,13 @@ func (r *VideoDecodeReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 }
 
 // Return a copy of the latest image and its ID, if it's different to the given ID
-func (r *VideoDecodeReader) GetLastImageIfDifferent(ifNotEqualTo int64) (*accel.YUVImage, int64) {
+func (r *VideoDecodeReader) GetLastImageIfDifferent(ifNotEqualTo int64) (*accel.YUVImage, int64, time.Time) {
 	r.lastImgLock.Lock()
 	defer r.lastImgLock.Unlock()
 	if r.lastImg == nil || r.lastImgID == ifNotEqualTo {
-		return nil, 0
+		return nil, 0, time.Time{}
 	}
-	return r.lastImg.Clone(), r.lastImgID
+	return r.lastImg.Clone(), r.lastImgID, r.lastImgPTS
 }
 
 // Return the time when the last packet was received
@@ -146,11 +147,11 @@ func (r *VideoDecodeReader) OnPacketRTP(packet *videox.VideoPacket) {
 
 	// The 'img' returned by Decode is transient, so we need make a copy of it.
 	// See comment about the potential wastefulness of this memcpy at the top of VideoDecodeReader
-	r.cloneIntoLastImg(img)
+	r.cloneIntoLastImg(img, packet.WallPTS)
 	//r.Log.Infof("[Packet %v] Decoded frame with size %v", r.nPackets, img.Bounds().Max)
 }
 
-func (r *VideoDecodeReader) cloneIntoLastImg(latest *accel.YUVImage) {
+func (r *VideoDecodeReader) cloneIntoLastImg(latest *accel.YUVImage, pts time.Time) {
 	r.lastImgLock.Lock()
 	if r.lastImg == nil ||
 		r.lastImg.Width != latest.Width ||
@@ -160,5 +161,6 @@ func (r *VideoDecodeReader) cloneIntoLastImg(latest *accel.YUVImage) {
 		r.lastImg.CopyFrom(latest)
 	}
 	r.lastImgID++
+	r.lastImgPTS = pts
 	r.lastImgLock.Unlock()
 }

@@ -51,9 +51,9 @@ type TrackedBox struct {
 // object is no longer in frame.
 // Also, id must be unique across cameras.
 // This is currently the way our 'monitor' package works, but I'm just codifying it here.
-func (v *VideoDB) ObjectDetected(camera string, id uint32, box nn.Rect, class string) {
+func (v *VideoDB) ObjectDetected(camera string, id uint32, box nn.Rect, class string, lastSeen time.Time) {
 	// See comments above addBoxToTrackedObject for why we split this into two phases.
-	trackedObjectCopy, err := v.addBoxToTrackedObject(camera, id, box, class)
+	trackedObjectCopy, err := v.addBoxToTrackedObject(camera, id, box, class, lastSeen)
 	if err == nil {
 		v.updateTilesWithNewDetection(&trackedObjectCopy)
 	}
@@ -64,11 +64,10 @@ func (v *VideoDB) ObjectDetected(camera string, id uint32, box nn.Rect, class st
 // because that is a potentially expensive copy, an we don't need that for our tile update.
 // Our goal with splitting this into two phases is to get out of 'currentLock' before passing
 // control onto the tile updater.
-func (v *VideoDB) addBoxToTrackedObject(camera string, id uint32, box nn.Rect, class string) (TrackedObject, error) {
+func (v *VideoDB) addBoxToTrackedObject(camera string, id uint32, box nn.Rect, class string, lastSeen time.Time) (TrackedObject, error) {
 	v.currentLock.Lock()
 	defer v.currentLock.Unlock()
 
-	now := time.Now()
 	obj := v.current[id]
 
 	if obj == nil {
@@ -83,7 +82,7 @@ func (v *VideoDB) addBoxToTrackedObject(camera string, id uint32, box nn.Rect, c
 			ID:       id,
 			Camera:   cameraID,
 			Class:    classID,
-			LastSeen: now,
+			LastSeen: lastSeen,
 		}
 		v.current[id] = obj
 	}
@@ -93,12 +92,12 @@ func (v *VideoDB) addBoxToTrackedObject(camera string, id uint32, box nn.Rect, c
 
 	if len(obj.Boxes) == 0 || obj.Boxes[len(obj.Boxes)-1].Box.MaxDelta(box) > minMovement {
 		obj.Boxes = append(obj.Boxes, TrackedBox{
-			Time: now,
+			Time: lastSeen,
 			Box:  box,
 		})
 	}
 
-	obj.LastSeen = now
+	obj.LastSeen = lastSeen
 
 	return TrackedObject{
 		ID:       obj.ID,

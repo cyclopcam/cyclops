@@ -19,7 +19,7 @@ func (s *Server) attachMonitorToVideoDB() {
 					continue
 				}
 				for _, obj := range msg.Objects {
-					s.videoDB.ObjectDetected(cam.LongLivedName(), obj.ID, obj.Box, classes[obj.Class])
+					s.videoDB.ObjectDetected(cam.LongLivedName(), obj.ID, obj.Box, classes[obj.Class], obj.LastSeen)
 				}
 			}
 		}

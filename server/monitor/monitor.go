@@ -103,8 +103,9 @@ type monitorCamera struct {
 }
 
 type monitorQueueItem struct {
-	monCam *monitorCamera
-	image  *accel.YUVImage
+	monCam   *monitorCamera
+	image    *accel.YUVImage
+	framePTS time.Time
 }
 
 type analyzerQueueItem struct {
@@ -509,7 +510,7 @@ func (m *Monitor) readFrames() {
 			mcam := camState.mcam
 
 			//m.Log.Infof("%v", icam)
-			img, imgID := mcam.camera.LowDecoder.GetLastImageIfDifferent(camState.lastFrameID)
+			img, imgID, imgPTS := mcam.camera.LowDecoder.GetLastImageIfDifferent(camState.lastFrameID)
 			if img != nil {
 				if camState.lastFrameID == 0 {
 					camState.numFramesTotal++
@@ -521,8 +522,9 @@ func (m *Monitor) readFrames() {
 				camState.lastFrameID = imgID
 				idle = false
 				m.nnThreadQueue <- monitorQueueItem{
-					monCam: mcam,
-					image:  img,
+					monCam:   mcam,
+					image:    img,
+					framePTS: imgPTS,
 				}
 			}
 		}
@@ -681,6 +683,7 @@ func (m *Monitor) nnThread() {
 				ImageWidth:  yuv.Width,
 				ImageHeight: yuv.Height,
 				Objects:     objects,
+				FramePTS:    item.framePTS,
 			}
 			item.monCam.lock.Lock()
 			item.monCam.lastDetection = result

@@ -71,10 +71,11 @@ type analyzerCameraState struct {
 // An object that was detected by the Object Detector, and is now being tracked by a post-process
 // SYNC-TRACKED-OBJECT
 type TrackedObject struct {
-	ID      uint32  `json:"id"`
-	Class   int     `json:"class"`
-	Box     nn.Rect `json:"box"`
-	Genuine bool    `json:"genuine"`
+	ID       uint32    `json:"id"`
+	LastSeen time.Time `json:"lastSeen"`
+	Box      nn.Rect   `json:"box"`
+	Class    int       `json:"class"`
+	Genuine  bool      `json:"genuine"`
 }
 
 // Result of post-process analysis on the Object Detection neural network output
@@ -144,7 +145,7 @@ func (m *Monitor) analyzer() {
 
 func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem) {
 	settings := &m.analyzerSettings
-	now := time.Now()
+	itemPTS := item.detection.FramePTS
 	positionHistorySize := nextPowerOf2(settings.positionHistorySize)
 
 	// Discard detections of classes that we're not interested in
@@ -207,7 +208,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 		}
 		cam.tracked[bestJ].lastPosition = det.Box
 		cam.tracked[bestJ].history.Add(timeAndPosition{
-			time:      now,
+			time:      itemPTS,
 			detection: det,
 		})
 	}
@@ -229,7 +230,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	// Handle objects that have disappeared
 	remaining := []*trackedObject{}
 	for _, tracked := range cam.tracked {
-		if now.Sub(tracked.mostRecent().time) > settings.objectForgetTime {
+		if itemPTS.Sub(tracked.mostRecent().time) > settings.objectForgetTime {
 			m.analyzeDisappearedObject(cam, tracked)
 		} else {
 			remaining = append(remaining, tracked)
@@ -245,11 +246,13 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 		Input:    item.detection,
 	}
 	for _, tracked := range cam.tracked {
+		mostRecent := tracked.mostRecent()
 		obj := TrackedObject{
-			ID:      tracked.id,
-			Class:   tracked.firstDetection.Class,
-			Box:     tracked.mostRecent().detection.Box,
-			Genuine: tracked.genuine,
+			ID:       tracked.id,
+			Class:    tracked.firstDetection.Class,
+			Box:      mostRecent.detection.Box,
+			Genuine:  tracked.genuine,
+			LastSeen: mostRecent.time,
 		}
 		result.Objects = append(result.Objects, obj)
 	}

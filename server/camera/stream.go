@@ -115,8 +115,8 @@ type Stream struct {
 	livenessLastPacketReceivedAt time.Time
 
 	// Used to infer real time from packet's relative timestamps
-	refTimeWall     time.Time
-	refTimeDuration time.Duration
+	refTimeWall         time.Time
+	refTimeCameraOffset time.Duration
 
 	recentFramesLock sync.Mutex
 	recentFrames     ringbuffer.RingP[frameStat] // Some stats of recent frames (eg PTS, size)
@@ -246,19 +246,19 @@ func (s *Stream) Listen(address string) error {
 		// establish reference time
 		if s.refTimeWall.IsZero() && len(nalus) != 0 {
 			s.refTimeWall = now
-			s.refTimeDuration = pts
+			s.refTimeCameraOffset = pts
 		}
 
 		// compute absolute PTS
-		refTime := time.Time{}
+		refTime := now
 		if !s.refTimeWall.IsZero() {
-			refTime = s.refTimeWall.Add(pts - s.refTimeDuration)
+			refTime = s.refTimeWall.Add(pts - s.refTimeCameraOffset)
 			//if ntpOK {
 			//	fmt.Printf("ntp: %v, refTime: %v\n", ntp, refTime)
 			//}
 		}
 
-		// Populate width & height.
+		// Populate width & height
 		s.infoLock.Lock()
 		if s.info == nil {
 			if inf := s.extractSPSInfo(nalus); inf != nil {
@@ -287,6 +287,8 @@ func (s *Stream) Listen(address string) error {
 		// streams, so this penalty is not too severe.
 		// A typical iframe packet from a 320x240 camera is around 100 bytes!
 		// A keyframe is between 10 and 20 KB.
+		// NOTE: I gortsplib may have changed that memory re-use behaviour since
+		// I wrote this. Should investigate again...
 		cloned := videox.ClonePacket(nalus, pts, now, refTime)
 		cloned.RawRecvID = myRawPacketID
 		cloned.ValidRecvID = myValidPacketID

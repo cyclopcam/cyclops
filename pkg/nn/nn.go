@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"time"
 	"unsafe"
 )
 
@@ -20,6 +21,7 @@ type DetectionResult struct {
 	ImageWidth  int               `json:"imageWidth"`
 	ImageHeight int               `json:"imageHeight"`
 	Objects     []ObjectDetection `json:"objects"`
+	FramePTS    time.Time         `json:"framePTS"`
 }
 
 // NN object detection parameters
