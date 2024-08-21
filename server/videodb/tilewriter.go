@@ -16,28 +16,25 @@ const tileWriterFlushThreshold = 2 * tileWriterMaxBacktrack
 func (v *VideoDB) tileWriteThread() {
 	v.log.Infof("Event tile write thread starting")
 	keepRunning := true
-	wakeInterval := 13 * time.Second
+	wakeInterval := 61 * time.Second
 	wakeCounter := 0
 	for keepRunning {
 		select {
 		case <-v.shutdown:
 			keepRunning = false
 		case <-time.After(wakeInterval):
-			if v.debugTileWriter && wakeCounter%3 == 0 {
+			if v.debugTileWriter && wakeCounter%1 == 0 {
 				v.debugDumpTilesToConsole()
 			}
-			cutoff := time.Now().Add(-tileWriterFlushThreshold)
-			v.flushOldTiles(cutoff)
-			// Now that we're building higher-level tiles as we go, there's no need to build
-			// them up after writing level zeros.
-			//if len(oldTiles) != 0 {
-			//	v.buildHigherTiles(makeCameraTileIdxMap(oldTiles), cutoff)
-			//}
+			//cutoff := time.Now().Add(-tileWriterFlushThreshold)
+			//v.flushOldTiles(cutoff)
+			v.writeAllCurrentTiles()
 			wakeCounter++
 		}
 	}
 	v.log.Infof("Flushing all tiles")
-	v.flushOldTiles(time.Now().Add(100000 * time.Hour))
+	//v.flushOldTiles(time.Now().Add(100000 * time.Hour))
+	v.writeAllCurrentTiles()
 	v.log.Infof("Event tile write thread exiting")
 	close(v.tileWriteThreadClosed)
 }
@@ -63,6 +60,72 @@ func maxTileIdxAtLevel0(oldTiles map[uint32][]*tileBuilder) uint32 {
 	return maxIdx
 }
 
+// Write all in-memory tiles to the database.
+// This is called periodically (eg once a minute).
+func (v *VideoDB) writeAllCurrentTiles() {
+	//--------------------------------------------
+	v.currentTilesLock.Lock()
+	// Make copies of all tiles, to minimize our time inside the lock.
+	// Each tile is a 128 byte bitmap for each class that we track.
+	// Let's imagine 16 cameras, with 5 classes, and we're tracking 13 levels.
+	// 16 * 5 * 13 * 128 = 133120 bytes. This is a trivial amount of memory
+	// to copy once a minute.
+	tileCopies := map[uint32][]*tileBuilder{}
+	cloneToOriginal := map[*tileBuilder]*tileBuilder{}
+	for cameraID, levels := range v.currentTiles {
+		for _, level := range levels {
+			for _, tile := range level {
+				if tile.updateTick != tile.updateTickAtLastWrite {
+					//v.log.Debugf("%v %v %v : %v -> %v", cameraID, tile.level, tile.tileIdx, tile.updateTickAtLastWrite, tile.updateTick)
+					clone := tile.clone()
+					tileCopies[cameraID] = append(tileCopies[cameraID], clone)
+					cloneToOriginal[clone] = tile
+				}
+			}
+		}
+	}
+	v.currentTilesLock.Unlock()
+	//--------------------------------------------
+
+	tx := v.db.Begin()
+	if tx.Error != nil {
+		v.log.Errorf("writeAllCurrentTiles failed to start transaction: %v", tx.Error)
+		return
+	}
+	defer tx.Rollback()
+
+	for camera, tiles := range tileCopies {
+		for _, tile := range tiles {
+			//v.log.Infof("Writing tile for camera %v, level %v, tileIdx %v", camera, tile.level, tile.tileIdx)
+			v.upsertTile(tx, camera, tile)
+		}
+	}
+
+	// Set lastTileIdx, even though we can get rid of the concept of back-filling tiles now that
+	// we write all levels at a regular interval. This is 100% legacy now, since we've commented out
+	// the call to fillMissingTiles() at startup.
+	cutoff := time.Now().Add(-tileWriterFlushThreshold)
+	sealedTileIdx := timeToTileIdx(cutoff, 0)
+	v.setKV("lastTileIdx", sealedTileIdx, tx)
+
+	if err := tx.Commit().Error; err != nil {
+		v.log.Errorf("writeAllCurrentTiles failed to commit transaction: %v", err)
+	}
+
+	// Update the updateTickAtLastWrite for all tiles that were written.
+	v.currentTilesLock.Lock()
+	for _, tiles := range tileCopies {
+		for _, clone := range tiles {
+			cloneToOriginal[clone].updateTickAtLastWrite = clone.updateTick
+		}
+	}
+	v.currentTilesLock.Unlock()
+
+	// Remove tiles that are clearly in the past
+	v.findAndRemoveOldTiles(cutoff)
+}
+
+/*
 // Returns the list of tiles that were written (even if the write failed)
 // Writes all tiles who's end time is before cutoff
 func (v *VideoDB) flushOldTiles(cutoff time.Time) map[uint32][]*tileBuilder {
@@ -102,10 +165,10 @@ func (v *VideoDB) flushOldTiles(cutoff time.Time) map[uint32][]*tileBuilder {
 
 	return oldTiles
 }
+*/
 
-// Returns a map from camera to tilebuilder
-// Finds all tiles who's end time is before cutoff.
-// The tiles that are returned are removed from the currentTiles map.
+// Finds all tiles who's end time is before cutoff, and removes them from currentTiles.
+// Returns those old tiles as a map from camera to tilebuilder.
 func (v *VideoDB) findAndRemoveOldTiles(cutoff time.Time) map[uint32][]*tileBuilder {
 	v.currentTilesLock.Lock()
 	defer v.currentTilesLock.Unlock()
@@ -226,7 +289,7 @@ func (v *VideoDB) currentTilesForCamera(camera uint32) [][]*tileBuilder {
 	return levels
 }
 
-// Update one or two level-0 tiles with a new detection.
+// Update tiles at all levels with a new detection.
 func (v *VideoDB) updateTilesWithNewDetection(obj *TrackedObject) {
 	// Find the current tile(s) for the camera, which span the time frame of the tracked object.
 	// If these tiles don't exist, then create them.

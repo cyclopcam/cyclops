@@ -15,40 +15,71 @@ import (
 
 func TestBitmapLine(t *testing.T) {
 	b := bitmapLine{}
-	b.setBitRange(0, 8)
+	b.setBitRange(0, 8, nil)
 	require.Equal(t, "11111111", b.formatRange(0, 8))
 
 	b.clear()
-	b.setBitRange(0, 16)
+	b.setBitRange(0, 16, nil)
 	require.Equal(t, "1111111111111111", b.formatRange(0, 16))
 
 	b.clear()
-	b.setBitRange(8, 16)
+	b.setBitRange(8, 16, nil)
 	require.Equal(t, "0000000011111111", b.formatRange(0, 16))
 
 	b.clear()
-	b.setBitRange(1, 8)
+	b.setBitRange(1, 8, nil)
 	require.Equal(t, "01111111", b.formatRange(0, 8))
 
 	b.clear()
-	b.setBitRange(1, 7)
+	b.setBitRange(1, 7, nil)
 	require.Equal(t, "01111110", b.formatRange(0, 8))
 
 	b.clear()
-	b.setBitRange(1, 10)
+	b.setBitRange(1, 10, nil)
 	require.Equal(t, "011111111100", b.formatRange(0, 12))
 
 	b.clear()
-	b.setBitRange(10, 12)
+	b.setBitRange(10, 12, nil)
 	require.Equal(t, "000000000011000", b.formatRange(0, 15))
 
 	b.clear()
-	b.setBitRange(7, 9)
+	b.setBitRange(7, 9, nil)
 	require.Equal(t, "0000000110", b.formatRange(0, 10))
 
 	b.clear()
-	b.setBitRange(2, 27)
+	b.setBitRange(2, 27, nil)
 	require.Equal(t, "00111111111111111111111111100000", b.formatRange(0, 32))
+
+	// test nBitsChanged output
+	b.clear()
+	change := 0
+	b.setBitRange(0, 2, &change)
+	require.Equal(t, "11000", b.formatRange(0, 5))
+	require.Equal(t, 2, change)
+
+	change = 0
+	b.setBitRange(0, 2, &change)
+	require.Equal(t, 0, change)
+
+	change = 0
+	b.setBitRange(0, 5, &change)
+	require.Equal(t, "11111", b.formatRange(0, 5))
+	require.Equal(t, 3, change)
+
+	b.clear()
+	change = 0
+	b.setBitRange(7, 8, &change)
+	require.Equal(t, "00000001000000000000", b.formatRange(0, 20))
+	require.Equal(t, 1, change)
+	//change = 0 - don't reset change, to verify that change is incremented inside setBitRange, and not reset to zero.
+	b.setBitRange(9, 11, &change)
+	require.Equal(t, "00000001011000000000", b.formatRange(0, 20))
+	require.Equal(t, 1+2, change)
+	// verify that whole byte sets are handled correctly, including when they are partially set before calling setBitRange
+	change = 0
+	b.setBitRange(6, 18, &change)
+	require.Equal(t, "00000011111111111100", b.formatRange(0, 20))
+	require.Equal(t, 9, change)
 }
 
 func TestTileBuilder1(t *testing.T) {
@@ -177,8 +208,8 @@ func TestTileBuilder5(t *testing.T) {
 		line1.setBit(uint32(i))
 	}
 	// line2 compresses well
-	line2.setBitRange(0, 10)
-	line2.setBitRange(7, 200)
+	line2.setBitRange(0, 10, nil)
+	line2.setBitRange(7, 200, nil)
 	roundtripTile(t, A)
 }
 
@@ -225,7 +256,7 @@ func rangeStringToBits(s string, bmp *bitmapLine) {
 			start, end, _ := strings.Cut(part, "-")
 			istart, _ := strconv.Atoi(start)
 			iend, _ := strconv.Atoi(end)
-			bmp.setBitRange(uint32(istart), uint32(iend))
+			bmp.setBitRange(uint32(istart), uint32(iend), nil)
 		} else {
 			i, _ := strconv.Atoi(part)
 			bmp.setBit(uint32(i))

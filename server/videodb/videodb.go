@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/log"
@@ -113,7 +112,8 @@ func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
 		debugTileLevelBuild:   true,
 	}
 
-	self.fillMissingTiles(time.Now())
+	// Now that we write tiles of all levels at a regular interval, fillMissingTiles() is no longer needed.
+	//self.fillMissingTiles(time.Now())
 	self.resumeLatestTiles()
 
 	go self.eventWriteThread()
@@ -156,6 +156,10 @@ func (v *VideoDB) setKV(key string, value any, tx *gorm.DB) error {
 	return err
 }
 
-func (v *VideoDB) getKV(key string, dest any) error {
+// tx may be nil, in which case we execute this statement outside of a transaction
+func (v *VideoDB) getKV(key string, dest any, tx *gorm.DB) error {
+	if tx == nil {
+		tx = v.db
+	}
 	return v.db.Raw("SELECT value FROM kv WHERE key = $1", key).Scan(dest).Error
 }

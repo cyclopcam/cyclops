@@ -151,7 +151,7 @@ func (v *VideoDB) loadAndDecodeTile(tx *gorm.DB, camera, level, tileIdx uint32) 
 // The time 'now' is passed as a parameter for the sake of unit tests.
 func (v *VideoDB) fillMissingTiles(now time.Time) {
 	lastTileIdx := uint32(0)
-	v.getKV("lastTileIdx", &lastTileIdx)
+	v.getKV("lastTileIdx", &lastTileIdx, nil)
 	if lastTileIdx == 0 {
 		// empty/uninitialized database
 		return

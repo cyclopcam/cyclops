@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/bits"
 	"slices"
 	"time"
 
@@ -48,7 +49,8 @@ func (b *bitmapLine) clear() {
 }
 
 // Sets all bits in the range [start, end) to 1.
-func (b *bitmapLine) setBitRange(start, end uint32) {
+// nBitsChanged is an optional output parameter. If not nil, it will be incremented by the number of changed bits.
+func (b *bitmapLine) setBitRange(start, end uint32, nBitsChanged *int) {
 	// handle start and end odd bits, and fill middle with byte writes
 	if start > end || end > uint32(len(b))*8 {
 		panic(fmt.Sprintf("setBitRange: out of bounds: start=%v, end=%v", start, end))
@@ -58,15 +60,24 @@ func (b *bitmapLine) setBitRange(start, end uint32) {
 	if firstWholeByte*8 > start {
 		startCap := min(firstWholeByte*8, end)
 		for i := start; i < startCap; i++ {
+			if nBitsChanged != nil && !b.getBit(i) {
+				*nBitsChanged++
+			}
 			b.setBit(i)
 		}
 	}
 	for i := firstWholeByte; i < lastWholeByte; i++ {
+		if nBitsChanged != nil && b[i] != 0xff {
+			*nBitsChanged += 8 - bits.OnesCount8(b[i])
+		}
 		b[i] = 0xff
 	}
 	if lastWholeByte*8 < end && firstWholeByte <= lastWholeByte {
 		endCap := max(lastWholeByte*8, start)
 		for i := endCap; i < end; i++ {
+			if nBitsChanged != nil && !b.getBit(i) {
+				*nBitsChanged++
+			}
 			b.setBit(i)
 		}
 	}
@@ -90,12 +101,14 @@ type tileBuilderTrackedObject struct {
 }
 
 type tileBuilder struct {
-	classes    map[uint32]*bitmapLine
-	objects    map[uint32]tileBuilderTrackedObject
-	maxClasses int // We'll refuse to add more classes once we hit this limit
-	baseTime   time.Time
-	tileIdx    uint32 // See timeToTileIdx()
-	level      uint32
+	classes               map[uint32]*bitmapLine
+	objects               map[uint32]tileBuilderTrackedObject
+	maxClasses            int // We'll refuse to add more classes once we hit this limit
+	baseTime              time.Time
+	tileIdx               uint32 // See timeToTileIdx()
+	level                 uint32
+	updateTick            int64 // Incremented whenever we write bits into the tile. Used with dbTick to determine if a tile needs to be written to disk.
+	updateTickAtLastWrite int64 // Value of updateTick when we last wrote this tile to disk
 }
 
 func newTileBuilder(level uint32, baseTime time.Time, maxClasses int) *tileBuilder {
@@ -104,18 +117,21 @@ func newTileBuilder(level uint32, baseTime time.Time, maxClasses int) *tileBuild
 		panic("baseTime of tile must be a multiple of TileWidth")
 	}
 	return &tileBuilder{
-		classes:    make(map[uint32]*bitmapLine),
-		objects:    make(map[uint32]tileBuilderTrackedObject),
-		maxClasses: maxClasses,
-		baseTime:   baseTime,
-		tileIdx:    timeToTileIdx(baseTime, level),
-		level:      level,
+		classes:               make(map[uint32]*bitmapLine),
+		objects:               make(map[uint32]tileBuilderTrackedObject),
+		maxClasses:            maxClasses,
+		baseTime:              baseTime,
+		tileIdx:               timeToTileIdx(baseTime, level),
+		level:                 level,
+		updateTick:            0,
+		updateTickAtLastWrite: 0,
 	}
 }
 
 // Create a deep copy of the tileBuilder.
 func (b *tileBuilder) clone() *tileBuilder {
 	clone := newTileBuilder(b.level, b.baseTime, b.maxClasses)
+	clone.updateTick = b.updateTick
 	for k, v := range b.classes {
 		lineCopy := &bitmapLine{}
 		copy(lineCopy[:], v[:])
@@ -125,7 +141,6 @@ func (b *tileBuilder) clone() *tileBuilder {
 		clone.objects[k] = v
 	}
 	return clone
-
 }
 
 func (b *tileBuilder) isEmpty() bool {
@@ -159,25 +174,31 @@ func (b *tileBuilder) updateObject(obj *TrackedObject) error {
 		return err
 	}
 	prev, ok := b.objects[obj.ID]
+	nChangedBits := 0
 	if ok {
 		// We've seen this object before.
 		// Expand the bitmap from our previous startTime/endTime, to the current
 		// startTime/endTime. It's very unlikely that startTime will change, and in
 		// our current design it won't, but we might as well make allowance for it.
+		// Possible reasons for startTime going backwards would be an NN detection
+		// that completed on a past frame.
 		if t0 < prev.startTime {
-			line.setBitRange(t0, prev.startTime+1)
+			line.setBitRange(t0, prev.startTime+1, &nChangedBits)
 			prev.startTime = t0
 		}
 		if t1 > prev.endTime {
-			line.setBitRange(prev.endTime+1, t1+1)
+			line.setBitRange(prev.endTime+1, t1+1, &nChangedBits)
 			prev.endTime = t1
 		}
 	} else {
 		prev.startTime = t0
 		prev.endTime = t1
-		line.setBitRange(t0, t1+1)
+		line.setBitRange(t0, t1+1, &nChangedBits)
 	}
 	b.objects[obj.ID] = prev
+	if nChangedBits != 0 {
+		b.updateTick++
+	}
 	return nil
 }
 
