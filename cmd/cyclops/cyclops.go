@@ -24,7 +24,7 @@ func check(err error) {
 
 func main() {
 	// This is purely for documentation of the cmd-line args
-	nominalDefaultDB := "~home/cyclops/config.sqlite"
+	nominalDefaultDB := "$HOME/cyclops/config.sqlite"
 
 	// Certain parameters are scrubbed when dropping privileges, so we specify them as constants
 	const pnVPN = "vpn"
