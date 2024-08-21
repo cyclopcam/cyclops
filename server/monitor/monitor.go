@@ -113,7 +113,7 @@ type analyzerQueueItem struct {
 	detection *nn.DetectionResult
 }
 
-func NewMonitor(logger log.Log) (*Monitor, error) {
+func NewMonitor(logger log.Log, nnModelName string) (*Monitor, error) {
 	tryPaths := []string{"models", "/var/lib/cyclops/models"}
 	basePath := ""
 	for _, tryPath := range tryPaths {
@@ -170,12 +170,11 @@ func NewMonitor(logger log.Log) (*Monitor, error) {
 	// SYNC-NN-THREAD-QUEUE-MIN-SIZE
 	nnQueueSize := nnThreads * 3
 
-	modelName := "yolov8m"
-	logger.Infof("Loading NN model '%v'", modelName)
+	logger.Infof("Loading NN model '%v'", nnModelName)
 
 	modelSetup := nn.NewModelSetup()
 
-	detector, err := nnload.LoadModel(logger, basePath, modelName, nnThreadingModel, modelSetup)
+	detector, err := nnload.LoadModel(logger, basePath, nnModelName, nnThreadingModel, modelSetup)
 	if err != nil {
 		return nil, err
 	}

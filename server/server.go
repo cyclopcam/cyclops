@@ -77,7 +77,7 @@ type StartupError struct {
 }
 
 // Create a new server, load config, start cameras, and listen on HTTP
-func NewServer(logger log.Log, configDBFilename string, serverFlags int, explicitPrivateKey string) (*Server, error) {
+func NewServer(logger log.Log, configDBFilename string, serverFlags int, nnModelName string, explicitPrivateKey string) (*Server, error) {
 	log, err := log.NewLog()
 	if err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func NewServer(logger log.Log, configDBFilename string, serverFlags int, explici
 
 	s.ApplyConfig()
 
-	monitor, err := monitor.NewMonitor(s.Log)
+	monitor, err := monitor.NewMonitor(s.Log, nnModelName)
 	if err != nil {
 		return nil, err
 	}

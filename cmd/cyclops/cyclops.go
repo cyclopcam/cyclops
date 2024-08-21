@@ -38,6 +38,7 @@ func main() {
 	ownIPStr := parser.String("", "ip", &argparse.Options{Help: "IP address of this machine (for network scanning)", Default: ""}) // eg for dev time, and server is running inside a NAT'ed VM such as WSL.
 	privateKey := parser.String("", "privatekey", &argparse.Options{Help: "Change private key of system (e.g. for recreating a system using a prior identity)", Default: ""})
 	disableHailo := parser.Flag("", "nohailo", &argparse.Options{Help: "Disable Hailo neural network accelerator support", Default: false})
+	nnModelName := parser.String("", "nn", &argparse.Options{Help: "Specify the neural network for object detection", Default: "yolov8m"})
 	kernelWG := parser.Flag("", "kernelwg", &argparse.Options{Help: "(Internal) Run the kernel-mode wireguard interface", Default: false})
 	err := parser.Parse(os.Args)
 	if err != nil {
@@ -152,7 +153,7 @@ func main() {
 		if *hotReloadWWW {
 			flags |= server.ServerFlagHotReloadWWW
 		}
-		srv, err := server.NewServer(logger, *configFile, flags, *privateKey)
+		srv, err := server.NewServer(logger, *configFile, flags, *nnModelName, *privateKey)
 		if err != nil {
 			logger.Errorf("%v", err)
 			os.Exit(1)
