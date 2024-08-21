@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CameraInfo } from '@/camera/camera';
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { SeekBarContext, SeekBarTransform } from './seekBarContext';
 import { MaxTileLevel } from './eventTile';
 import { clamp } from '@/util/util';
@@ -8,6 +8,7 @@ import { clamp } from '@/util/util';
 let props = defineProps<{
 	camera: CameraInfo,
 	context: SeekBarContext,
+	renderKick: number, // Increment to force a render
 }>()
 
 interface Point {
@@ -30,6 +31,12 @@ let grabber = ref(null);
 let points: Point[] = []; // when there are 2 points, points[0] is on the left and points[1] is on the right
 let txAtPinchStart = new SeekBarTransform();
 let state = States.Neutral;
+
+watch(() => props.renderKick, () => {
+	if (canvas.value) {
+		props.context.render(canvas.value! as HTMLCanvasElement);
+	}
+});
 
 // Convert from CSS pixel (eg from PointerEvent) to our canvas coordinates, which are native device pixels
 function pxToCanvas(cssPx: number): number {
@@ -190,7 +197,7 @@ function onPointerMovePinchZoom(e: PointerEvent) {
 	let orgTime1MS = txAtPinchStart.pixelToTime(points[0].x1);
 	let orgTime2MS = txAtPinchStart.pixelToTime(points[1].x1);
 	let newPixelsPerSecond = (points[1].x2 - points[0].x2) / ((orgTime2MS - orgTime1MS) / 1000);
-	props.context.zoomLevel = SeekBarTransform.pixelsPerSecondToZoomLevel(newPixelsPerSecond);
+	props.context.setZoomLevel(SeekBarTransform.pixelsPerSecondToZoomLevel(newPixelsPerSecond));
 
 	//console.log(new Date(orgTime1MS));
 
@@ -210,7 +217,7 @@ function zoomAroundSinglePoint(offsetX: number, zoomDelta: number) {
 	let canv = canvas.value! as HTMLCanvasElement;
 	let txOld = props.context.transform(canv);
 	let timeMS = txOld.pixelToTime(x);
-	props.context.zoomLevel += zoomDelta;
+	props.context.setZoomLevel(props.context.zoomLevel + zoomDelta);
 
 	let txNew = props.context.transform(canv);
 	let pixelsToRightEdge = txOld.canvasWidth - x;
@@ -231,7 +238,7 @@ onMounted(() => {
 	// 100ms timeout is a hack to fix that. I assume we're getting some kind of layout
 	// adjustment that all happens before anything is rendered, and that's causing the
 	// discrepancy.
-	setTimeout(autoPanToEndAndRender, 100);
+	setTimeout(autoPanToEndAndRender, 50);
 
 	// Start our slow poller
 	poll();

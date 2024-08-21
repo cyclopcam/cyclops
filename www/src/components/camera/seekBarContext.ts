@@ -20,12 +20,13 @@ export class SeekBarContext {
 	panTimeEndMS = new Date().getTime(); // Unix milliseconds at the end of the seek bar
 	panTimeEndIsNow = false; // If our last seek call was seekToNow()
 	zoomLevel = 3; // 2^zoom seconds per pixel. This can be an arbitrary real number.
-	desiredSeekPosMS = new Date().getTime(); // Unix milliseconds of the desired video seek position
-	actualSeekPosMS = new Date().getTime(); // Unix milliseconds of the actual playback position
+	desiredSeekPosMS = 0; // Unix milliseconds of the desired video seek position, or 0 if no explicit seek (i.e. seek to now)
+	actualSeekPosMS = 0; // Unix milliseconds of the actual playback position (TODO)
 	needsRender = false;
 
 	constructor(cameraID = 0) {
 		this.cameraID = cameraID;
+		this.reset();
 	}
 
 	// Set the end time to now
@@ -45,8 +46,23 @@ export class SeekBarContext {
 		this.panTimeEndIsNow = false;
 	}
 
+	seekToNow() {
+		this.desiredSeekPosMS = 0;
+	}
+
 	seekToMillisecond(ms: number) {
 		this.desiredSeekPosMS = ms;
+	}
+
+	reset() {
+		this.panToNow();
+		this.seekToNow();
+		this.zoomLevel = 3;
+	}
+
+	setZoomLevel(zoomLevel: number) {
+		zoomLevel = clamp(zoomLevel, -5, 15);
+		this.zoomLevel = zoomLevel;
 	}
 
 	render(canvas: HTMLCanvasElement) {
@@ -82,6 +98,11 @@ export class SeekBarContext {
 		let canvasWidth = canvas.width;
 		let canvasHeight = canvas.height;
 		let startTimeMS = this.pixelToTimeMS(0, canvasWidth, secondsPerPixel);
+
+		// Render the future in a different color
+		cx.fillStyle = "#555";
+		let futureX = this.timeMSToPixel(new Date().getTime(), canvasWidth, pixelsPerSecond);
+		cx.fillRect(futureX, 0, canvasWidth - futureX + 1, canvasHeight);
 
 		//if (this.zoomLevel >= 10) console.log(`StartTime = ${new Date(startTimeMS).toISOString()}, EndTime = ${new Date(this.endTimeMS).toISOString()}`);
 
@@ -131,10 +152,12 @@ export class SeekBarContext {
 		}
 
 		// Render seek bar
-		let desiredSeekPx = this.timeMSToPixel(this.desiredSeekPosMS, canvasWidth, pixelsPerSecond);
-		cx.fillStyle = "rgba(255, 255, 255, 1)";
-		let w = 1;
-		cx.fillRect(desiredSeekPx - w, 0, 2 * w, canvasHeight);
+		if (this.desiredSeekPosMS !== 0) {
+			let desiredSeekPx = this.timeMSToPixel(this.desiredSeekPosMS, canvasWidth, pixelsPerSecond);
+			cx.fillStyle = "rgba(255, 255, 255, 1)";
+			let w = 1;
+			cx.fillRect(desiredSeekPx - w, 0, 2 * w, canvasHeight);
+		}
 	}
 
 	static tileSpan(startTimeMS: number, endTimeMS: number, tileLevel: number): { startTileIdx: number, endTileIdx: number } {

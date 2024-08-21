@@ -21,6 +21,8 @@ let livenessCanvas = ref(null);
 let overlayCanvas = ref(null);
 let streamer = new VideoStreamer(props.camera);
 let seekBar = reactive(new SeekBarContext(props.camera.id));
+let seekBarRenderKick = ref(0);
+//let isPlaying = false; // If we *think* we're in a playing state - can be untrue in reality if our browser tab has been deactivated.
 
 function videoElementID(): string {
 	return 'vplayer-camera-' + props.camera.id;
@@ -34,16 +36,19 @@ function onClick() {
 function onPlay() {
 	// For resuming play when our browser tab has been deactivated, and then reactivated.
 	console.log("video element onPlay event");
+	//isPlaying = true;
 	streamer.resumePlay();
 }
 
 function onPause() {
 	console.log("Player.vue onPause");
+	//isPlaying = false;
 	streamer.pause();
 }
 
 function stop() {
 	console.log("Player.vue stop");
+	//isPlaying = false;
 	streamer.stop();
 }
 
@@ -80,6 +85,8 @@ watch(() => props.camera, (newVal, oldVal) => {
 
 watch(() => props.play, (newVal, oldVal) => {
 	if (newVal) {
+		seekBar.reset();
+		seekBarRenderKick.value++;
 		streamer.play(videoElementID());
 	} else {
 		stop();
@@ -91,6 +98,9 @@ let seekDebounce = debounce((seekTo: number) => {
 }, 30);
 
 watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
+	//if (isPlaying) {
+	//	stop();
+	//}
 	//console.log("Seek to ", newVal);
 	if (streamer.hasCachedSeekFrame(newVal, "LD")) {
 		streamer.seekTo(newVal);
@@ -126,7 +136,8 @@ onMounted(() => {
 			<canvas ref="overlayCanvas" class="overlay" :style="imgStyle()" />
 			<canvas v-if="showLivenessCanvas" ref="livenessCanvas" class="livenessCanvas" />
 		</div>
-		<seek-bar class="seekBar" :style="bottomStyle()" :camera="camera" :context="seekBar" />
+		<seek-bar class="seekBar" :style="bottomStyle()" :camera="camera" :context="seekBar"
+			:renderKick="seekBarRenderKick" />
 	</div>
 </template>
 
