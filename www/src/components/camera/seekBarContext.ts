@@ -62,6 +62,8 @@ export class SeekBarContext {
 		}
 
 		this.needsRender = false;
+		// If you change the canvas native size here, be sure to also change pxToCanvas() in SeekBar.vue,
+		// because that code assumes clientWidth * DPR.
 		let dpr = window.devicePixelRatio;
 		canvas.width = canvas.clientWidth * dpr;
 		canvas.height = canvas.clientHeight * dpr;

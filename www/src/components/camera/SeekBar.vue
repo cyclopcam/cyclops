@@ -12,16 +12,24 @@ let props = defineProps<{
 
 interface Point {
 	id: number; // pointer id
-	x1: number; // x at finger down
-	y1: number; // y at finger down
-	x2: number; // latest x finger
-	y2: number; // latest y finger
+	offsetX1: number; // CSS x at finger down
+	x1: number; // canvas x at finger down
+	y1: number; // canvas y at finger down
+	x2: number; // latest canvas x finger
+	y2: number; // latest canvas y finger
+}
+
+enum States {
+	Neutral,
+	Seek,
+	Zoom,
 }
 
 let canvas = ref(null);
 let grabber = ref(null);
 let points: Point[] = []; // when there are 2 points, points[0] is on the left and points[1] is on the right
 let txAtPinchStart = new SeekBarTransform();
+let state = States.Neutral;
 
 // Convert from CSS pixel (eg from PointerEvent) to our canvas coordinates, which are native device pixels
 function pxToCanvas(cssPx: number): number {
@@ -53,10 +61,24 @@ function poll() {
 function onWheel(e: WheelEvent) {
 	//console.log("onWheel", e.deltaX, e.deltaY);
 	e.preventDefault();
-	props.context.zoomLevel += (e.deltaY / 100) * 0.3;
-	props.context.zoomLevel = clamp(props.context.zoomLevel, 0, MaxTileLevel + 2);
-	props.context.render(canvas.value! as HTMLCanvasElement);
+	let zoomDelta = (e.deltaY / 100) * 0.3;
+	zoomAroundSinglePoint(e.offsetX, zoomDelta);
 }
+
+// I don't like the double-click, because it pans the seek bar by a sudden jump
+// which destroys your sense of where you were.
+//function onDblClick(e: MouseEvent) {
+//	console.log("onDblClick");
+//	let canv = canvas.value! as HTMLCanvasElement;
+//	let canvasWidth = canv.clientWidth;
+//	let tx = props.context.transform(canv);
+//	let panMS = tx.pixelToTime(pxToCanvas(e.offsetX + canvasWidth * 0.25));
+//	let seekMS = tx.pixelToTime(pxToCanvas(e.offsetX));
+//	props.context.zoomLevel -= 1;
+//	props.context.panToMillisecond(panMS);
+//	props.context.seekToMillisecond(seekMS);
+//	props.context.render(canv);
+//}
 
 function onPointerDown(e: PointerEvent) {
 	//console.log("onPointerDown", e.pointerId);
@@ -65,7 +87,7 @@ function onPointerDown(e: PointerEvent) {
 	grab.setPointerCapture(e.pointerId);
 	let ox = pxToCanvas(e.offsetX);
 	let oy = pxToCanvas(e.offsetY);
-	points.push({ id: e.pointerId, x1: ox, x2: ox, y1: oy, y2: oy });
+	points.push({ id: e.pointerId, offsetX1: e.offsetX, x1: ox, x2: ox, y1: oy, y2: oy });
 	if (points.length === 2 && points[0].x1 !== points[1].x1) {
 		// Ensure that point 1 is on the left and point 2 is on the right, so that our
 		// subsequent computations don't have to account for that.
@@ -76,11 +98,16 @@ function onPointerDown(e: PointerEvent) {
 		}
 		txAtPinchStart = SeekBarTransform.fromZoomLevelAndRightEdge(props.context.zoomLevel, props.context.panTimeEndMS, pxToCanvas(canv.clientWidth));
 	}
+
+	// For a mouse, start seeking the moment the mouse goes down.
+	if (e.pointerType === "mouse" && points.length === 1) {
+		onPointerMove(e);
+	}
 }
 
 function onPointerUp(e: PointerEvent) {
 	//console.log("onPointerUp", e.pointerId);
-	stopZoom(e);
+	pointerUpOrCancel(e);
 }
 
 // pointer cancel happens when the user pans (aka scrolls) up/down.
@@ -90,14 +117,20 @@ function onPointerUp(e: PointerEvent) {
 // We allow pan-y via css "touch-action: pan-y"
 function onPointerCancel(e: PointerEvent) {
 	//console.log("pointer cancel", e.pointerId);
-	stopZoom(e);
+	pointerUpOrCancel(e);
 }
 
-function stopZoom(e: PointerEvent) {
-	//console.log("zoomAtPinchEnd", props.context.zoomLevel, "rightEdge", new Date(props.context.panTimeEndMS));
+function pointerUpOrCancel(e: PointerEvent) {
+	//console.log("pointerUpOrCancel", props.context.zoomLevel, "rightEdge", new Date(props.context.panTimeEndMS));
 	let grab = grabber.value! as HTMLDivElement;
 	grab.releasePointerCapture(e.pointerId);
 	points = points.filter(p => p.id !== e.pointerId);
+	if (points.length === 0) {
+		// Only reset to Neutral once both fingers lift.
+		// This is to prevent a pinch-zoom from becoming a seek after one of the fingers
+		// is lifted up, but the other fingers remains for a few milliseconds.
+		state = States.Neutral;
+	}
 }
 
 function onPointerMove(e: PointerEvent) {
@@ -110,6 +143,22 @@ function onPointerMove(e: PointerEvent) {
 }
 
 function onPointerMoveSeek(e: PointerEvent) {
+	// Don't start a seek until we've made a decently large horizontal swipe.
+	// Without this protection, you very often end up seeking the bar when all you
+	// wanted to do was scroll the entire monitor screen vertically, to get
+	// to another camera.
+	let minDelta = 10;
+	// We disable this behaviour for a mouse, because a mouse movement can't invoke a vertical scroll.
+	if (e.pointerType === "mouse") {
+		minDelta = 0;
+	}
+	let cssDeltaX = Math.abs(e.offsetX - points[0].offsetX1);
+	if (state === States.Neutral && cssDeltaX >= minDelta) {
+		state = States.Seek;
+	}
+	if (state !== States.Seek) {
+		return;
+	}
 	let x = pxToCanvas(e.offsetX);
 	let tx = props.context.transform(canvas.value! as HTMLCanvasElement);
 	let timeMS = tx.pixelToTime(x);
@@ -118,6 +167,8 @@ function onPointerMoveSeek(e: PointerEvent) {
 }
 
 function onPointerMovePinchZoom(e: PointerEvent) {
+	state = States.Zoom;
+
 	for (let p of points) {
 		if (p.id === e.pointerId) {
 			p.x2 = pxToCanvas(e.offsetX);
@@ -150,6 +201,25 @@ function onPointerMovePinchZoom(e: PointerEvent) {
 	//console.log(orgTime1MS / 1000, orgTime2MS / 1000, newPixelsPerSecond, props.context.zoomLevel);
 
 	props.context.render(canvas.value! as HTMLCanvasElement);
+}
+
+// Zoom around a single point, eg when zooming in/out with the mouse wheel
+// The critical thing here is that the pan position of the mouse cursor remains constant.
+function zoomAroundSinglePoint(offsetX: number, zoomDelta: number) {
+	let x = pxToCanvas(offsetX);
+	let canv = canvas.value! as HTMLCanvasElement;
+	let txOld = props.context.transform(canv);
+	let timeMS = txOld.pixelToTime(x);
+	props.context.zoomLevel += zoomDelta;
+
+	let txNew = props.context.transform(canv);
+	let pixelsToRightEdge = txOld.canvasWidth - x;
+	let msPerPixel = 1000 / txNew.pixelsPerSecond;
+	let msToRightEdge = pixelsToRightEdge * msPerPixel;
+	let timeAtRightEdgeMS = timeMS + msToRightEdge;
+	props.context.panToMillisecond(timeAtRightEdgeMS);
+
+	props.context.render(canv);
 }
 
 onMounted(() => {
