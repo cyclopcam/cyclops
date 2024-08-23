@@ -154,13 +154,13 @@ function onPointerMoveSeek(e: PointerEvent) {
 	// Without this protection, you very often end up seeking the bar when all you
 	// wanted to do was scroll the entire monitor screen vertically, to get
 	// to another camera.
-	let minDelta = 10;
+	let minDeltaCssPx = 2;
 	// We disable this behaviour for a mouse, because a mouse movement can't invoke a vertical scroll.
 	if (e.pointerType === "mouse") {
-		minDelta = 0;
+		minDeltaCssPx = 0;
 	}
 	let cssDeltaX = Math.abs(e.offsetX - points[0].offsetX1);
-	if (state === States.Neutral && cssDeltaX >= minDelta) {
+	if (state === States.Neutral && cssDeltaX >= minDeltaCssPx) {
 		state = States.Seek;
 	}
 	if (state !== States.Seek) {
