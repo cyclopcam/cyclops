@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CameraInfo } from '@/camera/camera';
-import { onMounted, ref, watch } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { SeekBarContext, SeekBarTransform } from './seekBarContext';
 import { MaxTileLevel } from './eventTile';
 import { clamp } from '@/util/util';
@@ -10,6 +10,7 @@ let props = defineProps<{
 	context: SeekBarContext,
 	renderKick: number, // Increment to force a render
 }>()
+let emits = defineEmits(['seekend']);
 
 interface Point {
 	id: number; // pointer id
@@ -62,6 +63,13 @@ function poll() {
 	}
 	autoPanToEndAndRender();
 	setTimeout(poll, 5000);
+}
+
+function loadHighResAfterSeek() {
+	if (!canvas.value) {
+		// we have been destroyed. Strange that unmount didn't catch this.
+		return;
+	}
 }
 
 // On desktop, you can scroll with the mouse wheel
@@ -133,6 +141,9 @@ function pointerUpOrCancel(e: PointerEvent) {
 	grab.releasePointerCapture(e.pointerId);
 	points = points.filter(p => p.id !== e.pointerId);
 	if (points.length === 0) {
+		if (state === States.Seek) {
+			emits('seekend');
+		}
 		// Only reset to Neutral once both fingers lift.
 		// This is to prevent a pinch-zoom from becoming a seek after one of the fingers
 		// is lifted up, but the other fingers remains for a few milliseconds.

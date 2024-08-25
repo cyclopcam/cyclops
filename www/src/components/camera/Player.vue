@@ -24,6 +24,8 @@ let overlayCanvas = ref(null);
 let streamer = new VideoStreamer(props.camera);
 let seekBar = reactive(new SeekBarContext(props.camera.id));
 let seekBarRenderKick = ref(0);
+//let afterSeekHDTimer = 0;
+let seekDebounceTimer = 0;
 
 // This is only useful if the camera is not showing anything (i.e. we can't connect to it),
 // but how to detect that? I guess we need an API for that.
@@ -66,7 +68,7 @@ function containerStyle(): any {
 	return {
 		"width": props.width,
 		"height": props.height,
-		//"border-radius": borderRadius(),
+		"border-color": props.play ? "#00a" : "#000",
 	}
 }
 
@@ -100,6 +102,7 @@ watch(() => props.camera, (newVal, oldVal) => {
 watch(() => props.play, (newVal, oldVal) => {
 	console.log(`Player.vue watch(props.play) newVal = ${newVal}`);
 	if (newVal) {
+		//clearTimeout(afterSeekHDTimer);
 		seekBar.reset();
 		seekBarRenderKick.value++;
 		streamer.play(videoElementID());
@@ -108,14 +111,34 @@ watch(() => props.play, (newVal, oldVal) => {
 	}
 })
 
-function seekToNoDelay(seekTo: number) {
-	streamer.seekTo(seekTo);
-	emits('seek', seekTo);
+function onSeekEnd() {
+	//if (streamer.seekResolution === 'HD') {
+	//	// The most recently seeked-to image was an HD image, so don't do anything else
+	//	return;
+	//}
+	clearTimeout(seekDebounceTimer);
+	streamer.seekTo(streamer.seekOverlayToMS, 'HD');
 }
 
-let seekDebounce = debounce((seekTo: number) => {
-	seekToNoDelay(seekTo);
-}, 30);
+//function afterSeekLoadHD() {
+//}
+
+function seekToNoDelay(seekTo: number) {
+	streamer.seekTo(seekTo, 'LD');
+	emits('seek', seekTo);
+	//clearTimeout(afterSeekHDTimer);
+	//afterSeekHDTimer = window.setTimeout(afterSeekLoadHD, 200);
+}
+
+//let seekDebounce = debounce((seekTo: number) => {
+//	seekToNoDelay(seekTo);
+//}, 30);
+function seekDebounce(seekTo: number) {
+	clearTimeout(seekDebounceTimer);
+	seekDebounceTimer = window.setTimeout(() => {
+		seekToNoDelay(seekTo);
+	}, 30);
+}
 
 // This is how we notice that the user wants to seek to a new position
 watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
@@ -133,6 +156,8 @@ watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
 })
 
 onUnmounted(() => {
+	//clearTimeout(afterSeekHDTimer);
+	clearTimeout(seekDebounceTimer);
 	streamer.close();
 })
 
@@ -165,7 +190,7 @@ onMounted(() => {
 			</div>
 		</div>
 		<seek-bar class="seekBar" :style="bottomStyle()" :camera="camera" :context="seekBar"
-			:renderKick="seekBarRenderKick" />
+			:renderKick="seekBarRenderKick" @seekend="onSeekEnd" />
 	</div>
 </template>
 
@@ -177,7 +202,7 @@ $seekBarHeight: 10%;
 	//width: 100%;
 	//height: 100%;
 	position: relative;
-	border: solid 1px rgb(0, 0, 0);
+	border: solid 1px #000;
 	border-radius: 5px;
 	//box-shadow: 0px 0px 2px rgba(255, 255, 255, 0.4), 0px 0px 7px rgba(255, 255, 255, 0.2);
 }

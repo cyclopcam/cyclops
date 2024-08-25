@@ -25,7 +25,7 @@ function onPlayPause(cam: CameraInfo) {
 }
 
 function onSeek(cam: CameraInfo) {
-	console.log(`Monitor.vue onSeek camera ${cam.id}`);
+	//console.log(`Monitor.vue onSeek camera ${cam.id}`);
 	if (linkedPlay) {
 		for (let c of cameras()) {
 			isPlaying.value[c.id] = false;
@@ -77,8 +77,8 @@ onUnmounted(() => {
 		-->
 		<div class="cameras">
 			<player v-for="cam of cameras()" :camera="cam" :play="isPlaying[cam.id] ?? false"
-				@playpause="onPlayPause(cam)" @seek="onSeek(cam)" :width="cameraWidth + 'px'"
-				:height="cameraHeight()" />
+				@playpause="onPlayPause(cam)" @seek="onSeek(cam)" :width="cameraWidth + 'px'" :height="cameraHeight()"
+				:round="true" />
 		</div>
 	</div>
 </template>

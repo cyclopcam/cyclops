@@ -114,6 +114,7 @@ export class VideoStreamer {
 
 	seekOverlayToMS = 0; // If not 0, then the overlay canvas is rendered with a keyframe closest to this time. This is for seeking back in time.
 	seekIndexNext = 1; // Used to tell if we should discard a fetch (eg if an older seek finished AFTER a newer seek, then discard the older result)
+	seekResolution: 'LD' | 'HD' = 'LD';
 	seekImage: ImageBitmap | null = null; // Most recent seek frame
 	seekImageIndex = 0; // seekCount at the time when the fetch of this seekImage was initiated
 	seekCache = new FrameCache();
@@ -185,6 +186,7 @@ export class VideoStreamer {
 	clearSeek() {
 		this.seekImage = null;
 		this.seekCache.clear();
+		this.seekOverlayToMS = 0;
 	}
 
 	hasCachedSeekFrame(posMS: number, resolution: string): boolean {
@@ -193,20 +195,21 @@ export class VideoStreamer {
 		return this.seekCache.get(cacheKey) !== undefined;
 	}
 
-	async seekTo(posMS: number) {
+	async seekTo(posMS: number, resolution: 'LD' | 'HD') {
 		posMS = this.seekCache.suggestNearestFrameTime(posMS);
 		this.seekOverlayToMS = posMS;
+		this.seekResolution = resolution;
 		let myIndex = this.seekIndexNext;
 		this.seekIndexNext++;
 
-		let resolution = "LD";
+		let quality = resolution === 'LD' ? '70' : '85';
 		let cacheKey = FrameCache.makeKey(this.camera.id, resolution, posMS);
 		let fromCache = this.seekCache.get(cacheKey);
 		let blob: Blob | null = null;
 		if (fromCache) {
 			blob = fromCache.blob;
 		} else {
-			let url = `/api/camera/image/${this.camera.id}/${resolution}/${posMS}?quality=70`;
+			let url = `/api/camera/image/${this.camera.id}/${resolution}/${posMS}?quality=${quality}`;
 			let r = await fetch(url);
 			if (!r.ok)
 				return;
