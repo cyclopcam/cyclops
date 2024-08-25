@@ -35,6 +35,8 @@ github.com/bmharper/flatbush-go v1.0.0 h1:p7xJHyKDIpzGYCaa9Zg4Du0gMNxdPcwEFJJ8Kh
 github.com/bmharper/flatbush-go v1.0.0/go.mod h1:Z+ze5Yql17pIeUx67EwVu5ESM0NqP4yyyYUKoNP0MUo=
 github.com/bmharper/flatbush-go v1.1.0 h1:+Ce+PghFZ9V0ILrSq0yXp4HkTsi5Yw6/b5i/ADCa3BI=
 github.com/bmharper/flatbush-go v1.1.0/go.mod h1:BbSc7QiV7/JIcgD8NZnhUbfN+pHVEpsMzylyV/0j5oI=
+github.com/bmharper/flatbush-go v1.1.1 h1:2T7axc7d1Q4+ptslOrtzEaKO4iE4ByjcbdA7iKXKFuU=
+github.com/bmharper/flatbush-go v1.1.1/go.mod h1:BbSc7QiV7/JIcgD8NZnhUbfN+pHVEpsMzylyV/0j5oI=
 github.com/bmharper/ringbuffer v1.1.2 h1:r2QRV4KnTXxljr41TbCZYS0f/NvyU7xEJ5aGo8uQlBY=
 github.com/bmharper/ringbuffer v1.1.2/go.mod h1:Siq5AiKH4Hu6aPVKl2/24gl1mHB66hxr9JrACjqvHqc=
 github.com/bmharper/tiledinference v1.0.2 h1:TsfCOAUXB5sjpWe4UimYmGAKYn2s12n3uhbBINwOGrw=

@@ -19,7 +19,7 @@ require (
 	github.com/bluenviron/gortsplib/v4 v4.10.3
 	github.com/bluenviron/mediacommon v1.12.2
 	github.com/bmharper/cimg/v2 v2.0.8
-	github.com/bmharper/flatbush-go v1.1.0
+	github.com/bmharper/flatbush-go v1.1.1
 	github.com/bmharper/ringbuffer v1.1.2
 	github.com/bmharper/tiledinference v1.0.3
 	github.com/chewxy/math32 v1.11.0
