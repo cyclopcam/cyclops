@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { CameraInfo } from '@/camera/camera';
 import { globals } from '@/globals';
-import CameraItem from '@/components/home/CameraItem.vue';
+import Player from '@/components/camera/Player.vue';
 import { ref, onMounted } from 'vue';
 import RedDot from "@/icons/red-dot.svg";
 import Stop from "@/icons/stop.svg";
@@ -109,7 +109,7 @@ onMounted(async () => {
 		<div v-if="state === States.PickCamera" class="flexColumnCenter">
 			<div class="stepLabel">Record</div>
 			<div class="flex picker">
-				<camera-item v-for="cam of cameras()" :camera="cam" icon="record" :play="false" size="220"
+				<player v-for="cam of cameras()" :camera="cam" icon="record" :play="false" width="220" height="180"
 					@play="onPlay(cam)" class="cameraItemPicker" />
 			</div>
 			<div style="margin: 15px; font-size: 14px">
