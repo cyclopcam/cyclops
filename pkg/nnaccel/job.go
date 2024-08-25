@@ -36,10 +36,10 @@ func (j *AsyncJob) GetObjectDetections() ([]nn.ObjectDetection, error) {
 	for i := 0; i < len(dets); i++ {
 		out[i].Class = int(dets[i].ClassID)
 		out[i].Confidence = float32(dets[i].Confidence)
-		out[i].Box.X = int(dets[i].X)
-		out[i].Box.Y = int(dets[i].Y)
-		out[i].Box.Width = int(dets[i].Width)
-		out[i].Box.Height = int(dets[i].Height)
+		out[i].Box.X = int32(dets[i].X)
+		out[i].Box.Y = int32(dets[i].Y)
+		out[i].Box.Width = int32(dets[i].Width)
+		out[i].Box.Height = int32(dets[i].Height)
 	}
 	C.free(unsafe.Pointer(detections))
 	return out, nil

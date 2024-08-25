@@ -153,7 +153,7 @@ func TestObjectDetection(t *testing.T) {
 	// And then out of the larger image, we crop a 640x640 rectangle.
 	// This tests the ability of the NN accelerator to handle a stride that is not equal to width*nchan.
 	cropRect := nn.MakeRect(32, 32, img.Width, img.Height)
-	cropped := nn.WholeImage(bigImg.NChan(), bigImg.Pixels, bigImg.Width, bigImg.Height).Crop(cropRect.X, cropRect.Y, cropRect.X2(), cropRect.Y2())
+	cropped := nn.WholeImage(bigImg.NChan(), bigImg.Pixels, bigImg.Width, bigImg.Height).Crop(int(cropRect.X), int(cropRect.Y), int(cropRect.X2()), int(cropRect.Y2()))
 	require.Equal(t, img.Width, cropped.CropWidth)
 	require.Equal(t, img.Height, cropped.CropHeight)
 	dets, err = model.DetectObjects(cropped, nn.NewDetectionParams())

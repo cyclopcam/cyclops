@@ -64,10 +64,10 @@ func (d *Detector) DetectObjects(img nn.ImageCrop, params *nn.DetectionParams) (
 			Class:      int(detections[i].Class),
 			Confidence: float32(detections[i].Confidence),
 			Box: nn.Rect{
-				X:      int(detections[i].Box.X),
-				Y:      int(detections[i].Box.Y),
-				Width:  int(detections[i].Box.Width),
-				Height: int(detections[i].Box.Height),
+				X:      int32(detections[i].Box.X),
+				Y:      int32(detections[i].Box.Y),
+				Width:  int32(detections[i].Box.Width),
+				Height: int32(detections[i].Box.Height),
 			},
 		}
 	}

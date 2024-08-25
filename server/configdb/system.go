@@ -52,6 +52,17 @@ func (r *RecordingJSON) RecordAfterEventDuration() time.Duration {
 	return time.Duration(r.RecordAfterEvent) * time.Second
 }
 
+// Holding off on this for now. I'd rather have it in code, until it's obvious that it
+// belongs on config.
+// AI config
+//type AIConfigJSON struct {
+//	// Used to map from an NN class to another class, which could be a more abstract class.
+//	// eg {"car": "vehicle", "truck": "vehicle"}
+//	// We should really be training our own NN that does this kind of mapping, but this
+//	// is a reasonable solution until we get there.
+//	RemapClasses map[string]string `json:"remapClasses,omitempty"`
+//}
+
 // Returns an error if there is anything invalid about the config, or nil if everything is OK
 func ValidateConfig(c *ConfigJSON) error {
 	if err := ValidateRecordingConfig(true, &c.Recording); err != nil {

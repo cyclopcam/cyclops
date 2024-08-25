@@ -6,8 +6,8 @@ import (
 )
 
 type Point struct {
-	X int `json:"x"`
-	Y int `json:"y"`
+	X int32 `json:"x"`
+	Y int32 `json:"y"`
 }
 
 func (p Point) Distance(b Point) float32 {
@@ -15,31 +15,31 @@ func (p Point) Distance(b Point) float32 {
 }
 
 type Rect struct {
-	X      int `json:"x"`
-	Y      int `json:"y"`
-	Width  int `json:"width"`
-	Height int `json:"height"`
+	X      int32 `json:"x"`
+	Y      int32 `json:"y"`
+	Width  int32 `json:"width"`
+	Height int32 `json:"height"`
 }
 
 func MakeRect(x, y, width, height int) Rect {
 	return Rect{
-		X:      x,
-		Y:      y,
-		Width:  width,
-		Height: height,
+		X:      int32(x),
+		Y:      int32(y),
+		Width:  int32(width),
+		Height: int32(height),
 	}
 }
 
-func (r Rect) X2() int {
+func (r Rect) X2() int32 {
 	return r.X + r.Width
 }
 
-func (r Rect) Y2() int {
+func (r Rect) Y2() int32 {
 	return r.Y + r.Height
 }
 
 func (r Rect) Area() int {
-	return r.Width * r.Height
+	return int(r.Width * r.Height)
 }
 
 func (r Rect) Intersection(b Rect) Rect {
@@ -82,21 +82,21 @@ func (r Rect) Center() Point {
 }
 
 func (r *Rect) Offset(dx, dy int) {
-	r.X += dx
-	r.Y += dy
+	r.X += int32(dx)
+	r.Y += int32(dy)
 }
 
 func (r *Rect) MaxDelta(b Rect) int {
 	maxP := max(gen.Abs(r.X-b.X), gen.Abs(r.Y-b.Y))
 	maxS := max(gen.Abs(r.Width-b.Width), gen.Abs(r.Height-b.Height))
-	return max(maxP, maxS)
+	return int(max(maxP, maxS))
 }
 
 // ResizeTransform expresses a transformation that we've made on an image (eg resizing, or resizing + moving)
 // When applying forward, we first scale and then offset.
 type ResizeTransform struct {
-	OffsetX int
-	OffsetY int
+	OffsetX int32
+	OffsetY int32
 	ScaleX  float32
 	ScaleY  float32
 }
@@ -112,18 +112,18 @@ func IdentityResizeTransform() ResizeTransform {
 
 func (r *ResizeTransform) ApplyForward(detections []ObjectDetection) {
 	for i := range detections {
-		detections[i].Box.X = int(float32(detections[i].Box.X)*r.ScaleX) + r.OffsetX
-		detections[i].Box.Y = int(float32(detections[i].Box.Y)*r.ScaleY) + r.OffsetY
-		detections[i].Box.Width = int(float32(detections[i].Box.Width) * r.ScaleX)
-		detections[i].Box.Height = int(float32(detections[i].Box.Height) * r.ScaleY)
+		detections[i].Box.X = int32(float32(detections[i].Box.X)*r.ScaleX) + r.OffsetX
+		detections[i].Box.Y = int32(float32(detections[i].Box.Y)*r.ScaleY) + r.OffsetY
+		detections[i].Box.Width = int32(float32(detections[i].Box.Width) * r.ScaleX)
+		detections[i].Box.Height = int32(float32(detections[i].Box.Height) * r.ScaleY)
 	}
 }
 
 func (r *ResizeTransform) ApplyBackward(detections []ObjectDetection) {
 	for i := range detections {
-		detections[i].Box.X = int(float32(detections[i].Box.X-r.OffsetX) / r.ScaleX)
-		detections[i].Box.Y = int(float32(detections[i].Box.Y-r.OffsetY) / r.ScaleY)
-		detections[i].Box.Width = int(float32(detections[i].Box.Width) / r.ScaleX)
-		detections[i].Box.Height = int(float32(detections[i].Box.Height) / r.ScaleY)
+		detections[i].Box.X = int32(float32(detections[i].Box.X-r.OffsetX) / r.ScaleX)
+		detections[i].Box.Y = int32(float32(detections[i].Box.Y-r.OffsetY) / r.ScaleY)
+		detections[i].Box.Width = int32(float32(detections[i].Box.Width) / r.ScaleX)
+		detections[i].Box.Height = int32(float32(detections[i].Box.Height) / r.ScaleY)
 	}
 }

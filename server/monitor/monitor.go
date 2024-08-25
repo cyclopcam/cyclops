@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,8 +26,8 @@ import (
 
 We process camera frames in phases:
 1. Read frames from cameras (frameReader)
-2. Process frames with neural networks (nnThread)
-3. Analyze results from neural networks (analyzer)
+2. Process frames with a neural network (nnThread)
+3. Analyze results from the neural network (analyzer)
 
 We connect these phases with channels.
 
@@ -36,6 +35,7 @@ We connect these phases with channels.
 
 // If not specified, then this is our list of classes that we pay attention to.
 // Other classes (such as potplant, frisbee, etc) are ignored.
+// The classes in our abstract list are implicitly also inside this list.
 var defaultClassFilterList = []string{
 	nn.COCOClasses[nn.COCOPerson],
 	nn.COCOClasses[nn.COCOBicycle],
@@ -43,6 +43,22 @@ var defaultClassFilterList = []string{
 	nn.COCOClasses[nn.COCOBus],
 	nn.COCOClasses[nn.COCOMotorcycle],
 	nn.COCOClasses[nn.COCOTruck],
+}
+
+// If we get detection boxes of any of these pairs, and the boxes have very high
+// IoU, then we merge them into the same object. The type of the object is the
+// right side of the map. For example, given {"truck": "car"} in the map, and we
+// have a car/truck pair, the resulting object will be a "car".
+var boxMergeClasses = map[string]string{
+	"truck": "car",
+}
+
+// Class map from concrete to abstract (eg car -> vehicle, truck -> vehicle)
+var abstractClasses = map[string]string{
+	"car":        "vehicle",
+	"motorcycle": "vehicle",
+	"truck":      "vehicle",
+	"bus":        "vehicle",
 }
 
 type Monitor struct {
@@ -61,8 +77,10 @@ type Monitor struct {
 	avgTimeNSPerFrameNNPrep   atomic.Int64           // Average time (ns) per frame, for prep of an image before it hits the NN
 	avgTimeNSPerFrameNNDet    atomic.Int64           // Average time (ns) per frame, for just the neural network (time inside a thread)
 	hasShownResolutionWarning atomic.Bool            // True if we've shown a warning about camera resolution vs NN resolution
-	nnClassFilterMap          map[int]bool           // NN classes that we're interested in (eg person, car)
-	nnClassFilterList         []string               // NN classes that we're interested in (eg person, car)
+	nnClassList               []string               // All the classes that the NN emits (in their native order)
+	nnClassFilterSet          map[string]bool        // NN classes that we're interested in (eg person, car)
+	nnClassBoxMerge           map[string]string      // Merge overlapping boxes eg car/truck -> car
+	nnClassAbstract           map[string]string      // Remap classes to a more abstract class (eg car -> vehicle, truck -> vehicle)
 	analyzerSettings          analyzerSettings       // Analyzer settings
 	nextTrackedObjectID       idgen.Uint32           // Next ID to assign to a tracked object
 
@@ -96,7 +114,7 @@ type monitorCamera struct {
 	// Same comment applies here as to lastImg, in the sense that the contents of this object is immutable.
 	lastDetection *nn.DetectionResult
 
-	// Guared by 'lock' mutex.
+	// Guarded by 'lock' mutex.
 	// Can be nil.
 	// Same comment applies here as to lastImg, in the sense that the contents of this object is immutable.
 	analyzerState *AnalysisState
@@ -183,7 +201,7 @@ func NewMonitor(logger log.Log, nnModelName string) (*Monitor, error) {
 	logger.Infof("NN batch size %v", modelSetup.BatchSize)
 	logger.Infof("NN prob threshold %.2f, NMS IoU threshold %.2f", modelSetup.ProbabilityThreshold, modelSetup.NmsIouThreshold)
 
-	classFilterList := slices.Clone(defaultClassFilterList)
+	classFilterList := defaultClassFilterList
 	logger.Infof("Paying attention to the following classes: %v", strings.Join(classFilterList, ","))
 
 	// No idea what a good number is here. I expect analysis to be much
@@ -196,15 +214,17 @@ func NewMonitor(logger log.Log, nnModelName string) (*Monitor, error) {
 	logger.Infof("Starting %v NN detection threads", nnThreads)
 
 	m := &Monitor{
-		Log:               logger,
-		detector:          detector,
-		nnThreadQueue:     make(chan monitorQueueItem, nnQueueSize),
-		analyzerQueue:     make(chan analyzerQueueItem, analysisQueueSize),
-		analyzerStopped:   make(chan bool),
-		nnModelSetup:      modelSetup,
-		numNNThreads:      nnThreads,
-		nnClassFilterList: classFilterList,
-		nnClassFilterMap:  makeClassFilter(classFilterList, detector.Config().Classes),
+		Log:              logger,
+		detector:         detector,
+		nnThreadQueue:    make(chan monitorQueueItem, nnQueueSize),
+		analyzerQueue:    make(chan analyzerQueueItem, analysisQueueSize),
+		analyzerStopped:  make(chan bool),
+		nnModelSetup:     modelSetup,
+		numNNThreads:     nnThreads,
+		nnClassList:      detector.Config().Classes,
+		nnClassFilterSet: makeClassFilter(classFilterList),
+		nnClassAbstract:  abstractClasses,
+		nnClassBoxMerge:  boxMergeClasses,
 		analyzerSettings: analyzerSettings{
 			positionHistorySize:       30,   // at 10 fps, 30 frames = 3 seconds
 			maxAnalyzeObjectsPerFrame: 20,   // We have O(n^2) analysis functions, so we need to keep this small.
@@ -261,11 +281,6 @@ func (m *Monitor) Close() {
 // Return the list of all classes that the NN detects
 func (m *Monitor) AllClasses() []string {
 	return m.detector.Config().Classes
-}
-
-// Return the list of classes that we're interested in
-func (m *Monitor) DetectedClasses() []string {
-	return m.nnClassFilterList
 }
 
 // Return the most recent frame and detection result for a camera
@@ -365,24 +380,23 @@ func (m *Monitor) sendToWatchers(state *AnalysisState) {
 
 // Resolve class names to integer indices.
 // If a class is not found, it is ignored.
-func lookupClassIndices(classes []string, allClasses []string) []int {
-	clsToIndex := map[string]int{}
-	for i, c := range allClasses {
-		clsToIndex[c] = i
-	}
-	r := []int{}
-	for _, c := range classes {
-		if idx, ok := clsToIndex[c]; ok {
-			r = append(r, idx)
-		}
-	}
-	return r
-}
+//func lookupClassIndices(classes []string, allClasses []string) []int {
+//	clsToIndex := map[string]int{}
+//	for i, c := range allClasses {
+//		clsToIndex[c] = i
+//	}
+//	r := []int{}
+//	for _, c := range classes {
+//		if idx, ok := clsToIndex[c]; ok {
+//			r = append(r, idx)
+//		}
+//	}
+//	return r
+//}
 
-func makeClassFilter(classes []string, allClasses []string) map[int]bool {
-	intClasses := lookupClassIndices(classes, allClasses)
-	r := map[int]bool{}
-	for _, c := range intClasses {
+func makeClassFilter(classes []string) map[string]bool {
+	r := map[string]bool{}
+	for _, c := range classes {
 		r[c] = true
 	}
 	return r
@@ -587,7 +601,8 @@ func (m *Monitor) prepareImageForNN(yuv *accel.YUVImage) (nn.ResizeTransform, *c
 			// or the bottom of black pixels. This is not ideal. We should really aim to
 			// have NNs that are a closer match to the aspect ratio of our camera images.
 			// We could get rid of this step if we made ResizeNew capable of accepting
-			// a 'view' instead of a contiguous image. But meh I am tired of this.
+			// a 'view' instead of a contiguous image, but that would require changes
+			// to cimg.
 			big := cimg.NewImage(nnWidth, nnHeight, cimg.PixelFormatRGB)
 			big.CopyImage(rgb, 0, 0)
 			rgb = big

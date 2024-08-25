@@ -71,11 +71,12 @@ type analyzerCameraState struct {
 // An object that was detected by the Object Detector, and is now being tracked by a post-process
 // SYNC-TRACKED-OBJECT
 type TrackedObject struct {
-	ID       uint32    `json:"id"`
-	LastSeen time.Time `json:"lastSeen"`
-	Box      nn.Rect   `json:"box"`
-	Class    int       `json:"class"`
-	Genuine  bool      `json:"genuine"`
+	ID         uint32    `json:"id"`
+	LastSeen   time.Time `json:"lastSeen"`
+	Box        nn.Rect   `json:"box"`
+	Class      int       `json:"class"`
+	Genuine    bool      `json:"genuine"`
+	Confidence float32   `json:"confidence"`
 }
 
 // Result of post-process analysis on the Object Detection neural network output
@@ -92,7 +93,7 @@ func (t *trackedObject) mostRecent() timeAndPosition {
 
 func (t *trackedObject) numDiscreetPositions() int {
 	n := 0
-	seen := map[int]bool{}
+	seen := map[int32]bool{}
 	for i := 0; i < t.history.Len(); i++ {
 		pos := t.history.Peek(i).detection.Box
 		hash := pos.X<<24 + pos.Y<<16 + pos.Width<<8 + pos.Height
@@ -106,6 +107,15 @@ func (t *trackedObject) numDiscreetPositions() int {
 
 func (t *trackedObject) distanceFromOrigin() float32 {
 	return t.firstDetection.Box.Center().Distance(t.mostRecent().detection.Box.Center())
+}
+
+func (t *trackedObject) averageConfidence() float32 {
+	avg := float32(0)
+	count := t.history.Len()
+	for i := 0; i < count; i++ {
+		avg += t.history.Peek(i).detection.Confidence
+	}
+	return avg / float32(count)
 }
 
 func nextPowerOf2(n int) int {
@@ -148,15 +158,16 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	itemPTS := item.detection.FramePTS
 	positionHistorySize := nextPowerOf2(settings.positionHistorySize)
 
+	// Merge objects together such as 'car' and 'truck' if they have tight overlap
+	keepDetections := nn.MergeSimilarObjects(item.detection.Objects, m.nnClassBoxMerge, m.nnClassList, 0.9)
+
 	// Discard detections of classes that we're not interested in
 	shortList := make([]int, 0, 100)
 	if includeAllClasses {
-		for i := range item.detection.Objects {
-			shortList = append(shortList, i)
-		}
+		shortList = keepDetections
 	} else {
-		for i, det := range item.detection.Objects {
-			if m.nnClassFilterMap[det.Class] {
+		for _, i := range keepDetections {
+			if m.nnClassFilterSet[m.nnClassList[item.detection.Objects[i].Class]] {
 				shortList = append(shortList, i)
 			}
 		}
@@ -248,11 +259,12 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	for _, tracked := range cam.tracked {
 		mostRecent := tracked.mostRecent()
 		obj := TrackedObject{
-			ID:       tracked.id,
-			Class:    tracked.firstDetection.Class,
-			Box:      mostRecent.detection.Box,
-			Genuine:  tracked.genuine,
-			LastSeen: mostRecent.time,
+			ID:         tracked.id,
+			Class:      tracked.firstDetection.Class,
+			Box:        mostRecent.detection.Box,
+			Genuine:    tracked.genuine,
+			Confidence: tracked.averageConfidence(),
+			LastSeen:   mostRecent.time,
 		}
 		result.Objects = append(result.Objects, obj)
 	}

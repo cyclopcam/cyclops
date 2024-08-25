@@ -1,31 +1,31 @@
 <script setup lang="ts">
 import type { CameraInfo } from '@/camera/camera';
 import { globals } from '@/globals';
-import CameraItem from '@/components/home/CameraItem.vue';
+import Player from '@/components/camera/Player.vue';
 import { onMounted, onUnmounted, ref } from 'vue';
-import { on } from 'events';
 
 let isPlaying = ref({} as { [index: number]: boolean }); // ID -> boolean
 let linkedPlay = false;
-let cameraWidth = ref(320);
+let cameraWidth = ref(320); // Recomputed dynamically
 
 function cameras(): CameraInfo[] {
 	return globals.cameras;
 }
 
-function onPlay(cam: CameraInfo) {
-	console.log(`Monitor onPlay camera ${cam.id}`);
+function onPlayPause(cam: CameraInfo) {
+	let newVal = !isPlaying.value[cam.id];
+	console.log(`Monitor.vue onPlayPause camera ${cam.id}. newVal = ${newVal}`);
 	if (linkedPlay) {
 		for (let c of cameras()) {
-			isPlaying.value[c.id] = true;
+			isPlaying.value[c.id] = newVal
 		}
 	} else {
-		isPlaying.value[cam.id] = true;
+		isPlaying.value[cam.id] = newVal;
 	}
 }
 
-function onStop(cam: CameraInfo) {
-	console.log("onStop");
+function onSeek(cam: CameraInfo) {
+	console.log(`Monitor.vue onSeek camera ${cam.id}`);
 	if (linkedPlay) {
 		for (let c of cameras()) {
 			isPlaying.value[c.id] = false;
@@ -76,8 +76,9 @@ onUnmounted(() => {
 		</toolbar>
 		-->
 		<div class="cameras">
-			<camera-item v-for="cam of cameras()" :camera="cam" :play="isPlaying[cam.id] ?? false" @play="onPlay(cam)"
-				@stop="onStop(cam)" :width="cameraWidth + 'px'" :height="cameraHeight()" />
+			<player v-for="cam of cameras()" :camera="cam" :play="isPlaying[cam.id] ?? false"
+				@playpause="onPlayPause(cam)" @seek="onSeek(cam)" :width="cameraWidth + 'px'"
+				:height="cameraHeight()" />
 		</div>
 	</div>
 </template>

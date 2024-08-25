@@ -154,7 +154,7 @@ function onPointerMoveSeek(e: PointerEvent) {
 	// Without this protection, you very often end up seeking the bar when all you
 	// wanted to do was scroll the entire monitor screen vertically, to get
 	// to another camera.
-	let minDeltaCssPx = 2;
+	let minDeltaCssPx = 5;
 	// We disable this behaviour for a mouse, because a mouse movement can't invoke a vertical scroll.
 	if (e.pointerType === "mouse") {
 		minDeltaCssPx = 0;
@@ -169,6 +169,9 @@ function onPointerMoveSeek(e: PointerEvent) {
 	let x = pxToCanvas(e.offsetX);
 	let tx = props.context.transform(canvas.value! as HTMLCanvasElement);
 	let timeMS = tx.pixelToTime(x);
+	// The following two are just to move the scroll position indicator around.
+	// Player.vue watches for changes to seekTimeMS, and then does the actual
+	// image/video loading. It also does the debouncing.
 	props.context.seekToMillisecond(timeMS);
 	props.context.render(canvas.value! as HTMLCanvasElement);
 }

@@ -228,6 +228,7 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 		packet.H264NALUs = append(packet.H264NALUs, n)
 	}
 	outPackets = append(outPackets, packet)
+	//fmt.Printf("%v packets. Packet 0: %v\n", len(outPackets), outPackets[0].WallPTS)
 	img, imgTime, err := videox.DecodeClosestImageInPacketList(outPackets, startTime)
 	if err != nil {
 		www.PanicServerErrorf("Failed to decode video: %v", err)

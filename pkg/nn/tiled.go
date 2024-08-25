@@ -82,8 +82,8 @@ func TiledInference(model ObjectDetector, img ImageCrop, _params *DetectionParam
 	finalClip := Rect{
 		X:      0,
 		Y:      0,
-		Width:  img.CropWidth,
-		Height: img.CropHeight,
+		Width:  int32(img.CropWidth),
+		Height: int32(img.CropHeight),
 	}
 
 	if tiling.IsSingle() {
@@ -101,7 +101,7 @@ func TiledInference(model ObjectDetector, img ImageCrop, _params *DetectionParam
 			r := mergedBoxes[igroup]
 
 			// Use the merged box, which can be larger than the first object in the group
-			newObj.Box = Rect{X: int(r.Rect.X1), Y: int(r.Rect.Y1), Width: r.Rect.Width(), Height: int(r.Rect.Height())}
+			newObj.Box = Rect{X: int32(r.Rect.X1), Y: int32(r.Rect.Y1), Width: int32(r.Rect.Width()), Height: int32(r.Rect.Height())}
 
 			// Clip at the very end, since we disable clipping inside the NN model
 			newObj.Box = newObj.Box.Intersection(finalClip)

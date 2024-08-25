@@ -104,7 +104,7 @@ func RunInferenceOnVideoFile(model ObjectDetector, inputFile string, options Inf
 		for _, obj := range objects {
 			outClass, ok := nnClassToOutputClass[obj.Class]
 			if ok &&
-				(obj.Box.Width >= options.MinSize || obj.Box.Height >= options.MinSize) {
+				(int(obj.Box.Width) >= options.MinSize || int(obj.Box.Height) >= options.MinSize) {
 				obj.Class = outClass
 				frameLabels.Objects = append(frameLabels.Objects, obj)
 			}

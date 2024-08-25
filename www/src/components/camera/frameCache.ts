@@ -79,7 +79,7 @@ export class FrameCache {
 		let deltaFrames = (microDelta / 1000000) / frameInterval;
 		deltaFrames = Math.round(deltaFrames);
 		let newFrameTimeMicro = randomFrameTimeMicro + (deltaFrames * frameInterval * 1000000);
-		console.log("estimated FPS", fps);
+		//console.log("estimated FPS", fps);
 		return Math.round(newFrameTimeMicro / 1000);
 	}
 }
