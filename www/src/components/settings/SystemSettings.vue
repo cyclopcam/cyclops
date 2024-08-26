@@ -4,7 +4,7 @@ import WideText from '@/components/widewidgets/WideText.vue';
 import WideSaveCancel from '@/components/widewidgets/WideSaveCancel.vue';
 import WideDropdown from '@/components/widewidgets/WideDropdown.vue';
 import { ref, watch, onMounted } from 'vue';
-import { formatByteSize, kibiSplit } from '@/util/kibi';
+import { byteSizeUnit, formatByteSize, kibiSplit, type ByteSizeUnit } from '@/util/kibi';
 import { fetchOrErr } from '@/util/util';
 import { globals } from '@/globals';
 
@@ -32,6 +32,7 @@ let config = ref(null as ConfigJSON | null);
 let archiveDir = ref(''); // the root of the archive
 let maxStorage = ref(''); // max storage space
 let spaceAtArchive = ref(0); // measured by server
+let spaceAtArchiveUsed = ref(0); // measured by server
 let spaceAtArchiveBusy = ref(false);
 let spaceAtArchiveError = ref('');
 let storageUnit = ref('GB');
@@ -67,16 +68,30 @@ async function measureSpaceAvailable() {
 		// of the space inside 'path' is available for us.
 		let rj = await r.r.json();
 		spaceAtArchive.value = rj.available + rj.used;
+		spaceAtArchiveUsed.value = rj.used;
 		spaceAtArchiveError.value = '';
 	} else {
 		spaceAtArchiveError.value = r.error;
 	}
 }
 
-function spaceAvailable(): string {
+function byteSizeUnitForSpace(): ByteSizeUnit {
+	if (spaceAtArchiveBusy.value) {
+		return 'bytes';
+	}
+	return byteSizeUnit(spaceAtArchive.value);
+}
+
+function spaceUsed(): string {
 	if (spaceAtArchiveBusy.value)
 		return "busy...";
-	return formatByteSize(spaceAtArchive.value);
+	return formatByteSize(spaceAtArchiveUsed.value, byteSizeUnitForSpace(), false);
+}
+
+function spaceAvailable(): string {
+	if (spaceAtArchiveBusy.value)
+		return "";
+	return formatByteSize(spaceAtArchive.value, byteSizeUnitForSpace());
 }
 
 function onStorageUnitChange(unit: string) {
@@ -169,7 +184,7 @@ onMounted(async () => {
 				{{ spaceAtArchiveError }}
 			</div>
 			<div v-else class="spaceAvailable">
-				Space available: {{ spaceAvailable() }}
+				<span class="spaceAvailableMute">Space used</span> {{ spaceUsed() }} / {{ spaceAvailable() }}
 			</div>
 		</wide-section>
 		<wide-text label="Max storage space" v-model="maxStorage" :explain="maxStorageExplain" :unit="storageUnit"
@@ -185,8 +200,14 @@ onMounted(async () => {
 	display: flex;
 	justify-content: flex-end;
 	margin: 4px 0;
-	color: #555;
+	color: #444;
 }
+
+.spaceAvailableMute {
+	color: #777;
+	margin-right: 12px;
+}
+
 
 .error {
 	color: red;
