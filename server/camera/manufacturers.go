@@ -19,33 +19,27 @@ const (
 // AllCameraModels is an array of all camera model names, excluding "Unknown"
 var AllCameraModels []CameraModels
 
-func URLForCamera(model, baseURL, lowResSuffix, highResSuffix string, highRes bool) (string, error) {
-	suffix := ""
-	if highRes {
-		suffix = highResSuffix
-		if suffix == "" {
-			switch CameraModels(model) {
-			case CameraModelHikVision:
-				suffix = "Streaming/Channels/101"
-			}
-		}
-	} else {
-		suffix = lowResSuffix
-		if suffix == "" {
-			switch CameraModels(model) {
-			case CameraModelHikVision:
-				suffix = "Streaming/Channels/102"
-			}
-		}
+type CameraModelOutputParameters struct {
+	LowResURL               string
+	HighResURL              string
+	PacketsAreAnnexBEncoded bool
+}
+
+// Should switch to onvif!
+func GetCameraModelParameters(model, baseURL, lowResSuffix, highResSuffix string) (*CameraModelOutputParameters, error) {
+	if !strings.HasSuffix(baseURL, "/") {
+		baseURL += "/"
 	}
-	if suffix == "" {
-		return "", fmt.Errorf("Don't know how to find low and high resolution streams for Camera Model '%v' (connection details: %v)", model, baseURL)
+	out := &CameraModelOutputParameters{}
+	switch CameraModels(model) {
+	case CameraModelHikVision:
+		out.HighResURL = baseURL + "Streaming/Channels/101"
+		out.LowResURL = baseURL + "Streaming/Channels/102"
+		out.PacketsAreAnnexBEncoded = true
+	default:
+		return nil, fmt.Errorf("Don't know how to find low and high resolution streams for Camera Model '%v' (connection details: %v)", model, baseURL)
 	}
-	if strings.HasSuffix(baseURL, "/") {
-		return baseURL + suffix, nil
-	} else {
-		return baseURL + "/" + suffix, nil
-	}
+	return out, nil
 }
 
 // Attempt to identify the camera from the HTTP response it sends when asked for it's root page (eg http://192.168.10.5)

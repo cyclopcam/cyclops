@@ -68,7 +68,7 @@ size_t EncodeAnnexB(const void* src, size_t srcLen, void* dst, size_t dstLen) {
 }
 
 // For testing, does not do any encoding, but simply a memcpy
-size_t EncodeAnnexB_Null(const void* src, size_t srcLen, void* dst, size_t dstLen) {
+size_t EncodeAnnexB_Memcpy(const void* src, size_t srcLen, void* dst, size_t dstLen) {
 	if (dstLen < srcLen || srcLen == 0)
 		return 0;
 	memcpy(dst, src, srcLen);
@@ -130,6 +130,30 @@ size_t DecodeAnnexB(const void* src, size_t srcLen, void* dst, size_t dstLen) {
 			// skip emulation_prevention_three_byte
 		} else {
 			out[j++] = in[i];
+		}
+	}
+
+	return j;
+}
+
+// Return the number of bytes that would be written during decode.
+// This is obviously expensive - we must parse the entire byte sequence.
+// This function was written to analyze packets coming in from cameras,
+// to see if they were Annex-B encoded or not.
+size_t DecodeAnnexB_Size(const void* src, size_t srcLen) {
+	const uint8_t* in = (const uint8_t*) src;
+	size_t         i  = 0;
+	size_t         j  = 0;
+
+	for (; i < srcLen && i < 2; i++) {
+		j++;
+	}
+
+	for (; i < srcLen; i++) {
+		if (in[i] == 3 && in[i - 2] == 0 && in[i - 1] == 0) {
+			// skip emulation_prevention_three_byte
+		} else {
+			j++;
 		}
 	}
 

@@ -4,7 +4,6 @@ import { onMounted, onUnmounted, watch, ref, reactive } from "vue";
 import { VideoStreamer } from "./videoDecode";
 import SeekBar from "./SeekBar.vue";
 import { SeekBarContext } from "./seekBarContext";
-import { debounce } from "@/util/util";
 
 // See videoDecode.ts for an explanation of how this works
 
@@ -24,7 +23,6 @@ let overlayCanvas = ref(null);
 let streamer = new VideoStreamer(props.camera);
 let seekBar = reactive(new SeekBarContext(props.camera.id));
 let seekBarRenderKick = ref(0);
-//let afterSeekHDTimer = 0;
 let seekDebounceTimer = 0;
 
 // This is only useful if the camera is not showing anything (i.e. we can't connect to it),
@@ -102,7 +100,6 @@ watch(() => props.camera, (newVal, oldVal) => {
 watch(() => props.play, (newVal, oldVal) => {
 	console.log(`Player.vue watch(props.play) newVal = ${newVal}`);
 	if (newVal) {
-		//clearTimeout(afterSeekHDTimer);
 		seekBar.reset();
 		seekBarRenderKick.value++;
 		streamer.play(videoElementID());
@@ -112,27 +109,15 @@ watch(() => props.play, (newVal, oldVal) => {
 })
 
 function onSeekEnd() {
-	//if (streamer.seekResolution === 'HD') {
-	//	// The most recently seeked-to image was an HD image, so don't do anything else
-	//	return;
-	//}
 	clearTimeout(seekDebounceTimer);
 	streamer.seekTo(streamer.seekOverlayToMS, 'HD');
 }
 
-//function afterSeekLoadHD() {
-//}
-
 function seekToNoDelay(seekTo: number) {
 	streamer.seekTo(seekTo, 'LD');
 	emits('seek', seekTo);
-	//clearTimeout(afterSeekHDTimer);
-	//afterSeekHDTimer = window.setTimeout(afterSeekLoadHD, 200);
 }
 
-//let seekDebounce = debounce((seekTo: number) => {
-//	seekToNoDelay(seekTo);
-//}, 30);
 function seekDebounce(seekTo: number) {
 	clearTimeout(seekDebounceTimer);
 	seekDebounceTimer = window.setTimeout(() => {
@@ -156,7 +141,6 @@ watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
 })
 
 onUnmounted(() => {
-	//clearTimeout(afterSeekHDTimer);
 	clearTimeout(seekDebounceTimer);
 	streamer.close();
 })
@@ -184,7 +168,7 @@ onMounted(() => {
 			<canvas ref="overlayCanvas" class="overlay" :style="imgStyle()" />
 			<canvas v-if="showLivenessCanvas" ref="livenessCanvas" class="livenessCanvas" />
 			<div v-if="showCameraName" class="name">{{ camera.name }}</div>
-			<div class="iconContainer flexCenter" @click="onClick">
+			<div class="iconContainer flexCenter noselect" @click="onClick">
 				<div v-if="!play" :class="{ playIcon: iconIsPlay(), recordIcon: iconIsRecord() }">
 				</div>
 			</div>

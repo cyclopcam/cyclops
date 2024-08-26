@@ -37,14 +37,8 @@ const (
 
 	IndexNALUFlagKeyFrame      IndexNALUFlags = 1 // Key frame
 	IndexNALUFlagEssentialMeta IndexNALUFlags = 2 // Essential metadata, required to initialize the decoder (eg SPS/PPS NALUs in h264)
+	IndexNALUFlagAnnexB        IndexNALUFlags = 4 // Packet has Annex-B "emulation prevention bytes" and start codes
 )
-
-// Packet is a group of NALUs which were encoded together
-//type Packet struct {
-//	PTS           time.Duration
-//	NALUs         [][]byte
-//	KeyframeIndex int // 1-based Index of keyframe inside NALUs (0 if no keyframe)
-//}
 
 type NALU struct {
 	PTS      time.Time

@@ -49,6 +49,13 @@ h3 {
 	@include background();
 }
 
+.noselect {
+	user-select: none;
+
+	// The following line is necessary to get rid of a blue/cyan tint on mobile touches
+	-webkit-tap-highlight-color: transparent;
+}
+
 ////////////////////////////////////////////////////////////////////////////
 /// These are used to debug CSS boxes
 ////////////////////////////////////////////////////////////////////////////

@@ -83,6 +83,20 @@ On my desktop linux machine, if I take zero measures to reduce fragmentation,
 and record on 3 files simultaneously, I get 8MB blocks in the HD camera packet
 files, and 4096 byte blocks in the index files.
 
+## Dumb Pile of Frames
+
+Initially, I didn't think about whether to encode packets in RBSP or Annex-B.
+Later on, I realized that by storing packets encoded in Annex-B format with
+start codes, our packet files become a playable video archive, without any
+additional work. This is helpful for forensic type applications, where you want
+to throw a possibly corrupted file at something like VLC and just see every
+frame that you get out.
+
+I'm not yet sure whether I'll encode to Annex-B if the incoming camera stream is
+RBSP, because the encoding time is not zero. For example, if we were to encode
+10 MB/s on an Rpi5, that would take 0.7% of total CPU time. This is probably
+negligible enough that we should always just do it.
+
 ## Initial Design Thought Process / Notes / Scribbles
 
 I'm going to prioritize efficiency over robustness in the face of a power

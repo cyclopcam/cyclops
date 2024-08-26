@@ -201,9 +201,9 @@ void Encoder_Close(void* _encoder) {
 }
 
 // Iff naluPrefixLen == 0, then we prepend 00 00 01 to the nalu.
-// AHEM... we're not adding the emulation prevention bytes here!
+// NOTE! We do not add the emulation prevention bytes here!
 // We just add a 00 00 01 prefix. If you want to add the emulation prevention bytes,
-// then do it yourself, before calling this function. This is dodgy!
+// then do it yourself, before calling this function.
 void Encoder_WriteNALU(char** err, void* _encoder, int64_t dts, int64_t pts, int naluPrefixLen, const void* _nalu, size_t naluLen) {
 	auto encoder    = (Encoder*) _encoder;
 	auto nalu       = (const uint8_t*) _nalu;

@@ -7,13 +7,9 @@ import (
 )
 
 func TestEncodeAnnexB(t *testing.T) {
-	// EncodeAnnexB adds a 3 byte nalu prefix, and other chunks of code in here assume the same thing.
-	// Basically, NALUPrefix must be the same prefix that is added by EncodeAnnexB().
-	require.Equal(t, 3, len(NALUPrefix))
-
 	verify := func(raw, expect []byte) {
-		e1 := EncodeAnnexB(raw, AnnexBEncodeFlagAddEmulationPreventionBytes)
-		e2 := EncodeAnnexB(raw, AnnexBEncodeFlagAddStartCode|AnnexBEncodeFlagAddEmulationPreventionBytes)
+		e1 := EncodeAnnexB(raw, 0, AnnexBEncodeFlagAddEmulationPreventionBytes)
+		e2 := EncodeAnnexB(raw, 3, AnnexBEncodeFlagAddEmulationPreventionBytes)
 		// NALU prefix
 		require.Equal(t, len(e1)+3, len(e2))
 		require.Equal(t, []byte{0, 0, 1}, e2[:3])

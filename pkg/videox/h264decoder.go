@@ -272,6 +272,13 @@ func (d *H264Decoder) Decode(packet *VideoPacket) (*accel.YUVImage, error) {
 // They point directly into the libavcodec decode buffer.
 // That's why the function name has the "DeepRef" suffix.
 func (d *H264Decoder) DecodeDeepRef(packet *VideoPacket) (*accel.YUVImage, error) {
+	// This was an experiment to see if the h264 codec would accept RBSP packets
+	// (i.e. without any start code or emulation prevention bytes).
+	// The answer is a resounding NO.
+	//for _, p := range packet.H264NALUs {
+	//	d.sendPacket(p.Payload)
+	//}
+
 	if err := d.sendPacket(packet.EncodeToAnnexBPacket()); err != nil {
 		// sendPacket failure is not fatal
 		// We should log it or something.
@@ -431,7 +438,7 @@ func DecodeClosestImageInPacketList(packets []*VideoPacket, targetTime time.Time
 	bestDelta := time.Duration(1<<63 - 1)
 	var firstError error
 	for _, p := range packets {
-		img, err := decoder.Decode(p)
+		img, err := decoder.DecodeDeepRef(p)
 		if err != nil && firstError == nil {
 			firstError = err
 		}
@@ -443,7 +450,11 @@ func DecodeClosestImageInPacketList(packets []*VideoPacket, targetTime time.Time
 			if timeDelta < bestDelta {
 				bestTime = p.WallPTS
 				bestDelta = timeDelta
-				bestImg = img
+				bestImg = img.Clone()
+			}
+			if p.WallPTS.After(targetTime) {
+				// No point decoding packets once we've passed our desired time
+				break
 			}
 		}
 	}

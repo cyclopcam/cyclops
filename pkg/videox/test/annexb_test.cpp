@@ -46,6 +46,8 @@ void VerifyEncodeAnnexB(const char* src, size_t srcLen, const char* expectDst, s
 		assert(r2 == srcLen);
 		int r2Ref = DecodeAnnexB_Ref(dst, r, src2Ref, r);
 		assert(r2Ref == srcLen);
+		int r3 = DecodeAnnexB_Size(dst, r);
+		assert(r3 == srcLen);
 
 		assert(0 == memcmp(src, src2, srcLen));
 		assert(0 == memcmp(src2, src2Ref, srcLen));
@@ -73,11 +75,17 @@ int VerifyRoundTrip(const char* src, size_t srcLen) {
 
 	// Verify decode
 	char src2[dstBufSize];
-	//memset(src2, 255, r);
-	int r2 = DecodeAnnexB(dst, r, src2, r);
+	int  r2 = DecodeAnnexB(dst, r, src2, r);
 	assert(r2 == srcLen);
-
 	assert(0 == memcmp(src, src2, srcLen));
+
+	char src3[dstBufSize];
+	int  r3 = DecodeAnnexB_Ref(dst, r, src3, r);
+	assert(r3 == r2);
+	assert(0 == memcmp(src, src3, srcLen));
+
+	int r4 = DecodeAnnexB_Size(dst, r);
+	assert(r4 == srcLen);
 
 	return r;
 }
@@ -101,6 +109,9 @@ void VerifyDecodeAnnexB(const char* src, size_t srcLen, const char* expectDst, i
 	int r2 = DecodeAnnexB_Ref(src, srcLen, dstRef, srcLen);
 	assert(r == r2);
 	assert(memcmp(dst, dstRef, r) == 0);
+
+	int r3 = DecodeAnnexB_Size(src, srcLen);
+	assert(r == r3);
 
 	free(dst);
 	free(dstRef);

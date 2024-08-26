@@ -325,7 +325,7 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 				//	buf.Write([]byte{0, 0, 1})
 				//}
 				//buf.Write(n.Payload)
-				buf.Write(n.SODBPayload())
+				buf.Write(n.AsAnnexB().Payload)
 			}
 			final := buf.Bytes()
 			//s.log.Infof("Sending packet: %v", final[:5])

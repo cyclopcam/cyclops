@@ -121,15 +121,27 @@ type Stream struct {
 	recentFramesLock sync.Mutex
 	recentFrames     ringbuffer.RingP[frameStat] // Some stats of recent frames (eg PTS, size)
 	loggedStatsAt    time.Time
+
+	// If true, the camera sends packets that are already Annex-B encoded.
+	// This is independent of whether the packets have start codes or not. I only have
+	// experience so far with Hikvision cameras, and they send packets that are already
+	// Annex-B encoded, but without start codes.
+	// If you don't know this information up front, then the only way to determine it is
+	// by analyzing many packets, and building up heuristics. Annex-B "emulation prevention bytes"
+	// don't occur on all packets, so there's no way to know this deterministically by
+	// analyzing a single packet. In future, we might have to add some kind of automatic
+	// detection mechanism.
+	cameraSendsAnnexBEncoded bool
 }
 
-func NewStream(logger log.Log, cameraName, streamName string) *Stream {
+func NewStream(logger log.Log, cameraName, streamName string, cameraSendsAnnexBEncoded bool) *Stream {
 	return &Stream{
-		Log:          log.NewPrefixLogger(logger, "Stream "+cameraName+"."+streamName),
-		recentFrames: ringbuffer.NewRingP[frameStat](128),
-		CameraName:   cameraName,
-		StreamName:   streamName,
-		Ident:        cameraName + "." + streamName,
+		Log:                      log.NewPrefixLogger(logger, "Stream "+cameraName+"."+streamName),
+		recentFrames:             ringbuffer.NewRingP[frameStat](128),
+		CameraName:               cameraName,
+		StreamName:               streamName,
+		Ident:                    cameraName + "." + streamName,
+		cameraSendsAnnexBEncoded: cameraSendsAnnexBEncoded,
 	}
 }
 
@@ -174,17 +186,6 @@ func (s *Stream) Listen(address string) error {
 	if media == nil {
 		return fmt.Errorf("H264 track not found")
 	}
-	//h264TrackID, h264track := func() (int, *gortsplib.TrackH264) {
-	//	for i, track := range tracks {
-	//		if h264track, ok := track.(*gortsplib.TrackH264); ok {
-	//			return i, h264track
-	//		}
-	//	}
-	//	return -1, nil
-	//}()
-	//if h264TrackID < 0 {
-	//	return fmt.Errorf("H264 track not found")
-	//}
 
 	rtpDecoder, err := forma.CreateDecoder()
 	if err != nil {
@@ -193,15 +194,19 @@ func (s *Stream) Listen(address string) error {
 
 	client.Setup(session.BaseURL, media, 0, 0)
 
-	// From old gortplib version
-	//s.H264TrackID = h264TrackID
-	//s.H264Track = h264track
-
 	s.Log.Infof("Connected to %v, track %v", camHost, media.ID)
 
 	rawRecvID := atomic.Int64{}
 	validRecvID := atomic.Int64{}
 	nWarningsAboutNoPTS := 0
+
+	// Two camera debugging flags, not used normally.
+	// Used to figure out if a camera is sending packets that already have "emulation prevention bytes" added,
+	// even though they don't have start codes.
+	enableFindHiddenAnnexBPackets := false
+
+	// If you enable this, then you'd also want to set "isPayloadAnnexBEncoded = false"
+	enableForceAnnexBDecode := false
 
 	client.OnPacketRTP(media, forma, func(pkt *rtp.Packet) {
 		now := time.Now()
@@ -235,6 +240,14 @@ func (s *Stream) Listen(address string) error {
 				s.Log.Errorf("Failed to decode H264 packet: %v", err)
 			}
 			return
+		}
+
+		// These are debugging/camera flags, not usually enabled
+		if enableFindHiddenAnnexBPackets {
+			s.findHiddenAnnexBPackets(nalus)
+		}
+		if enableForceAnnexBDecode {
+			s.forceAnnexBDecode(nalus)
 		}
 
 		myValidPacketID := validRecvID.Add(1)
@@ -283,13 +296,11 @@ func (s *Stream) Listen(address string) error {
 		// from this function.
 		// We have to ask the question: Is it possible to avoid this memory copy?
 		// And the answer is: only if gortsplib gave us control over that.
-		// The good news is that usually we're not recording the high resolution
-		// streams, so this penalty is not too severe.
 		// A typical iframe packet from a 320x240 camera is around 100 bytes!
 		// A keyframe is between 10 and 20 KB.
 		// NOTE: I gortsplib may have changed that memory re-use behaviour since
 		// I wrote this. Should investigate again...
-		cloned := videox.ClonePacket(nalus, pts, now, refTime)
+		cloned := videox.ClonePacket(nalus, pts, now, refTime, s.cameraSendsAnnexBEncoded)
 		cloned.RawRecvID = myRawPacketID
 		cloned.ValidRecvID = myValidPacketID
 
@@ -518,5 +529,25 @@ func (s *Stream) addFrameToStats(nalus [][]byte, pts time.Duration) {
 		s.loggedStatsAt = time.Now()
 		stats := s.statsNoMutexLock()
 		s.Log.Infof("FPS: %.1f, Avg: %.0f, IDR: %.0f, Non-IDR: %.0f", stats.FPS, stats.FrameSize, stats.KeyFrameSize, stats.InterFrameSize)
+	}
+}
+
+func (s *Stream) findHiddenAnnexBPackets(nalus [][]byte) {
+	for _, p := range nalus {
+		//ds := videox.DecodeAnnexBSize(p)
+		//if ds != len(p) {
+		//	s.Log.Warnf("Annex-B packet found. Size: %v, Decoded size: %v. Prefix: %x", len(p), ds, p[:10])
+		//}
+		if i := videox.FirstLikelyAnnexBEncodedIndex(p); i != -1 {
+			a := max(i-3, 0)
+			b := min(i+6, len(p))
+			s.Log.Warnf("Likely Annex-B packet. size: %v, byte %v: ..%x..", len(p), i, p[a:b])
+		}
+	}
+}
+
+func (s *Stream) forceAnnexBDecode(nalus [][]byte) {
+	for i := range nalus {
+		nalus[i] = videox.DecodeAnnexB(nalus[i])
 	}
 }

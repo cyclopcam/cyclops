@@ -144,7 +144,9 @@ func (r *VideoRecorder) writePackets(packets []*videox.VideoPacket) {
 	for _, p := range packets {
 		for _, in := range p.H264NALUs {
 			inType := in.Type()
-			var flags rf1.IndexNALUFlags
+			// We always encode as Annex-B, because this makes it very easy to
+			// get video on the screen using easily available tools.
+			flags := rf1.IndexNALUFlagAnnexB
 			if inType == h264.NALUTypePPS || inType == h264.NALUTypeSPS {
 				flags |= rf1.IndexNALUFlagEssentialMeta
 			}
@@ -154,7 +156,7 @@ func (r *VideoRecorder) writePackets(packets []*videox.VideoPacket) {
 			out := rf1.NALU{
 				PTS:     p.WallPTS,
 				Flags:   flags,
-				Payload: in.Payload,
+				Payload: in.AsAnnexB().Payload,
 			}
 			nalus = append(nalus, out)
 		}

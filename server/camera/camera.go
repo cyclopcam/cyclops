@@ -34,11 +34,7 @@ func NewCamera(log log.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Came
 		baseURL += fmt.Sprintf(":%v", cfg.Port)
 	}
 
-	lowResURL, err := URLForCamera(cfg.Model, baseURL, cfg.LowResURLSuffix, cfg.HighResURLSuffix, false)
-	if err != nil {
-		return nil, err
-	}
-	highResURL, err := URLForCamera(cfg.Model, baseURL, cfg.LowResURLSuffix, cfg.HighResURLSuffix, true)
+	params, err := GetCameraModelParameters(cfg.Model, baseURL, cfg.LowResURLSuffix, cfg.HighResURLSuffix)
 	if err != nil {
 		return nil, err
 	}
@@ -50,8 +46,8 @@ func NewCamera(log log.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Came
 	lowDumper := NewVideoRingBuffer(3 * 1024 * 1024)
 
 	lowDecoder := NewVideoDecodeReader()
-	high := NewStream(log, cfg.Name, "high")
-	low := NewStream(log, cfg.Name, "low")
+	high := NewStream(log, cfg.Name, "high", params.PacketsAreAnnexBEncoded)
+	low := NewStream(log, cfg.Name, "low", params.PacketsAreAnnexBEncoded)
 
 	return &Camera{
 		Log:        log,
@@ -61,8 +57,8 @@ func NewCamera(log log.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Came
 		HighDumper: highDumper,
 		LowDecoder: lowDecoder,
 		LowDumper:  lowDumper,
-		lowResURL:  lowResURL,
-		highResURL: highResURL,
+		lowResURL:  params.LowResURL,
+		highResURL: params.HighResURL,
 	}, nil
 }
 

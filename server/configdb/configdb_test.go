@@ -1,6 +1,7 @@
 package configdb
 
 import (
+	"os"
 	"testing"
 
 	"github.com/cyclopcam/cyclops/pkg/log"
@@ -8,6 +9,7 @@ import (
 )
 
 func createTestDB(t *testing.T) *ConfigDB {
+	os.Remove("test-configdb.sqlite")
 	db, err := NewConfigDB(log.NewTestingLog(t), "test-configdb.sqlite", "")
 	require.NoError(t, err)
 	return db
