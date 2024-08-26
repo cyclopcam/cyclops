@@ -61,7 +61,7 @@ export class SeekBarContext {
 	}
 
 	setZoomLevel(zoomLevel: number) {
-		zoomLevel = clamp(zoomLevel, -5, 15);
+		zoomLevel = clamp(zoomLevel, -6, 15);
 		this.zoomLevel = zoomLevel;
 	}
 
