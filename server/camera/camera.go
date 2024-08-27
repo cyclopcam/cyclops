@@ -2,7 +2,6 @@ package camera
 
 import (
 	"fmt"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/defs"
+	"github.com/cyclopcam/cyclops/server/videodb"
 )
 
 // Camera represents a single physical camera, with two streams (high and low res)
@@ -86,7 +86,7 @@ func (c *Camera) HighResRecordingStreamName() string {
 
 // The name of high/low res recording stream in the video archive
 func (c *Camera) RecordingStreamName(resolution defs.Resolution) string {
-	return filepath.Clean(c.Config.LongLivedName + "-" + string(resolution))
+	return videodb.VideoStreamNameForCamera(c.Config.LongLivedName, string(resolution))
 }
 
 func (c *Camera) Start() error {

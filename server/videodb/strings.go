@@ -4,9 +4,15 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"gorm.io/gorm"
 )
+
+// Generate the name of the video stream for the given camera and resolution.
+func VideoStreamNameForCamera(cameraLongLivedName, resolution string) string {
+	return filepath.Clean(cameraLongLivedName + "-" + resolution)
+}
 
 // Get a database-wide unique ID for the given string.
 // At some point we should implement a cleanup method that gets rid of strings that are no longer used.

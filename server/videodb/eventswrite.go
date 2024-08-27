@@ -3,9 +3,12 @@ package videodb
 import (
 	"time"
 
+	"github.com/chewxy/math32"
 	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/nn"
+	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
+	"github.com/cyclopcam/cyclops/server/defs"
 )
 
 type TrackedObject struct {
@@ -41,8 +44,9 @@ func (t *TrackedObject) TimeBounds() (time.Time, time.Time) {
 }
 
 type TrackedBox struct {
-	Time time.Time
-	Box  nn.Rect
+	Time       time.Time
+	Box        nn.Rect
+	Confidence float32
 }
 
 // This is the way our users inform us of a new object detection.
@@ -51,9 +55,9 @@ type TrackedBox struct {
 // object is no longer in frame.
 // Also, id must be unique across cameras.
 // This is currently the way our 'monitor' package works, but I'm just codifying it here.
-func (v *VideoDB) ObjectDetected(camera string, id uint32, box nn.Rect, class string, lastSeen time.Time) {
+func (v *VideoDB) ObjectDetected(camera string, id uint32, box nn.Rect, confidence float32, class string, lastSeen time.Time) {
 	// See comments above addBoxToTrackedObject for why we split this into two phases.
-	trackedObjectCopy, err := v.addBoxToTrackedObject(camera, id, box, class, lastSeen)
+	trackedObjectCopy, err := v.addBoxToTrackedObject(camera, id, box, confidence, class, lastSeen)
 	if err == nil {
 		v.updateTilesWithNewDetection(&trackedObjectCopy)
 	}
@@ -61,10 +65,10 @@ func (v *VideoDB) ObjectDetected(camera string, id uint32, box nn.Rect, class st
 
 // Phase 1, where we hold currentLock and update our internal state.
 // We return a shallow copy of the TrackedObject. This shallow copy does not have the Box history,
-// because that is a potentially expensive copy, an we don't need that for our tile update.
+// because that is a potentially expensive copy, and we don't need that for our tile update.
 // Our goal with splitting this into two phases is to get out of 'currentLock' before passing
 // control onto the tile updater.
-func (v *VideoDB) addBoxToTrackedObject(camera string, id uint32, box nn.Rect, class string, lastSeen time.Time) (TrackedObject, error) {
+func (v *VideoDB) addBoxToTrackedObject(camera string, id uint32, box nn.Rect, confidence float32, class string, lastSeen time.Time) (TrackedObject, error) {
 	v.currentLock.Lock()
 	defer v.currentLock.Unlock()
 
@@ -87,13 +91,18 @@ func (v *VideoDB) addBoxToTrackedObject(camera string, id uint32, box nn.Rect, c
 		v.current[id] = obj
 	}
 
-	// Ignore boxes if they move less than this many pixels
-	minMovement := 1
+	// Ignore boxes if they move less than this many pixels,
+	// and if their confidence changes by less than this amount.
+	const minMovement = 5
+	const minConfidenceDelta = 0.1
 
-	if len(obj.Boxes) == 0 || obj.Boxes[len(obj.Boxes)-1].Box.MaxDelta(box) > minMovement {
+	if len(obj.Boxes) == 0 ||
+		obj.Boxes[len(obj.Boxes)-1].Box.MaxDelta(box) > minMovement ||
+		gen.Abs(obj.Boxes[len(obj.Boxes)-1].Confidence-confidence) > minConfidenceDelta {
 		obj.Boxes = append(obj.Boxes, TrackedBox{
-			Time: lastSeen,
-			Box:  box,
+			Time:       lastSeen,
+			Box:        box,
+			Confidence: confidence,
 		})
 	}
 
@@ -116,12 +125,10 @@ func (v *VideoDB) eventWriteThread() {
 		case <-v.shutdown:
 			keepRunning = false
 		case <-time.After(wakeInterval):
+			if err := v.deleteOldEventsFromDB(); err != nil {
+				v.log.Warnf("deleteOldEventsFromDB failed: %v", err)
+			}
 			v.writeAgingEventsToDB(false)
-			// TODO: Figure out how old our FSV archive is, and keep the events in here in check with that.
-			// It's a bit tricky, because the FSV archive limit is specified in bytes, not in seconds.
-			// So we basically need to ask FSV how old the oldest file is, and then delete events
-			// that are older than that.
-			// It's pointless keeping events around when we've already deleted the camera footage.
 		}
 	}
 	v.log.Infof("Flushing events")
@@ -247,8 +254,9 @@ func (v *VideoDB) flushCameraToDB(camera uint32) {
 				x2 := int16(gen.Clamp(b.Box.X2(), -32768, 32767))
 				y2 := int16(gen.Clamp(b.Box.Y2(), -32768, 32767))
 				obj.Positions = append(obj.Positions, ObjectPositionJSON{
-					Box:  [4]int16{x1, y1, x2, y2},
-					Time: int32(b.Time.Sub(basetime).Milliseconds()),
+					Box:        [4]int16{x1, y1, x2, y2},
+					Time:       int32(b.Time.Sub(basetime).Milliseconds()),
+					Confidence: math32.Round(b.Confidence*100) / 100,
 				})
 			}
 			detectionsJSON.Data.Objects = append(detectionsJSON.Data.Objects, obj)
@@ -268,4 +276,77 @@ func (v *VideoDB) flushCameraToDB(camera uint32) {
 
 	// Remove tracked objects belonging to 'camera'
 	v.current = otherCameraObjects
+}
+
+// For each camera, get the oldest recording available, and then delete
+// any events that we have which aren't covered by recording.
+// There's no point keeping information around about events, if we don't
+// have video to accompany it.
+func (v *VideoDB) deleteOldEventsFromDB() error {
+	resolutions := []defs.Resolution{defs.ResLD, defs.ResHD}
+
+	tx := v.db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	defer tx.Rollback()
+
+	// Find the IDs of all cameras in the event or event_tile tables.
+	cameraIDs, err := dbh.ScanArray[uint32](tx.Raw("select distinct(camera) from event " +
+		"union " +
+		"select distinct(camera) from event_tile").Rows())
+	if err != nil {
+		return err
+	}
+
+	// It's a bit of a convoluted process to go from camera IDs to stream names, but bear with us!
+
+	streams := v.Archive.ListStreams()
+	nameToStream := map[string]*fsv.StreamInfo{}
+	for _, s := range streams {
+		nameToStream[s.Name] = s
+	}
+
+	for _, cameraID := range cameraIDs {
+		cameraLongLivedName, err := v.IDToString(cameraID)
+		if err != nil {
+			v.log.Warnf("deleteOldEventsFromDB failed to convert camera ID %v to string: %v", cameraID, err)
+			continue
+		}
+		oldestVideoTime := time.Date(9000, 1, 1, 0, 0, 0, 0, time.UTC)
+		for _, res := range resolutions {
+			streamName := VideoStreamNameForCamera(cameraLongLivedName, string(res))
+			stream := nameToStream[streamName]
+			if stream == nil {
+				continue
+			}
+			if stream.StartTime.Before(oldestVideoTime) {
+				oldestVideoTime = stream.StartTime
+			}
+		}
+
+		if oldestVideoTime.Year() == 9000 {
+			// I don't expect this to happen often, which is why we emit a log message.
+			// The most likely cause of this happening would be if you removed a camera.
+			v.log.Infof("Deleting all events for camera %v because there are no videos available", cameraID)
+			tx.Exec("delete from event where camera = $1", cameraID)
+			tx.Exec("delete from event_tile where camera = $1", cameraID)
+		} else {
+			// This code path will get hit all the time, and we'll usually be
+			// deleting just a few event records and/or tiles.
+			tx.Exec("delete from event where camera = $1 and time < $2", cameraID, oldestVideoTime.UnixMilli())
+			//count := 0
+			//db.Raw("select count(*) from event where camera = $1 and time < $2", cameraID, oldestVideoTime.UnixMilli()).Scan(&count)
+			//v.log.Infof("Delete %v records from event where camera = %v and time < %v", count, cameraID, oldestVideoTime)
+			for level := 0; level <= v.maxTileLevel; level++ {
+				tileIdx := timeToTileIdx(oldestVideoTime, uint32(level))
+				tx.Exec("delete from event_tile where camera = $1 and level = $2 and start < $3", cameraID, level, tileIdx)
+				//count = 0
+				//db.Raw("select count(*) from event_tile where camera = $1 and level = $2 and start < $3", cameraID, level, tileIdx).Scan(&count)
+				//v.log.Infof("Delete %v records from event_tile where camera = %v and level = %v and start < %v (end of tile %v)", count, cameraID, level, tileIdx, endOfTile(tileIdx-1, uint32(level)))
+			}
+		}
+	}
+
+	return tx.Commit().Error
 }

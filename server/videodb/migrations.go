@@ -18,7 +18,7 @@ func Migrations(log log.Log) []migration.Migrator {
 		`
 		CREATE TABLE event(
 			id INTEGER PRIMARY KEY,
-			camera TEXT NOT NULL,
+			camera INT NOT NULL,
 			time INT NOT NULL,
 			duration INT NOT NULL,
 			detections TEXT
