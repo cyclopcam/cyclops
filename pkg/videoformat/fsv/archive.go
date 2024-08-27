@@ -258,19 +258,35 @@ func (a *Archive) MaxVideoFileDuration() time.Duration {
 	return a.maxVideoFileDuration
 }
 
+func makeStreamInfo(s *videoStream) *StreamInfo {
+	return &StreamInfo{
+		Name:      s.name,
+		StartTime: s.startTime,
+		EndTime:   s.endTime,
+	}
+}
+
 // Get a list of all streams in the archive, and some metadata about each stream.
 func (a *Archive) ListStreams() []*StreamInfo {
 	a.streamsLock.Lock()
 	defer a.streamsLock.Unlock()
 	streams := make([]*StreamInfo, 0, len(a.streams))
 	for _, stream := range a.streams {
-		streams = append(streams, &StreamInfo{
-			Name:      stream.name,
-			StartTime: stream.startTime,
-			EndTime:   stream.endTime,
-		})
+		streams = append(streams, makeStreamInfo(stream))
 	}
 	return streams
+}
+
+// Returns metadata about the stream, or nil if the stream is not found
+func (a *Archive) StreamInfo(streamName string) *StreamInfo {
+	a.streamsLock.Lock()
+	defer a.streamsLock.Unlock()
+	for _, stream := range a.streams {
+		if stream.name == streamName {
+			return makeStreamInfo(stream)
+		}
+	}
+	return nil
 }
 
 // Scan all video files in the archive to figure out our start time and end time.

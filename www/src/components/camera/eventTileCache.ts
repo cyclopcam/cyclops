@@ -31,6 +31,7 @@ export class EventTileCache {
 	// 200 tiles = 200 * 1280 = 256000 bytes = 250 KB
 	maxTiles = 200;
 	tiles: { [key: string]: CachedEventTile } = {};
+	cameraVideoStartTime: { [cameraID: number]: Date } = {}; // Oldest frame of video footage for this camera
 	fetching = new Map<string, FetchCallback[]>();
 	fetchCount = 0;
 	maxStaleSeconds = 5; // Maximum amount of time that we'll allow a tile to be stale
@@ -76,9 +77,10 @@ export class EventTileCache {
 		try {
 			// Set the fetch time to BEFORE we emit the request
 			let fetchedAtMS = new Date().getTime();
-			let tiles = await EventTile.fetchTiles(cameraID, level, tileIdx, tileIdx + 1);
-			if (tiles.length !== 0) {
-				let cachedTile = this.insertTile(cameraID, tiles[0]);
+			let fetchResult = await EventTile.fetchTiles(cameraID, level, tileIdx, tileIdx + 1);
+			this.cameraVideoStartTime[cameraID] = fetchResult.videoStartTime;
+			if (fetchResult.tiles.length !== 0) {
+				let cachedTile = this.insertTile(cameraID, fetchResult.tiles[0]);
 				cachedTile.fetchedAtMS = fetchedAtMS;
 				this.fetchCount++;
 				for (let callback of (this.fetching.get(key) || [])) {

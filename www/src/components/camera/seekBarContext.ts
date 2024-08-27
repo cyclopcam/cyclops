@@ -2,7 +2,7 @@
 import { spanIntersection } from "@/util/geom";
 import { EventTile } from "./eventTile";
 import { CachedEventTile, globalTileCache } from "./eventTileCache";
-import { clamp, dateTime } from "@/util/util";
+import { clamp, dateTime, monthNamesShort, zeroPad } from "@/util/util";
 
 import { BitsPerTile, BaseSecondsPerTile, MaxTileLevel } from "./eventTile";
 
@@ -134,7 +134,7 @@ export class SeekBarContext {
 
 		//console.log(`zoomLevel = ${this.zoomLevel}, idealLevel = ${idealLevel}, bestLevel = ${bestLevel}, bestCoverage = ${bestCoverage}`);
 
-		// Make sure we have tile fetches queued for the ideal level
+		// Make sure we have tile fetches queued for the ideal level (not just the level that we're about to render, which could be different).
 		{
 			let { startTileIdx, endTileIdx } = SeekBarContext.tileSpan(startTimeMS, this.panTimeEndMS, idealLevel);
 			for (let tileIdx = startTileIdx; tileIdx < endTileIdx; tileIdx++) {
@@ -142,12 +142,16 @@ export class SeekBarContext {
 			}
 		}
 
+		// Get video start time, so that we don't render event bits which occurred so far in the past
+		// that their video has already been erased.
+		let videoStartTime = globalTileCache.cameraVideoStartTime[this.cameraID];
+
 		// Render tiles using the best level. Here we don't queue up tile fetches.
 		let { startTileIdx, endTileIdx } = SeekBarContext.tileSpan(startTimeMS, this.panTimeEndMS, bestLevel);
 		for (let tileIdx = startTileIdx; tileIdx < endTileIdx; tileIdx++) {
 			let tile = globalTileCache.getTile(this.cameraID, bestLevel, tileIdx);
 			if (tile) {
-				this.renderTile(cx, tile, canvasWidth, pixelsPerSecond);
+				this.renderTile(cx, tile, canvasWidth, pixelsPerSecond, videoStartTime);
 			}
 		}
 
@@ -198,72 +202,130 @@ export class SeekBarContext {
 		return { x1, x2 }
 	}
 
+	// If overshoot, then include endTime
+	computeMonthStartsWithinTimeRange(startTime: Date, endTime: Date, overshoot: boolean): Date[] {
+		let months: Date[] = [];
+		let d = new Date(startTime);
+		d.setDate(1);
+		d.setHours(0, 0, 0, 0);
+		while (d < endTime) {
+			months.push(new Date(d));
+			d.setMonth(d.getMonth() + 1);
+		}
+		if (overshoot && months.length !== 0) {
+			months.push(new Date(d));
+		}
+		return months;
+	}
+
+	formatTime(format: string, d: Date): string {
+		let h = d.getHours();
+		let minutes = zeroPad(d.getMinutes(), 2);
+		let seconds = zeroPad(d.getSeconds(), 2);
+		switch (format) {
+			case "hh:mm:ss":
+				return `${h}:${minutes}:${seconds}`;
+			case "hh:mm":
+				return `${h}:${minutes}`;
+			case "hh":
+				return `${h}`;
+			case "dd":
+				return `${d.getDate()}`;
+			case "month":
+				return `${monthNamesShort[d.getMonth()]}`;
+		}
+		return "?";
+	}
+
 	renderTimeMarkers(cx: CanvasRenderingContext2D, canvasWidth: number, canvasHeight: number, startTimeMS: number, pixelsPerSecond: number) {
 		let startS = startTimeMS / 1000;
 		let endS = this.panTimeEndMS / 1000;
 
-		//let secondsPerPixel = ((this.endTimeMS - startTimeMS) / 1000) / canvasWidth;
-		let totalH = (endS - startS) / (60 * 60);
-		//console.log(totalHours);
-
-		// Interval between markers, in seconds
 		let colors = ["rgba(255, 255, 255, 0.3)", "rgba(255, 255, 255, 0.5)"];
-		let intervalS = 1;
-		if (totalH * 60 < 15) {
-			// minute
-			intervalS = 60;
-		} else if (totalH < 0.5) {
-			// 5 minutes
-			intervalS = 5 * 60;
-		} else if (totalH < 2) {
-			// 15 minutes
-			intervalS = 15 * 60;
-		} else if (totalH < 24) {
-			// hours
-			intervalS = 60 * 60;
-		} else if (totalH < 24 * 7 * 60) {
-			// days
-			intervalS = 60 * 60 * 24;
-			colors = ["rgba(255, 255, 190, 0.3)", "rgba(255, 255, 190, 0.5)"];
-		} else {
-			// Maybe do week and/or month markers?
-			return;
+		let dpr = window.devicePixelRatio;
+
+		let tryIntervals = [
+			{ s: 10, f: 'hh:mm:ss' },
+			{ s: 60, f: 'hh:mm' },
+			{ s: 5 * 60, f: 'hh:mm' },
+			{ s: 15 * 60, f: 'hh:mm' },
+			{ s: 60 * 60, f: 'hh:mm' },
+			{ s: 60 * 60, f: 'hh' },
+			{ s: 24 * 60 * 60, f: 'dd' },
+			{ s: 24 * 60 * 60 * 30, f: 'month' },
+		];
+		// Try different intervals until we get to one where our text can fit
+		let intervalS = 0;
+		let intervalFmt = '';
+		let canvasWidthCss = canvasWidth / dpr;
+		for (let interval of tryIntervals) {
+			let txtWidth = interval.f.length;
+			if (txtWidth * (endS - startS) / interval.s < canvasWidthCss * 0.15) {
+				intervalS = interval.s;
+				intervalFmt = interval.f;
+				break;
+			}
+		}
+		if (intervalS === 0) {
+			intervalFmt = 'month';
 		}
 
-		let dpr = window.devicePixelRatio;
 		let height = dpr * 4;
 
-		let istart = Math.floor(startS / intervalS);
-		let iend = Math.ceil(endS / intervalS);
-		let showText = iend - istart <= 12;
+		let istart = 0;
+		let iend = 0;
+		let explicitDates: Date[] = [];
+
+		let utcOffsetS = new Date().getTimezoneOffset() * 60;
+
+		if (intervalFmt === "month") {
+			// Month-based intervals, which are conceptually different
+			explicitDates = this.computeMonthStartsWithinTimeRange(new Date(startS * 1000), new Date(endS * 1000), true);
+			istart = 0;
+			iend = explicitDates.length - 1;
+		} else {
+			// Second-based intervals (which can go all the way out to Days, but not beyond that)
+			istart = Math.floor((startS - utcOffsetS) / intervalS);
+			iend = Math.ceil((endS - utcOffsetS) / intervalS);
+		}
+		let showText = true;
 		//console.log(istart, iend);
 		for (let i = istart; i < iend; i++) {
-			let t1 = this.timeMSToPixel(i * intervalS * 1000, canvasWidth, pixelsPerSecond);
-			let t2 = this.timeMSToPixel((i + 1) * intervalS * 1000, canvasWidth, pixelsPerSecond);
+			let evenodd = i % 2;
+			let t1 = 0;
+			let t2 = 0;
+			if (explicitDates.length !== 0) {
+				let d = explicitDates[i];
+				let nextD = explicitDates[i + 1];
+				t1 = this.timeMSToPixel(d.getTime(), canvasWidth, pixelsPerSecond);
+				t2 = this.timeMSToPixel(nextD.getTime(), canvasWidth, pixelsPerSecond);
+				if (intervalFmt === "month") {
+					evenodd = d.getMonth() % 2;
+				}
+			} else {
+				t1 = this.timeMSToPixel((i * intervalS + utcOffsetS) * 1000, canvasWidth, pixelsPerSecond);
+				t2 = this.timeMSToPixel(((i + 1) * intervalS + utcOffsetS) * 1000, canvasWidth, pixelsPerSecond);
+			}
 			//console.log(t1, t2);
-			cx.fillStyle = colors[i % 2];
+			cx.fillStyle = colors[evenodd];
 			cx.fillRect(t1, canvasHeight - height, t2 - t1, canvasHeight);
 			if (showText) {
-				let d = new Date(i * intervalS * 1000);
-				let h = d.getHours();
-				let minutes: string | number = d.getMinutes();
-				minutes = minutes === 0 ? "00" : minutes < 10 ? "0" + minutes : minutes;
+				let d = new Date((i * intervalS + utcOffsetS) * 1000);
 				cx.font = `${9 * dpr}px -apple-system, system-ui, sans-serif`;
 				cx.textAlign = "center";
 				cx.textBaseline = "bottom";
 				cx.fillStyle = "rgba(255, 255, 255, 0.5)";
 				let text = '';
-				if (intervalS <= 60 * 60) {
-					text = h + ":" + minutes;
-				} else if (intervalS === 60 * 60 * 24) {
-					text = 'DoM';
+				if (intervalFmt === "month") {
+					d = explicitDates[i];
 				}
-				cx.fillText(text, t1, canvasHeight - height - 3 * dpr);
+				text = this.formatTime(intervalFmt, d);
+				cx.fillText(text, t1, canvasHeight - height);
 			}
 		}
 	}
 
-	renderTile(cx: CanvasRenderingContext2D, tile: EventTile, canvasWidth: number, pixelsPerSecond: number) {
+	renderTile(cx: CanvasRenderingContext2D, tile: EventTile, canvasWidth: number, pixelsPerSecond: number, videoStartTime?: Date) {
 		let dpr = window.devicePixelRatio;
 		let { x1: tx1, x2: tx2 } = this.renderedTileBounds(tile, canvasWidth, pixelsPerSecond);
 		let bitWidth = (tx2 - tx1) / BitsPerTile;
@@ -277,6 +339,15 @@ export class SeekBarContext {
 		let boostLeft = 1.0 * dpr;
 		let boostWidth = 1.75 * boostLeft; // should be about 2x boostLeft to keep the dot unbiased
 		let bitWindowCount = new Uint8Array(BitsPerTile);
+		let startBit = 0;
+		let startX = tx1;
+		if (videoStartTime) {
+			// Don't render bits for events that occurred so long ago that the video has already been erased.
+			// This is especially relevant for the zoomed-out high level tiles.
+			let newStartX = this.timeMSToPixel(videoStartTime.getTime(), canvasWidth, pixelsPerSecond);
+			startBit = Math.floor((newStartX - tx1) / bitWidth);
+			startX = tx1 + startBit * bitWidth;
+		}
 		for (let icls = 0; icls < classes.length; icls++) {
 			cx.fillStyle = colors[icls];
 			let bitmap = tile.classes[classes[icls]];
@@ -284,9 +355,9 @@ export class SeekBarContext {
 				SeekBarContext.countBitsInSlidingWindow(bitmap, bitWindowCount, 3);
 				//console.log(this.cameraID, "window", bitWindowCount);
 				let state = 0;
-				let x1 = tx1;
-				let x2 = tx1;
-				for (let bit = 0; bit <= BitsPerTile; bit++) {
+				let x1 = startX;
+				let x2 = startX;
+				for (let bit = startBit; bit <= BitsPerTile; bit++) {
 					if (bit === BitsPerTile || EventTile.getBit(bitmap, bit) !== state) {
 						if (state === 1) {
 							let density = bit === BitsPerTile ? bitWindowCount[BitsPerTile - 1] : bitWindowCount[bit];

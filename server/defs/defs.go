@@ -13,6 +13,8 @@ const (
 	ResLD Resolution = "LD" // Low Definition (exact resolution unspecified - whatever the camera's sub stream is set to)
 )
 
+var AllResolutions = []Resolution{ResLD, ResHD}
+
 func ParseResolution(res string) (Resolution, error) {
 	switch res {
 	case "ld":

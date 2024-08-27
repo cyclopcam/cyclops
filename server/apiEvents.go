@@ -39,6 +39,12 @@ func (s *Server) httpEventsGetTiles(w http.ResponseWriter, r *http.Request, _ ht
 	tiles, err := s.videoDB.ReadEventTiles(cam.LongLivedName(), tileRequest)
 	www.Check(err)
 
+	videoStartTime, err := s.videoDB.VideoStartTimeForCamera(cam.LongLivedName())
+	if err != nil {
+		// If there is no video footage, then don't return any tiles.
+		tiles = []*videodb.EventTile{}
+	}
+
 	// Lookup the necessary internal IDs so that the caller doesn't have to make an additional API request for that.
 	// This is things like 3 -> "person", 4 -> "car", etc.
 	idToString := map[uint32]string{}
@@ -56,11 +62,13 @@ func (s *Server) httpEventsGetTiles(w http.ResponseWriter, r *http.Request, _ ht
 
 	// SYNC-GET-TILES-JSON
 	response := struct {
-		Tiles      []*videodb.EventTile `json:"tiles"`
-		IDToString map[uint32]string    `json:"idToString"`
+		Tiles          []*videodb.EventTile `json:"tiles"`
+		IDToString     map[uint32]string    `json:"idToString"`
+		VideoStartTime int64                `json:"videoStartTime"` // This doesn't vary with the tiles being fetched, but it's useful data to side-load
 	}{
-		Tiles:      tiles,
-		IDToString: idToString,
+		Tiles:          tiles,
+		IDToString:     idToString,
+		VideoStartTime: videoStartTime.UnixMilli(),
 	}
 	www.SendJSONOpt(w, &response, false)
 }

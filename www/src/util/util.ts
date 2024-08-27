@@ -148,6 +148,7 @@ export function randomString(length: number): string {
 }
 
 export const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+export const monthNamesShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export function zeroPad(v: number, digits: number): string {
 	let s = Math.round(v).toString();

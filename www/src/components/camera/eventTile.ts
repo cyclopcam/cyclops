@@ -59,6 +59,12 @@ interface EventTileJSON {
 interface GetTileJSON {
 	tiles: EventTileJSON[];
 	idToString: { [key: number]: string };
+	videoStartTime: number; // This doesn't vary with the tiles being fetched, but it's useful data to side-load
+}
+
+export interface FetchTilesResult {
+	videoStartTime: Date;
+	tiles: EventTile[];
 }
 
 export class EventTile {
@@ -87,7 +93,7 @@ export class EventTile {
 		return (bitmap[byteIdx] & (1 << bitIdx)) ? 1 : 0;
 	}
 
-	static async fetchTiles(camera: number, level: number, startIdx: number, endIdx: number): Promise<EventTile[]> {
+	static async fetchTiles(camera: number, level: number, startIdx: number, endIdx: number): Promise<FetchTilesResult> {
 		let query = {
 			camera: camera,
 			level: level,
@@ -99,7 +105,10 @@ export class EventTile {
 			throw new Error(`Failed to fetch tiles: ${r.error}`);
 		}
 		let j = (await r.r.json()) as GetTileJSON;
-		return j.tiles.map(tj => EventTile.fromJSON(tj, j.idToString));
+		return {
+			videoStartTime: new Date(j.videoStartTime),
+			tiles: j.tiles.map(tj => EventTile.fromJSON(tj, j.idToString))
+		}
 	}
 
 	static fromJSON(tj: EventTileJSON, idToString: { [key: number]: string }): EventTile {

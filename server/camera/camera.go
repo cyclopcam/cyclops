@@ -86,7 +86,7 @@ func (c *Camera) HighResRecordingStreamName() string {
 
 // The name of high/low res recording stream in the video archive
 func (c *Camera) RecordingStreamName(resolution defs.Resolution) string {
-	return videodb.VideoStreamNameForCamera(c.Config.LongLivedName, string(resolution))
+	return videodb.VideoStreamNameForCamera(c.Config.LongLivedName, resolution)
 }
 
 func (c *Camera) Start() error {

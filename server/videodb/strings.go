@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/cyclopcam/cyclops/server/defs"
 	"gorm.io/gorm"
 )
 
 // Generate the name of the video stream for the given camera and resolution.
-func VideoStreamNameForCamera(cameraLongLivedName, resolution string) string {
-	return filepath.Clean(cameraLongLivedName + "-" + resolution)
+func VideoStreamNameForCamera(cameraLongLivedName string, resolution defs.Resolution) string {
+	return filepath.Clean(cameraLongLivedName + "-" + string(resolution))
 }
 
 // Get a database-wide unique ID for the given string.

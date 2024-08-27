@@ -1,10 +1,15 @@
 package videodb
 
 import (
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/cyclops/server/defs"
 )
+
+var ErrNoVideoFound = errors.New("No video found")
 
 // TileRequest is a request to read tiles.
 // Do ONE of the following:
@@ -89,4 +94,20 @@ func (v *VideoDB) ReadEventTiles(camera string, request TileRequest) ([]*EventTi
 	tiles = append(tiles, dbTiles...)
 
 	return tiles, nil
+}
+
+// Find the timestamp of the oldest recorded frame for the given camera.
+// Returns *ErrNoVideoFound* if no video footage can be found for the camera.
+func (v *VideoDB) VideoStartTimeForCamera(camera string) (time.Time, error) {
+	oldestTime := time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, res := range defs.AllResolutions {
+		stream := v.Archive.StreamInfo(VideoStreamNameForCamera(camera, res))
+		if stream != nil && stream.StartTime.Before(oldestTime) {
+			oldestTime = stream.StartTime
+		}
+	}
+	if oldestTime.Year() != 9999 {
+		return oldestTime, nil
+	}
+	return time.Time{}, ErrNoVideoFound
 }

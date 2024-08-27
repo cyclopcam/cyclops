@@ -315,7 +315,7 @@ func (v *VideoDB) deleteOldEventsFromDB() error {
 		}
 		oldestVideoTime := time.Date(9000, 1, 1, 0, 0, 0, 0, time.UTC)
 		for _, res := range resolutions {
-			streamName := VideoStreamNameForCamera(cameraLongLivedName, string(res))
+			streamName := VideoStreamNameForCamera(cameraLongLivedName, res)
 			stream := nameToStream[streamName]
 			if stream == nil {
 				continue
