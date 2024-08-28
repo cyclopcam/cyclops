@@ -24,9 +24,10 @@ type EventDetectionsJSON struct {
 
 // An object detected by the camera.
 type ObjectJSON struct {
-	ID        uint32               `json:"id"`       // Can be used to track objects across separate Event records
-	Class     uint32               `json:"class"`    // eg "person", "car" (via lookup in 'strings' table)
-	Positions []ObjectPositionJSON `json:"position"` // Object positions throughout event
+	ID            uint32               `json:"id"`            // Can be used to track objects across separate Event records
+	Class         uint32               `json:"class"`         // eg "person", "car" (via lookup in 'strings' table)
+	Positions     []ObjectPositionJSON `json:"position"`      // Object positions throughout event
+	NumDetections int32                `json:"numDetections"` // Total number of detections witnessed for this object, before filtering out irrelevant box movements (eg box jiggling around by a few pixels)
 }
 
 // Position of an object in a frame.

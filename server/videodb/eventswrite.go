@@ -12,11 +12,12 @@ import (
 )
 
 type TrackedObject struct {
-	ID       uint32
-	Camera   uint32
-	Class    uint32
-	Boxes    []TrackedBox
-	LastSeen time.Time // In case you're not updating Boxes, or Boxes is empty. Maybe you're not updating Boxes because the object hasn't moved.
+	ID            uint32
+	Camera        uint32
+	Class         uint32
+	Boxes         []TrackedBox
+	LastSeen      time.Time // In case you're not updating Boxes, or Boxes is empty. Maybe you're not updating Boxes because the object hasn't moved.
+	NumDetections int32     // Naively equal to len(Boxes), but can be different if some detections were so similar to the previous that we filtered them out. NumDetections >= len(Boxes)
 }
 
 // Returns the min/max observed time of this object.
@@ -83,10 +84,11 @@ func (v *VideoDB) addBoxToTrackedObject(camera string, id uint32, box nn.Rect, c
 		cameraID, classID := ids[0], ids[1]
 
 		obj = &TrackedObject{
-			ID:       id,
-			Camera:   cameraID,
-			Class:    classID,
-			LastSeen: lastSeen,
+			ID:            id,
+			Camera:        cameraID,
+			Class:         classID,
+			LastSeen:      lastSeen,
+			NumDetections: 0,
 		}
 		v.current[id] = obj
 	}
@@ -107,13 +109,13 @@ func (v *VideoDB) addBoxToTrackedObject(camera string, id uint32, box nn.Rect, c
 	}
 
 	obj.LastSeen = lastSeen
+	obj.NumDetections++
 
-	return TrackedObject{
-		ID:       obj.ID,
-		Camera:   obj.Camera,
-		Class:    obj.Class,
-		LastSeen: obj.LastSeen,
-	}, nil
+	// Once we return this object, the caller is no longer inside currentLock,
+	// so either we make a deep clone including Boxes, or we set Boxes to nil.
+	clone := *obj
+	clone.Boxes = nil
+	return clone, nil
 }
 
 func (v *VideoDB) eventWriteThread() {
@@ -240,8 +242,9 @@ func (v *VideoDB) flushCameraToDB(camera uint32) {
 	for _, c := range v.current {
 		if c.Camera == camera {
 			obj := &ObjectJSON{
-				ID:    c.ID,
-				Class: c.Class,
+				ID:            c.ID,
+				Class:         c.Class,
+				NumDetections: c.NumDetections,
 			}
 			// If appropriate, this would be a good place to filter out objects that are not moving.
 			// We have an early filter that discards incoming frames which aren't moving enough,
