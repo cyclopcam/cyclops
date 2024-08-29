@@ -14,12 +14,13 @@ func (s *Server) attachMonitorToVideoDB() {
 			case msg := <-incoming:
 				classes := s.monitor.AllClasses()
 				cam := s.LiveCameras.CameraFromID(msg.CameraID)
+				resolution := [2]int{msg.Input.ImageWidth, msg.Input.ImageHeight}
 				if cam == nil {
 					s.Log.Warnf("Ignoring monitor message for unknown camera %v", msg.CameraID)
 					continue
 				}
 				for _, obj := range msg.Objects {
-					s.videoDB.ObjectDetected(cam.LongLivedName(), obj.ID, obj.Box, obj.Confidence, classes[obj.Class], obj.LastSeen)
+					s.videoDB.ObjectDetected(cam.LongLivedName(), resolution, obj.ID, obj.Box, obj.Confidence, classes[obj.Class], obj.LastSeen)
 				}
 			}
 		}

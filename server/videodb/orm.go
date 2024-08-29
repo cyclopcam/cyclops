@@ -1,6 +1,8 @@
 package videodb
 
-import "github.com/cyclopcam/cyclops/pkg/dbh"
+import (
+	"github.com/cyclopcam/cyclops/pkg/dbh"
+)
 
 // BaseModel is our base class for a GORM model.
 // The default GORM Model uses int, but we prefer int64
@@ -10,27 +12,32 @@ type BaseModel struct {
 
 // An event is one or more frames of motion or object detection.
 // For efficiency sake, we limit events in the database to a max size and duration.
+// SYNC-VIDEODB-EVENT
 type Event struct {
 	BaseModel
 	Time       dbh.IntTime                         `json:"time"`       // Start of event
 	Duration   int32                               `json:"duration"`   // Duration of event in milliseconds
 	Camera     uint32                              `json:"camera"`     // LongLived camera name (via lookup in 'strings' table)
+	Resolution [2]int                              `json:"resolution"` // Resolution of the camera on which the detection was run.
 	Detections *dbh.JSONField[EventDetectionsJSON] `json:"detections"` // Objects detected in the event
 }
 
+// SYNC-VIDEODB-EVENTDETECTIONS
 type EventDetectionsJSON struct {
 	Objects []*ObjectJSON `json:"objects"` // Objects detected in the event
 }
 
 // An object detected by the camera.
+// SYNC-VIDEODB-OBJECT
 type ObjectJSON struct {
 	ID            uint32               `json:"id"`            // Can be used to track objects across separate Event records
 	Class         uint32               `json:"class"`         // eg "person", "car" (via lookup in 'strings' table)
-	Positions     []ObjectPositionJSON `json:"position"`      // Object positions throughout event
+	Positions     []ObjectPositionJSON `json:"positions"`     // Object positions throughout event
 	NumDetections int32                `json:"numDetections"` // Total number of detections witnessed for this object, before filtering out irrelevant box movements (eg box jiggling around by a few pixels)
 }
 
 // Position of an object in a frame.
+// SYNC-VIDEODB-OBJECTPOSITION
 type ObjectPositionJSON struct {
 	Box        [4]int16 `json:"box"`        // [X1,Y1,X2,Y2]
 	Time       int32    `json:"time"`       // Time in milliseconds relative to start of event.

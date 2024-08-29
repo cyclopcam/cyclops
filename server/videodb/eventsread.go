@@ -111,3 +111,16 @@ func (v *VideoDB) VideoStartTimeForCamera(camera string) (time.Time, error) {
 	}
 	return time.Time{}, ErrNoVideoFound
 }
+
+func (v *VideoDB) ReadEvents(camera string, startTime, endTime time.Time) ([]*Event, error) {
+	cameraID, err := v.StringToID(camera)
+	if err != nil {
+		return nil, err
+	}
+
+	events := []*Event{}
+	if err := v.db.Where("camera = ? AND time >= ? AND time < ?", cameraID, startTime, endTime).Find(&events).Error; err != nil {
+		return nil, err
+	}
+	return events, nil
+}

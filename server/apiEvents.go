@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/cyclops/server/configdb"
@@ -69,6 +70,41 @@ func (s *Server) httpEventsGetTiles(w http.ResponseWriter, r *http.Request, _ ht
 		Tiles:          tiles,
 		IDToString:     idToString,
 		VideoStartTime: videoStartTime.UnixMilli(),
+	}
+	www.SendJSONOpt(w, &response, false)
+}
+
+func (s *Server) httpEventsGetDetails(w http.ResponseWriter, r *http.Request, _ httprouter.Params, user *configdb.User) {
+	cameraID := www.RequiredQueryValue(r, "camera")
+	startTime := time.UnixMilli(www.RequiredQueryInt64(r, "startTime"))
+	endTime := time.UnixMilli(www.RequiredQueryInt64(r, "endTime"))
+	cam := s.getCameraFromIDOrPanic(cameraID)
+
+	events, err := s.videoDB.ReadEvents(cam.LongLivedName(), startTime, endTime)
+	www.Check(err)
+
+	// Get all the IDs so that the caller doesn't need to make an additional call
+	// This is things like 3 -> "person", 4 -> "car", etc.
+	idToString := map[uint32]string{}
+	for _, ev := range events {
+		if ev.Detections == nil {
+			continue
+		}
+		for _, obj := range ev.Detections.Data.Objects {
+			if idToString[obj.Class] == "" {
+				idToString[obj.Class], err = s.videoDB.IDToString(obj.Class)
+				www.Check(err)
+			}
+		}
+	}
+
+	// SYNC-GET-EVENT-DETAILS-JSON
+	response := struct {
+		Events     []*videodb.Event  `json:"events"`
+		IDToString map[uint32]string `json:"idToString"`
+	}{
+		Events:     events,
+		IDToString: idToString,
 	}
 	www.SendJSONOpt(w, &response, false)
 }

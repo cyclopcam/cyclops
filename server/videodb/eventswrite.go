@@ -12,12 +12,13 @@ import (
 )
 
 type TrackedObject struct {
-	ID            uint32
-	Camera        uint32
-	Class         uint32
-	Boxes         []TrackedBox
-	LastSeen      time.Time // In case you're not updating Boxes, or Boxes is empty. Maybe you're not updating Boxes because the object hasn't moved.
-	NumDetections int32     // Naively equal to len(Boxes), but can be different if some detections were so similar to the previous that we filtered them out. NumDetections >= len(Boxes)
+	ID               uint32
+	Camera           uint32
+	CameraResolution [2]int
+	Class            uint32
+	Boxes            []TrackedBox
+	LastSeen         time.Time // In case you're not updating Boxes, or Boxes is empty. Maybe you're not updating Boxes because the object hasn't moved.
+	NumDetections    int32     // Naively equal to len(Boxes), but can be different if some detections were so similar to the previous that we filtered them out. NumDetections >= len(Boxes)
 }
 
 // Returns the min/max observed time of this object.
@@ -56,9 +57,9 @@ type TrackedBox struct {
 // object is no longer in frame.
 // Also, id must be unique across cameras.
 // This is currently the way our 'monitor' package works, but I'm just codifying it here.
-func (v *VideoDB) ObjectDetected(camera string, id uint32, box nn.Rect, confidence float32, class string, lastSeen time.Time) {
+func (v *VideoDB) ObjectDetected(camera string, cameraResolution [2]int, id uint32, box nn.Rect, confidence float32, class string, lastSeen time.Time) {
 	// See comments above addBoxToTrackedObject for why we split this into two phases.
-	trackedObjectCopy, err := v.addBoxToTrackedObject(camera, id, box, confidence, class, lastSeen)
+	trackedObjectCopy, err := v.addBoxToTrackedObject(camera, cameraResolution, id, box, confidence, class, lastSeen)
 	if err == nil {
 		v.updateTilesWithNewDetection(&trackedObjectCopy)
 	}
@@ -69,7 +70,7 @@ func (v *VideoDB) ObjectDetected(camera string, id uint32, box nn.Rect, confiden
 // because that is a potentially expensive copy, and we don't need that for our tile update.
 // Our goal with splitting this into two phases is to get out of 'currentLock' before passing
 // control onto the tile updater.
-func (v *VideoDB) addBoxToTrackedObject(camera string, id uint32, box nn.Rect, confidence float32, class string, lastSeen time.Time) (TrackedObject, error) {
+func (v *VideoDB) addBoxToTrackedObject(camera string, cameraResolution [2]int, id uint32, box nn.Rect, confidence float32, class string, lastSeen time.Time) (TrackedObject, error) {
 	v.currentLock.Lock()
 	defer v.currentLock.Unlock()
 
@@ -84,11 +85,12 @@ func (v *VideoDB) addBoxToTrackedObject(camera string, id uint32, box nn.Rect, c
 		cameraID, classID := ids[0], ids[1]
 
 		obj = &TrackedObject{
-			ID:            id,
-			Camera:        cameraID,
-			Class:         classID,
-			LastSeen:      lastSeen,
-			NumDetections: 0,
+			ID:               id,
+			Camera:           cameraID,
+			CameraResolution: cameraResolution,
+			Class:            classID,
+			LastSeen:         lastSeen,
+			NumDetections:    0,
 		}
 		v.current[id] = obj
 	}
@@ -224,6 +226,7 @@ func (v *VideoDB) flushCameraToDB(camera uint32) {
 	// Everything in the JSON blob is specified as milliseconds relative to base.
 	basetime := time.Now()
 	maxtime := time.Time{}
+	resolution := [2]int{}
 	otherCameraObjects := map[uint32]*TrackedObject{}
 	for _, c := range v.current {
 		if c.Camera == camera {
@@ -232,6 +235,9 @@ func (v *VideoDB) flushCameraToDB(camera uint32) {
 			}
 			if c.Boxes[len(c.Boxes)-1].Time.After(maxtime) {
 				maxtime = c.Boxes[len(c.Boxes)-1].Time
+			}
+			if resolution[0] == 0 {
+				resolution = c.CameraResolution
 			}
 		} else {
 			otherCameraObjects[c.ID] = c
@@ -270,6 +276,7 @@ func (v *VideoDB) flushCameraToDB(camera uint32) {
 		Time:       dbh.MakeIntTime(basetime),
 		Duration:   int32(maxtime.Sub(basetime).Milliseconds()),
 		Camera:     camera,
+		Resolution: resolution,
 		Detections: &detectionsJSON,
 	}
 

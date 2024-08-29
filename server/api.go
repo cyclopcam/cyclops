@@ -108,6 +108,7 @@ func (s *Server) SetupHTTP() error {
 	protected("a", "POST", "/api/config/scanNetworkForCameras", s.httpConfigScanNetworkForCameras)
 	protected("a", "GET", "/api/config/measureStorageSpace", s.httpConfigMeasureStorageSpace)
 	protected("v", "GET", "/api/events/tiles", s.httpEventsGetTiles)
+	protected("v", "GET", "/api/events/details", s.httpEventsGetDetails)
 	unprotected("GET", "/api/auth/hasAdmin", s.httpAuthHasAdmin)
 	protected("v", "GET", "/api/auth/whoami", s.httpAuthWhoAmi)
 	unprotected("POST", "/api/auth/createUser", s.httpAuthCreateUser)

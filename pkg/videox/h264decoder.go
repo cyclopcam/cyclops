@@ -427,6 +427,13 @@ func DecodeSinglePacketToImage(packet *VideoPacket) (*cimg.Image, error) {
 	return img.ToCImageRGB(), nil
 }
 
+// Decode the list of packets, and return the first image that successfully decodes
+func DecodeFirstImageInPacketList(packets []*VideoPacket) (*cimg.Image, time.Time, error) {
+	return DecodeClosestImageInPacketList(packets, time.Time{})
+}
+
+// Decode the list of packets, and return the decoded image who's presentation time is closest to targetTime.
+// If targetTime is zero, then we return the first image coming out of the decoder.
 func DecodeClosestImageInPacketList(packets []*VideoPacket, targetTime time.Time) (*cimg.Image, time.Time, error) {
 	decoder, err := NewH264StreamDecoder("h264")
 	if err != nil {
@@ -443,17 +450,20 @@ func DecodeClosestImageInPacketList(packets []*VideoPacket, targetTime time.Time
 			firstError = err
 		}
 		if img != nil {
-			timeDelta := p.WallPTS.Sub(targetTime)
-			if timeDelta < 0 {
-				timeDelta = -timeDelta
+			timeDelta := time.Duration(0)
+			if !targetTime.IsZero() {
+				timeDelta = p.WallPTS.Sub(targetTime)
+				if timeDelta < 0 {
+					timeDelta = -timeDelta
+				}
 			}
 			if timeDelta < bestDelta {
 				bestTime = p.WallPTS
 				bestDelta = timeDelta
 				bestImg = img.Clone()
 			}
-			if p.WallPTS.After(targetTime) {
-				// No point decoding packets once we've passed our desired time
+			if p.WallPTS.After(targetTime) || targetTime.IsZero() || bestDelta == 0 {
+				// No point decoding packets once we've passed our desired time, or if we're 100% on our desired time
 				break
 			}
 		}

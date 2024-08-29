@@ -190,6 +190,7 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	cam := s.getCameraFromIDOrPanic(params.ByName("cameraID"))
 	res := parseResolutionOrPanic(params.ByName("resolution"))
 	timeMS, _ := strconv.ParseInt(params.ByName("time"), 10, 64)
+	seekToPreviousKeyframe := www.QueryValue(r, "seekMode") == "previousKeyframe" // If toggled, then return the first keyframe before 'time'
 	compressQuality := www.QueryInt(r, "quality")
 	if compressQuality < 0 || compressQuality > 100 {
 		compressQuality = 75
@@ -199,6 +200,8 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	}
 	startTime := time.UnixMilli(timeMS)
 	streamName := "video"
+	// Regardless of what the user wants, we always need to read back to a prior keyframe, so that we can initialize the decoder.
+	// So fsv.ReadFlagSeekBackToKeyFrame is mandatory here.
 	packets, err := s.videoDB.Archive.Read(cam.RecordingStreamName(res), []string{streamName}, startTime, startTime, fsv.ReadFlagSeekBackToKeyFrame)
 	if err != nil {
 		www.PanicServerErrorf("Failed to read video: %v", err)
@@ -227,7 +230,12 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	}
 	outPackets = append(outPackets, packet)
 	//fmt.Printf("%v packets. Packet 0: %v\n", len(outPackets), outPackets[0].WallPTS)
-	img, imgTime, err := videox.DecodeClosestImageInPacketList(outPackets, startTime)
+	findImageAt := startTime
+	if seekToPreviousKeyframe {
+		// Zero time means "return first image that decodes"
+		findImageAt = time.Time{}
+	}
+	img, imgTime, err := videox.DecodeClosestImageInPacketList(outPackets, findImageAt)
 	if err != nil {
 		www.PanicServerErrorf("Failed to decode video: %v", err)
 	}

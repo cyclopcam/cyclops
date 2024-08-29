@@ -35,12 +35,20 @@ the right solution.
 const includeAllClasses = false
 
 type analyzerSettings struct {
-	positionHistorySize       int           // Keep a ring buffer of the last N positions of each object
-	maxAnalyzeObjectsPerFrame int           // Maximum number of objects to analyze per frame
-	minDistanceForObject      float32       // Minimum distance that an object must travel to be considered a true detection (as a fraction of the frame width)
-	minDiscreetPositions      int           // Minimum number of discreet positions that an object must have to be considered a true detection
-	objectForgetTime          time.Duration // After this amount of time of not seeing an object, we believe it has left the frame, or was a false detection
-	verbose                   bool          // Print out debug information
+	positionHistorySize         int            // Keep a ring buffer of the last N positions of each object
+	maxAnalyzeObjectsPerFrame   int            // Maximum number of objects to analyze per frame
+	minDistanceForObject        float32        // Minimum distance that an object must travel to be considered a true detection (as a fraction of the frame width)
+	minDiscreetPositions        map[string]int // For each class, the minimum number of discreet positions that an object must have to be considered a true detection
+	minDiscreetPositionsDefault int            // The default minimum number of discreet positions that an object must have to be considered a true detection
+	objectForgetTime            time.Duration  // After this amount of time of not seeing an object, we believe it has left the frame, or was a false detection
+	verbose                     bool           // Print out debug information
+}
+
+func (a *analyzerSettings) minDiscreetPositionsForClass(cls string) int {
+	if val, ok := a.minDiscreetPositions[cls]; ok {
+		return val
+	}
+	return a.minDiscreetPositionsDefault
 }
 
 // A time and position where we saw an object
@@ -214,7 +222,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 				cameraHeight:   item.detection.ImageHeight,
 			})
 			if m.analyzerSettings.verbose {
-				m.Log.Infof("Analyzer (cam %v): New '%v' at %v,%v", cam.cameraID, nn.COCOClasses[det.Class], det.Box.Center().X, det.Box.Center().Y)
+				m.Log.Infof("Analyzer (cam %v): New '%v' at %v,%v", cam.cameraID, m.nnClassList[det.Class], det.Box.Center().X, det.Box.Center().Y)
 			}
 		}
 		cam.tracked[bestJ].lastPosition = det.Box
@@ -228,10 +236,10 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	for _, tracked := range cam.tracked {
 		if !tracked.genuine &&
 			tracked.distanceFromOrigin() > settings.minDistanceForObject*float32(tracked.cameraWidth) &&
-			tracked.numDiscreetPositions() > settings.minDiscreetPositions {
+			tracked.numDiscreetPositions() > settings.minDiscreetPositionsForClass(m.nnClassList[tracked.firstDetection.Class]) {
 			if m.analyzerSettings.verbose {
 				center := tracked.mostRecent().detection.Box.Center()
-				m.Log.Infof("Analyzer (cam %v): Genuine '%v' at %v,%v (%.1f px, %v positions)", cam.cameraID, nn.COCOClasses[tracked.firstDetection.Class],
+				m.Log.Infof("Analyzer (cam %v): Genuine '%v' at %v,%v (%.1f px, %v positions)", cam.cameraID, m.nnClassList[tracked.firstDetection.Class],
 					center.X, center.Y, tracked.distanceFromOrigin(), tracked.numDiscreetPositions())
 			}
 			tracked.genuine = true
@@ -282,6 +290,6 @@ func (m *Monitor) analyzeDisappearedObject(cam *analyzerCameraState, tracked *tr
 	distance := tracked.distanceFromOrigin()
 	if m.analyzerSettings.verbose {
 		m.Log.Infof("Analyzer (cam %v): '%v' at %v,%v disappeared, after moving %.1f pixels, %v discreet positions",
-			cam.cameraID, nn.COCOClasses[tracked.firstDetection.Class], center.X, center.Y, distance, tracked.numDiscreetPositions())
+			cam.cameraID, m.nnClassList[tracked.firstDetection.Class], center.X, center.Y, distance, tracked.numDiscreetPositions())
 	}
 }

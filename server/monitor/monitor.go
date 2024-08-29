@@ -226,12 +226,15 @@ func NewMonitor(logger log.Log, nnModelName string) (*Monitor, error) {
 		nnClassAbstract:  abstractClasses,
 		nnClassBoxMerge:  boxMergeClasses,
 		analyzerSettings: analyzerSettings{
-			positionHistorySize:       30,   // at 10 fps, 30 frames = 3 seconds
-			maxAnalyzeObjectsPerFrame: 20,   // We have O(n^2) analysis functions, so we need to keep this small.
-			minDistanceForObject:      0.05, // 5% of the frame width (0.05 * 320 = 16 pixels)
-			minDiscreetPositions:      10,
-			objectForgetTime:          5 * time.Second,
-			verbose:                   false,
+			positionHistorySize:         30,   // at 10 fps, 30 frames = 3 seconds
+			maxAnalyzeObjectsPerFrame:   20,   // We have O(n^2) analysis functions, so we need to keep this small.
+			minDistanceForObject:        0.02, // 2% of the frame width (0.02 * 320 = 6 pixels)
+			minDiscreetPositionsDefault: 2,
+			minDiscreetPositions: map[string]int{
+				"person": 3, // People move much slower than cars, and people are almost always alarmable events, so we need a super false positive rate
+			},
+			objectForgetTime: 5 * time.Second,
+			verbose:          false,
 		},
 		watchers:           map[int64][]chan *AnalysisState{},
 		watchersAllCameras: []chan *AnalysisState{},
