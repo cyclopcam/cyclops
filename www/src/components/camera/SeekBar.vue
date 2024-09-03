@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import type { CameraInfo } from '@/camera/camera';
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { SeekBarContext, SeekBarTransform } from './seekBarContext';
-import { MaxTileLevel } from './eventTile';
-import { clamp } from '@/util/util';
 
 let props = defineProps<{
 	camera: CameraInfo,
@@ -15,6 +13,9 @@ let emits = defineEmits(['seekend']);
 interface Point {
 	id: number; // pointer id
 	offsetX1: number; // CSS x at finger down
+	offsetY1: number; // CSS y at finger down
+	offsetX2: number; // latest CSS x
+	offsetY2: number; // latest CSS y
 	x1: number; // canvas x at finger down
 	y1: number; // canvas y at finger down
 	x2: number; // latest canvas x finger
@@ -102,7 +103,7 @@ function onPointerDown(e: PointerEvent) {
 	grab.setPointerCapture(e.pointerId);
 	let ox = pxToCanvas(e.offsetX);
 	let oy = pxToCanvas(e.offsetY);
-	points.push({ id: e.pointerId, offsetX1: e.offsetX, x1: ox, x2: ox, y1: oy, y2: oy });
+	points.push({ id: e.pointerId, offsetX1: e.offsetX, offsetY1: e.offsetY, offsetX2: e.offsetX, offsetY2: e.offsetY, x1: ox, x2: ox, y1: oy, y2: oy });
 	if (points.length === 2 && points[0].x1 !== points[1].x1) {
 		// Ensure that point 1 is on the left and point 2 is on the right, so that our
 		// subsequent computations don't have to account for that.
@@ -154,6 +155,8 @@ function pointerUpOrCancel(e: PointerEvent) {
 function onPointerMove(e: PointerEvent) {
 	//console.log("pointer move", e.pointerId);
 	if (points.length === 1) {
+		points[0].offsetX2 = e.offsetX;
+		points[0].offsetY2 = e.offsetY;
 		onPointerMoveSeek(e);
 	} else if (points.length === 2) {
 		onPointerMovePinchZoom(e);
@@ -173,6 +176,9 @@ function onPointerMoveSeek(e: PointerEvent) {
 	let cssDeltaX = Math.abs(e.offsetX - points[0].offsetX1);
 	if (state === States.Neutral && cssDeltaX >= minDeltaCssPx) {
 		state = States.Seek;
+		if (e.pointerType !== "mouse") {
+			setTimeout(oneFingerZoomTimer, 20);
+		}
 	}
 	if (state !== States.Seek) {
 		return;
@@ -243,13 +249,30 @@ function zoomAroundSinglePoint(offsetX: number, zoomDelta: number) {
 	props.context.render(canv);
 }
 
+function oneFingerZoomTimer() {
+	if (state !== States.Seek) {
+		return;
+	}
+	let cssDeltaY = points[0].offsetY2 - points[0].offsetY1;
+	if (Math.abs(cssDeltaY) > 50) {
+		if (cssDeltaY > 0) {
+			cssDeltaY -= 50;
+		} else if (cssDeltaY < 0) {
+			cssDeltaY += 50;
+		}
+		zoomAroundSinglePoint(points[0].offsetX2, -cssDeltaY / 1500);
+	}
+
+	setTimeout(oneFingerZoomTimer, 16);
+}
+
 onMounted(() => {
 	let canv = canvas.value! as HTMLCanvasElement
 	props.context.render(canv);
 
 	// On mobile there's this behaviour where the initial render has a slightly different
 	// scale to the first polled render (which comes 5 seconds after page load). This
-	// 100ms timeout is a hack to fix that. I assume we're getting some kind of layout
+	// timeout is a hack to fix that. I assume we're getting some kind of layout
 	// adjustment that all happens before anything is rendered, and that's causing the
 	// discrepancy.
 	setTimeout(autoPanToEndAndRender, 50);
