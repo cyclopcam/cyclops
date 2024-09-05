@@ -10,11 +10,11 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 	"github.com/cyclopcam/cyclops/pkg/videox"
-	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/defs"
 	"github.com/cyclopcam/cyclops/server/streamer"
+	"github.com/cyclopcam/www"
 	"github.com/julienschmidt/httprouter"
 )
 

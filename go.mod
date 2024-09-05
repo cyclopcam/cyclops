@@ -48,6 +48,7 @@ require (
 	github.com/cyclopcam/dbh v0.0.0-20240905200453-8c40a309e602 // indirect
 	github.com/cyclopcam/logs v0.0.0-20240905191637-c7ae6d2e0e38 // indirect
 	github.com/cyclopcam/safewg v0.0.0-20240905192045-200ca27410c9 // indirect
+	github.com/cyclopcam/www v0.0.0-20240905200735-e25d6f89d3bd // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsoprea/go-exif/v3 v3.0.1 // indirect
 	github.com/dsoprea/go-iptc v0.0.0-20200610044640-bc9ca208b413 // indirect

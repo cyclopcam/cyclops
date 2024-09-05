@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/cyclops/server/eventdb"
+	"github.com/cyclopcam/www"
 )
 
 // Package arc is a set of client-side functions for interacting with an Arc server.

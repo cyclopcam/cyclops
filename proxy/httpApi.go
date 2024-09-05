@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/cyclops/proxy/proxymsg"
 	"github.com/cyclopcam/dbh"
+	"github.com/cyclopcam/www"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gorm.io/gorm"
 )

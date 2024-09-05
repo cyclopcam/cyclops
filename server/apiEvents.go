@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/videodb"
+	"github.com/cyclopcam/www"
 	"github.com/julienschmidt/httprouter"
 )
 

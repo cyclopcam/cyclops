@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/cyclopcam/cyclops/arc/server/auth"
-	"github.com/cyclopcam/cyclops/pkg/www"
+	"github.com/cyclopcam/www"
 	"github.com/julienschmidt/httprouter"
 )
 

@@ -11,10 +11,10 @@ import (
 
 	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/shell"
-	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/scanner"
+	"github.com/cyclopcam/www"
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
 )

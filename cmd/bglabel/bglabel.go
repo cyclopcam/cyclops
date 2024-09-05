@@ -15,8 +15,8 @@ import (
 	arcmodel "github.com/cyclopcam/cyclops/arc/server/model"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
-	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/logs"
+	"github.com/cyclopcam/www"
 )
 
 const delayOnFailedModelRun = 15 * time.Minute

@@ -9,8 +9,8 @@ import (
 	"github.com/cyclopcam/cyclops/arc/server/model"
 	"github.com/cyclopcam/cyclops/pkg/pwdhash"
 	"github.com/cyclopcam/cyclops/pkg/rando"
-	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/logs"
+	"github.com/cyclopcam/www"
 	"gorm.io/gorm"
 )
 

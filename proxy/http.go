@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/www"
+	"github.com/cyclopcam/www"
 	"github.com/go-chi/httprate"
 	"github.com/julienschmidt/httprouter"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"

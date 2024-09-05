@@ -22,9 +22,9 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/rando"
 	"github.com/cyclopcam/cyclops/pkg/videox"
-	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/dbh"
 	"github.com/cyclopcam/logs"
+	"github.com/cyclopcam/www"
 	"github.com/julienschmidt/httprouter"
 	"gorm.io/gorm"
 )

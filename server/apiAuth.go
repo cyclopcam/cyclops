@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/cyclopcam/cyclops/pkg/pwdhash"
-	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/cyclops/server/configdb"
+	"github.com/cyclopcam/www"
 	"github.com/julienschmidt/httprouter"
 )
 

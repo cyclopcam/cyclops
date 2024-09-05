@@ -59,6 +59,8 @@ github.com/cyclopcam/logs v0.0.0-20240905191637-c7ae6d2e0e38 h1:kWrli59qJ15IlCcz
 github.com/cyclopcam/logs v0.0.0-20240905191637-c7ae6d2e0e38/go.mod h1:JVeHP3m+1DbiAzIuba0xVsYcEHYDmr2mSE8/iiuZTqA=
 github.com/cyclopcam/safewg v0.0.0-20240905192045-200ca27410c9 h1:ACdUZ2EhNvVyFqayt/TH3rErEJJXFqbhECUgqjt6TrE=
 github.com/cyclopcam/safewg v0.0.0-20240905192045-200ca27410c9/go.mod h1:F9gLcOFyATAna7E/vv1QsMBamSfKqBAPLYa6VAshr4w=
+github.com/cyclopcam/www v0.0.0-20240905200735-e25d6f89d3bd h1:nJPKmjH+dKZ8Rnx2j8kUI62glmsvo8nQDvRnrtno5ao=
+github.com/cyclopcam/www v0.0.0-20240905200735-e25d6f89d3bd/go.mod h1:6QEe6ncW9r4M7EtXbXplNfiHUhhlkMH+k73EB4vRtPA=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

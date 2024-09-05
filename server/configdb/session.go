@@ -8,8 +8,8 @@ import (
 
 	"github.com/cyclopcam/cyclops/pkg/pwdhash"
 	"github.com/cyclopcam/cyclops/pkg/rando"
-	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/dbh"
+	"github.com/cyclopcam/www"
 )
 
 // SYNC-CYCLOPS-SESSION-COOKIE

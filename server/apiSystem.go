@@ -8,9 +8,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/www"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/configdb"
+	"github.com/cyclopcam/www"
 	"github.com/julienschmidt/httprouter"
 	"golang.org/x/crypto/curve25519"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
