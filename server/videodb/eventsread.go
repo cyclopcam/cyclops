@@ -122,5 +122,15 @@ func (v *VideoDB) ReadEvents(camera string, startTime, endTime time.Time) ([]*Ev
 	if err := v.db.Where("camera = ? AND time >= ? AND time < ?", cameraID, startTime, endTime).Find(&events).Error; err != nil {
 		return nil, err
 	}
+
+	// Add in-memory events that haven't been written to the DB yet
+	v.currentLock.Lock()
+	busy, _ := v.buildEventRecord(cameraID)
+	if busy != nil {
+		// The zero ID on this record tells the caller that this a temporary record, still busy being built
+		events = append(events, busy)
+	}
+	v.currentLock.Unlock()
+
 	return events, nil
 }

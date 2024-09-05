@@ -7,12 +7,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bluenviron/gortsplib/v4/pkg/description"
 	"github.com/bluenviron/gortsplib/v4/pkg/format/rtph264"
+	"github.com/bluenviron/gortsplib/v4/pkg/format/rtph265"
 	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/bmharper/ringbuffer"
 	"github.com/cyclopcam/cyclops/pkg/gen"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videox"
+	"github.com/cyclopcam/logs"
 	"github.com/pion/rtp"
 
 	"github.com/bluenviron/gortsplib/v4"
@@ -86,6 +88,10 @@ type streamSink struct {
 	name string // for debugging
 }
 
+type packetDecoder interface {
+	Decode(pkt *rtp.Packet) ([][]byte, error)
+}
+
 // Stream is a bridge between the RTSP library (gortsplib) and one or more "sink" objects.
 // The stream understands just enough about RTSP and video codecs to be able to receive
 // information from gortsplib, transform them into our own internal data structures,
@@ -93,11 +99,12 @@ type streamSink struct {
 // For each camera, we create one stream to handle the high res video, and another stream
 // for the low res video.
 type Stream struct {
-	Log        log.Log
+	Log        logs.Log
 	Client     *gortsplib.Client
 	Ident      string // Just for logs. Simply CameraName.StreamName.
 	CameraName string // Just for logs
 	StreamName string // The stream name, such as "low" and "high"
+	Codec      videox.Codec
 
 	// These are read at the start of Listen(), and will be populated before Listen() returns
 	//H264TrackID int                  // 0-based track index
@@ -134,9 +141,9 @@ type Stream struct {
 	cameraSendsAnnexBEncoded bool
 }
 
-func NewStream(logger log.Log, cameraName, streamName string, cameraSendsAnnexBEncoded bool) *Stream {
+func NewStream(logger logs.Log, cameraName, streamName string, cameraSendsAnnexBEncoded bool) *Stream {
 	return &Stream{
-		Log:                      log.NewPrefixLogger(logger, "Stream "+cameraName+"."+streamName),
+		Log:                      logs.NewPrefixLogger(logger, "Stream "+cameraName+"."+streamName),
 		recentFrames:             ringbuffer.NewRingP[frameStat](128),
 		CameraName:               cameraName,
 		StreamName:               streamName,
@@ -180,21 +187,39 @@ func (s *Stream) Listen(address string) error {
 		return err
 	}
 
-	// find the H264 track
-	var forma *format.H264
-	media := session.FindFormat(&forma)
-	if media == nil {
-		return fmt.Errorf("H264 track not found")
+	// find the H264/H265 track
+	var formaH264 *format.H264
+	var formaH265 *format.H265
+	var forma format.Format
+	var media *description.Media
+	var rtpDecoder packetDecoder
+	media = session.FindFormat(&formaH265)
+	if media != nil {
+		forma = formaH265
+		s.Codec = videox.CodecH265
+		rtpDecoder, err = formaH265.CreateDecoder()
+		if err != nil {
+			return fmt.Errorf("Failed to create H265 decoder: %w", err)
+		}
 	}
-
-	rtpDecoder, err := forma.CreateDecoder()
-	if err != nil {
-		return fmt.Errorf("Failed to create H264 decoder: %w", err)
+	if media == nil {
+		media = session.FindFormat(&formaH264)
+		if media != nil {
+			forma = formaH264
+			rtpDecoder, err = formaH264.CreateDecoder()
+			s.Codec = videox.CodecH264
+			if err != nil {
+				return fmt.Errorf("Failed to create H264 decoder: %w", err)
+			}
+		}
+	}
+	if media == nil {
+		return fmt.Errorf("H264/H265 track not found")
 	}
 
 	client.Setup(session.BaseURL, media, 0, 0)
 
-	s.Log.Infof("Connected to %v, track %v", camHost, media.ID)
+	s.Log.Infof("Connected to %v, track %v, codec %v", camHost, media.ID, s.Codec)
 
 	rawRecvID := atomic.Int64{}
 	validRecvID := atomic.Int64{}
@@ -223,7 +248,7 @@ func (s *Stream) Listen(address string) error {
 		pts, ok := client.PacketPTS(media, pkt)
 		if !ok {
 			if nWarningsAboutNoPTS == 0 {
-				s.Log.Warnf("Ignoring H264 packet without PTS")
+				s.Log.Warnf("Ignoring %v packet without PTS", s.Codec)
 			}
 			nWarningsAboutNoPTS = min(nWarningsAboutNoPTS+1, 1000)
 			return
@@ -236,8 +261,9 @@ func (s *Stream) Listen(address string) error {
 
 		nalus, err := rtpDecoder.Decode(pkt)
 		if err != nil {
-			if err != rtph264.ErrNonStartingPacketAndNoPrevious && err != rtph264.ErrMorePacketsNeeded {
-				s.Log.Errorf("Failed to decode H264 packet: %v", err)
+			if err != rtph264.ErrNonStartingPacketAndNoPrevious && err != rtph264.ErrMorePacketsNeeded &&
+				err != rtph265.ErrNonStartingPacketAndNoPrevious && err != rtph265.ErrMorePacketsNeeded {
+				s.Log.Errorf("Failed to decode %v packet: %v", s.Codec, err)
 			}
 			return
 		}
@@ -367,14 +393,16 @@ func (s *Stream) extractSPSInfo(nalus [][]byte) *StreamInfo {
 		if len(nalu) == 0 {
 			continue
 		}
-		if h264.NALUType(nalu[0]&31) == h264.NALUTypeSPS {
-			width, height, err := videox.ParseSPS(nalu)
-			if err != nil {
-				s.Log.Errorf("Failed to decode SPS: %v", err)
-			}
-			return &StreamInfo{
-				Width:  width,
-				Height: height,
+		if s.Codec == videox.CodecH264 {
+			if h264.NALUType(nalu[0]&31) == h264.NALUTypeSPS {
+				width, height, err := videox.ParseH264SPS(nalu)
+				if err != nil {
+					s.Log.Errorf("Failed to decode SPS: %v", err)
+				}
+				return &StreamInfo{
+					Width:  width,
+					Height: height,
+				}
 			}
 		}
 	}
@@ -528,7 +556,7 @@ func (s *Stream) addFrameToStats(nalus [][]byte, pts time.Duration) {
 	if s.loggedStatsAt.IsZero() && s.recentFrames.Len() >= s.recentFrames.Capacity() {
 		s.loggedStatsAt = time.Now()
 		stats := s.statsNoMutexLock()
-		s.Log.Infof("FPS: %.1f, Avg: %.0f, IDR: %.0f, Non-IDR: %.0f", stats.FPS, stats.FrameSize, stats.KeyFrameSize, stats.InterFrameSize)
+		s.Log.Infof("FPS: %.1f, Avg: %.0f, Keyframe: %.0f, Intra: %.0f, Rate: %.0f KB/s", stats.FPS, stats.FrameSize, stats.KeyFrameSize, stats.InterFrameSize, stats.FrameSize*stats.FPS/1024)
 	}
 }
 

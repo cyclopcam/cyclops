@@ -8,8 +8,8 @@ import (
 
 	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/cyclopcam/cyclops/pkg/accel"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videox"
+	"github.com/cyclopcam/logs"
 )
 
 // VideoDecodeReader decodes the video stream and emits frames
@@ -20,10 +20,10 @@ import (
 // a blocking call which waits for a new frame to be decoded,
 // depending upon the acceptable latency.
 type VideoDecodeReader struct {
-	Log log.Log
+	Log logs.Log
 	//TrackID int
 	//Track   *gortsplib.TrackH264
-	Decoder *videox.H264Decoder
+	Decoder *videox.VideoDecoder
 
 	incoming     StreamSinkChan
 	nPackets     int64
@@ -44,12 +44,10 @@ func NewVideoDecodeReader() *VideoDecodeReader {
 
 func (r *VideoDecodeReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	r.Log = stream.Log
-	//r.TrackID = stream.H264TrackID
-	//r.Track = stream.H264Track
 
-	decoder, err := videox.NewH264StreamDecoder("h264")
+	decoder, err := videox.NewVideoStreamDecoder(stream.Codec)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to start H264 decoder: %w", err)
+		return nil, fmt.Errorf("Failed to start '%v' decoder: %w", stream.Codec, err)
 	}
 
 	// UPDATE: Sending SPS and PPS now doesn't actually help. avcodec wants SPS+PPS+IDR to start decoding,

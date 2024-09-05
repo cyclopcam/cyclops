@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <assert.h>
 
 // Courtesy of https://stackoverflow.com/questions/12018535/get-the-width-height-of-the-video-from-h-264-nalu
@@ -62,7 +63,7 @@ struct SPSParser {
 		return r;
 	}
 
-	void ParseSPS(const unsigned char* pStart, size_t nLen) {
+	void ParseH264SPS(const unsigned char* pStart, size_t nLen) {
 		m_pStart       = pStart;
 		m_nLengthBytes = (unsigned) nLen;
 		m_nLengthBits  = (unsigned) nLen * 8;
@@ -160,15 +161,69 @@ struct SPSParser {
 		Width  = ((pic_width_in_mbs_minus1 + 1) * 16) - frame_crop_right_offset * 2 - frame_crop_left_offset * 2;
 		Height = ((2 - frame_mbs_only_flag) * (pic_height_in_map_units_minus1 + 1) * 16) - (frame_crop_bottom_offset * 2) - (frame_crop_top_offset * 2);
 	}
+
+	// Function to read bits from a buffer
+	uint32_t read_bits(uint8_t* buffer, int* bit_position, int bit_count) {
+		uint32_t value = 0;
+		for (int i = 0; i < bit_count; i++) {
+			value <<= 1;
+			value |= (buffer[*bit_position >> 3] >> (7 - (*bit_position & 7))) & 1;
+			(*bit_position)++;
+		}
+		return value;
+	}
+
+	// From Grok 2 (2024/09/05)
+	// This looks wrong.
+	void ParseH265SPS(const unsigned char* pStart, size_t nLen) {
+		// Function to parse SPS for width and height
+		uint8_t* sps_data     = (uint8_t*) pStart;
+		int      sps_length   = nLen;
+		int      bit_position = 16; // Skip the NAL unit header and some initial SPS data
+
+		// Skipping some initial parameters for brevity. You might want to parse these as well.
+		for (int i = 0; i < 13; i++)
+			read_bits(sps_data, &bit_position, 8); // Skip profile, level etc.
+
+		// Read seq_parameter_set_id and other parameters if needed, here we simplify:
+		read_bits(sps_data, &bit_position, 4); // seq_parameter_set_id
+
+		// Chroma format idc
+		int chroma_format_idc = read_bits(sps_data, &bit_position, 2);
+
+		if (chroma_format_idc == 3)
+			read_bits(sps_data, &bit_position, 1); // separate_colour_plane_flag
+
+		Width  = read_bits(sps_data, &bit_position, 16); // pic_width_in_luma_samples
+		Height = read_bits(sps_data, &bit_position, 16); // pic_height_in_luma_samples
+
+		// Here, you might need to adjust for cropping, which involves reading
+		// conformance_window_flag and then potentially cropping parameters.
+		bool conformance_window_flag = read_bits(sps_data, &bit_position, 1);
+		if (conformance_window_flag) {
+			read_bits(sps_data, &bit_position, 2); // conf_win_left_offset
+			read_bits(sps_data, &bit_position, 2); // conf_win_right_offset
+			read_bits(sps_data, &bit_position, 2); // conf_win_top_offset
+			read_bits(sps_data, &bit_position, 2); // conf_win_bottom_offset
+			                                       // Adjust width and height if necessary based on these values
+		}
+	}
 };
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void ParseSPS(const void* buf, size_t len, int* width, int* height) {
+void ParseH264SPS(const void* buf, size_t len, int* width, int* height) {
 	SPSParser p;
-	p.ParseSPS((const unsigned char*) buf, len);
+	p.ParseH264SPS((const unsigned char*) buf, len);
+	*width  = p.Width;
+	*height = p.Height;
+}
+
+void ParseH265SPS(const void* buf, size_t len, int* width, int* height) {
+	SPSParser p;
+	p.ParseH265SPS((const unsigned char*) buf, len);
 	*width  = p.Width;
 	*height = p.Height;
 }

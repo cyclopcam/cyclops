@@ -8,10 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/requests"
-	"github.com/cyclopcam/cyclops/pkg/wireguard/wguser"
 	"github.com/cyclopcam/cyclops/proxy/proxymsg"
+	"github.com/cyclopcam/logs"
+	"github.com/cyclopcam/safewg/wguser"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -26,7 +26,7 @@ const ProxyHost = "proxy-cpt.cyclopcam.org"
 
 // VPN is only safe to use by a single thread
 type VPN struct {
-	Log           log.Log
+	Log           logs.Log
 	privateKey    wgtypes.Key
 	publicKey     wgtypes.Key
 	client        *wguser.Client
@@ -35,7 +35,7 @@ type VPN struct {
 	hasRegistered atomic.Bool
 }
 
-func NewVPN(log log.Log, privateKey, publicKey wgtypes.Key, wgkernelClientSecret string) *VPN {
+func NewVPN(log logs.Log, privateKey, publicKey wgtypes.Key, wgkernelClientSecret string) *VPN {
 	v := &VPN{
 		Log:        log,
 		privateKey: privateKey,

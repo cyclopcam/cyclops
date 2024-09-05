@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/cyclopcam/cyclops/pkg/dbh"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
+	"github.com/cyclopcam/logs"
 	"gorm.io/gorm"
 )
 
@@ -22,7 +22,7 @@ type VideoDB struct {
 
 	Archive *fsv.Archive
 
-	log                   log.Log
+	log                   logs.Log
 	db                    *gorm.DB
 	shutdown              chan bool // This channel is closed when its time to shutdown
 	writeThreadClosed     chan bool // The write thread closes this channel when it exits
@@ -51,9 +51,9 @@ type VideoDB struct {
 }
 
 // Open or create a video DB
-func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
-	logsRaw := logs
-	logs = log.NewPrefixLogger(logs, "VideoDB")
+func NewVideoDB(logger logs.Log, root string) (*VideoDB, error) {
+	logsRaw := logger
+	logger = logs.NewPrefixLogger(logsRaw, "VideoDB")
 
 	root = filepath.Clean(root)
 	if err := os.MkdirAll(root, 0770); err != nil {
@@ -65,9 +65,9 @@ func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
 		return nil, fmt.Errorf("Failed to create Video storage path '%v': %w", videoDir, err)
 	}
 
-	logs.Infof("Opening Video DB at '%v'", root)
+	logger.Infof("Opening Video DB at '%v'", root)
 	dbPath := filepath.Join(root, "videos.sqlite")
-	vdb, err := dbh.OpenDB(logs, dbh.MakeSqliteConfig(dbPath), Migrations(logs), dbh.DBConnectFlagSqliteWAL)
+	vdb, err := dbh.OpenDB(logger, dbh.MakeSqliteConfig(dbPath), Migrations(logger), dbh.DBConnectFlagSqliteWAL)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open video database %v: %w", dbPath, err)
 	}
@@ -78,7 +78,7 @@ func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
 	// open the archive with our current settings, in case other settings creep in
 	// later, and we don't remember to update that kind of thing here.
 
-	logs.Infof("Scanning Video Archive at '%v'", videoDir)
+	logger.Infof("Scanning Video Archive at '%v'", videoDir)
 	formats := []fsv.VideoFormat{&fsv.VideoFormatRF1{}}
 	archiveInitSettings := fsv.DefaultStaticSettings()
 	// The following line disables the write buffer
@@ -95,7 +95,7 @@ func NewVideoDB(logs log.Log, root string) (*VideoDB, error) {
 	maxTileLevel := 13
 
 	self := &VideoDB{
-		log:                   logs,
+		log:                   logger,
 		db:                    vdb,
 		Archive:               archive,
 		Root:                  root,

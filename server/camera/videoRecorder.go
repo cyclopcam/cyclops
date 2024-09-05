@@ -6,10 +6,10 @@ import (
 
 	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/cyclopcam/cyclops/pkg/gen"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 	"github.com/cyclopcam/cyclops/pkg/videox"
+	"github.com/cyclopcam/logs"
 )
 
 // VideoRecorder writes incoming packets to our 'fsv' video archive
@@ -19,7 +19,7 @@ import (
 // want some history that preceded the moment of the event trigger.
 // For continuous recording modes this is not important.
 type VideoRecorder struct {
-	Log              log.Log
+	Log              logs.Log
 	ringBuffer       *VideoRingBuffer
 	archive          *fsv.Archive
 	streamName       string

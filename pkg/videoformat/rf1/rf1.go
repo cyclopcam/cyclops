@@ -36,7 +36,7 @@ const (
 	//IndexNALUFlagKeyFrame                            // Key frame
 
 	IndexNALUFlagKeyFrame      IndexNALUFlags = 1 // Key frame
-	IndexNALUFlagEssentialMeta IndexNALUFlags = 2 // Essential metadata, required to initialize the decoder (eg SPS/PPS NALUs in h264)
+	IndexNALUFlagEssentialMeta IndexNALUFlags = 2 // Essential metadata, required to initialize the decoder (eg SPS/PPS NALUs in h264/h265)
 	IndexNALUFlagAnnexB        IndexNALUFlags = 4 // Packet has Annex-B "emulation prevention bytes" and start codes
 )
 

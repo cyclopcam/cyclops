@@ -206,15 +206,15 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	if err != nil {
 		www.PanicServerErrorf("Failed to read video: %v", err)
 	}
-	if len(packets[streamName]) == 0 {
+	if len(packets[streamName].NALS) == 0 {
 		www.PanicBadRequestf("No video available at that time")
 	}
 	packet := &videox.VideoPacket{
-		WallPTS: packets[streamName][0].PTS,
+		WallPTS: packets[streamName].NALS[0].PTS,
 	}
 	outPackets := []*videox.VideoPacket{}
 	packetIntervals := []time.Duration{}
-	for _, p := range packets[streamName] {
+	for _, p := range packets[streamName].NALS {
 		if p.PTS != packet.WallPTS {
 			packetIntervals = append(packetIntervals, p.PTS.Sub(packet.WallPTS))
 			outPackets = append(outPackets, packet)
@@ -235,7 +235,9 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 		// Zero time means "return first image that decodes"
 		findImageAt = time.Time{}
 	}
-	img, imgTime, err := videox.DecodeClosestImageInPacketList(outPackets, findImageAt)
+	codec, err := videox.ParseCodec(packets[streamName].Codec)
+	www.Check(err)
+	img, imgTime, err := videox.DecodeClosestImageInPacketList(codec, outPackets, findImageAt)
 	if err != nil {
 		www.PanicServerErrorf("Failed to decode video: %v", err)
 	}

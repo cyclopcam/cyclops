@@ -7,16 +7,16 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 )
 
 // StorageFS is a filesystem-based blob store
 type StorageFS struct {
 	Root string
-	log  log.Log
+	log  logs.Log
 }
 
-func NewStorageFS(log log.Log, root string) (*StorageFS, error) {
+func NewStorageFS(log logs.Log, root string) (*StorageFS, error) {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err

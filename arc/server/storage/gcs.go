@@ -5,7 +5,7 @@ import (
 	"io"
 
 	gcs "cloud.google.com/go/storage"
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 )
 
 // StorageGCS is a Google Cloud Storage-based blob store
@@ -13,10 +13,10 @@ type StorageGCS struct {
 	bucketName string
 	bucket     *gcs.BucketHandle
 	isPublic   bool
-	log        log.Log
+	log        logs.Log
 }
 
-func NewStorageGCS(log log.Log, bucketName string, isPublic bool) (*StorageGCS, error) {
+func NewStorageGCS(log logs.Log, bucketName string, isPublic bool) (*StorageGCS, error) {
 	ctx := context.Background()
 	client, err := gcs.NewClient(ctx)
 	if err != nil {

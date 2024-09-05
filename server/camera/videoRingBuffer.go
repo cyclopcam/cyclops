@@ -7,8 +7,8 @@ import (
 
 	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/bmharper/ringbuffer"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videox"
+	"github.com/cyclopcam/logs"
 )
 
 type ExtractMethod int
@@ -82,7 +82,7 @@ buffer would be only 4800 KB, and that would be an insanely long recording.
 //
 // The above sequence is what videoRecorder uses when it starts recording.
 type VideoRingBuffer struct {
-	Log log.Log
+	Log logs.Log
 
 	BufferLock sync.Mutex // Guards all access to Buffer
 	Buffer     ringbuffer.WeightedRingT[videox.VideoPacket]

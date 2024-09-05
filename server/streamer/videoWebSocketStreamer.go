@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/monitor"
+	"github.com/cyclopcam/logs"
 	"github.com/gorilla/websocket"
 )
 
@@ -55,7 +55,7 @@ const WebSocketSendBufferSize = 50
 var nextWebSocketStreamerID int64
 
 type VideoWebSocketStreamer struct {
-	log        log.Log
+	log        logs.Log
 	streamerID int64 // Intended to aid in logging/debugging
 	incoming   camera.StreamSinkChan
 	//trackID         int
@@ -74,13 +74,13 @@ type VideoWebSocketStreamer struct {
 	logPacketCount    bool
 }
 
-func RunVideoWebSocketStreamer(cameraName string, logger log.Log, conn *websocket.Conn, stream *camera.Stream, backlog *camera.VideoRingBuffer, detections chan *monitor.AnalysisState) {
+func RunVideoWebSocketStreamer(cameraName string, logger logs.Log, conn *websocket.Conn, stream *camera.Stream, backlog *camera.VideoRingBuffer, detections chan *monitor.AnalysisState) {
 	streamerID := atomic.AddInt64(&nextWebSocketStreamerID, 1)
 
 	streamer := &VideoWebSocketStreamer{
 		incoming:       make(camera.StreamSinkChan, camera.StreamSinkChanDefaultBufferSize),
 		streamerID:     streamerID,
-		log:            log.NewPrefixLogger(logger, fmt.Sprintf("Camera %v WebSocket %v", cameraName, streamerID)),
+		log:            logs.NewPrefixLogger(logger, fmt.Sprintf("Camera %v WebSocket %v", cameraName, streamerID)),
 		sendQueue:      make(chan webSocketSendPacket, WebSocketSendBufferSize),
 		detections:     detections,
 		debug:          false,

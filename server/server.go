@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/kibi"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/server/arc"
 	"github.com/cyclopcam/cyclops/server/configdb"
@@ -24,12 +23,13 @@ import (
 	"github.com/cyclopcam/cyclops/server/util"
 	"github.com/cyclopcam/cyclops/server/videodb"
 	"github.com/cyclopcam/cyclops/server/vpn"
+	"github.com/cyclopcam/logs"
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
 )
 
 type Server struct {
-	Log              log.Log
+	Log              logs.Log
 	TempFiles        *util.TempFiles
 	RingBufferSize   int
 	MustRestart      bool           // Value of the 'restart' parameter to Shutdown()
@@ -77,13 +77,13 @@ type StartupError struct {
 }
 
 // Create a new server, load config, start cameras, and listen on HTTP
-func NewServer(logger log.Log, configDBFilename string, serverFlags int, nnModelName string, explicitPrivateKey string) (*Server, error) {
-	log, err := log.NewLog()
+func NewServer(logger logs.Log, configDBFilename string, serverFlags int, nnModelName string, explicitPrivateKey string) (*Server, error) {
+	logger, err := logs.NewLog()
 	if err != nil {
 		return nil, err
 	}
 	s := &Server{
-		Log:                    log,
+		Log:                    logger,
 		RingBufferSize:         200 * 1024 * 1024,
 		ShutdownComplete:       make(chan error, 1),
 		ShutdownStarted:        make(chan bool),
@@ -101,7 +101,7 @@ func NewServer(logger log.Log, configDBFilename string, serverFlags int, nnModel
 	// unable to access our video archive.
 	if err := s.StartVideoDB(); err != nil {
 		s.StartupErrors = append(s.StartupErrors, StartupError{StartupErrorArchivePath, err.Error()})
-		log.Errorf("%v", err)
+		logger.Errorf("%v", err)
 	}
 	var fsvArchive *fsv.Archive
 	if s.videoDB != nil {

@@ -6,16 +6,16 @@ import (
 	"time"
 
 	"github.com/bmharper/cimg/v2"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/defs"
 	"github.com/cyclopcam/cyclops/server/videodb"
+	"github.com/cyclopcam/logs"
 )
 
 // Camera represents a single physical camera, with two streams (high and low res)
 type Camera struct {
-	Log        log.Log
+	Log        logs.Log
 	Config     configdb.Camera // Copy from the config database, from the moment when the camera was created. Can be out of date if camera config has been modified since.
 	LowStream  *Stream
 	HighStream *Stream
@@ -26,7 +26,7 @@ type Camera struct {
 	highResURL string
 }
 
-func NewCamera(log log.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Camera, error) {
+func NewCamera(log logs.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Camera, error) {
 	baseURL := "rtsp://" + cfg.Username + ":" + cfg.Password + "@" + cfg.Host
 	if cfg.Port == 0 {
 		baseURL += ":554"

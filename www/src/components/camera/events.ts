@@ -11,7 +11,7 @@ interface EventJSON {
 	id: number;
 	time: number; // unix time in milliseconds
 	duration: number; // duration in milliseconds
-	camera: number; // camera ID
+	//camera: number; // camera ID in VideoDB - DIFFERENT to regular camera ID. Which is why we comment it out, so we ignore it.
 	resolution: [number, number]; // [width, height] of camera stream on which detection was run
 	detections: EventDetectionsJSON;
 }
@@ -61,11 +61,17 @@ class CameraEventObjectPosition {
 // CameraEvent is an event that occurred in a camera feed.
 // Basically, this means that something of interest was detected in the camera feed.
 export class CameraEvent {
+	id: number; // Internal database ID of the event, can be used to uniquely identify events
 	objects: CameraEventObject[];
+	startTime: Date;
+	endTime: Date;
 	resolution: [number, number]; // [width, height] of camera stream on which detection was run
 
-	constructor() {
+	constructor(id: number, startTime: Date, endTime: Date) {
+		this.id = id;
 		this.objects = [];
+		this.startTime = startTime;
+		this.endTime = endTime;
 		this.resolution = [0, 0];
 	}
 
@@ -74,7 +80,7 @@ export class CameraEvent {
 		let j = await r.json() as GetEventDetailsJSON;
 		let outEvents: CameraEvent[] = [];
 		for (let ev of j.events) {
-			let outEvent = new CameraEvent();
+			let outEvent = new CameraEvent(ev.id, new Date(ev.time), new Date(ev.time + ev.duration));
 			outEvent.resolution = ev.resolution;
 			for (let objects of ev.detections.objects) {
 				let outObject = new CameraEventObject(j.idToString[objects.class]);

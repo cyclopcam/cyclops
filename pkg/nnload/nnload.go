@@ -12,10 +12,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/ncnn"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/nnaccel"
+	"github.com/cyclopcam/logs"
 )
 
 // If not nil, then we have successfully loaded the Hailo AI accelerator module
@@ -28,7 +28,7 @@ func HaveAccelerator() bool {
 
 // LoadModel loads a neural network from disk.
 // If the model consists of several files, then filenameBase is the base filename, without the extensions.
-func LoadModel(logs log.Log, modelDir, filenameBase string, threadingMode nn.ThreadingMode, modelSetup *nn.ModelSetup) (nn.ObjectDetector, error) {
+func LoadModel(logs logs.Log, modelDir, filenameBase string, threadingMode nn.ThreadingMode, modelSetup *nn.ModelSetup) (nn.ObjectDetector, error) {
 	fullPathBase := filepath.Join(modelDir, filenameBase)
 	config, err := nn.LoadModelConfig(fullPathBase + ".json")
 	if err != nil {
@@ -56,7 +56,7 @@ func LoadModel(logs log.Log, modelDir, filenameBase string, threadingMode nn.Thr
 	}
 }
 
-func LoadAccelerators(logs log.Log, enableHailo bool) {
+func LoadAccelerators(logs logs.Log, enableHailo bool) {
 	logs.Infof("Loading NN accelerators")
 	var err error
 	if enableHailo {

@@ -6,9 +6,9 @@ import (
 
 	"github.com/akamensky/argparse"
 	"github.com/cyclopcam/cyclops/pkg/dbh"
-	"github.com/cyclopcam/cyclops/pkg/log"
-	"github.com/cyclopcam/cyclops/pkg/wireguard/wgroot"
 	"github.com/cyclopcam/cyclops/proxy"
+	"github.com/cyclopcam/logs"
+	"github.com/cyclopcam/safewg/wgroot"
 )
 
 func check(err error) {
@@ -27,9 +27,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger, err := log.NewLog()
+	logger, err := logs.NewLog()
 	check(err)
-	logger = log.NewPrefixLogger(logger, "proxy")
+	logger = logs.NewPrefixLogger(logger, "proxy")
 
 	pgHost := os.Getenv("CYCLOPS_POSTGRES_HOST")
 	if pgHost == "" {

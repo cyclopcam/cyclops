@@ -58,12 +58,12 @@ func WrapAvErr(err C.int) error {
 // If you're decoding a file, provide the filename.
 // If you're decoding a stream, provide the codec
 type DecoderOptions struct {
-	Codec    string
+	Codec    Codec
 	Filename string
 }
 
-// H264Decoder is a wrapper around ffmpeg's H264 decoder.
-type H264Decoder struct {
+// VideoDecoder is a wrapper around ffmpeg
+type VideoDecoder struct {
 	formatCtx   *C.AVFormatContext // Only non-nil if we're decoding a file. If decoding an RTSP stream from memory, this is nil.
 	ownCodecCtx bool               // True if we created codecCtx, and need to free it.
 	videoStream C.int              // Only populated for files
@@ -75,21 +75,21 @@ type H264Decoder struct {
 }
 
 // Create a new decoder that you will feed with packets
-func NewH264StreamDecoder(codec string) (*H264Decoder, error) {
-	return NewH264Decoder(DecoderOptions{
+func NewVideoStreamDecoder(codec Codec) (*VideoDecoder, error) {
+	return NewVideoDecoder(DecoderOptions{
 		Codec: codec,
 	})
 }
 
 // Create a new decoder that will decode the given file
-func NewH264FileDecoder(filename string) (*H264Decoder, error) {
-	return NewH264Decoder(DecoderOptions{
+func NewVideoFileDecoder(filename string) (*VideoDecoder, error) {
+	return NewVideoDecoder(DecoderOptions{
 		Filename: filename,
 	})
 }
 
-// NewH264Decoder allocates a new H264Decoder.
-func NewH264Decoder(options DecoderOptions) (*H264Decoder, error) {
+// NewVideoDecoder allocates a new VideoDecoder.
+func NewVideoDecoder(options DecoderOptions) (*VideoDecoder, error) {
 	// I tried this on Rpi4, to make sure I'm getting hardware decode.. but:
 	// This doesn't work.. I just get "avcodec_receive_frame error Resource temporarily unavailable"
 	// Perhaps it could work, I didn't try harder.
@@ -138,13 +138,16 @@ func NewH264Decoder(options DecoderOptions) (*H264Decoder, error) {
 			return nil, fmt.Errorf("avcodec_parameters_to_context() failed")
 		}
 	} else {
-		if options.Codec != "h264" {
-			return nil, fmt.Errorf("Only h264 codec is supported")
+		if options.Codec != CodecH264 && options.Codec != CodecH265 {
+			return nil, fmt.Errorf("Only h264 and h265 codecs are supported by VideoDecoder")
 		}
 
 		// Note: There is also avcodec_find_decoder_by_name()
-
-		codec = C.avcodec_find_decoder(C.AV_CODEC_ID_H264)
+		avcodec_id := uint32(C.AV_CODEC_ID_H264)
+		if options.Codec == CodecH265 {
+			avcodec_id = uint32(C.AV_CODEC_ID_H265)
+		}
+		codec = C.avcodec_find_decoder(avcodec_id)
 		if codec == nil {
 			return nil, fmt.Errorf("avcodec_find_decoder() failed")
 		}
@@ -170,7 +173,7 @@ func NewH264Decoder(options DecoderOptions) (*H264Decoder, error) {
 		return nil, fmt.Errorf("av_frame_alloc() failed")
 	}
 
-	decoder := &H264Decoder{
+	decoder := &VideoDecoder{
 		ownCodecCtx: ownCodecCtx,
 		codecCtx:    codecCtx,
 		videoStream: videoStream,
@@ -184,7 +187,7 @@ func NewH264Decoder(options DecoderOptions) (*H264Decoder, error) {
 }
 
 // Close closes the decoder.
-func (d *H264Decoder) Close() {
+func (d *VideoDecoder) Close() {
 	if d.dstFrame != nil {
 		C.av_frame_free(&d.dstFrame)
 	}
@@ -203,7 +206,7 @@ func (d *H264Decoder) Close() {
 }
 
 // NextFrame reads the next frame from a file and returns a copy of the YUV image.
-func (d *H264Decoder) NextFrame() (*accel.YUVImage, error) {
+func (d *VideoDecoder) NextFrame() (*accel.YUVImage, error) {
 	img, err := d.NextFrameDeepRef()
 	if err != nil {
 		return nil, err
@@ -214,7 +217,7 @@ func (d *H264Decoder) NextFrame() (*accel.YUVImage, error) {
 // NextFrameDeepRef will read the next frame from a file and return a deep
 // reference into the libavcodec decoded image buffer.
 // The next call to NextFrame/NextFrameDeepRef will invalidate that image.
-func (d *H264Decoder) NextFrameDeepRef() (*accel.YUVImage, error) {
+func (d *VideoDecoder) NextFrameDeepRef() (*accel.YUVImage, error) {
 	packet := C.av_packet_alloc()
 	defer C.av_packet_free(&packet)
 
@@ -258,7 +261,7 @@ func (d *H264Decoder) NextFrameDeepRef() (*accel.YUVImage, error) {
 
 // Decode the packet and return a copy of the YUV image.
 // This is used when decoding a stream (not a file).
-func (d *H264Decoder) Decode(packet *VideoPacket) (*accel.YUVImage, error) {
+func (d *VideoDecoder) Decode(packet *VideoPacket) (*accel.YUVImage, error) {
 	img, err := d.DecodeDeepRef(packet)
 	if err != nil {
 		return nil, err
@@ -271,7 +274,7 @@ func (d *H264Decoder) Decode(packet *VideoPacket) (*accel.YUVImage, error) {
 // The pixels in the returned image are not a garbage-collected Go slice.
 // They point directly into the libavcodec decode buffer.
 // That's why the function name has the "DeepRef" suffix.
-func (d *H264Decoder) DecodeDeepRef(packet *VideoPacket) (*accel.YUVImage, error) {
+func (d *VideoDecoder) DecodeDeepRef(packet *VideoPacket) (*accel.YUVImage, error) {
 	// This was an experiment to see if the h264 codec would accept RBSP packets
 	// (i.e. without any start code or emulation prevention bytes).
 	// The answer is a resounding NO.
@@ -384,15 +387,15 @@ func (d *H264Decoder) DecodeDeepRef(packet *VideoPacket) (*accel.YUVImage, error
 	*/
 }
 
-func (d *H264Decoder) Width() int {
+func (d *VideoDecoder) Width() int {
 	return int(d.codecCtx.width)
 }
 
-func (d *H264Decoder) Height() int {
+func (d *VideoDecoder) Height() int {
 	return int(d.codecCtx.height)
 }
 
-func (d *H264Decoder) sendPacket(packet []byte) error {
+func (d *VideoDecoder) sendPacket(packet []byte) error {
 	// The following doesn't work, because we're storing a Go pointer inside a C struct,
 	// and then passing that C struct to a C function. So to fix this, we need to define
 	// a helper function in C.
@@ -414,8 +417,8 @@ func (d *H264Decoder) sendPacket(packet []byte) error {
 // This was built for extracting a thumbnail during a long recording.
 // Obviously this is a bit expensive, because you're creating a decoder
 // for just a single frame.
-func DecodeSinglePacketToImage(packet *VideoPacket) (*cimg.Image, error) {
-	decoder, err := NewH264StreamDecoder("h264")
+func DecodeSinglePacketToImage(codec Codec, packet *VideoPacket) (*cimg.Image, error) {
+	decoder, err := NewVideoStreamDecoder(codec)
 	if err != nil {
 		return nil, err
 	}
@@ -428,14 +431,14 @@ func DecodeSinglePacketToImage(packet *VideoPacket) (*cimg.Image, error) {
 }
 
 // Decode the list of packets, and return the first image that successfully decodes
-func DecodeFirstImageInPacketList(packets []*VideoPacket) (*cimg.Image, time.Time, error) {
-	return DecodeClosestImageInPacketList(packets, time.Time{})
+func DecodeFirstImageInPacketList(codec Codec, packets []*VideoPacket) (*cimg.Image, time.Time, error) {
+	return DecodeClosestImageInPacketList(codec, packets, time.Time{})
 }
 
 // Decode the list of packets, and return the decoded image who's presentation time is closest to targetTime.
 // If targetTime is zero, then we return the first image coming out of the decoder.
-func DecodeClosestImageInPacketList(packets []*VideoPacket, targetTime time.Time) (*cimg.Image, time.Time, error) {
-	decoder, err := NewH264StreamDecoder("h264")
+func DecodeClosestImageInPacketList(codec Codec, packets []*VideoPacket, targetTime time.Time) (*cimg.Image, time.Time, error) {
+	decoder, err := NewVideoStreamDecoder(codec)
 	if err != nil {
 		return nil, time.Time{}, err
 	}

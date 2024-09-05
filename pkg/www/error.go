@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 )
 
 // HTTPError is an object that can be panic'ed, and the outer HTTP handler function.
@@ -116,7 +116,7 @@ func Check(err error) {
 }
 
 // CheckLogged writes the error to the log, and then causes a panic, if err is not nil.
-func CheckLogged(l log.Log, err error) {
+func CheckLogged(l logs.Log, err error) {
 	if err != nil {
 		if l != nil {
 			l.Errorf("CheckLogged: %v", err)

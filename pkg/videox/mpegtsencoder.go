@@ -8,7 +8,7 @@ import (
 
 	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/cyclopcam/cyclops/pkg/gen"
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 
 	"github.com/asticode/go-astits"
 )
@@ -18,7 +18,7 @@ type MPGTSEncoder struct {
 	sps []byte
 	pps []byte
 
-	log log.Log
+	log logs.Log
 	//f                *os.File
 	b                *bufio.Writer
 	mux              *astits.Muxer
@@ -28,7 +28,7 @@ type MPGTSEncoder struct {
 }
 
 // NewMPEGTSEncoder allocates a mpegtsEncoder.
-func NewMPEGTSEncoder(log log.Log, output io.Writer, sps []byte, pps []byte) (*MPGTSEncoder, error) {
+func NewMPEGTSEncoder(log logs.Log, output io.Writer, sps []byte, pps []byte) (*MPGTSEncoder, error) {
 	//f, err := os.Create(filename)
 	//if err != nil {
 	//	return nil, err

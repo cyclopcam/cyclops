@@ -17,8 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/www"
+	"github.com/cyclopcam/logs"
 )
 
 var reWebpackAsset *regexp.Regexp
@@ -32,7 +32,7 @@ var reWebpackAsset *regexp.Regexp
 type CachedStaticFileServer struct {
 	fsys           fs.FS
 	fsRootDir      string // eg "www"
-	log            log.Log
+	log            logs.Log
 	compressLevel  int
 	verbose        bool
 	apiRoutes      []string         // Any path that begins with an item from apiRoutes produces a 404
@@ -63,7 +63,7 @@ type cachedStaticFile struct {
 // on the URL, but from the server's perspective, everything except for apiRoutes serves
 // up index.html
 // indexIntercept can be used to modify a request/response to index.html.
-func NewCachedStaticFileServer(fsys fs.FS, fsRootDir string, apiRoutes []string, log log.Log, immutableFilesystem bool, indexIntercept http.HandlerFunc) (*CachedStaticFileServer, error) {
+func NewCachedStaticFileServer(fsys fs.FS, fsRootDir string, apiRoutes []string, log logs.Log, immutableFilesystem bool, indexIntercept http.HandlerFunc) (*CachedStaticFileServer, error) {
 	extensions := map[string]bool{
 		"css":  true,
 		"js":   true,

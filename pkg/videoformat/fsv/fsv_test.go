@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
+	"github.com/cyclopcam/logs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,7 +20,7 @@ func TestReaderWriter(t *testing.T) {
 
 func testReaderWriter(t *testing.T, enableWriteBuffer bool) {
 	EraseArchive()
-	logger := log.NewTestingLog(t)
+	logger := logs.NewTestingLog(t)
 
 	maxSizeDelta := float64(0)
 
@@ -134,8 +134,8 @@ func verifyRead(t *testing.T, arc *Archive, streamName string, trackName string,
 	tracksR, err := arc.Read(streamName, []string{trackName}, startTime, endTime, 0)
 	require.NoError(t, err)
 	packets := tracksR[trackName]
-	require.InDelta(t, numExpectedPackets, len(packets), float64(maxPacketCountDelta))
-	require.InDelta(t, startTime.UnixMilli(), packets[0].PTS.UnixMilli(), float64(time.Millisecond))
+	require.InDelta(t, numExpectedPackets, len(packets.NALS), float64(maxPacketCountDelta))
+	require.InDelta(t, startTime.UnixMilli(), packets.NALS[0].PTS.UnixMilli(), float64(time.Millisecond))
 }
 
 func makeVideoPayload(packets []rf1.NALU) TrackPayload {

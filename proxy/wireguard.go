@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/cyclopcam/cyclops/pkg/log"
-	"github.com/cyclopcam/cyclops/pkg/wireguard/wguser"
+	"github.com/cyclopcam/logs"
+	"github.com/cyclopcam/safewg/wguser"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gorm.io/gorm"
 )
@@ -28,7 +28,7 @@ type wireGuard struct {
 	ListenPort int         // Real port that Wireguard device listens on
 	VpnIP      string      // VPN IP of Wireguard device (eg 10.6.0.0)
 
-	log    log.Log
+	log    logs.Log
 	db     *gorm.DB
 	client *wguser.Client
 }

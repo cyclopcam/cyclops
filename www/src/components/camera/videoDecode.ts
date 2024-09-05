@@ -195,6 +195,23 @@ export class VideoStreamer {
 		return this.seekCache.get(cacheKey) !== undefined;
 	}
 
+	async fetchSingleFrame(resolution: 'LD' | 'HD', posMS: number, quality: number): Promise<Blob | null> {
+		let cacheKey = FrameCache.makeKey(this.camera.id, resolution, posMS);
+		let fromCache = this.seekCache.get(cacheKey);
+		if (fromCache) {
+			return fromCache.blob;
+		}
+		let url = `/api/camera/image/${this.camera.id}/${resolution}/${posMS}?quality=${quality}`;
+		let r = await fetch(url);
+		if (!r.ok)
+			return null;
+		let blob = await r.blob();
+		let estimatedFPS = parseInt(r.headers.get("X-Cyclops-FPS") ?? '0', 10);
+		let frameTime = parseInt(r.headers.get("X-Cyclops-Frame-Time") ?? '0', 10);
+		this.seekCache.add(cacheKey, blob, estimatedFPS, frameTime);
+		return blob;
+	}
+
 	async seekTo(posMS: number, resolution: 'LD' | 'HD') {
 		posMS = this.seekCache.suggestNearestFrameTime(posMS);
 		this.seekOverlayToMS = posMS;
@@ -202,21 +219,14 @@ export class VideoStreamer {
 		let myIndex = this.seekIndexNext;
 		this.seekIndexNext++;
 
-		let quality = resolution === 'LD' ? '70' : '85';
-		let cacheKey = FrameCache.makeKey(this.camera.id, resolution, posMS);
-		let fromCache = this.seekCache.get(cacheKey);
-		let blob: Blob | null = null;
-		if (fromCache) {
-			blob = fromCache.blob;
-		} else {
-			let url = `/api/camera/image/${this.camera.id}/${resolution}/${posMS}?quality=${quality}`;
-			let r = await fetch(url);
-			if (!r.ok)
-				return;
-			blob = await r.blob();
-			let estimatedFPS = parseInt(r.headers.get("X-Cyclops-FPS") ?? '0', 10);
-			let frameTime = parseInt(r.headers.get("X-Cyclops-Frame-Time") ?? '0', 10);
-			this.seekCache.add(cacheKey, blob, estimatedFPS, frameTime);
+		// We have two potential API calls to make here, and we want to kick them
+		// off in parallel. That's why we structure the fetches as individual
+		// promises, so that we can await on them both at the same time.
+		let quality = resolution === 'LD' ? 70 : 85;
+		let fetchFrame = this.fetchSingleFrame(resolution, posMS, quality);
+		let [blob] = await Promise.all([fetchFrame]);
+		if (!blob) {
+			return;
 		}
 		let img = await createImageBitmap(blob);
 		if (this.seekImageIndex > myIndex) {

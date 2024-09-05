@@ -5,11 +5,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/monitor"
+	"github.com/cyclopcam/logs"
 )
 
 // LiveCameras manages the list of running cameras.
@@ -27,7 +27,7 @@ import (
 type LiveCameras struct {
 	ShutdownComplete chan bool // ShutdownComplete is closed when we are done shutting down
 
-	log            log.Log
+	log            logs.Log
 	configDB       *configdb.ConfigDB
 	shutdown       chan bool // The parent system closes this channel when it wants us to shutdown
 	monitor        *monitor.Monitor
@@ -81,10 +81,10 @@ func (r *cameraRecordState) isRecording() bool {
 // Create a new LiveCameras object.
 // archive can be nil, in which case we can't record.
 // shutdown is a channel that the parent system will close when it wants us to shutdown.
-func NewLiveCameras(logger log.Log, configDB *configdb.ConfigDB, shutdown chan bool, monitor *monitor.Monitor, archive *fsv.Archive, ringBufferSize int) *LiveCameras {
+func NewLiveCameras(logger logs.Log, configDB *configdb.ConfigDB, shutdown chan bool, monitor *monitor.Monitor, archive *fsv.Archive, ringBufferSize int) *LiveCameras {
 	lc := &LiveCameras{
 		ShutdownComplete:       make(chan bool),
-		log:                    log.NewPrefixLogger(logger, "LiveCameras:"),
+		log:                    logs.NewPrefixLogger(logger, "LiveCameras:"),
 		configDB:               configDB,
 		shutdown:               shutdown,
 		monitor:                monitor,

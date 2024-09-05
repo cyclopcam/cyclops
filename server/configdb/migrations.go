@@ -5,11 +5,11 @@ import (
 
 	"github.com/BurntSushi/migration"
 	"github.com/cyclopcam/cyclops/pkg/dbh"
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func Migrations(log log.Log) []migration.Migrator {
+func Migrations(log logs.Log) []migration.Migrator {
 	migs := []migration.Migrator{}
 	idx := 0
 

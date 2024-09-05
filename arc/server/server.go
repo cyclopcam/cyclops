@@ -14,14 +14,14 @@ import (
 	"github.com/cyclopcam/cyclops/arc/server/storage"
 	"github.com/cyclopcam/cyclops/arc/server/storagecache"
 	"github.com/cyclopcam/cyclops/arc/server/video"
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 	"github.com/julienschmidt/httprouter"
 	"gorm.io/gorm"
 )
 
 type Server struct {
 	HotReloadWWW bool
-	Log          log.Log
+	Log          logs.Log
 	DB           *gorm.DB
 
 	signalIn     chan os.Signal
@@ -42,28 +42,28 @@ func NewServer(configFile string) (*Server, error) {
 			return nil, fmt.Errorf("Error parsing config file %v: %w", configFile, err)
 		}
 	}
-	logs, err := log.NewLog()
+	logger, err := logs.NewLog()
 	if err != nil {
 		return nil, err
 	}
-	db, err := openDB(logs, cfg.DB)
+	db, err := openDB(logger, cfg.DB)
 	if err != nil {
 		return nil, err
 	}
-	authServer := auth.NewAuthServer(db, logs, "arc-session")
+	authServer := auth.NewAuthServer(db, logger, "arc-session")
 
 	// Open blob store
 	var storageServer storage.Storage
 	var storageCache *storagecache.StorageCache
 	if cfg.VideoStorage.GCS != nil {
 		// Google Cloud Storage
-		storageServer, err = storage.NewStorageGCS(logs, cfg.VideoStorage.GCS.Bucket, cfg.VideoStorage.GCS.Public)
+		storageServer, err = storage.NewStorageGCS(logger, cfg.VideoStorage.GCS.Bucket, cfg.VideoStorage.GCS.Public)
 		if err != nil {
 			return nil, err
 		}
 	} else if cfg.VideoStorage.Filesystem != nil {
 		// Filesystem
-		storageServer, err = storage.NewStorageFS(logs, cfg.VideoStorage.Filesystem.Root)
+		storageServer, err = storage.NewStorageFS(logger, cfg.VideoStorage.Filesystem.Root)
 		if err != nil {
 			return nil, err
 		}
@@ -73,14 +73,14 @@ func NewServer(configFile string) (*Server, error) {
 
 	// Our aim is to not need to use the storage cache. But for private blob store buckets, we need to.
 	// We could also implement signed URLs, but I haven't bothered with that yet.
-	storageCache, err = storagecache.NewStorageCache(logs, storageServer, cfg.VideoCache, 256*1024*1024)
+	storageCache, err = storagecache.NewStorageCache(logger, storageServer, cfg.VideoCache, 256*1024*1024)
 	if err != nil {
 		return nil, err
 	}
 
-	videoServer := video.NewVideoServer(logs, db, storageServer, storageCache)
+	videoServer := video.NewVideoServer(logger, db, storageServer, storageCache)
 	s := &Server{
-		Log:          logs,
+		Log:          logger,
 		DB:           db,
 		auth:         authServer,
 		video:        videoServer,

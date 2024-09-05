@@ -23,6 +23,7 @@ type Track struct {
 	Name      string
 	StartTime time.Time
 	Duration  time.Duration
+	Codec     string
 	Width     int // Only applicable to video tracks
 	Height    int // Only applicable to video tracks
 }
@@ -30,7 +31,9 @@ type Track struct {
 // VideoFile is the analog of VideoFormat, but this is an embodied handle that can be read from and written to
 type VideoFile interface {
 	Close() error
-	ListTracks() []Track
+
+	// ListTracks returns a map of track names to track metadata
+	ListTracks() map[string]Track
 
 	// Return true if the video file can still grow larger to accept the given packets.
 	// Note that even if your video file is capable of storing terabytes of data in a single file,
@@ -64,10 +67,9 @@ func VideoFileMaxTrackEndTime(vf VideoFile) time.Time {
 
 // Returns true if the file has a video track with the given name, width and height
 func VideoFileHasVideoTrack(vf VideoFile, trackName string, width, height int) bool {
-	for _, t := range vf.ListTracks() {
-		if t.Name == trackName {
-			return t.Width == width && t.Height == height
-		}
+	t, ok := vf.ListTracks()[trackName]
+	if !ok {
+		return false
 	}
-	return false
+	return t.Width == width && t.Height == height
 }

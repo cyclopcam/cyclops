@@ -13,7 +13,7 @@ import (
 
 	"github.com/BurntSushi/migration"
 	"github.com/cyclopcam/cyclops/pkg/gen"
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 	"gorm.io/driver/postgres"
@@ -101,7 +101,7 @@ func (db *DBConfig) DSN() string {
 }
 
 // MakeMigrations turns a sequence of SQL expression into burntsushi migrations.
-func MakeMigrations(log log.Log, sql []string) []migration.Migrator {
+func MakeMigrations(log logs.Log, sql []string) []migration.Migrator {
 	migs := []migration.Migrator{}
 	idx := 0
 	for _, str := range sql {
@@ -111,7 +111,7 @@ func MakeMigrations(log log.Log, sql []string) []migration.Migrator {
 }
 
 // MakeMigrationFromSQL turns an SQL string into a burntsushi migration
-func MakeMigrationFromSQL(log log.Log, migrationNumber *int, sql string) migration.Migrator {
+func MakeMigrationFromSQL(log logs.Log, migrationNumber *int, sql string) migration.Migrator {
 	idx := *migrationNumber + 1
 	*migrationNumber++
 
@@ -132,7 +132,7 @@ func MakeMigrationFromSQL(log log.Log, migrationNumber *int, sql string) migrati
 }
 
 // MakeMigrationFromFunc wraps a migration function with another migration that logs to our logfile
-func MakeMigrationFromFunc(log log.Log, migrationNumber *int, f migration.Migrator) migration.Migrator {
+func MakeMigrationFromFunc(log logs.Log, migrationNumber *int, f migration.Migrator) migration.Migrator {
 	idx := *migrationNumber + 1
 	*migrationNumber++
 
@@ -143,7 +143,7 @@ func MakeMigrationFromFunc(log log.Log, migrationNumber *int, f migration.Migrat
 }
 
 // OpenDB creates a new DB, or opens an existing one, and runs all the migrations before returning.
-func OpenDB(log log.Log, dbc DBConfig, migrations []migration.Migrator, flags DBConnectFlags) (*gorm.DB, error) {
+func OpenDB(log logs.Log, dbc DBConfig, migrations []migration.Migrator, flags DBConnectFlags) (*gorm.DB, error) {
 	if flags&DBConnectFlagWipeDB != 0 {
 		if err := DropAllTables(log, dbc); err != nil {
 			return nil, err
@@ -199,7 +199,7 @@ func OpenDB(log log.Log, dbc DBConfig, migrations []migration.Migrator, flags DB
 	return gormOpen(dbc.Driver, dbc.DSN())
 }
 
-func ApplyPostLoadFlags(db *sql.DB, log log.Log, dbc DBConfig, flags DBConnectFlags) error {
+func ApplyPostLoadFlags(db *sql.DB, log logs.Log, dbc DBConfig, flags DBConnectFlags) error {
 	if flags&DBConnectFlagSqliteWAL != 0 {
 		if dbc.Driver == DriverSqlite {
 			newMode := ""
@@ -218,7 +218,7 @@ func ApplyPostLoadFlags(db *sql.DB, log log.Log, dbc DBConfig, flags DBConnectFl
 // DropAllTables delete all tables in the given database.
 // If the database does not exist, returns nil.
 // This function is intended to be used by unit tests.
-func DropAllTables(log log.Log, dbc DBConfig) error {
+func DropAllTables(log logs.Log, dbc DBConfig) error {
 	if dbc.Driver == DriverSqlite {
 		filename := dbc.Database
 		err := os.Remove(filename)
@@ -253,7 +253,7 @@ func DropAllTables(log log.Log, dbc DBConfig) error {
 	return tx.Commit()
 }
 
-func dropAllTablesPostgres(log log.Log, tx *sql.Tx) error {
+func dropAllTablesPostgres(log logs.Log, tx *sql.Tx) error {
 	rows, err := tx.Query(`
 	SELECT table_name, table_schema
 	FROM information_schema.tables

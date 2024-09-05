@@ -19,7 +19,7 @@ func cameraScan() {
 }
 
 func dumpTiles() {
-	//logs, _ := log.NewLog()
+	//logger, _ := logs.NewLog()
 	//vdb, _ := videodb.NewVideoDB(logs, "/home/ben/cyclops2")
 	//db, err := dbh.OpenDB(logs, dbh.MakeSqliteConfig("/home/ben/cyclops2/videos.sqlite"), nil, 0)
 	db, err := sql.Open("sqlite3", "/home/ben/cyclops2/videos.sqlite")

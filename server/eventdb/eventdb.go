@@ -11,9 +11,9 @@ import (
 
 	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/dbh"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/defs"
+	"github.com/cyclopcam/logs"
 	"gorm.io/gorm"
 )
 
@@ -30,12 +30,12 @@ var (
 type EventDB struct {
 	Root string // Where we store our videos (also directory where sqlite DB is stored)
 
-	log log.Log
+	log logs.Log
 	db  *gorm.DB
 }
 
 // Open or create an event DB
-func NewEventDB(log log.Log, root string) (*EventDB, error) {
+func NewEventDB(log logs.Log, root string) (*EventDB, error) {
 	root = filepath.Clean(root)
 	if err := os.MkdirAll(root, 0770); err != nil {
 		return nil, fmt.Errorf("Failed to set event storage path '%v': %w", root, err)

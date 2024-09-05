@@ -1,8 +1,6 @@
 module github.com/cyclopcam/cyclops
 
-go 1.22
-
-toolchain go1.22.0
+go 1.22.0
 
 //replace github.com/go-chi/httprate => ../httprate
 
@@ -47,6 +45,8 @@ require (
 	cloud.google.com/go/longrunning v0.6.0 // indirect
 	github.com/asticode/go-astikit v0.43.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/cyclopcam/logs v0.0.0-20240905191637-c7ae6d2e0e38 // indirect
+	github.com/cyclopcam/safewg v0.0.0-20240905192045-200ca27410c9 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsoprea/go-exif/v3 v3.0.1 // indirect
 	github.com/dsoprea/go-iptc v0.0.0-20200610044640-bc9ca208b413 // indirect

@@ -15,11 +15,11 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/accel"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/idgen"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/perfstats"
+	"github.com/cyclopcam/logs"
 )
 
 /* monitor runs our neural networks on the camera streams
@@ -62,7 +62,7 @@ var abstractClasses = map[string]string{
 }
 
 type Monitor struct {
-	Log                       log.Log
+	Log                       logs.Log
 	detector                  nn.ObjectDetector
 	enabled                   bool                   // If false, then we don't run the frame reader
 	mustStopFrameReader       atomic.Bool            // True if stopFrameReader() has been called
@@ -131,7 +131,7 @@ type analyzerQueueItem struct {
 	detection *nn.DetectionResult
 }
 
-func NewMonitor(logger log.Log, nnModelName string) (*Monitor, error) {
+func NewMonitor(logger logs.Log, nnModelName string) (*Monitor, error) {
 	tryPaths := []string{"models", "/var/lib/cyclops/models"}
 	basePath := ""
 	for _, tryPath := range tryPaths {
@@ -231,7 +231,7 @@ func NewMonitor(logger log.Log, nnModelName string) (*Monitor, error) {
 			minDistanceForObject:        0.02, // 2% of the frame width (0.02 * 320 = 6 pixels)
 			minDiscreetPositionsDefault: 2,
 			minDiscreetPositions: map[string]int{
-				"person": 3, // People move much slower than cars, and people are almost always alarmable events, so we need a super false positive rate
+				"person": 3, // People move much slower than cars, and people are almost always alarmable events, so we need a super low false positive rate
 			},
 			objectForgetTime: 5 * time.Second,
 			verbose:          false,

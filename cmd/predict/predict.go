@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/akamensky/argparse"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
+	"github.com/cyclopcam/logs"
 )
 
 func check(err error) {
@@ -35,7 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger, _ := log.NewLog()
+	logger, _ := logs.NewLog()
 
 	options := nn.InferenceOptions{
 		MinSize:        *minSize,

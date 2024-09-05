@@ -7,13 +7,13 @@ import (
 	"sync"
 
 	"github.com/cyclopcam/cyclops/pkg/dbh"
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gorm.io/gorm"
 )
 
 type ConfigDB struct {
-	Log        log.Log
+	Log        logs.Log
 	DB         *gorm.DB
 	PrivateKey wgtypes.Key
 	PublicKey  wgtypes.Key
@@ -28,7 +28,7 @@ type ConfigDB struct {
 	//sharedSecretKeys     map[string][]byte // Map key is RemotePublicKey, SHA256(X25519_Shared_Secret(MyPrivateKey, RemotePublicKey)).
 }
 
-func NewConfigDB(logger log.Log, dbFilename, explicitPrivateKey string) (*ConfigDB, error) {
+func NewConfigDB(logger logs.Log, dbFilename, explicitPrivateKey string) (*ConfigDB, error) {
 	os.MkdirAll(filepath.Dir(dbFilename), 0770)
 	configDB, err := dbh.OpenDB(logger, dbh.MakeSqliteConfig(dbFilename), Migrations(logger), dbh.DBConnectFlagSqliteWAL)
 	if err != nil {
@@ -58,7 +58,7 @@ func NewConfigDB(logger log.Log, dbFilename, explicitPrivateKey string) (*Config
 	return cdb, nil
 }
 
-func readOrCreatePrivateKey(logger log.Log, db *gorm.DB, explicitPrivateKey string) (wgtypes.Key, error) {
+func readOrCreatePrivateKey(logger logs.Log, db *gorm.DB, explicitPrivateKey string) (wgtypes.Key, error) {
 	var key wgtypes.Key
 	var err error
 	if explicitPrivateKey != "" {

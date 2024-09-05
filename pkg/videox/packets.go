@@ -13,7 +13,7 @@ import (
 
 	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/bmharper/cimg/v2"
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 )
 
 // Topic: $ANNEXB-CONFUSION
@@ -340,7 +340,7 @@ func ClonePacket(nalusIn [][]byte, pts time.Duration, recvTime time.Time, wallPT
 }
 
 // Extract saved buffer into an MPEGTS stream
-func (r *PacketBuffer) SaveToMPEGTS(log log.Log, output io.Writer) error {
+func (r *PacketBuffer) SaveToMPEGTS(log logs.Log, output io.Writer) error {
 	sps := r.FirstNALUOfType(h264.NALUTypeSPS)
 	pps := r.FirstNALUOfType(h264.NALUTypePPS)
 	if sps == nil || pps == nil {
@@ -381,7 +381,7 @@ func (r *PacketBuffer) DecodeHeader() (width, height int, err error) {
 	if sps == nil {
 		return 0, 0, fmt.Errorf("Failed to find SPS NALU")
 	}
-	return ParseSPS(sps.AsRBSP().Payload)
+	return ParseH264SPS(sps.AsRBSP().Payload)
 }
 
 // Returns the first NALU of the given type, or nil if none found
@@ -491,7 +491,7 @@ func (r *PacketBuffer) ResetPTS() {
 // Decode the center-most keyframe
 // This is O(1), assuming no errors or funny business like no keyframes.
 func (r *PacketBuffer) ExtractThumbnail() (*cimg.Image, error) {
-	decoder, err := NewH264StreamDecoder("h264")
+	decoder, err := NewVideoStreamDecoder("h264")
 	if err != nil {
 		return nil, err
 	}

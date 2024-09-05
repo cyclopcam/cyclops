@@ -20,11 +20,11 @@ import (
 	"github.com/cyclopcam/cyclops/arc/server/storagecache"
 	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/iox"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/rando"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/pkg/www"
+	"github.com/cyclopcam/logs"
 	"github.com/julienschmidt/httprouter"
 	"gorm.io/gorm"
 )
@@ -34,14 +34,14 @@ import (
 // to also change it in video.ts
 
 type VideoServer struct {
-	log               log.Log
+	log               logs.Log
 	db                *gorm.DB
 	storage           storage.Storage
 	storageCache      *storagecache.StorageCache
 	numVideosUploaded atomic.Int64 // Number of videos uploaded since this process was started (i.e. NOT the number of videos in the DB)
 }
 
-func NewVideoServer(log log.Log, db *gorm.DB, storage storage.Storage, storageCache *storagecache.StorageCache) *VideoServer {
+func NewVideoServer(log logs.Log, db *gorm.DB, storage storage.Storage, storageCache *storagecache.StorageCache) *VideoServer {
 	return &VideoServer{
 		log:          log,
 		db:           db,

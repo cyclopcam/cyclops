@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/gen"
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 )
 
 // TempFiles assigns temporary filenames, and automatically deletes old temporary files.
@@ -25,7 +25,7 @@ import (
 //     random seek behaviour in a browser <video> element. Naturally, we want this kind of
 //     thing to stick around for a while.
 type TempFiles struct {
-	log   log.Log
+	log   logs.Log
 	debug bool // add more logging
 
 	lock                    sync.Mutex // guards access to all internal state
@@ -41,7 +41,7 @@ type TempFiles struct {
 }
 
 // Wipes/recreates the root directory
-func NewTempFiles(root string, logger log.Log) (*TempFiles, error) {
+func NewTempFiles(root string, logger logs.Log) (*TempFiles, error) {
 	pathOnceoff := filepath.Join(root, "once")
 	pathNamed := filepath.Join(root, "named")
 	dirs := []string{
@@ -56,7 +56,7 @@ func NewTempFiles(root string, logger log.Log) (*TempFiles, error) {
 
 	return &TempFiles{
 		debug:                   false,
-		log:                     log.NewPrefixLogger(logger, "TempFiles"),
+		log:                     logs.NewPrefixLogger(logger, "TempFiles"),
 		pathOnceoff:             pathOnceoff,
 		pathNamed:               pathNamed,
 		lastCleanupOnceoff:      time.Now(),

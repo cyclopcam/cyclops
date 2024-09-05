@@ -13,10 +13,10 @@ import (
 
 	"github.com/akamensky/argparse"
 	arcmodel "github.com/cyclopcam/cyclops/arc/server/model"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/pkg/www"
+	"github.com/cyclopcam/logs"
 )
 
 const delayOnFailedModelRun = 15 * time.Minute
@@ -28,7 +28,7 @@ func check(err error) {
 }
 
 func main() {
-	logger, err := log.NewLog()
+	logger, err := logs.NewLog()
 	check(err)
 
 	parser := argparse.NewParser("bglabel", "Run NN model to label a high resolution video stream on an Arc server")
@@ -101,7 +101,7 @@ type BackgroundLabeler struct {
 	serverUrl   string
 	apiKey      string
 	tempDir     string
-	log         log.Log
+	log         logs.Log
 	model       nn.ObjectDetector
 	modelConfig nn.ModelConfig
 	classes     []string

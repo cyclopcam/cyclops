@@ -4,13 +4,13 @@ import (
 	"os"
 	"testing"
 
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 	"github.com/stretchr/testify/require"
 )
 
 func createTestDB(t *testing.T) *ConfigDB {
 	os.Remove("test-configdb.sqlite")
-	db, err := NewConfigDB(log.NewTestingLog(t), "test-configdb.sqlite", "")
+	db, err := NewConfigDB(logs.NewTestingLog(t), "test-configdb.sqlite", "")
 	require.NoError(t, err)
 	return db
 }

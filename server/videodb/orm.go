@@ -18,13 +18,13 @@ type Event struct {
 	Time       dbh.IntTime                         `json:"time"`       // Start of event
 	Duration   int32                               `json:"duration"`   // Duration of event in milliseconds
 	Camera     uint32                              `json:"camera"`     // LongLived camera name (via lookup in 'strings' table)
-	Resolution [2]int                              `json:"resolution"` // Resolution of the camera on which the detection was run.
 	Detections *dbh.JSONField[EventDetectionsJSON] `json:"detections"` // Objects detected in the event
 }
 
 // SYNC-VIDEODB-EVENTDETECTIONS
 type EventDetectionsJSON struct {
-	Objects []*ObjectJSON `json:"objects"` // Objects detected in the event
+	Resolution [2]int        `json:"resolution"` // Resolution of the camera on which the detection was run.
+	Objects    []*ObjectJSON `json:"objects"`    // Objects detected in the event
 }
 
 // An object detected by the camera.

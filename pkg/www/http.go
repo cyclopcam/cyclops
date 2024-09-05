@@ -15,13 +15,13 @@ import (
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/gen"
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 	"github.com/julienschmidt/httprouter"
 )
 
 // RunProtected runs 'func' inside a panic handler that recognizes our special errors,
 // and sends the appropriate HTTP response if a panic does occur.
-func RunProtected(log log.Log, w http.ResponseWriter, r *http.Request, handler func()) {
+func RunProtected(log logs.Log, w http.ResponseWriter, r *http.Request, handler func()) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			if hErr, ok := rec.(HTTPError); ok {
@@ -54,7 +54,7 @@ func RunProtected(log log.Log, w http.ResponseWriter, r *http.Request, handler f
 }
 
 // Handle adds a protected HTTP route to router (ie handle will run inside RunProtected, so you get a panic handler).
-func Handle(log log.Log, router *httprouter.Router, method, path string, handle httprouter.Handle) {
+func Handle(log logs.Log, router *httprouter.Router, method, path string, handle httprouter.Handle) {
 	wrapper := func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		RunProtected(log, w, r, func() { handle(w, r, p) })
 	}

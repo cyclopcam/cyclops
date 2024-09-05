@@ -222,6 +222,25 @@ func (v *VideoDB) writeAgingEventsToDB(force bool) {
 // Write all current objects to an Event record, and reset our state.
 // You must already be holding currentLock before calling this function
 func (v *VideoDB) flushCameraToDB(camera uint32) {
+	event, otherCameraObjects := v.buildEventRecord(camera)
+	if event == nil {
+		return
+	}
+
+	if err := v.db.Create(event).Error; err != nil {
+		v.log.Errorf("Failed to write Event to DB: %v", err)
+	}
+
+	// Remove tracked objects belonging to 'camera'
+	v.current = otherCameraObjects
+}
+
+// Extract all of the current TrackedObjects for the given camera, and package
+// them up as a DB Event record. Return a new 'current' map with those objects
+// excluded.
+// If there are no tracked objects for this camera, then return (nil, nil).
+// You must already be holding currentLock before calling this function
+func (v *VideoDB) buildEventRecord(camera uint32) (*Event, map[uint32]*TrackedObject) {
 	// Find the earliest time. This will be our reference time.
 	// Everything in the JSON blob is specified as milliseconds relative to base.
 	basetime := time.Now()
@@ -243,8 +262,13 @@ func (v *VideoDB) flushCameraToDB(camera uint32) {
 			otherCameraObjects[c.ID] = c
 		}
 	}
+	if maxtime.IsZero() {
+		return nil, nil
+	}
 
 	var detectionsJSON dbh.JSONField[EventDetectionsJSON]
+	detectionsJSON.Data.Resolution = resolution
+
 	for _, c := range v.current {
 		if c.Camera == camera {
 			obj := &ObjectJSON{
@@ -276,16 +300,10 @@ func (v *VideoDB) flushCameraToDB(camera uint32) {
 		Time:       dbh.MakeIntTime(basetime),
 		Duration:   int32(maxtime.Sub(basetime).Milliseconds()),
 		Camera:     camera,
-		Resolution: resolution,
 		Detections: &detectionsJSON,
 	}
 
-	if err := v.db.Create(ev).Error; err != nil {
-		v.log.Errorf("Failed to write Event to DB: %v", err)
-	}
-
-	// Remove tracked objects belonging to 'camera'
-	v.current = otherCameraObjects
+	return ev, otherCameraObjects
 }
 
 // For each camera, get the oldest recording available, and then delete

@@ -43,7 +43,7 @@ func RunInferenceOnVideoFile(model ObjectDetector, inputFile string, options Inf
 		nnClassToOutputClass[iIn] = iOut
 	}
 
-	decoder, err := videox.NewH264FileDecoder(inputFile)
+	decoder, err := videox.NewVideoFileDecoder(inputFile)
 	if err != nil {
 		return nil, err
 	}

@@ -12,16 +12,30 @@ import (
 // Flags for reading packets
 type ReadFlags int
 
+type ErrCodecSwitch struct {
+	FromCodec string
+	ToCodec   string
+}
+
+func (e ErrCodecSwitch) Error() string {
+	return fmt.Sprintf("Codec switched from %v to %v", e.FromCodec, e.ToCodec)
+}
+
 const (
 	// If the requested time interval does not start on a keyframe,
 	// then seek back to find the first keyframe before the requested start time.
 	ReadFlagSeekBackToKeyFrame ReadFlags = 1 << iota
 )
 
+type TrackReadResult struct {
+	Codec string
+	NALS  []rf1.NALU
+}
+
 // Read packets from the archive.
 // The map that is returned contains the tracks that were requested.
 // If no packets are found, we return an empty map and a nil error.
-func (a *Archive) Read(streamName string, trackNames []string, startTime, endTime time.Time, flags ReadFlags) (map[string][]rf1.NALU, error) {
+func (a *Archive) Read(streamName string, trackNames []string, startTime, endTime time.Time, flags ReadFlags) (map[string]*TrackReadResult, error) {
 	a.streamsLock.Lock()
 	stream := a.streams[streamName]
 	a.streamsLock.Unlock()
@@ -40,18 +54,27 @@ func (a *Archive) Read(streamName string, trackNames []string, startTime, endTim
 	// We find the first video with a start time AFTER 'startTime', and then
 	// we reverse back by one.
 
-	tracks := map[string][]rf1.NALU{}
+	tracks := map[string]*TrackReadResult{}
 	totalBytes := 0
 	maxBytesPerRead := a.staticSettings.MaxBytesPerRead
 
 	// Read the tracks from vf, and append them to our result set
 	readFromVideoFile := func(filename string, vf VideoFile) error {
+		fileTracks := vf.ListTracks()
 		for _, trackName := range trackNames {
 			packets, err := vf.Read(trackName, startTime, endTime, flags)
 			if err != nil {
 				return fmt.Errorf("Error reading track %v from video file %v: %v", trackName, filename, err)
 			}
-			tracks[trackName] = append(tracks[trackName], packets...)
+			codec := fileTracks[trackName].Codec
+			if tracks[trackName] == nil {
+				tracks[trackName] = &TrackReadResult{
+					Codec: codec,
+				}
+			} else if tracks[trackName].Codec != codec {
+				return &ErrCodecSwitch{FromCodec: tracks[trackName].Codec, ToCodec: codec}
+			}
+			tracks[trackName].NALS = append(tracks[trackName].NALS, packets...)
 			for _, p := range packets {
 				totalBytes += len(p.Payload)
 			}

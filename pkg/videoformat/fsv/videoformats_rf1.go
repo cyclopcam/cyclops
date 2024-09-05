@@ -56,16 +56,17 @@ func (v *VideoFileRF1) Close() error {
 	return v.File.Close()
 }
 
-func (v *VideoFileRF1) ListTracks() []Track {
-	tracks := make([]Track, 0, len(v.File.Tracks))
+func (v *VideoFileRF1) ListTracks() map[string]Track {
+	tracks := map[string]Track{}
 	for _, t := range v.File.Tracks {
-		tracks = append(tracks, Track{
+		tracks[t.Name] = Track{
 			Name:      t.Name,
 			StartTime: t.TimeBase,
 			Duration:  t.Duration(),
+			Codec:     t.Codec,
 			Width:     t.Width,
 			Height:    t.Height,
-		})
+		}
 	}
 	return tracks
 }

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/dbh"
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 	"gorm.io/gorm"
 )
 
@@ -18,7 +18,7 @@ const ProxyHttpPort = "127.0.0.1:8082"
 const ServerHttpPort = ":8080" // SYNC-SERVER-PORT. Servers always run on 8080, but we could make this configurable. It would need to be part of the 'register' API then...
 
 type Proxy struct {
-	log               log.Log
+	log               logs.Log
 	db                *gorm.DB
 	wg                *wireGuard
 	httpServer        *http.Server
@@ -35,7 +35,7 @@ type Proxy struct {
 }
 
 type ProxyConfig struct {
-	Log            log.Log
+	Log            logs.Log
 	DB             dbh.DBConfig
 	AdminPassword  string
 	KernelWGSecret string

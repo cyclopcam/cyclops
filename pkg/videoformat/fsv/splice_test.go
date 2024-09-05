@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
+	"github.com/cyclopcam/logs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,7 +41,7 @@ func todayAtTime(hour, minute, second, nsec int) time.Time {
 func TestSplicePerfect(t *testing.T) {
 	EraseArchive()
 	staticSettings := staticSettingsHugeWritebuffer()
-	arc, err := Open(log.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, staticSettings, DefaultDynamicSettings())
+	arc, err := Open(logs.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, staticSettings, DefaultDynamicSettings())
 	require.NoError(t, err)
 	packets := rf1.CreateTestNALUs(todayAtTime(3, 4, 5, 7000), 0, 300, 10.0, 50, 150, 12345)
 
@@ -66,14 +66,14 @@ func TestSplicePerfect(t *testing.T) {
 	rPackets := read["videoTrack1"]
 
 	// We expect a perfect splice, because we have overlapping packet ranges.
-	requireEqualNALUs(t, packets, rPackets)
+	requireEqualNALUs(t, packets, rPackets.NALS)
 }
 
 func TestSpliceImperfect(t *testing.T) {
 	EraseArchive()
 	disableWriteBuffer := DefaultStaticSettings()
 	disableWriteBuffer.MaxWriteBufferSize = 0
-	arc, err := Open(log.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, disableWriteBuffer, DefaultDynamicSettings())
+	arc, err := Open(logs.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, disableWriteBuffer, DefaultDynamicSettings())
 	require.EqualValues(t, 0, arc.TotalSize())
 	packets1 := rf1.CreateTestNALUs(time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC), 0, 300, 10.0, 50, 150, 12345)
 	packets2 := slices.Clone(packets1)
@@ -116,7 +116,7 @@ func TestSpliceImperfect(t *testing.T) {
 	p3 := firstKeyFrameAtOrAfter(p2+1, packets2)
 	expectedPackets = append(expectedPackets, packets2[p3:]...)
 
-	requireEqualNALUs(t, expectedPackets, rPackets)
+	requireEqualNALUs(t, expectedPackets, rPackets.NALS)
 }
 
 func firstKeyFrameAtOrBefore(i int, packets []rf1.NALU) int {

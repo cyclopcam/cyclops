@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/nn"
+	"github.com/cyclopcam/logs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -317,7 +317,7 @@ func verifyTileBitsInDB(t *testing.T, vdb *VideoDB, camera, level, tileIdx uint3
 func TestLevels(t *testing.T) {
 	root := "temptest"
 	os.RemoveAll(root)
-	vdb, err := NewVideoDB(log.NewTestingLog(t), root)
+	vdb, err := NewVideoDB(logs.NewTestingLog(t), root)
 	vdb.debugTileLevelBuild = true
 	vdb.maxTileLevel = 5
 	require.NoError(t, err)

@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/cyclopcam/cyclops/arc/server/storage"
-	"github.com/cyclopcam/cyclops/pkg/log"
+	"github.com/cyclopcam/logs"
 )
 
 // NOTE: This unit is very poorly tested, because I started using
@@ -27,7 +27,7 @@ import (
 // is going to read in chunks of like 4k, so that would be
 // terribly inefficient for 16MB file.
 type StorageCache struct {
-	log       log.Log
+	log       logs.Log
 	upstream  storage.Storage
 	cacheRoot string
 	maxBytes  int64
@@ -70,7 +70,7 @@ func (r *CacheItemReader) Filename() string {
 	return r.item.filename
 }
 
-func NewStorageCache(log log.Log, upstream storage.Storage, cacheRoot string, maxBytes int64) (*StorageCache, error) {
+func NewStorageCache(log logs.Log, upstream storage.Storage, cacheRoot string, maxBytes int64) (*StorageCache, error) {
 	os.RemoveAll(cacheRoot)
 	if err := os.MkdirAll(cacheRoot, 0755); err != nil {
 		return nil, err

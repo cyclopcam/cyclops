@@ -9,11 +9,11 @@ import (
 
 	"github.com/akamensky/argparse"
 	"github.com/coreos/go-systemd/daemon"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
-	kernelwg "github.com/cyclopcam/cyclops/pkg/wireguard/wgroot"
 	"github.com/cyclopcam/cyclops/server"
 	"github.com/cyclopcam/cyclops/server/vpn"
+	"github.com/cyclopcam/logs"
+	"github.com/cyclopcam/safewg/wgroot"
 )
 
 func check(err error) {
@@ -48,11 +48,11 @@ func main() {
 
 	if *kernelWG {
 		// The main cyclops process has launched us, and our role is to control the wireguard interface.
-		kernelwg.Main()
+		wgroot.Main()
 		return
 	}
 
-	logger, err := log.NewLog()
+	logger, err := logs.NewLog()
 	if err != nil {
 		fmt.Printf("Failed to create logger: %v\n", err)
 		os.Exit(1)
@@ -70,7 +70,7 @@ func main() {
 
 	if *enableVPN {
 		// We are running as the cyclops server, and our first step is to launch the kernel-mode wireguard sub-process.
-		if err, kernelWGSecret = kernelwg.LaunchRootModeSubProcess(); err != nil {
+		if err, kernelWGSecret = wgroot.LaunchRootModeSubProcess(); err != nil {
 			logger.Errorf("Error launching wireguard management sub-process: %v", err)
 			os.Exit(1)
 		}
@@ -82,9 +82,9 @@ func main() {
 	//}
 
 	// Check if we need to drop privileges to a different user ('username')
-	if *username != "" && !kernelwg.IsRunningAsUser(*username) {
+	if *username != "" && !wgroot.IsRunningAsUser(*username) {
 		// First we drop privileges
-		if err = kernelwg.DropPrivileges(*username); err != nil {
+		if err = wgroot.DropPrivileges(*username); err != nil {
 			logger.Errorf("Error dropping privileges to username '%v': %v", *username, err)
 			os.Exit(1)
 		}
@@ -106,7 +106,7 @@ func main() {
 		// Relaunch ourselves with almost identical arguments, but this time as the lower privilege user.
 		// This relaunch is necessary so that NCNN can read from /proc/self/auxv to detect CPU features.
 		// A setuid/setgid is not sufficient, we must relaunch.
-		if cmd, err := kernelwg.RelaunchSelf(args, env); err != nil {
+		if cmd, err := wgroot.RelaunchSelf(args, env); err != nil {
 			logger.Errorf("Error relaunching self after dropping privileges: %v", err)
 			os.Exit(1)
 		} else {
@@ -137,8 +137,8 @@ func main() {
 	nnload.LoadAccelerators(logger, enableHailo)
 
 	if kernelWGSecret == "" {
-		// We end up here when relaunched as a lower privilege process - due to kernelwg.RelaunchSelf().
-		// In this case, the CYCLOPS_SOCKET_SECRET was sent to kernelwg.RelaunchSelf(), and we're
+		// We end up here when relaunched as a lower privilege process - due to wgroot.RelaunchSelf().
+		// In this case, the CYCLOPS_SOCKET_SECRET was sent to wgroot.RelaunchSelf(), and we're
 		// extracting it from the env vars.
 		kernelWGSecret = os.Getenv("CYCLOPS_SOCKET_SECRET")
 	}

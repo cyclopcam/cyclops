@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/kibi"
-	"github.com/cyclopcam/cyclops/pkg/log"
 	"github.com/cyclopcam/cyclops/pkg/perfstats"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
+	"github.com/cyclopcam/logs"
 )
 
 // videoFile is a single logical video file, even if it's split into multiple physical files (eg rf1)
@@ -105,7 +105,7 @@ func MakeVideoPayload(codec string, width, height int, nalus []rf1.NALU) TrackPa
 // the videos of one stream. The stream name is the directory name.
 // Archive is not safe for use from multiple threads.
 type Archive struct {
-	log                  log.Log
+	log                  logs.Log
 	baseDir              string
 	formats              []VideoFormat
 	maxVideoFileDuration time.Duration  // We need to know this so that it is fast to find files close to a given time period.
@@ -174,7 +174,7 @@ func DefaultStaticSettings() StaticSettings {
 // The directory baseDir must exist, but it may be empty.
 // When creating new streams, formats[0] is used, so the ordering
 // of formats is important.
-func Open(logger log.Log, baseDir string, formats []VideoFormat, initSettings StaticSettings, settings DynamicSettings) (*Archive, error) {
+func Open(logger logs.Log, baseDir string, formats []VideoFormat, initSettings StaticSettings, settings DynamicSettings) (*Archive, error) {
 	if len(formats) == 0 {
 		return nil, fmt.Errorf("No video formats provided")
 	}
@@ -200,7 +200,7 @@ func Open(logger log.Log, baseDir string, formats []VideoFormat, initSettings St
 	// Scan top-level directories.
 	// Each directory is a stream (eg camera-0001).
 	archive := &Archive{
-		log:                  log.NewPrefixLogger(logger, "Archive:"),
+		log:                  logs.NewPrefixLogger(logger, "Archive:"),
 		shutdown:             make(chan bool),
 		baseDir:              baseDir,
 		formats:              formats,
