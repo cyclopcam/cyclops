@@ -1,6 +1,6 @@
 package server
 
-import "github.com/cyclopcam/cyclops/pkg/dbh"
+import "github.com/cyclopcam/dbh"
 
 type Config struct {
 	DB           dbh.DBConfig  `json:"db"`

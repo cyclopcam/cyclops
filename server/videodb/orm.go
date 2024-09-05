@@ -1,7 +1,7 @@
 package videodb
 
 import (
-	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/dbh"
 )
 
 // BaseModel is our base class for a GORM model.

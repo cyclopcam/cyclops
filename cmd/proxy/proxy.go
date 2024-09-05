@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/akamensky/argparse"
-	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/proxy"
+	"github.com/cyclopcam/dbh"
 	"github.com/cyclopcam/logs"
 	"github.com/cyclopcam/safewg/wgroot"
 )

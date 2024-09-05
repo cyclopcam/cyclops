@@ -4,11 +4,11 @@ import (
 	"time"
 
 	"github.com/chewxy/math32"
-	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/server/defs"
+	"github.com/cyclopcam/dbh"
 )
 
 type TrackedObject struct {

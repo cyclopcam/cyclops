@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/pwdhash"
 	"github.com/cyclopcam/cyclops/pkg/rando"
 	"github.com/cyclopcam/cyclops/pkg/www"
+	"github.com/cyclopcam/dbh"
 )
 
 // SYNC-CYCLOPS-SESSION-COOKIE

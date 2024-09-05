@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/dbh"
 	"gorm.io/gorm"
 )
 

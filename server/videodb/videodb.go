@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
+	"github.com/cyclopcam/dbh"
 	"github.com/cyclopcam/logs"
 	"gorm.io/gorm"
 )

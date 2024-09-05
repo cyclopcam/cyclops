@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/dbh"
 	"github.com/cyclopcam/logs"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gorm.io/gorm"

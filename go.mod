@@ -26,7 +26,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/lib/pq v1.10.9
-	github.com/mattn/go-sqlite3 v1.14.22
+	github.com/mattn/go-sqlite3 v1.14.23
 	github.com/pion/rtp v1.8.9
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/crypto v0.26.0
@@ -45,6 +45,7 @@ require (
 	cloud.google.com/go/longrunning v0.6.0 // indirect
 	github.com/asticode/go-astikit v0.43.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/cyclopcam/dbh v0.0.0-20240905200453-8c40a309e602 // indirect
 	github.com/cyclopcam/logs v0.0.0-20240905191637-c7ae6d2e0e38 // indirect
 	github.com/cyclopcam/safewg v0.0.0-20240905192045-200ca27410c9 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -73,7 +74,7 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/josharian/native v1.1.0 // indirect
-	github.com/kr/text v0.1.0 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/mdlayher/genetlink v1.3.2 // indirect
 	github.com/mdlayher/netlink v1.7.2 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
@@ -88,6 +89,7 @@ require (
 	go.opentelemetry.io/otel v1.28.0 // indirect
 	go.opentelemetry.io/otel/metric v1.28.0 // indirect
 	go.opentelemetry.io/otel/trace v1.28.0 // indirect
+	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e // indirect
 	golang.org/x/image v0.19.0 // indirect
 	golang.org/x/net v0.28.0 // indirect
 	golang.org/x/oauth2 v0.22.0 // indirect

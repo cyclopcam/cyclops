@@ -2,7 +2,7 @@ package proxy
 
 import (
 	"github.com/BurntSushi/migration"
-	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/dbh"
 	"github.com/cyclopcam/logs"
 )
 

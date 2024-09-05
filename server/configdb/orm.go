@@ -3,7 +3,7 @@ package configdb
 import (
 	"strings"
 
-	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/dbh"
 )
 
 // GORM notes:

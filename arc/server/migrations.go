@@ -6,9 +6,9 @@ import (
 	"github.com/BurntSushi/migration"
 	"github.com/cyclopcam/cyclops/arc/server/auth"
 	"github.com/cyclopcam/cyclops/arc/server/model"
-	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/pwdhash"
 	"github.com/cyclopcam/cyclops/pkg/rando"
+	"github.com/cyclopcam/dbh"
 	"github.com/cyclopcam/logs"
 	"gorm.io/gorm"
 )

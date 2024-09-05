@@ -1,7 +1,7 @@
 package model
 
 import (
-	"github.com/cyclopcam/cyclops/pkg/dbh"
+	"github.com/cyclopcam/dbh"
 )
 
 // SYNC-ARC-VIDEO-RECORD

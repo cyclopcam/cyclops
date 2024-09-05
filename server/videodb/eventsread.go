@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/server/defs"
+	"github.com/cyclopcam/dbh"
 )
 
 var ErrNoVideoFound = errors.New("No video found")

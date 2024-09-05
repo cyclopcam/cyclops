@@ -5,9 +5,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/cyclopcam/cyclops/pkg/dbh"
 	"github.com/cyclopcam/cyclops/pkg/kibi"
 	"github.com/cyclopcam/cyclops/server/util"
+	"github.com/cyclopcam/dbh"
 )
 
 // Root system config
