@@ -1,5 +1,0 @@
-#!/bin/bash
-
-go build -o bin/cyclopsproxy cmd/proxy/proxy.go
-scp bin/cyclopsproxy ubuntu@proxy-cpt.cyclopcam.org:~/
-ssh ubuntu@proxy-cpt.cyclopcam.org "sudo systemctl stop cyclopsproxy && sudo cp /home/ubuntu/cyclopsproxy /deploy && sudo systemctl start cyclopsproxy"
