@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/requests"
-	"github.com/cyclopcam/cyclops/proxy/proxymsg"
 	"github.com/cyclopcam/logs"
+	"github.com/cyclopcam/proxyapi"
 	"github.com/cyclopcam/safewg/wguser"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -89,10 +89,10 @@ func (v *VPN) Start() error {
 func (v *VPN) registerAndCreateDevice() error {
 	// step 1: Register our public key with the global proxy
 	v.Log.Infof("Registering with %v", ProxyHost)
-	req := proxymsg.RegisterJSON{
+	req := proxyapi.RegisterJSON{
 		PublicKey: v.privateKey.PublicKey().String(),
 	}
-	resp, err := requests.RequestJSON[proxymsg.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
+	resp, err := requests.RequestJSON[proxyapi.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func (v *VPN) registerAndCreateDevice() error {
 	return v.createDevice(resp)
 }
 
-func (v *VPN) createDevice(resp *proxymsg.RegisterResponseJSON) error {
+func (v *VPN) createDevice(resp *proxyapi.RegisterResponseJSON) error {
 	// Extract the proxy's Wireguard data, for later
 	var err error
 	peer := wguser.MsgSetProxyPeerInConfigFile{}
@@ -190,10 +190,10 @@ func (v *VPN) RunRegisterLoop(exit chan bool) {
 			}
 
 			if v.connectionOK.Load() && time.Now().After(nextRegisterAt) {
-				req := proxymsg.RegisterJSON{
+				req := proxyapi.RegisterJSON{
 					PublicKey: v.privateKey.PublicKey().String(),
 				}
-				response, err := requests.RequestJSON[proxymsg.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
+				response, err := requests.RequestJSON[proxyapi.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
 				if err != nil {
 					v.Log.Warnf("Failed to re-register with proxy: %v", err)
 					sleep = sleep * 2
@@ -222,7 +222,7 @@ func (v *VPN) RunRegisterLoop(exit chan bool) {
 	}()
 }
 
-func (v *VPN) recreateDevice(register *proxymsg.RegisterResponseJSON) error {
+func (v *VPN) recreateDevice(register *proxyapi.RegisterResponseJSON) error {
 	err := v.client.TakeDeviceDown()
 	if err != nil && !errors.Is(err, wguser.ErrWireguardDeviceNotExist) {
 		return err
