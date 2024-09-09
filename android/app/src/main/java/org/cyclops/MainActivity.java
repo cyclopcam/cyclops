@@ -1,7 +1,10 @@
 package org.cyclops;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.webkit.ProxyConfig;
+import androidx.webkit.ProxyController;
 import androidx.webkit.WebViewAssetLoader;
+import androidx.webkit.WebViewFeature;
 
 import android.annotation.SuppressLint;
 import android.app.ActionBar;
@@ -27,7 +30,17 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 
+import java.io.IOException;
+import java.net.Proxy;
+import java.net.ProxySelector;
+import java.net.URI;
+import java.util.Collections;
+import java.util.List;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+
 import java.util.ArrayList;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
@@ -46,6 +59,8 @@ public class MainActivity extends AppCompatActivity implements Main {
     boolean isRemoteVisible = false;
     boolean isRemoteInFocus = false;
     boolean isOnLAN = false;
+    boolean forceProxy = false; // If true, then we never connect via LAN, but always go through proxy
+    //Proxy httpProxy = Proxy.NO_PROXY;
     int contentHeight = 0;
     //ConnectivityManager.NetworkCallback networkCallback;
     State.Server currentServer; // The server that our remote webview is pointed at
@@ -85,6 +100,8 @@ public class MainActivity extends AppCompatActivity implements Main {
         remoteWebView = findViewById(R.id.remoteWebView);
         setupWebView(localWebView);
         setupWebView(remoteWebView);
+
+        //setupHttpProxy();
 
         // Get rid of white flash when expanding localWebView with screen grab underlay of remoteWebView.
         // OK... even this doesn't work. It's very very hard to get to the bottom of this. Slow it down
@@ -377,11 +394,22 @@ public class MainActivity extends AppCompatActivity implements Main {
         new Thread(new Runnable() {
             @Override
             public void run() {
+                //String proxyOrigin = "https://proxy-cpt.cyclopcam.org";
+                String proxyServer = "proxy-cpt.cyclopcam.org";
+                String proxyOrigin = "https://" + Crypto.shortKeyForServer(target.publicKey) + ".cyclopcam.org";
+                Log.i("C", "Set proxy to " + proxyServer + ":8083");
+                Log.i("C", "Set target to " + proxyOrigin);
+                //try {
+                //    httpProxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyServer, 8083));
+                //} catch (Exception e) {
+                //    Log.e("C", "Failed to set proxy: " + e.toString());
+                //}
+
                 // Try first to connect over LAN, and if that fails, then fall back to proxy.
                 State.Server server = target;
                 int storedLanIP = Scanner.parseIP(server.lanIP);
                 int wifiIP = Scanner.getWifiIPAddress(context);
-                if (storedLanIP != 0 && wifiIP != 0 && Scanner.areIPsInSameSubnet(storedLanIP, wifiIP)) {
+                if (storedLanIP != 0 && wifiIP != 0 && Scanner.areIPsInSameSubnet(storedLanIP, wifiIP) && !forceProxy) {
                     String err = Scanner.preflightServerCheck(crypto, connectivityCheckClient, server);
                     if (err == null) {
                         // Refresh state of 'server', because the preflight check can alter it (eg obtain a new session cookie)
@@ -412,13 +440,13 @@ public class MainActivity extends AppCompatActivity implements Main {
                 }
 
                 // Fall back to using proxy
-                String proxyOrigin = "https://proxy-cpt.cyclopcam.org";
                 if (justCheck && !isOnLAN) {
-                    Log.i("C", "Remaining on proxy " + proxyOrigin + " for server " + server.publicKey);
+                    Log.i("C", "Remaining on proxy " + proxyServer + " for server " + server.publicKey);
                     return;
                 }
                 isOnLAN = false;
-                Log.i("C", "Falling back to proxy " + proxyOrigin + " for server " + server.publicKey);
+                setupHttpProxy("http://" + proxyServer + ":8083");
+                Log.i("C", "Falling back to proxy " + proxyServer + " for server " + server.publicKey);
                 State.Server finalServer = server;
                 runOnUiThread(() -> {
                     CookieManager cookies = CookieManager.getInstance();
@@ -489,6 +517,64 @@ public class MainActivity extends AppCompatActivity implements Main {
         if (addToNavigationHistory) {
             navigationHistory.add("openServer");
         }
+    }
+
+    // This doesn't apply to WebKit, so it's basically useless here.
+    // It applies to java.net stuff, so I'm leaving it here as a reminder.
+    /*
+    private void setupHttpProxy() {
+        ProxySelector.setDefault(new ProxySelector() {
+            @Override
+            public List<Proxy> select(URI uri) {
+                Log.e("C", "FOOBAR");
+                if (uri.getHost().contains(".cyclopcam.org")) {
+                    Log.i("C", "Using proxy for " + uri.getHost());
+                    return Collections.singletonList(httpProxy);
+                } else {
+                    Log.i("C", "NOT using proxy for " + uri.getHost());
+                    return Collections.singletonList(Proxy.NO_PROXY);
+                }
+            }
+
+            @Override
+            public void connectFailed(URI uri, SocketAddress sa, IOException ioe) {
+                ioe.printStackTrace();
+            }
+        });
+    }
+    */
+
+    // Attempt #2
+    // This works!
+    public void setupHttpProxy(String proxyUrl) {
+        ProxyController proxyController;
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+            Log.e("C", "Proxy override is not supported");
+            return;
+        } else {
+            proxyController = ProxyController.getInstance();
+        }
+
+        ProxyConfig proxyConfig = new ProxyConfig.Builder()
+                .addProxyRule(proxyUrl, ProxyConfig.MATCH_HTTPS)
+                .bypassSimpleHostnames()
+                .build();
+
+        Executor executor = new Executor() {
+            @Override
+            public void execute(Runnable command) {
+                command.run();
+            }
+        };
+
+        Runnable listener = new Runnable() {
+            @Override
+            public void run() {
+                Log.i("C", "Proxy override set to " + proxyUrl);
+            }
+        };
+
+        proxyController.setProxyOverride(proxyConfig, executor, listener);
     }
 
     public void setupNetworkMonitor() {

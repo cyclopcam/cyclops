@@ -65,6 +65,11 @@ public class RemoteWebViewClient extends WebViewClientCompat {
         } catch (IOException e) {
             //e.printStackTrace();
         }
+        Map<String, String> responseHeaders = errorResponse.getResponseHeaders();
+        if (responseHeaders.getOrDefault("x-cyclops-proxy-status", "").equals("SERVER_NOT_FOUND")) {
+            Log.i("C", "Proxy has no record of our server");
+            // TODO:
+        }
         // TODO: When errorResponse.getStatusCode() returns a 502, the most likely cause is that the
         // VPN isn't working, so perhaps their server is down. We should show a decent error page
         // in this situation.
