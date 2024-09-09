@@ -5,7 +5,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/akamensky/argparse"
 	"github.com/coreos/go-systemd/daemon"
@@ -88,24 +87,14 @@ func main() {
 			logger.Errorf("Error dropping privileges to username '%v': %v", *username, err)
 			os.Exit(1)
 		}
-		// Scrub the "--username" and "--vpn" parameters
-		args := []string{}
-		for i := 1; i < len(os.Args); i++ {
-			noPrefix := strings.TrimPrefix(os.Args[i], "--")
-			if noPrefix == pnVPN {
-				continue
-			} else if noPrefix == pnUsername {
-				i++
-				continue
-			}
-			args = append(args, os.Args[i])
-		}
+		// Scrub the "--vpn" and "--username" parameters
+		args := wgroot.StripArgs(os.Args[1:], []string{"--" + pnVPN}, []string{"--" + pnUsername})
 		env := []string{
 			"CYCLOPS_SOCKET_SECRET=" + kernelWGSecret,
 		}
 		// Relaunch ourselves with almost identical arguments, but this time as the lower privilege user.
 		// This relaunch is necessary so that NCNN can read from /proc/self/auxv to detect CPU features.
-		// A setuid/setgid is not sufficient, we must relaunch.
+		// A setuid/setgid is not sufficient. We must relaunch.
 		if cmd, err := wgroot.RelaunchSelf(args, env); err != nil {
 			logger.Errorf("Error relaunching self after dropping privileges: %v", err)
 			os.Exit(1)
@@ -169,6 +158,7 @@ func main() {
 		// We can only create the VPN client after the server has loaded the keys out of the database.
 		// That's why we do this inside the loop. If it weren't for that, we would start the VPN
 		// client outside of this loop.
+		enableSSL := false
 		if kernelWGSecret != "" && vpnClient == nil {
 			// Setup VPN and register with proxy.
 			vpnClient, err = srv.StartVPN(kernelWGSecret)
@@ -177,6 +167,7 @@ func main() {
 				os.Exit(1)
 			}
 			vpnClient.RunRegisterLoop(vpnShutdown)
+			enableSSL = true
 		}
 
 		// Tell systemd that we're alive.
@@ -185,7 +176,7 @@ func main() {
 		daemon.SdNotify(false, daemon.SdNotifyReady)
 
 		// SYNC-SERVER-PORT
-		err = srv.ListenHTTP(":8080")
+		err = srv.ListenHTTP(":8080", enableSSL)
 		if err != nil {
 			logger.Infof("ListenHTTP returned: %v\n", err)
 		}

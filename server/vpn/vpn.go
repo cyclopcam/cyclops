@@ -2,6 +2,7 @@ package vpn
 
 import (
 	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -23,6 +24,11 @@ import (
 // At some point, if we have multiple geo-relevant proxies, then we'd choose the closest
 // server instead of just hard-coding to a single one.
 const ProxyHost = "proxy-cpt.cyclopcam.org"
+
+// Our proxied host name is hex(publicKey[:8]).cyclopcam.org
+func ProxiedHostName(publicKey wgtypes.Key) string {
+	return hex.EncodeToString(publicKey[:8]) + ".cyclopcam.org"
+}
 
 // VPN is only safe to use by a single thread
 type VPN struct {
@@ -193,7 +199,8 @@ func (v *VPN) RunRegisterLoop(exit chan bool) {
 				req := proxyapi.RegisterJSON{
 					PublicKey: v.privateKey.PublicKey().String(),
 				}
-				response, err := requests.RequestJSON[proxyapi.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
+				// Talk over http until I can figure out how to embed certmagic properly into the proxy.
+				response, err := requests.RequestJSON[proxyapi.RegisterResponseJSON]("POST", "http://"+ProxyHost+"/api/register", &req)
 				if err != nil {
 					v.Log.Warnf("Failed to re-register with proxy: %v", err)
 					sleep = sleep * 2

@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -13,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/caddyserver/certmagic"
 	"github.com/cyclopcam/cyclops/pkg/kibi"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/server/arc"
@@ -95,7 +98,7 @@ func NewServer(logger logs.Log, configDBFilename string, serverFlags int, nnMode
 	} else {
 		s.configDB = cfg
 	}
-	s.Log.Infof("Public key: %v", s.configDB.PublicKey)
+	s.Log.Infof("Public key: %v (short hex %v)", s.configDB.PublicKey, hex.EncodeToString(s.configDB.PublicKey[:8]))
 
 	// Since storage location needs to be configured, we can't fail to startup just because we're
 	// unable to access our video archive.
@@ -152,13 +155,126 @@ func (s *Server) StartVPN(kernelWGSecret string) (*vpn.VPN, error) {
 }
 
 // port example: ":8080"
-func (s *Server) ListenHTTP(port string) error {
-	s.Log.Infof("Listening on %v", port)
-	s.httpServer = &http.Server{
-		Addr:    port,
-		Handler: s.httpRouter,
+func (s *Server) ListenHTTP(port string, enableSSL bool) error {
+	if enableSSL {
+		s.Log.Infof("Enabling automatic SSL")
+		s.setupSSL()
+		sslHostname := vpn.ProxiedHostName(s.configDB.PublicKey)
+		return s.listenHTTPS([]string{sslHostname}, s.httpRouter)
+		//return certmagic.HTTPS([]string{sslHostname}, s.httpRouter)
+		//magic := certmagic.NewDefault()
+		//myACME := certmagic.NewACMEIssuer(magic, certmagic.DefaultACME)
+		// Wrap our handler in the auto SSL handler
+		//handler = myACME.HTTPChallengeHandler(handler)
+	} else {
+		s.Log.Infof("Listening on %v (automatic SSL disabled)", port)
+		s.httpServer = &http.Server{
+			Addr:    port,
+			Handler: s.httpRouter,
+		}
+		return s.httpServer.ListenAndServe()
 	}
-	return s.httpServer.ListenAndServe()
+}
+
+func (s *Server) setupSSL() {
+	// read and agree to your CA's legal documents
+	certmagic.DefaultACME.Agreed = true
+
+	// provide an email address
+	certmagic.DefaultACME.Email = "rogojin@gmail.com"
+
+	// use the staging endpoint while we're developing
+	//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
+
+	certmagic.DefaultACME.CA = certmagic.LetsEncryptProductionCA
+}
+
+// Copied and modified from certmagic.HTTPS()
+func (s *Server) listenHTTPS(domainNames []string, mux http.Handler) error {
+	ctx := context.Background()
+
+	if mux == nil {
+		mux = http.DefaultServeMux
+	}
+
+	//certmagic.DefaultACME.Agreed = true
+	cfg := certmagic.NewDefault()
+
+	err := cfg.ManageSync(ctx, domainNames)
+	if err != nil {
+		return err
+	}
+
+	// shared vars that I've recreated locally
+	httpWg := new(sync.WaitGroup)
+	lnMu := new(sync.Mutex)
+	var httpLn net.Listener
+	var httpsLn net.Listener
+
+	httpWg.Add(1)
+	defer httpWg.Done()
+
+	// if we haven't made listeners yet, do so now,
+	// and clean them up when all servers are done
+	lnMu.Lock()
+	if httpLn == nil && httpsLn == nil {
+		httpLn, err = net.Listen("tcp", fmt.Sprintf(":%d", certmagic.HTTPPort))
+		if err != nil {
+			lnMu.Unlock()
+			return err
+		}
+
+		tlsConfig := cfg.TLSConfig()
+		tlsConfig.NextProtos = append([]string{"h2", "http/1.1"}, tlsConfig.NextProtos...)
+
+		httpsLn, err = tls.Listen("tcp", fmt.Sprintf(":%d", certmagic.HTTPSPort), tlsConfig)
+		if err != nil {
+			httpLn.Close()
+			httpLn = nil
+			lnMu.Unlock()
+			return err
+		}
+
+		go func() {
+			httpWg.Wait()
+			lnMu.Lock()
+			httpLn.Close()
+			httpsLn.Close()
+			lnMu.Unlock()
+		}()
+	}
+	hln, hsln := httpLn, httpsLn
+	lnMu.Unlock()
+
+	httpServer := &http.Server{
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      120 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		BaseContext:       func(listener net.Listener) context.Context { return ctx },
+	}
+	if len(cfg.Issuers) > 0 {
+		if am, ok := cfg.Issuers[0].(*certmagic.ACMEIssuer); ok {
+			// We don't want auto redirect, because this must work on a LAN on port 80, where all you have is an IP.
+			// Perhaps some day we can figure out a way to do a lan-local DNS address, but that would probably require
+			// using DNS-01 auth for LetsEncrypt, and a bunch of extra work to make that all secure.
+			//httpServer.Handler = am.HTTPChallengeHandler(http.HandlerFunc(httpRedirectHandler))
+			httpServer.Handler = am.HTTPChallengeHandler(mux)
+		}
+	}
+	httpsServer := &http.Server{
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      2 * time.Minute,
+		IdleTimeout:       5 * time.Minute,
+		Handler:           mux,
+		BaseContext:       func(listener net.Listener) context.Context { return ctx },
+	}
+
+	s.Log.Infof("%v Serving HTTP/HTTPS on %s and %s", domainNames, hln.Addr(), hsln.Addr())
+
+	go httpServer.Serve(hln)
+	return httpsServer.Serve(hsln)
 }
 
 func (s *Server) ListenForKillSignals() {
