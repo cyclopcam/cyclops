@@ -16,6 +16,10 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/nn"
 )
 
+func Initialize() {
+	C.InitNcnn()
+}
+
 type Detector struct {
 	detector *C.NcnnDetector
 	config   nn.ModelConfig

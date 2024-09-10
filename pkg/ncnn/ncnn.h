@@ -14,6 +14,8 @@ enum DetectorFlags {
 	DetectorFlagSingleThreaded = 1,
 };
 
+void InitNcnn();
+
 NcnnDetector* CreateDetector(int detectorFlags, const char* type, const char* param, const char* bin, int width, int height);
 void          DeleteDetector(NcnnDetector* detector);
 void          DetectObjects(NcnnDetector* detector, int nchan, const uint8_t* img, int width, int height, int stride,

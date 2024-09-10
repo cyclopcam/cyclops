@@ -2,6 +2,7 @@
 #include <malloc.h>
 #include "layer.h"
 #include "net.h"
+#include "cpu.h"
 #include "simpleocv.h"
 #include "stb_image_write.h"
 
@@ -17,6 +18,20 @@ struct NcnnDetector {
 };
 
 extern "C" {
+
+void InitNcnn() {
+	// What's going on here?
+	// What we're doing is forcing NCNN to read the CPU features. On Linux, this involves reading
+	// from /proc/self/auxv. What's special about that? Well, there are two situation where
+	// linux prevents you from doing that.
+	// 1. If you were root, and you used setuid to drop privileges, then you can't read from
+	//    /proc/self/auxv, unless you respawn yourself.
+	// 2. If you have "setcap cap_net_bind_service=+ep" (so that you can bind to ports below 1024),
+	//    then linux won't let you read /proc/self/auxv.
+	// Because of these restrictions, we expose this function so that we can get NCNN to read
+	// the CPU features before we drop privileges.
+	ncnn::get_cpu_count();
+}
 
 NcnnDetector* CreateDetector(int detectorFlags, const char* type, const char* param, const char* bin, int width, int height) {
 	ModelTypes mtype;

@@ -8,6 +8,7 @@ import (
 
 	"github.com/akamensky/argparse"
 	"github.com/coreos/go-systemd/daemon"
+	"github.com/cyclopcam/cyclops/pkg/ncnn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/server"
 	"github.com/cyclopcam/cyclops/server/vpn"
@@ -72,10 +73,10 @@ func main() {
 
 	if *enableVPN {
 		// We are running as the cyclops server, and our first step is to launch the kernel-mode wireguard sub-process.
-		if err, kernelWGSecret = wgroot.LaunchRootModeSubProcess(); err != nil {
-			logger.Errorf("Error launching wireguard management sub-process: %v", err)
-			os.Exit(1)
-		}
+		//if err, kernelWGSecret = wgroot.LaunchRootModeSubProcess(); err != nil {
+		//	logger.Errorf("Error launching wireguard management sub-process: %v", err)
+		//	os.Exit(1)
+		//}
 		logger.Infof("Wireguard management sub-process launched")
 	}
 
@@ -86,29 +87,24 @@ func main() {
 
 	// Check if we need to drop privileges to a different user ('username')
 	if *username != "" && !wgroot.IsRunningAsUser(*username) {
+		// We must initialize ncnn before dropping privileges, because once we do that,
+		// we're unable to read from /proc/self/auxv to detect CPU features.
+		ncnn.Initialize()
+
+		//if home, err = wgroot.GetUserHome(*username); err != nil {
+		//	logger.Errorf("Error getting home directory of '%v': %v", *username, err)
+		//	os.Exit(1)
+		//}
+
 		// First we drop privileges
 		if err = wgroot.DropPrivileges(*username); err != nil {
 			logger.Errorf("Error dropping privileges to username '%v': %v", *username, err)
 			os.Exit(1)
 		}
-		// Scrub the "--vpn" and "--username" parameters
-		args := wgroot.StripArgs(os.Args[1:], []string{"--" + pnVPN}, []string{"--" + pnUsername})
-		env := []string{
-			"CYCLOPS_SOCKET_SECRET=" + kernelWGSecret,
-		}
-		// Relaunch ourselves with almost identical arguments, but this time as the lower privilege user.
-		// This relaunch is necessary so that NCNN can read from /proc/self/auxv to detect CPU features.
-		// A setuid/setgid is not sufficient. We must relaunch.
-		if cmd, err := wgroot.RelaunchSelf(args, env); err != nil {
-			logger.Errorf("Error relaunching self after dropping privileges: %v", err)
-			os.Exit(1)
-		} else {
-			// Wait for our subprocess to exit, otherwise things that run us think we've died
-			logger.Infof("Waiting for sub-process to exit")
-			cmd.Wait()
-			logger.Infof("Sub-process exited")
-			os.Exit(0)
-		}
+
+		// Update home directory to lower privilege user
+		home, _ = os.UserHomeDir()
+		logger.Infof("Privileges dropped to user '%v'. Home directory is now '%v'", *username, home)
 	}
 
 	actualDefaultConfigDB := filepath.Join(home, "cyclops", "config.sqlite")
@@ -128,13 +124,6 @@ func main() {
 	// Dynamically load shared libraries (which are optional) that accelerate neural network inference.
 	enableHailo := !*disableHailo
 	nnload.LoadAccelerators(logger, enableHailo)
-
-	if kernelWGSecret == "" {
-		// We end up here when relaunched as a lower privilege process - due to wgroot.RelaunchSelf().
-		// In this case, the CYCLOPS_SOCKET_SECRET was sent to wgroot.RelaunchSelf(), and we're
-		// extracting it from the env vars.
-		kernelWGSecret = os.Getenv("CYCLOPS_SOCKET_SECRET")
-	}
 
 	var vpnClient *vpn.VPN
 	vpnShutdown := make(chan bool)

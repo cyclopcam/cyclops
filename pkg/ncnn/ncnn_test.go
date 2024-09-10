@@ -39,6 +39,10 @@ func loadImage(name string) *cimg.Image {
 	return img.ToRGB()
 }
 
+func TestInit(t *testing.T) {
+	ncnn.Initialize()
+}
+
 func TestYoloV7(t *testing.T) {
 	testModel(t, "yolov7-tiny")
 }
