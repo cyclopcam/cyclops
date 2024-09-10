@@ -77,6 +77,8 @@ github.com/cyclopcam/safewg v0.0.0-20240905192045-200ca27410c9 h1:ACdUZ2EhNvVyFq
 github.com/cyclopcam/safewg v0.0.0-20240905192045-200ca27410c9/go.mod h1:F9gLcOFyATAna7E/vv1QsMBamSfKqBAPLYa6VAshr4w=
 github.com/cyclopcam/safewg v1.0.0 h1:M+G8KZkpCqB41pntZ85ZlKnbV3expHc7cGrarhtEtZE=
 github.com/cyclopcam/safewg v1.0.0/go.mod h1:F9gLcOFyATAna7E/vv1QsMBamSfKqBAPLYa6VAshr4w=
+github.com/cyclopcam/safewg v1.0.1 h1:uge9/G92CN1sCIFza0y7wWhbZ/ypgEgsLprxaNvCbqg=
+github.com/cyclopcam/safewg v1.0.1/go.mod h1:F9gLcOFyATAna7E/vv1QsMBamSfKqBAPLYa6VAshr4w=
 github.com/cyclopcam/www v0.0.0-20240905200735-e25d6f89d3bd h1:nJPKmjH+dKZ8Rnx2j8kUI62glmsvo8nQDvRnrtno5ao=
 github.com/cyclopcam/www v0.0.0-20240905200735-e25d6f89d3bd/go.mod h1:6QEe6ncW9r4M7EtXbXplNfiHUhhlkMH+k73EB4vRtPA=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
