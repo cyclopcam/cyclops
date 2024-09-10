@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -171,6 +172,15 @@ func (s *Server) ListenHTTPS() error {
 	return s.listenHTTPS([]string{sslHostname}, s.httpRouter)
 }
 
+// Copied from certmagic.dataDir(), but no support for Windows
+func certmagicDataDir() string {
+	baseDir := filepath.Join(os.Getenv("HOME"), ".local", "share")
+	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
+		baseDir = xdgData
+	}
+	return filepath.Join(baseDir, "certmagic")
+}
+
 // Copied and modified from certmagic.HTTPS()
 func (s *Server) listenHTTPS(domainNames []string, mux http.Handler) error {
 	certmagic.DefaultACME.Agreed = true               // read and agree to your CA's legal documents
@@ -180,6 +190,11 @@ func (s *Server) listenHTTPS(domainNames []string, mux http.Handler) error {
 
 	ctx := context.Background()
 	cfg := certmagic.NewDefault()
+
+	// We need to create a new FileStorage objects, because the default certmagic FileStorage
+	// is created at process startup, but at that time we are root, and we only setuid later.
+	cfg.Storage = &certmagic.FileStorage{Path: certmagicDataDir()}
+
 	err := cfg.ManageSync(ctx, domainNames) // should use ManageAsync
 	if err != nil {
 		return err

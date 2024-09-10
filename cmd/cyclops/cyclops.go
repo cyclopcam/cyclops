@@ -73,10 +73,10 @@ func main() {
 
 	if *enableVPN {
 		// We are running as the cyclops server, and our first step is to launch the kernel-mode wireguard sub-process.
-		//if err, kernelWGSecret = wgroot.LaunchRootModeSubProcess(); err != nil {
-		//	logger.Errorf("Error launching wireguard management sub-process: %v", err)
-		//	os.Exit(1)
-		//}
+		if err, kernelWGSecret = wgroot.LaunchRootModeSubProcess(); err != nil {
+			logger.Errorf("Error launching wireguard management sub-process: %v", err)
+			os.Exit(1)
+		}
 		logger.Infof("Wireguard management sub-process launched")
 	}
 
@@ -105,6 +105,13 @@ func main() {
 		// Update home directory to lower privilege user
 		home, _ = os.UserHomeDir()
 		logger.Infof("Privileges dropped to user '%v'. Home directory is now '%v'", *username, home)
+
+		//os.Setenv("LOGNAME", *username)
+		//logger.Infof("HOME env var is %v", os.Getenv("HOME"))
+		//// Dump all environment variables
+		//for _, e := range os.Environ() {
+		//	logger.Infof("ENV: %v", e)
+		//}
 	}
 
 	actualDefaultConfigDB := filepath.Join(home, "cyclops", "config.sqlite")
