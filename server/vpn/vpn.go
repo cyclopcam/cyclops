@@ -199,8 +199,7 @@ func (v *VPN) RunRegisterLoop(exit chan bool) {
 				req := proxyapi.RegisterJSON{
 					PublicKey: v.privateKey.PublicKey().String(),
 				}
-				// Talk over http until I can figure out how to embed certmagic properly into the proxy.
-				response, err := requests.RequestJSON[proxyapi.RegisterResponseJSON]("POST", "http://"+ProxyHost+"/api/register", &req)
+				response, err := requests.RequestJSON[proxyapi.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
 				if err != nil {
 					v.Log.Warnf("Failed to re-register with proxy: %v", err)
 					sleep = sleep * 2

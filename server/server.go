@@ -48,6 +48,7 @@ type Server struct {
 	// Private Subsystems
 	signalIn               chan os.Signal
 	httpServer             *http.Server
+	httpsServer            *http.Server
 	httpRouter             *httprouter.Router
 	configDB               *configdb.ConfigDB
 	videoDB                *videodb.VideoDB // Can be nil! If the video path is not accessible, then we can fail to create this.
@@ -155,102 +156,55 @@ func (s *Server) StartVPN(kernelWGSecret string) (*vpn.VPN, error) {
 }
 
 // port example: ":8080"
-func (s *Server) ListenHTTP(port string, enableSSL bool) error {
-	if enableSSL {
-		s.Log.Infof("Enabling automatic SSL")
-		s.setupSSL()
-		sslHostname := vpn.ProxiedHostName(s.configDB.PublicKey)
-		return s.listenHTTPS([]string{sslHostname}, s.httpRouter)
-		//return certmagic.HTTPS([]string{sslHostname}, s.httpRouter)
-		//magic := certmagic.NewDefault()
-		//myACME := certmagic.NewACMEIssuer(magic, certmagic.DefaultACME)
-		// Wrap our handler in the auto SSL handler
-		//handler = myACME.HTTPChallengeHandler(handler)
-	} else {
-		s.Log.Infof("Listening on %v (automatic SSL disabled)", port)
-		s.httpServer = &http.Server{
-			Addr:    port,
-			Handler: s.httpRouter,
-		}
-		return s.httpServer.ListenAndServe()
+func (s *Server) ListenHTTP(port string) error {
+	s.Log.Infof("Listening on %v (automatic SSL disabled)", port)
+	s.httpServer = &http.Server{
+		Addr:    port,
+		Handler: s.httpRouter,
 	}
+	return s.httpServer.ListenAndServe()
 }
 
-func (s *Server) setupSSL() {
-	// read and agree to your CA's legal documents
-	certmagic.DefaultACME.Agreed = true
-
-	// provide an email address
-	certmagic.DefaultACME.Email = "rogojin@gmail.com"
-
-	// use the staging endpoint while we're developing
-	//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
-
-	certmagic.DefaultACME.CA = certmagic.LetsEncryptProductionCA
+func (s *Server) ListenHTTPS() error {
+	s.Log.Infof("Enabling automatic SSL")
+	sslHostname := vpn.ProxiedHostName(s.configDB.PublicKey)
+	return s.listenHTTPS([]string{sslHostname}, s.httpRouter)
 }
 
 // Copied and modified from certmagic.HTTPS()
 func (s *Server) listenHTTPS(domainNames []string, mux http.Handler) error {
+	certmagic.DefaultACME.Agreed = true               // read and agree to your CA's legal documents
+	certmagic.DefaultACME.Email = "rogojin@gmail.com" // email address
+	//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA    // use the staging endpoint while we're developing
+	certmagic.DefaultACME.CA = certmagic.LetsEncryptProductionCA
+
 	ctx := context.Background()
-
-	if mux == nil {
-		mux = http.DefaultServeMux
-	}
-
-	//certmagic.DefaultACME.Agreed = true
 	cfg := certmagic.NewDefault()
-
-	err := cfg.ManageSync(ctx, domainNames)
+	err := cfg.ManageSync(ctx, domainNames) // should use ManageAsync
 	if err != nil {
 		return err
 	}
 
-	// shared vars that I've recreated locally
-	httpWg := new(sync.WaitGroup)
-	lnMu := new(sync.Mutex)
-	var httpLn net.Listener
-	var httpsLn net.Listener
-
-	httpWg.Add(1)
-	defer httpWg.Done()
-
-	// if we haven't made listeners yet, do so now,
-	// and clean them up when all servers are done
-	lnMu.Lock()
-	if httpLn == nil && httpsLn == nil {
-		httpLn, err = net.Listen("tcp", fmt.Sprintf(":%d", certmagic.HTTPPort))
-		if err != nil {
-			lnMu.Unlock()
-			return err
-		}
-
-		tlsConfig := cfg.TLSConfig()
-		tlsConfig.NextProtos = append([]string{"h2", "http/1.1"}, tlsConfig.NextProtos...)
-
-		httpsLn, err = tls.Listen("tcp", fmt.Sprintf(":%d", certmagic.HTTPSPort), tlsConfig)
-		if err != nil {
-			httpLn.Close()
-			httpLn = nil
-			lnMu.Unlock()
-			return err
-		}
-
-		go func() {
-			httpWg.Wait()
-			lnMu.Lock()
-			httpLn.Close()
-			httpsLn.Close()
-			lnMu.Unlock()
-		}()
+	httpLn, err := net.Listen("tcp", ":80")
+	if err != nil {
+		return err
 	}
-	hln, hsln := httpLn, httpsLn
-	lnMu.Unlock()
+
+	tlsConfig := cfg.TLSConfig()
+	tlsConfig.NextProtos = append([]string{"h2", "http/1.1"}, tlsConfig.NextProtos...)
+
+	httpsLn, err := tls.Listen("tcp", ":443", tlsConfig)
+	if err != nil {
+		httpLn.Close()
+		return err
+	}
 
 	httpServer := &http.Server{
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
 		WriteTimeout:      120 * time.Second,
 		IdleTimeout:       120 * time.Second,
+		Handler:           mux,
 		BaseContext:       func(listener net.Listener) context.Context { return ctx },
 	}
 	if len(cfg.Issuers) > 0 {
@@ -271,10 +225,16 @@ func (s *Server) listenHTTPS(domainNames []string, mux http.Handler) error {
 		BaseContext:       func(listener net.Listener) context.Context { return ctx },
 	}
 
-	s.Log.Infof("%v Serving HTTP/HTTPS on %s and %s", domainNames, hln.Addr(), hsln.Addr())
+	s.Log.Infof("%v Serving HTTP/HTTPS on %v and %v", domainNames, httpLn.Addr(), httpsLn.Addr())
 
-	go httpServer.Serve(hln)
-	return httpsServer.Serve(hsln)
+	s.httpServer = httpServer
+	s.httpsServer = httpsServer
+	go func() {
+		if err := httpServer.Serve(httpLn); err != nil {
+			s.Log.Infof("httpServer.Serve() returned: %v", err)
+		}
+	}()
+	return httpsServer.Serve(httpsLn)
 }
 
 func (s *Server) ListenForKillSignals() {
@@ -308,23 +268,39 @@ func (s *Server) Shutdown(restart bool) {
 
 	close(s.ShutdownStarted)
 
+	//s.Log.Infof("SHUTDOWN 1")
+
 	// Remove our signal handler (we'll re-enable it again if we restart)
 	signal.Stop(s.signalIn)
+
+	//s.Log.Infof("SHUTDOWN 2")
 
 	// If Shutdown was invoked by something *other* than a signal, then this will get ListenForKillSignals() to exit
 	close(s.signalIn)
 
+	//s.Log.Infof("SHUTDOWN 3")
+
 	s.monitor.Close()
+
+	//s.Log.Infof("SHUTDOWN 4")
 
 	// Closing cameras should close all WebSockets, by virtue of the Streams closing, which sends
 	// a message to the websocket thread.
 	// This is relevant because calling Shutdown() on our http server will not do anything to upgraded
-	// connections (this is explicit in the http server docs).
+	// connections such as WebSockets (this is explicit in the http server docs).
 	// NOTE: the http server also has RegisterOnShutdown.. which might be useful
+	errors := []error{}
+
+	if s.httpsServer != nil {
+		s.Log.Infof("Closing HTTPS server")
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		errors = append(errors, s.httpsServer.Shutdown(ctx))
+		defer cancel()
+	}
 
 	s.Log.Infof("Closing HTTP server")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	err := s.httpServer.Shutdown(ctx)
+	errors = append(errors, s.httpServer.Shutdown(ctx))
 	defer cancel()
 
 	s.Log.Infof("Waiting for monitor -> videoDB thread to close")
@@ -338,13 +314,21 @@ func (s *Server) Shutdown(restart bool) {
 		s.videoDB.Close()
 	}
 
-	if err != nil {
-		s.Log.Warnf("Shutdown complete, with error: %v", err)
+	var firstError error
+	for _, err := range errors {
+		if err != nil {
+			firstError = err
+			break
+		}
+	}
+
+	if firstError != nil {
+		s.Log.Warnf("Shutdown complete, with error: %v", firstError)
 	} else {
 		s.Log.Infof("Shutdown complete")
 	}
 	s.Log.Close()
-	s.ShutdownComplete <- err
+	s.ShutdownComplete <- firstError
 }
 
 // This is called whenever system config changes

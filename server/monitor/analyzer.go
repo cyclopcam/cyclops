@@ -132,6 +132,7 @@ func nextPowerOf2(n int) int {
 
 func (m *Monitor) analyzer() {
 	camStates := map[*monitorCamera]*analyzerCameraState{}
+	m.Log.Infof("Analyzer starting")
 
 	for {
 		qItem, ok := <-m.analyzerQueue
@@ -158,6 +159,7 @@ func (m *Monitor) analyzer() {
 			}
 		}
 	}
+	m.Log.Infof("Analyzer stopped")
 	m.analyzerStopped <- true
 }
 

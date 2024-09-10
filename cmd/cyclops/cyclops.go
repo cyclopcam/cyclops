@@ -25,6 +25,9 @@ func main() {
 	// This is purely for documentation of the cmd-line args
 	nominalDefaultDB := "$HOME/cyclops/config.sqlite"
 
+	//_, foo := os.ReadFile("/proc/self/auxv")
+	//fmt.Printf("Read from /proc/self/auxv: %v\n", foo)
+
 	// Certain parameters are scrubbed when dropping privileges, so we specify them as constants
 	const pnVPN = "vpn"
 	const pnUsername = "username"
@@ -73,6 +76,7 @@ func main() {
 			logger.Errorf("Error launching wireguard management sub-process: %v", err)
 			os.Exit(1)
 		}
+		logger.Infof("Wireguard management sub-process launched")
 	}
 
 	// This auto SUDO privilege drop is too niche. I'm rather leave dropping privileges as an explicit option.
@@ -175,13 +179,21 @@ func main() {
 		// See this article for more details: https://vincent.bernat.ch/en/blog/2017-systemd-golang
 		daemon.SdNotify(false, daemon.SdNotifyReady)
 
-		// SYNC-SERVER-PORT
-		err = srv.ListenHTTP(":8080", enableSSL)
-		if err != nil {
-			logger.Infof("ListenHTTP returned: %v\n", err)
+		if enableSSL {
+			err = srv.ListenHTTPS()
+			if err != nil {
+				logger.Infof("ListenHTTPs returned: %v", err)
+			}
+		} else {
+			// SYNC-SERVER-PORT
+			err = srv.ListenHTTP(":8080")
+			if err != nil {
+				logger.Infof("ListenHTTP returned: %v", err)
+			}
 		}
+
 		err = <-srv.ShutdownComplete
-		//fmt.Printf("Server sent ShutdownComplete: %v\n", err)
+		//fmt.Printf("Server sent ShutdownComplete: %v", err)
 		if !srv.MustRestart {
 			break
 		}
