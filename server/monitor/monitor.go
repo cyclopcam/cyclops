@@ -242,6 +242,7 @@ func NewMonitor(logger logs.Log, nnModelName string) (*Monitor, error) {
 		debugDumpFrames:    true,
 		hasDumpedCamera:    map[int64]bool{},
 	}
+	//m.sendTestImageToNN()
 	for i := 0; i < m.numNNThreads; i++ {
 		go m.nnThread()
 	}
@@ -252,6 +253,11 @@ func NewMonitor(logger logs.Log, nnModelName string) (*Monitor, error) {
 
 	return m, nil
 }
+
+//func (m *Monitor) sendTestImageToNN() {
+//	img := cimg.NewImage(m.detector.Config().Width, m.detector.Config().Height, cimg.PixelFormatRGB)
+//	m.detector.DetectObjects(nn.WholeImage(img.NChan(), img.Pixels, img.Width, img.Height), nn.NewDetectionParams())
+//}
 
 // Close the monitor object.
 func (m *Monitor) Close() {

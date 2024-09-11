@@ -23,6 +23,11 @@ var hailoAccel *nnaccel.Accelerator
 
 // Return true if we are using a hardware NN accelerator
 func HaveAccelerator() bool {
+	return HaveHailo()
+}
+
+// Return true if we have a Hailo accelerator
+func HaveHailo() bool {
 	return hailoAccel != nil
 }
 

@@ -183,8 +183,8 @@ func (s *Server) ListenHTTPS(sslCertDirectory string, privilegeLimiter *wgroot.P
 
 // Copied and modified from certmagic.HTTPS()
 func (s *Server) listenHTTPS(sslCertDirectory string, domainNames []string, privilegeLimiter *wgroot.PrivilegeLimiter, mux http.Handler) error {
-	certmagic.DefaultACME.Agreed = true               // read and agree to your CA's legal documents
-	certmagic.DefaultACME.Email = "rogojin@gmail.com" // email address
+	certmagic.DefaultACME.Agreed = true                           // read and agree to your CA's legal documents
+	certmagic.DefaultACME.Email = "rogojin+cyclopscert@gmail.com" // email address
 	//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA    // use the staging endpoint while we're developing
 	certmagic.DefaultACME.CA = certmagic.LetsEncryptProductionCA
 
@@ -195,6 +195,19 @@ func (s *Server) listenHTTPS(sslCertDirectory string, domainNames []string, priv
 	// is created at process startup, but at that time we are root, and we only setuid later.
 	cfg.Storage = &certmagic.FileStorage{Path: sslCertDirectory}
 
+	if privilegeLimiter != nil {
+		if err := privilegeLimiter.Elevate(); err != nil {
+			return err
+		}
+	}
+	defer func() {
+		if privilegeLimiter != nil {
+			if err := privilegeLimiter.Drop(); err != nil {
+				s.Log.Errorf("Error dropping privileges: %v", err)
+			}
+		}
+	}()
+
 	err := cfg.ManageSync(ctx, domainNames) // should probably use ManageAsync
 	if err != nil {
 		return err
@@ -203,12 +216,6 @@ func (s *Server) listenHTTPS(sslCertDirectory string, domainNames []string, priv
 	tlsConfig := cfg.TLSConfig()
 	tlsConfig.NextProtos = append([]string{"h2", "http/1.1"}, tlsConfig.NextProtos...)
 
-	if privilegeLimiter != nil {
-		if err := privilegeLimiter.Elevate(); err != nil {
-			return err
-		}
-	}
-
 	httpLn, err80 := net.Listen("tcp", ":80")
 	httpsLn, err443 := tls.Listen("tcp", ":443", tlsConfig)
 
@@ -216,6 +223,7 @@ func (s *Server) listenHTTPS(sslCertDirectory string, domainNames []string, priv
 		if err := privilegeLimiter.Drop(); err != nil {
 			s.Log.Errorf("Error dropping privileges: %v", err)
 		}
+		privilegeLimiter = nil // cancel the defer'ed drop
 	}
 
 	if err80 != nil || err443 != nil {

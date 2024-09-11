@@ -42,6 +42,7 @@ func main() {
 	privateKey := parser.String("", "privatekey", &argparse.Options{Help: "Change private key of system (e.g. for recreating a system using a prior identity)", Default: ""})
 	disableHailo := parser.Flag("", "nohailo", &argparse.Options{Help: "Disable Hailo neural network accelerator support", Default: false})
 	nnModelName := parser.String("", "nn", &argparse.Options{Help: "Specify the neural network for object detection", Default: "yolov8m"})
+	elevated := parser.Flag("", "elevated", &argparse.Options{Help: "Maintain elevated permissions, instead of setuid(username)", Default: false})
 	kernelWG := parser.Flag("", "kernelwg", &argparse.Options{Help: "(Internal) Run the kernel-mode wireguard interface", Default: false})
 	err := parser.Parse(os.Args)
 	if err != nil {
@@ -87,19 +88,14 @@ func main() {
 
 	sslCertDirectory := filepath.Join(home, ".local", "share", "certmagic")
 
+	// We must initialize ncnn before dropping privileges, because once we do that,
+	// we're unable to read from /proc/self/auxv to detect CPU features.
+	ncnn.Initialize()
+
 	var privilegeLimiter *wgroot.PrivilegeLimiter
 
 	// Check if we need to drop privileges to a different user ('username')
 	if *username != "" && !wgroot.IsRunningAsUser(*username) {
-		// We must initialize ncnn before dropping privileges, because once we do that,
-		// we're unable to read from /proc/self/auxv to detect CPU features.
-		ncnn.Initialize()
-
-		//if home, err = wgroot.GetUserHome(*username); err != nil {
-		//	logger.Errorf("Error getting home directory of '%v': %v", *username, err)
-		//	os.Exit(1)
-		//}
-
 		// Drop privileges
 		privilegeLimiter, err = wgroot.NewPrivilegeLimiter(*username, wgroot.PrivilegeLimiterFlagSetEnvVars)
 		if err != nil {
@@ -107,23 +103,13 @@ func main() {
 			os.Exit(1)
 		}
 
-		// First we drop privileges
-		//if err = wgroot.DropPrivileges(*username); err != nil {
-		//	logger.Errorf("Error dropping privileges to username '%v': %v", *username, err)
-		//	os.Exit(1)
-		//}
-
 		// Update home directory to lower privilege user
-		//home, _ = os.UserHomeDir()
 		home = privilegeLimiter.LoweredHome
 		logger.Infof("Privileges dropped to user '%v'. Home directory is now '%v'", *username, home)
 
-		//os.Setenv("LOGNAME", *username)
-		//logger.Infof("HOME env var is %v", os.Getenv("HOME"))
-		//// Dump all environment variables
-		//for _, e := range os.Environ() {
-		//	logger.Infof("ENV: %v", e)
-		//}
+		// Necessary for hailo, which tries to write logs into "./hailort.log" (or something like that)
+		os.Chdir(home)
+
 		sslCertDirectory = filepath.Join(home, ".local", "share", "certmagic")
 	}
 
@@ -144,6 +130,17 @@ func main() {
 	// Dynamically load shared libraries (which are optional) that accelerate neural network inference.
 	enableHailo := !*disableHailo
 	nnload.LoadAccelerators(logger, enableHailo)
+
+	// Right now Hailo dies if we use seteuid(), so we need to disable privilege drop when we have a Hailo device.
+	if nnload.HaveHailo() {
+		*elevated = true
+	}
+
+	if privilegeLimiter != nil && *elevated {
+		logger.Infof("Elevating privileges back up")
+		privilegeLimiter.Elevate()
+		privilegeLimiter = nil
+	}
 
 	var vpnClient *vpn.VPN
 	vpnShutdown := make(chan bool)
