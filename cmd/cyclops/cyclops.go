@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/akamensky/argparse"
 	"github.com/coreos/go-systemd/daemon"
@@ -107,8 +108,13 @@ func main() {
 		home = privilegeLimiter.LoweredHome
 		logger.Infof("Privileges dropped to user '%v'. Home directory is now '%v'", *username, home)
 
-		// Necessary for hailo, which tries to write logs into "./hailort.log" (or something like that)
-		os.Chdir(home)
+		// This is necessary for hailo, which tries to write logs into "./hailort.log" (or something like that)
+		// If we are launched as root, then cwd is "/root"
+		// However, if we are launched from "/home/developer/work/cyclops", then we want to leave that as-is.
+		cwd, _ := os.Getwd()
+		if !strings.HasPrefix(cwd, home) {
+			os.Chdir(home)
+		}
 
 		sslCertDirectory = filepath.Join(home, ".local", "share", "certmagic")
 	}
