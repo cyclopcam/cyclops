@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -28,6 +27,7 @@ import (
 	"github.com/cyclopcam/cyclops/server/videodb"
 	"github.com/cyclopcam/cyclops/server/vpn"
 	"github.com/cyclopcam/logs"
+	"github.com/cyclopcam/safewg/wgroot"
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
 )
@@ -166,23 +166,23 @@ func (s *Server) ListenHTTP(port string) error {
 	return s.httpServer.ListenAndServe()
 }
 
-func (s *Server) ListenHTTPS() error {
+func (s *Server) ListenHTTPS(sslCertDirectory string, privilegeLimiter *wgroot.PrivilegeLimiter) error {
 	s.Log.Infof("Enabling automatic SSL")
 	sslHostname := vpn.ProxiedHostName(s.configDB.PublicKey)
-	return s.listenHTTPS([]string{sslHostname}, s.httpRouter)
+	return s.listenHTTPS(sslCertDirectory, []string{sslHostname}, privilegeLimiter, s.httpRouter)
 }
 
 // Copied from certmagic.dataDir(), but no support for Windows
-func certmagicDataDir() string {
-	baseDir := filepath.Join(os.Getenv("HOME"), ".local", "share")
-	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
-		baseDir = xdgData
-	}
-	return filepath.Join(baseDir, "certmagic")
-}
+//func certmagicDataDir() string {
+//	baseDir := filepath.Join(os.Getenv("HOME"), ".local", "share")
+//	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
+//		baseDir = xdgData
+//	}
+//	return filepath.Join(baseDir, "certmagic")
+//}
 
 // Copied and modified from certmagic.HTTPS()
-func (s *Server) listenHTTPS(domainNames []string, mux http.Handler) error {
+func (s *Server) listenHTTPS(sslCertDirectory string, domainNames []string, privilegeLimiter *wgroot.PrivilegeLimiter, mux http.Handler) error {
 	certmagic.DefaultACME.Agreed = true               // read and agree to your CA's legal documents
 	certmagic.DefaultACME.Email = "rogojin@gmail.com" // email address
 	//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA    // use the staging endpoint while we're developing
@@ -193,14 +193,9 @@ func (s *Server) listenHTTPS(domainNames []string, mux http.Handler) error {
 
 	// We need to create a new FileStorage objects, because the default certmagic FileStorage
 	// is created at process startup, but at that time we are root, and we only setuid later.
-	cfg.Storage = &certmagic.FileStorage{Path: certmagicDataDir()}
+	cfg.Storage = &certmagic.FileStorage{Path: sslCertDirectory}
 
-	err := cfg.ManageSync(ctx, domainNames) // should use ManageAsync
-	if err != nil {
-		return err
-	}
-
-	httpLn, err := net.Listen("tcp", ":80")
+	err := cfg.ManageSync(ctx, domainNames) // should probably use ManageAsync
 	if err != nil {
 		return err
 	}
@@ -208,10 +203,32 @@ func (s *Server) listenHTTPS(domainNames []string, mux http.Handler) error {
 	tlsConfig := cfg.TLSConfig()
 	tlsConfig.NextProtos = append([]string{"h2", "http/1.1"}, tlsConfig.NextProtos...)
 
-	httpsLn, err := tls.Listen("tcp", ":443", tlsConfig)
-	if err != nil {
-		httpLn.Close()
-		return err
+	if privilegeLimiter != nil {
+		if err := privilegeLimiter.Elevate(); err != nil {
+			return err
+		}
+	}
+
+	httpLn, err80 := net.Listen("tcp", ":80")
+	httpsLn, err443 := tls.Listen("tcp", ":443", tlsConfig)
+
+	if privilegeLimiter != nil {
+		if err := privilegeLimiter.Drop(); err != nil {
+			s.Log.Errorf("Error dropping privileges: %v", err)
+		}
+	}
+
+	if err80 != nil || err443 != nil {
+		if httpLn != nil {
+			httpLn.Close()
+		}
+		if httpsLn != nil {
+			httpsLn.Close()
+		}
+		if err80 != nil {
+			return err80
+		}
+		return err443
 	}
 
 	httpServer := &http.Server{

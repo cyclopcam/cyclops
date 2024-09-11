@@ -85,6 +85,10 @@ func main() {
 	//	*username = os.Getenv("SUDO_USER")
 	//}
 
+	sslCertDirectory := filepath.Join(home, ".local", "share", "certmagic")
+
+	var privilegeLimiter *wgroot.PrivilegeLimiter
+
 	// Check if we need to drop privileges to a different user ('username')
 	if *username != "" && !wgroot.IsRunningAsUser(*username) {
 		// We must initialize ncnn before dropping privileges, because once we do that,
@@ -96,14 +100,22 @@ func main() {
 		//	os.Exit(1)
 		//}
 
-		// First we drop privileges
-		if err = wgroot.DropPrivileges(*username); err != nil {
-			logger.Errorf("Error dropping privileges to username '%v': %v", *username, err)
+		// Drop privileges
+		privilegeLimiter, err = wgroot.NewPrivilegeLimiter(*username, wgroot.PrivilegeLimiterFlagSetEnvVars)
+		if err != nil {
+			logger.Errorf("Error creating privilege limiter: %v", err)
 			os.Exit(1)
 		}
 
+		// First we drop privileges
+		//if err = wgroot.DropPrivileges(*username); err != nil {
+		//	logger.Errorf("Error dropping privileges to username '%v': %v", *username, err)
+		//	os.Exit(1)
+		//}
+
 		// Update home directory to lower privilege user
-		home, _ = os.UserHomeDir()
+		//home, _ = os.UserHomeDir()
+		home = privilegeLimiter.LoweredHome
 		logger.Infof("Privileges dropped to user '%v'. Home directory is now '%v'", *username, home)
 
 		//os.Setenv("LOGNAME", *username)
@@ -112,6 +124,7 @@ func main() {
 		//for _, e := range os.Environ() {
 		//	logger.Infof("ENV: %v", e)
 		//}
+		sslCertDirectory = filepath.Join(home, ".local", "share", "certmagic")
 	}
 
 	actualDefaultConfigDB := filepath.Join(home, "cyclops", "config.sqlite")
@@ -176,15 +189,21 @@ func main() {
 		daemon.SdNotify(false, daemon.SdNotifyReady)
 
 		if enableSSL {
-			err = srv.ListenHTTPS()
+			err = srv.ListenHTTPS(sslCertDirectory, privilegeLimiter)
 			if err != nil {
-				logger.Infof("ListenHTTPs returned: %v", err)
+				logger.Infof("ListenHTTPS returned: %v", err)
+				if !srv.MustRestart {
+					break
+				}
 			}
 		} else {
 			// SYNC-SERVER-PORT
 			err = srv.ListenHTTP(":8080")
 			if err != nil {
 				logger.Infof("ListenHTTP returned: %v", err)
+				if !srv.MustRestart {
+					break
+				}
 			}
 		}
 

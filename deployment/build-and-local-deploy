@@ -92,7 +92,8 @@ sudo systemctl enable cyclops
 sudo cp bin/cyclops /usr/local/bin/cyclops
 
 # Grant permissions (cap_net_bind_service is for binding to ports 80 and 443)
-sudo setcap cap_net_bind_service=+ep /usr/local/bin/cyclops
+# No longer needed, since we switched to a privilege drop/raise model
+#sudo setcap cap_net_bind_service=+ep /usr/local/bin/cyclops
 
 if [ -f nnaccel/hailo/bin/libcyclopshailo.so ]; then
 	sudo cp nnaccel/hailo/bin/libcyclopshailo.so /usr/local/lib
