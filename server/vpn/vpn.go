@@ -25,10 +25,14 @@ import (
 // server instead of just hard-coding to a single one.
 const ProxyHost = "proxy-cpt.cyclopcam.org"
 
-// Our proxied host name is hex(publicKey[:8]).cyclopcam.org
+// Our proxied host name is hex(publicKey[:ShortPublicKeyLen]).p.cyclopcam.org
 func ProxiedHostName(publicKey wgtypes.Key) string {
-	return hex.EncodeToString(publicKey[:8]) + ".cyclopcam.org"
+	return hex.EncodeToString(publicKey[:ShortPublicKeyLen]) + ".p.cyclopcam.org"
 }
+
+// Used for host names, encoded as hex. First 10 bytes of public key.
+// SYNC-SHORT-PUBLIC-KEY-LEN
+const ShortPublicKeyLen = 10
 
 // VPN is only safe to use by a single thread
 type VPN struct {

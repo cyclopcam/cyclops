@@ -177,6 +177,7 @@ func main() {
 		enableSSL := false
 		if kernelWGSecret != "" && vpnClient == nil {
 			// Setup VPN and register with proxy.
+			logger.Infof("Starting VPN")
 			vpnClient, err = srv.StartVPN(kernelWGSecret)
 			if err != nil {
 				logger.Errorf("%v", err)
@@ -185,6 +186,9 @@ func main() {
 			vpnClient.RunRegisterLoop(vpnShutdown)
 			enableSSL = true
 		}
+
+		//logger.Warnf("Sleeping for 1 hour")
+		//time.Sleep(time.Hour)
 
 		// Tell systemd that we're alive.
 		// We might also want to implement a liveness ping.

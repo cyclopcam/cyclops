@@ -100,7 +100,7 @@ func NewServer(logger logs.Log, configDBFilename string, serverFlags int, nnMode
 	} else {
 		s.configDB = cfg
 	}
-	s.Log.Infof("Public key: %v (short hex %v)", s.configDB.PublicKey, hex.EncodeToString(s.configDB.PublicKey[:8]))
+	s.Log.Infof("Public key: %v (short hex %v)", s.configDB.PublicKey, hex.EncodeToString(s.configDB.PublicKey[:vpn.ShortPublicKeyLen]))
 
 	// Since storage location needs to be configured, we can't fail to startup just because we're
 	// unable to access our video archive.
@@ -338,10 +338,12 @@ func (s *Server) Shutdown(restart bool) {
 		defer cancel()
 	}
 
-	s.Log.Infof("Closing HTTP server")
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	errors = append(errors, s.httpServer.Shutdown(ctx))
-	defer cancel()
+	if s.httpServer != nil {
+		s.Log.Infof("Closing HTTP server")
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		errors = append(errors, s.httpServer.Shutdown(ctx))
+		defer cancel()
+	}
 
 	s.Log.Infof("Waiting for monitor -> videoDB thread to close")
 	<-s.monitorToVideoDBClosed
