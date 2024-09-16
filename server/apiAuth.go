@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net"
 	"net/http"
 	"strings"
 
@@ -63,5 +64,11 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 }
 
 func (s *Server) httpAuthLogin(w http.ResponseWriter, r *http.Request) {
-	s.configDB.Login(w, r)
+	s.configDB.Login(w, r, s.isCallerOnLAN(r))
+}
+
+func (s *Server) isCallerOnLAN(r *http.Request) bool {
+	ipStr, _, _ := strings.Cut(r.RemoteAddr, ":")
+	remoteIP := net.ParseIP(ipStr)
+	return !s.VpnAllowedIPs.Contains(remoteIP)
 }

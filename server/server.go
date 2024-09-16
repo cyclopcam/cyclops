@@ -42,6 +42,7 @@ type Server struct {
 	OwnIP            net.IP         // If not nil, overrides the IP address used when scanning the LAN for cameras
 	HotReloadWWW     bool           // Don't embed the 'www' directory into our binary, but load it from disk, and assume it's not immutable. This is for dev time on the 'www' source.
 	StartupErrors    []StartupError // Critical errors encountered at startup. Note that these are errors that are resolvable by fixing the config through the App UI.
+	VpnAllowedIPs    net.IPNet      // Addresses allowed from VPN network
 
 	// Public Subsystems
 	LiveCameras *livecameras.LiveCameras
@@ -152,6 +153,8 @@ func (s *Server) StartVPN(kernelWGSecret string) (*vpn.VPN, error) {
 		vpnClient.DisconnectKernelWG()
 		return nil, fmt.Errorf("Failed to start Wireguard VPN: %w", err)
 	}
+
+	s.VpnAllowedIPs = vpnClient.AllowedIPs
 
 	return vpnClient, nil
 }

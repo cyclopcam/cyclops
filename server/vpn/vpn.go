@@ -34,9 +34,10 @@ func ProxiedHostName(publicKey wgtypes.Key) string {
 // SYNC-SHORT-PUBLIC-KEY-LEN
 const ShortPublicKeyLen = 10
 
-// VPN is only safe to use by a single thread
+// Manage connection to our VPN/proxy server
 type VPN struct {
 	Log           logs.Log
+	AllowedIPs    net.IPNet // Network of the VPN (just the proxy server's address, eg 10.6.0.0/32, or for IPv6 fdce:c10b:5ca1:1::1/128)
 	privateKey    wgtypes.Key
 	publicKey     wgtypes.Key
 	client        *wguser.Client
@@ -126,7 +127,11 @@ func (v *VPN) createDevice(resp *proxyapi.RegisterResponseJSON) error {
 	// We only accept traffic from the proxy server, and not from any of the other peers.
 	// One *could* allow peers to communicate with each other via the proxy, but I don't see the utility,
 	// and that seems like a bad idea for security.
-	peer.AllowedIP.Mask = net.IPv4Mask(255, 255, 255, 255)
+	if peer.AllowedIP.IP.To4() != nil {
+		peer.AllowedIP.Mask = net.IPv4Mask(255, 255, 255, 255)
+	} else {
+		peer.AllowedIP.Mask = net.CIDRMask(128, 128)
+	}
 
 	peer.Endpoint = fmt.Sprintf("%v:%v", ProxyHost, resp.ProxyListenPort)
 
@@ -165,9 +170,20 @@ func (v *VPN) validateAndSaveDeviceDetails(resp *wguser.MsgGetDeviceResponse) er
 		v.Log.Infof("%v c. Start cyclops regularly again%v", color, reset)
 		return fmt.Errorf("Wireguard device has a different key. Follow instructions in the logs.")
 	}
+	peers, err := v.client.GetPeers()
+	if err != nil {
+		return fmt.Errorf("client.GetPeers failed: %w", err)
+	}
+	if len(peers.Peers) != 1 {
+		return fmt.Errorf("Expected 1 peer, but got %v", len(peers.Peers))
+	}
+	if len(peers.Peers[0].AllowedIPs) != 1 {
+		return fmt.Errorf("Expected 1 AllowedIPs on peer, but got %v", len(peers.Peers[0].AllowedIPs))
+	}
 	v.deviceIP = resp.Address
+	v.AllowedIPs = peers.Peers[0].AllowedIPs[0]
 	v.connectionOK.Store(true)
-	v.Log.Infof("VPN IP is %v", v.deviceIP)
+	v.Log.Infof("VPN own IP is %v, proxy AllowedIPs is %v", v.deviceIP, v.AllowedIPs)
 	return nil
 }
 

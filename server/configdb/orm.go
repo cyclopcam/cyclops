@@ -71,6 +71,7 @@ type Variable struct {
 	Value string `json:"value"`
 }
 
+// Generic key/value pairs in our database. For example, KeyMain, KeyLanSecret, etc.
 type Key struct {
 	Name  string `gorm:"primaryKey"`
 	Value string // normal (not URL-safe) base64 encoded (same as Wireguard)

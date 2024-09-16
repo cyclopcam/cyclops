@@ -1,6 +1,7 @@
 package configdb
 
 const KeyMain = "main"
+const KeyLanSecret = "lanSecret"
 
 /*
 // Returns the decrypted 32 byte token, or nil

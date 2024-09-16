@@ -187,6 +187,10 @@ func main() {
 			enableSSL = true
 		}
 
+		// Note:
+		// We must start the VPN before we start the HTTPS listener, because the HTTPS listener will try
+		// to get a certificate from Let's Encrypt, and that will fail if the VPN is not running.
+
 		//logger.Warnf("Sleeping for 1 hour")
 		//time.Sleep(time.Hour)
 

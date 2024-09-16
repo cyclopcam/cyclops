@@ -15,7 +15,8 @@ import (
 // SYNC-CYCLOPS-SESSION-COOKIE
 const SessionCookie = "session"
 
-func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
+func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request, isCallerOnLAN bool) {
+	//fmt.Printf("isCallerOnLAN: %v\n", isCallerOnLAN)
 	userID := c.GetUserID(r, true)
 	if userID == 0 {
 		http.Error(w, "Not authorized", http.StatusUnauthorized)
@@ -26,12 +27,13 @@ func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
 	if expiresAtUnixMilli != 0 {
 		expiresAt = time.UnixMilli(expiresAtUnixMilli)
 	}
-	c.LoginInternal(w, userID, expiresAt, www.QueryValue(r, "loginMode"))
+	c.LoginInternal(w, userID, expiresAt, isCallerOnLAN, www.QueryValue(r, "loginMode"))
 }
 
 // SYNC-LOGIN-RESPONSE-JSON
 type loginResponseJSON struct {
 	BearerToken string `json:"bearerToken"`
+	LanSecret   string `json:"lanSecret"`
 }
 
 const (
@@ -40,7 +42,7 @@ const (
 	LoginModeCookieAndBearerToken = "CookieAndBearerToken"
 )
 
-func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time, mode string) {
+func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time, isCallerOnLAN bool, mode string) {
 	doCookie := mode == LoginModeCookie || mode == LoginModeCookieAndBearerToken || mode == ""
 	doBearer := mode == LoginModeBearerToken || mode == LoginModeCookieAndBearerToken
 	if !(doCookie || doBearer) {
@@ -106,6 +108,9 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 	resp := &loginResponseJSON{}
 	if doBearer {
 		resp.BearerToken = base64.StdEncoding.EncodeToString(bearerToken)
+	}
+	if isCallerOnLAN {
+		resp.LanSecret = c.LanSecret
 	}
 	www.SendJSON(w, resp)
 }
