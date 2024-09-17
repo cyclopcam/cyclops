@@ -396,7 +396,7 @@ public class MainActivity extends AppCompatActivity implements Main {
             public void run() {
                 //String proxyOrigin = "https://proxy-cpt.cyclopcam.org";
                 String proxyServer = "proxy-cpt.cyclopcam.org";
-                String proxyOrigin = "https://" + Crypto.shortKeyForServer(target.publicKey) + ".cyclopcam.org";
+                String proxyOrigin = "https://" + Crypto.shortKeyForServer(target.publicKey) + ".p.cyclopcam.org";
                 Log.i("C", "Set proxy to " + proxyServer + ":8083");
                 Log.i("C", "Set target to " + proxyOrigin);
                 //try {
@@ -440,12 +440,12 @@ public class MainActivity extends AppCompatActivity implements Main {
                 }
 
                 // Fall back to using proxy
+                setupHttpProxy("http://" + proxyServer + ":8083");
                 if (justCheck && !isOnLAN) {
                     Log.i("C", "Remaining on proxy " + proxyServer + " for server " + server.publicKey);
                     return;
                 }
                 isOnLAN = false;
-                setupHttpProxy("http://" + proxyServer + ":8083");
                 Log.i("C", "Falling back to proxy " + proxyServer + " for server " + server.publicKey);
                 State.Server finalServer = server;
                 runOnUiThread(() -> {

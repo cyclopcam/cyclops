@@ -61,12 +61,12 @@ public class Crypto {
         }
     }
 
-    // Return the shortkey for the given server, which is hex(pubkey[:08])
+    // Return the shortkey for the given server, which is hex(pubkey[:10])
     static String shortKeyForServer(String serverPublicKey) {
         // Decode from base64 to byte array
         byte[] publicKey = Base64.decode(serverPublicKey, Base64.DEFAULT);
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 10; i++) {
             sb.append(String.format("%02x", publicKey[i]));
         }
         return sb.toString();
