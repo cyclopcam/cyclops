@@ -1,9 +1,8 @@
 package configdb
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -20,8 +19,9 @@ type ConfigDB struct {
 	PrivateKey wgtypes.Key
 	PublicKey  wgtypes.Key
 
-	// NO! We must have one for each client, otherwise it's just inviting disaster.
-	LanSecret string // Only sent to mobile app when it connects over LAN. Necessary for talking to us via external proxy.
+	// Addresses allowed from VPN network. Used to detect if user is connecting from LAN or VPN.
+	// Injected by VPN system after it has connected.
+	VpnAllowedIPs net.IPNet
 
 	configLock sync.Mutex // Guards all access to Config
 	config     ConfigJSON // Read from system_config table at startup
@@ -41,10 +41,6 @@ func NewConfigDB(logger logs.Log, dbFilename, explicitPrivateKey string) (*Confi
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read or create private key: %w", err)
 	}
-	lanSecret, err := readOrCreateLanSecret(logger, configDB)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to read or create LAN secret: %w", err)
-	}
 
 	systemConfig := SystemConfig{}
 	configDB.First(&systemConfig)
@@ -54,7 +50,6 @@ func NewConfigDB(logger logs.Log, dbFilename, explicitPrivateKey string) (*Confi
 		DB:         configDB,
 		PrivateKey: privateKey,
 		PublicKey:  privateKey.PublicKey(),
-		LanSecret:  lanSecret,
 	}
 	if systemConfig.Value != nil {
 		cdb.config = systemConfig.Value.Data
@@ -120,24 +115,6 @@ func readOrCreatePrivateKey(logger logs.Log, db *gorm.DB, explicitPrivateKey str
 		return wgtypes.Key{}, err
 	}
 	return key, nil
-}
-
-func readOrCreateLanSecret(log logs.Log, db *gorm.DB) (string, error) {
-	keyRecord := Key{}
-	db.Where("name = ?", KeyLanSecret).First(&keyRecord)
-	if keyRecord.Value != "" {
-		return keyRecord.Value, nil
-	}
-	secret := make([]byte, 20)
-	if _, err := rand.Read(secret); err != nil {
-		return "", err
-	}
-	secretString := hex.EncodeToString(secret)
-	log.Infof("Creating new LAN secret")
-	if err := db.Create(&Key{Name: KeyLanSecret, Value: secretString}).Error; err != nil {
-		return "", err
-	}
-	return secretString, nil
 }
 
 // Generate a new ID from the 'next_id' table in the database

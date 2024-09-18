@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/ncnn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/server"
+	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/vpn"
 	"github.com/cyclopcam/logs"
 	"github.com/cyclopcam/safewg/wgroot"
@@ -148,17 +150,48 @@ func main() {
 		privilegeLimiter = nil
 	}
 
+	// Load/create the configuration database
+	configDB, err := configdb.NewConfigDB(logger, *configFile, *privateKey)
+	if err != nil {
+		logger.Errorf("Failed to open config database: %v", err)
+		os.Exit(1)
+	}
+	logger.Infof("Public key: %v (short hex %v)", configDB.PublicKey, hex.EncodeToString(configDB.PublicKey[:vpn.ShortPublicKeyLen]))
+
 	var vpnClient *vpn.VPN
 	vpnShutdown := make(chan bool)
 
+	// Connect to our wireguard privileged process once, and never disconnect until we exit.
+	// The privileged process only accepts its socket connection once, and then dies.
+	// This is an intentional design decision to lower the odds of an attacker connecting to it.
+	// We can only create the VPN client after we've loaded the private key out of the config database.
+	// Note:
+	// We must start the VPN before we start the HTTPS listener, because the HTTPS listener will try
+	// to get a certificate from Let's Encrypt, and that will fail if the VPN is not running.
+	enableSSL := false
+	if kernelWGSecret != "" {
+		// Setup VPN and register with proxy.
+		logger.Infof("Starting VPN")
+		vpnClient, err = server.StartVPN(logger, configDB.PrivateKey, kernelWGSecret)
+		if err != nil {
+			logger.Errorf("%v", err)
+			os.Exit(1)
+		}
+		vpnClient.RunRegisterLoop(vpnShutdown)
+		configDB.VpnAllowedIPs = vpnClient.AllowedIPs
+		enableSSL = true
+	}
+
 	// Run in a continuous loop, so that the server can restart itself
 	// due to major configuration changes.
+	// TODO: Get rid of this restart loop. Rather rely on systemd to restart us.
+	// That's much cleaner, and simplifies privilege dropping, and also improves security.
 	for {
 		flags := 0
 		if *hotReloadWWW {
 			flags |= server.ServerFlagHotReloadWWW
 		}
-		srv, err := server.NewServer(logger, *configFile, flags, *nnModelName, *privateKey)
+		srv, err := server.NewServer(logger, configDB, flags, *nnModelName)
 		if err != nil {
 			logger.Errorf("%v", err)
 			os.Exit(1)
@@ -167,29 +200,6 @@ func main() {
 			srv.OwnIP = ownIP
 		}
 		srv.ListenForKillSignals()
-
-		// Connect to our wireguard privileged process once, and never disconnect until we exit.
-		// The privileged process only accepts its socket connection once, and then dies.
-		// This is an intentional design decision to lower the odds of an attacker connecting to it.
-		// We can only create the VPN client after the server has loaded the keys out of the database.
-		// That's why we do this inside the loop. If it weren't for that, we would start the VPN
-		// client outside of this loop.
-		enableSSL := false
-		if kernelWGSecret != "" && vpnClient == nil {
-			// Setup VPN and register with proxy.
-			logger.Infof("Starting VPN")
-			vpnClient, err = srv.StartVPN(kernelWGSecret)
-			if err != nil {
-				logger.Errorf("%v", err)
-				os.Exit(1)
-			}
-			vpnClient.RunRegisterLoop(vpnShutdown)
-			enableSSL = true
-		}
-
-		// Note:
-		// We must start the VPN before we start the HTTPS listener, because the HTTPS listener will try
-		// to get a certificate from Let's Encrypt, and that will fail if the VPN is not running.
 
 		//logger.Warnf("Sleeping for 1 hour")
 		//time.Sleep(time.Hour)

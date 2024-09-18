@@ -46,11 +46,11 @@ type VPN struct {
 	hasRegistered atomic.Bool
 }
 
-func NewVPN(log logs.Log, privateKey, publicKey wgtypes.Key, wgkernelClientSecret string) *VPN {
+func NewVPN(log logs.Log, privateKey wgtypes.Key, wgkernelClientSecret string) *VPN {
 	v := &VPN{
 		Log:        log,
 		privateKey: privateKey,
-		publicKey:  publicKey,
+		publicKey:  privateKey.PublicKey(),
 		client:     wguser.NewClient(wgkernelClientSecret),
 	}
 	return v

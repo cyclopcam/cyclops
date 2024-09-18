@@ -1,7 +1,24 @@
 package configdb
 
+import (
+	"net"
+	"net/http"
+	"strings"
+)
+
 const KeyMain = "main"
-const KeyLanSecret = "lanSecret"
+
+// Returns true if:
+// 1. We are not using a VPN
+// 2. We are using a VPN, but the caller is not reaching us from it
+func (c *ConfigDB) IsCallerOnLAN(r *http.Request) bool {
+	if c.VpnAllowedIPs.IP == nil {
+		return true
+	}
+	ipStr, _, _ := strings.Cut(r.RemoteAddr, ":")
+	remoteIP := net.ParseIP(ipStr)
+	return !c.VpnAllowedIPs.Contains(remoteIP)
+}
 
 /*
 // Returns the decrypted 32 byte token, or nil

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"crypto/tls"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -30,6 +29,7 @@ import (
 	"github.com/cyclopcam/safewg/wgroot"
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type Server struct {
@@ -42,7 +42,6 @@ type Server struct {
 	OwnIP            net.IP         // If not nil, overrides the IP address used when scanning the LAN for cameras
 	HotReloadWWW     bool           // Don't embed the 'www' directory into our binary, but load it from disk, and assume it's not immutable. This is for dev time on the 'www' source.
 	StartupErrors    []StartupError // Critical errors encountered at startup. Note that these are errors that are resolvable by fixing the config through the App UI.
-	VpnAllowedIPs    net.IPNet      // Addresses allowed from VPN network
 
 	// Public Subsystems
 	LiveCameras *livecameras.LiveCameras
@@ -83,11 +82,7 @@ type StartupError struct {
 }
 
 // Create a new server, load config, start cameras, and listen on HTTP
-func NewServer(logger logs.Log, configDBFilename string, serverFlags int, nnModelName string, explicitPrivateKey string) (*Server, error) {
-	logger, err := logs.NewLog()
-	if err != nil {
-		return nil, err
-	}
+func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModelName string) (*Server, error) {
 	s := &Server{
 		Log:                    logger,
 		RingBufferSize:         200 * 1024 * 1024,
@@ -95,13 +90,8 @@ func NewServer(logger logs.Log, configDBFilename string, serverFlags int, nnMode
 		ShutdownStarted:        make(chan bool),
 		HotReloadWWW:           (serverFlags & ServerFlagHotReloadWWW) != 0,
 		monitorToVideoDBClosed: make(chan bool),
+		configDB:               cfg,
 	}
-	if cfg, err := configdb.NewConfigDB(s.Log, configDBFilename, explicitPrivateKey); err != nil {
-		return nil, err
-	} else {
-		s.configDB = cfg
-	}
-	s.Log.Infof("Public key: %v (short hex %v)", s.configDB.PublicKey, hex.EncodeToString(s.configDB.PublicKey[:vpn.ShortPublicKeyLen]))
 
 	// Since storage location needs to be configured, we can't fail to startup just because we're
 	// unable to access our video archive.
@@ -141,9 +131,9 @@ func NewServer(logger logs.Log, configDBFilename string, serverFlags int, nnMode
 }
 
 // Start a VPN client
-func (s *Server) StartVPN(kernelWGSecret string) (*vpn.VPN, error) {
+func StartVPN(log logs.Log, privateKey wgtypes.Key, kernelWGSecret string) (*vpn.VPN, error) {
 	// Setup VPN and register with proxy
-	vpnClient := vpn.NewVPN(s.Log, s.configDB.PrivateKey, s.configDB.PublicKey, kernelWGSecret)
+	vpnClient := vpn.NewVPN(log, privateKey, kernelWGSecret)
 
 	if err := vpnClient.ConnectKernelWG(); err != nil {
 		return nil, fmt.Errorf("Failed to connect to Cyclops KernelWG service: %w", err)
@@ -153,8 +143,6 @@ func (s *Server) StartVPN(kernelWGSecret string) (*vpn.VPN, error) {
 		vpnClient.DisconnectKernelWG()
 		return nil, fmt.Errorf("Failed to start Wireguard VPN: %w", err)
 	}
-
-	s.VpnAllowedIPs = vpnClient.AllowedIPs
 
 	return vpnClient, nil
 }

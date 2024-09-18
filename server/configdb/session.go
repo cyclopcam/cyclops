@@ -15,7 +15,7 @@ import (
 // SYNC-CYCLOPS-SESSION-COOKIE
 const SessionCookie = "session"
 
-func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request, isCallerOnLAN bool) {
+func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
 	//fmt.Printf("isCallerOnLAN: %v\n", isCallerOnLAN)
 	userID := c.GetUserID(r, true)
 	if userID == 0 {
@@ -27,13 +27,12 @@ func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request, isCallerOnLAN b
 	if expiresAtUnixMilli != 0 {
 		expiresAt = time.UnixMilli(expiresAtUnixMilli)
 	}
-	c.LoginInternal(w, userID, expiresAt, isCallerOnLAN, www.QueryValue(r, "loginMode"))
+	c.LoginInternal(w, userID, expiresAt, www.QueryValue(r, "loginMode"))
 }
 
 // SYNC-LOGIN-RESPONSE-JSON
 type loginResponseJSON struct {
 	BearerToken string `json:"bearerToken"`
-	LanSecret   string `json:"lanSecret"`
 }
 
 const (
@@ -42,7 +41,7 @@ const (
 	LoginModeCookieAndBearerToken = "CookieAndBearerToken"
 )
 
-func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time, isCallerOnLAN bool, mode string) {
+func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time, mode string) {
 	doCookie := mode == LoginModeCookie || mode == LoginModeCookieAndBearerToken || mode == ""
 	doBearer := mode == LoginModeBearerToken || mode == LoginModeCookieAndBearerToken
 	if !(doCookie || doBearer) {
@@ -109,9 +108,6 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 	if doBearer {
 		resp.BearerToken = base64.StdEncoding.EncodeToString(bearerToken)
 	}
-	if isCallerOnLAN {
-		resp.LanSecret = c.LanSecret
-	}
 	www.SendJSON(w, resp)
 }
 
@@ -154,8 +150,13 @@ func (c *ConfigDB) GetUser(r *http.Request) *User {
 }
 
 // Returns the user id, or zero.
-// You should only set allowBasic to true if this is a rate limited endpoint.
-func (c *ConfigDB) GetUserID(r *http.Request, allowBasic bool) int64 {
+// You should only set allowBasicOnLAN to true if this is a rate limited endpoint.
+// Also, we never allow BASIC via VPN, because this would allow attackers on the public
+// internet to guess the username/password of legitimate users.
+func (c *ConfigDB) GetUserID(r *http.Request, allowBasicOnLAN bool) int64 {
+	if !c.IsCallerOnLAN(r) {
+		allowBasicOnLAN = false
+	}
 	cookie, _ := r.Cookie(SessionCookie)
 	sessionCookie := ""
 	if cookie != nil {
@@ -201,7 +202,7 @@ func (c *ConfigDB) GetUserID(r *http.Request, allowBasic bool) int64 {
 		//}
 	}
 
-	if allowBasic {
+	if allowBasicOnLAN {
 		username, password, haveBasic := r.BasicAuth()
 		if haveBasic {
 			user := User{}

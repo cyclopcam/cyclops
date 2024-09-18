@@ -1,7 +1,6 @@
 package server
 
 import (
-	"net"
 	"net/http"
 	"strings"
 
@@ -41,6 +40,9 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 			// There is already an admin user, so you can't create the initial user now
 			www.PanicForbidden()
 		}
+		if !s.configDB.IsCallerOnLAN(r) {
+			www.PanicForbiddenf("You must be on the LAN to create the initial user")
+		}
 		//isInitialUser = true
 		s.Log.Infof("Creating initial user %v", newUser.Username)
 		if !newUser.HasPermission(configdb.UserPermissionAdmin) {
@@ -64,11 +66,5 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 }
 
 func (s *Server) httpAuthLogin(w http.ResponseWriter, r *http.Request) {
-	s.configDB.Login(w, r, s.isCallerOnLAN(r))
-}
-
-func (s *Server) isCallerOnLAN(r *http.Request) bool {
-	ipStr, _, _ := strings.Cut(r.RemoteAddr, ":")
-	remoteIP := net.ParseIP(ipStr)
-	return !s.VpnAllowedIPs.Contains(remoteIP)
+	s.configDB.Login(w, r)
 }
