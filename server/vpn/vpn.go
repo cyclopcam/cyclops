@@ -17,12 +17,9 @@ import (
 )
 
 // package vpn manages our Wireguard client setup
-// It will create /etc/wireguard/cyclops{4|6}.conf if necessary, and populate it with
+// It will create /etc/wireguard/cyclops.conf if necessary, and populate it with
 // all the relevant details. Before doing so, it must contact the proxy server,
 // which will assign it a VPN IP address.
-// cyclops4.conf is used for an IPv4 interface, and cyclops6.conf is used for an IPv6 interface.
-// By default we use IPv6, but for WSL on a NAT device doesn't support IPv6, so we retain
-// the ability to use IPv4 for that scenario.
 
 // At some point, if we have multiple geo-relevant proxies, then we'd choose the closest
 // server instead of just hard-coding to a single one.
@@ -37,8 +34,8 @@ func ProxiedHostName(publicKey wgtypes.Key) string {
 type IPNetwork string
 
 const (
-	IPv4 IPNetwork = "IPv4" // Must match the string required for the 'register' API of the proxy service
-	IPv6 IPNetwork = "IPv6"
+	IPv4 IPNetwork = "IPv4" // IPv4 - Must match the string required for the 'register' API of the proxy service
+	IPv6 IPNetwork = "IPv6" // IPv6 - Must match the string required for the 'register' API of the proxy service
 )
 
 // Used for host names, encoded as hex. First 10 bytes of public key.
@@ -48,29 +45,26 @@ const ShortPublicKeyLen = 10
 // Manage connection to our VPN/proxy server
 type VPN struct {
 	Log           logs.Log
-	AllowedIP     net.IPNet // Network of the VPN (actually just the proxy server's addresses, eg 10.6.0.0/32 and fdce:c10b:5ca1:1::1/128)
-	ipNetwork     IPNetwork
-	deviceName    string // "cyclops"
+	AllowedIP     net.IPNet // Network of the VPN (actually just the proxy server's addresses, eg 10.6.0.0/32 or fdce:c10b:5ca1:1::1/128)
+	ipNetwork     IPNetwork // IPv4 or IPv6
+	deviceName    string    // "cyclops"
 	privateKey    wgtypes.Key
 	publicKey     wgtypes.Key
 	client        *wguser.Client
 	connectionOK  atomic.Bool
-	ownDeviceIP   string // Our IP in the VPN
+	ownDeviceIP   string // Our IP in the VPN, such as 10.7.0.99 or fdce:c10b:5ca1:2::99
 	hasRegistered atomic.Bool
 }
 
 func NewVPN(log logs.Log, privateKey wgtypes.Key, wgkernelClientSecret string, forceIPv4 bool) *VPN {
 	ipVersion := IPv6
-	//deviceName := "cyclops6"
-	deviceName := "cyclops"
 	if forceIPv4 {
 		ipVersion = IPv4
-		//deviceName = "cyclops4"
 	}
 	v := &VPN{
 		Log:        log,
 		ipNetwork:  ipVersion,
-		deviceName: deviceName,
+		deviceName: "cyclops",
 		privateKey: privateKey,
 		publicKey:  privateKey.PublicKey(),
 		client:     wguser.NewClient(wgkernelClientSecret),
