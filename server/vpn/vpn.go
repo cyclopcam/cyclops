@@ -17,9 +17,12 @@ import (
 )
 
 // package vpn manages our Wireguard client setup
-// It will create /etc/wireguard/cyclops.conf if necessary, and populate it with
+// It will create /etc/wireguard/cyclops{4|6}.conf if necessary, and populate it with
 // all the relevant details. Before doing so, it must contact the proxy server,
 // which will assign it a VPN IP address.
+// cyclops4.conf is used for an IPv4 interface, and cyclops6.conf is used for an IPv6 interface.
+// By default we use IPv6, but for WSL on a NAT device doesn't support IPv6, so we retain
+// the ability to use IPv4 for that scenario.
 
 // At some point, if we have multiple geo-relevant proxies, then we'd choose the closest
 // server instead of just hard-coding to a single one.
@@ -30,6 +33,14 @@ func ProxiedHostName(publicKey wgtypes.Key) string {
 	return hex.EncodeToString(publicKey[:ShortPublicKeyLen]) + ".p.cyclopcam.org"
 }
 
+// Our VPN supports either IPv4 or IPv6
+type IPNetwork string
+
+const (
+	IPv4 IPNetwork = "IPv4" // Must match the string required for the 'register' API of the proxy service
+	IPv6 IPNetwork = "IPv6"
+)
+
 // Used for host names, encoded as hex. First 10 bytes of public key.
 // SYNC-SHORT-PUBLIC-KEY-LEN
 const ShortPublicKeyLen = 10
@@ -37,18 +48,29 @@ const ShortPublicKeyLen = 10
 // Manage connection to our VPN/proxy server
 type VPN struct {
 	Log           logs.Log
-	AllowedIPs    net.IPNet // Network of the VPN (just the proxy server's address, eg 10.6.0.0/32, or for IPv6 fdce:c10b:5ca1:1::1/128)
+	AllowedIP     net.IPNet // Network of the VPN (actually just the proxy server's addresses, eg 10.6.0.0/32 and fdce:c10b:5ca1:1::1/128)
+	ipNetwork     IPNetwork
+	deviceName    string // "cyclops"
 	privateKey    wgtypes.Key
 	publicKey     wgtypes.Key
 	client        *wguser.Client
 	connectionOK  atomic.Bool
-	deviceIP      string // Our IP in the VPN
+	ownDeviceIP   string // Our IP in the VPN
 	hasRegistered atomic.Bool
 }
 
-func NewVPN(log logs.Log, privateKey wgtypes.Key, wgkernelClientSecret string) *VPN {
+func NewVPN(log logs.Log, privateKey wgtypes.Key, wgkernelClientSecret string, forceIPv4 bool) *VPN {
+	ipVersion := IPv6
+	//deviceName := "cyclops6"
+	deviceName := "cyclops"
+	if forceIPv4 {
+		ipVersion = IPv4
+		//deviceName = "cyclops4"
+	}
 	v := &VPN{
 		Log:        log,
+		ipNetwork:  ipVersion,
+		deviceName: deviceName,
 		privateKey: privateKey,
 		publicKey:  privateKey.PublicKey(),
 		client:     wguser.NewClient(wgkernelClientSecret),
@@ -68,7 +90,7 @@ func (v *VPN) DisconnectKernelWG() {
 
 // Start our Wireguard device, and save our public key
 func (v *VPN) Start() error {
-	getResp, err := v.client.GetDevice()
+	getResp, err := v.client.GetDevice(v.deviceName)
 	if err == nil {
 		// Device was already up, so we're good to go, provided the key is correct
 		return v.validateAndSaveDeviceDetails(getResp)
@@ -77,7 +99,7 @@ func (v *VPN) Start() error {
 	}
 
 	// Try bringing up device
-	if err := v.client.BringDeviceUp(); err != nil {
+	if err := v.client.BringDeviceUp(v.deviceName); err != nil {
 		if !errors.Is(err, wguser.ErrWireguardDeviceNotExist) {
 			return fmt.Errorf("client.BringDeviceUp (#1) failed: %w", err)
 		}
@@ -85,12 +107,12 @@ func (v *VPN) Start() error {
 		if err := v.registerAndCreateDevice(); err != nil {
 			return fmt.Errorf("v.registerAndCreateDevice failed: %w", err)
 		}
-		if err := v.client.BringDeviceUp(); err != nil {
+		if err := v.client.BringDeviceUp(v.deviceName); err != nil {
 			return fmt.Errorf("client.BringDeviceUp (#2) failed: %w", err)
 		}
 	}
 
-	getResp, err = v.client.GetDevice()
+	getResp, err = v.client.GetDevice(v.deviceName)
 	if err != nil {
 		return fmt.Errorf("client.GetDevice (#2) failed: %w", err)
 	}
@@ -102,6 +124,7 @@ func (v *VPN) registerAndCreateDevice() error {
 	v.Log.Infof("Registering with %v", ProxyHost)
 	req := proxyapi.RegisterJSON{
 		PublicKey: v.privateKey.PublicKey().String(),
+		Network:   string(v.ipNetwork),
 	}
 	resp, err := requests.RequestJSON[proxyapi.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
 	if err != nil {
@@ -115,30 +138,35 @@ func (v *VPN) registerAndCreateDevice() error {
 func (v *VPN) createDevice(resp *proxyapi.RegisterResponseJSON) error {
 	// Extract the proxy's Wireguard data, for later
 	var err error
-	peer := wguser.MsgSetProxyPeerInConfigFile{}
+	peer := wguser.MsgSetProxyPeerInConfigFile{
+		DeviceName: v.deviceName,
+	}
 	peer.PublicKey, err = wgtypes.ParseKey(resp.ProxyPublicKey)
 	if err != nil {
 		return err
 	}
-	peer.AllowedIP.IP = net.ParseIP(resp.ProxyVpnIP)
-	if peer.AllowedIP.IP == nil {
+	var allowedIP net.IPNet
+	allowedIP.IP = net.ParseIP(resp.ProxyVpnIP)
+	if allowedIP.IP == nil {
 		return fmt.Errorf("Proxy %v has invalid IP '%v'", ProxyHost, resp.ProxyVpnIP)
 	}
 	// We only accept traffic from the proxy server, and not from any of the other peers.
 	// One *could* allow peers to communicate with each other via the proxy, but I don't see the utility,
 	// and that seems like a bad idea for security.
-	if peer.AllowedIP.IP.To4() != nil {
-		peer.AllowedIP.Mask = net.IPv4Mask(255, 255, 255, 255)
+	if allowedIP.IP.To4() != nil {
+		allowedIP.Mask = net.IPv4Mask(255, 255, 255, 255)
 	} else {
-		peer.AllowedIP.Mask = net.CIDRMask(128, 128)
+		allowedIP.Mask = net.CIDRMask(128, 128)
 	}
+	peer.AllowedIPs = []net.IPNet{allowedIP}
 
 	peer.Endpoint = fmt.Sprintf("%v:%v", ProxyHost, resp.ProxyListenPort)
 
 	// We needed to know our VPN IP address before we could do this.
 	createMsg := &wguser.MsgCreateDeviceInConfigFile{
+		DeviceName: v.deviceName,
 		PrivateKey: v.privateKey,
-		Address:    resp.ServerVpnIP,
+		Addresses:  []string{resp.ServerVpnIP},
 	}
 	v.Log.Infof("Creating local Wireguard config file")
 	if err := v.client.CreateDeviceInConfigFile(createMsg); err != nil {
@@ -170,7 +198,7 @@ func (v *VPN) validateAndSaveDeviceDetails(resp *wguser.MsgGetDeviceResponse) er
 		v.Log.Infof("%v c. Start cyclops regularly again%v", color, reset)
 		return fmt.Errorf("Wireguard device has a different key. Follow instructions in the logs.")
 	}
-	peers, err := v.client.GetPeers()
+	peers, err := v.client.GetPeers(v.deviceName)
 	if err != nil {
 		return fmt.Errorf("client.GetPeers failed: %w", err)
 	}
@@ -180,10 +208,13 @@ func (v *VPN) validateAndSaveDeviceDetails(resp *wguser.MsgGetDeviceResponse) er
 	if len(peers.Peers[0].AllowedIPs) != 1 {
 		return fmt.Errorf("Expected 1 AllowedIPs on peer, but got %v", len(peers.Peers[0].AllowedIPs))
 	}
-	v.deviceIP = resp.Address
-	v.AllowedIPs = peers.Peers[0].AllowedIPs[0]
+	if len(resp.Addresses) != 1 {
+		return fmt.Errorf("Expected 1 address, but got %v", len(resp.Addresses))
+	}
+	v.ownDeviceIP = resp.Addresses[0]
+	v.AllowedIP = peers.Peers[0].AllowedIPs[0]
 	v.connectionOK.Store(true)
-	v.Log.Infof("VPN own IP is %v, proxy AllowedIPs is %v", v.deviceIP, v.AllowedIPs)
+	v.Log.Infof("VPN own IP is %v, proxy AllowedIPs is %v", v.ownDeviceIP, v.AllowedIP)
 	return nil
 }
 
@@ -218,6 +249,7 @@ func (v *VPN) RunRegisterLoop(exit chan bool) {
 			if v.connectionOK.Load() && time.Now().After(nextRegisterAt) {
 				req := proxyapi.RegisterJSON{
 					PublicKey: v.privateKey.PublicKey().String(),
+					Network:   string(v.ipNetwork),
 				}
 				response, err := requests.RequestJSON[proxyapi.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
 				if err != nil {
@@ -228,13 +260,13 @@ func (v *VPN) RunRegisterLoop(exit chan bool) {
 					}
 				} else {
 					v.hasRegistered.Store(true)
-					if response.ServerVpnIP != v.deviceIP {
+					if response.ServerVpnIP != v.ownDeviceIP {
 						v.Log.Infof("VPN IP has changed. Recreating Wireguard device")
 						if err := v.recreateDevice(response); err != nil {
 							v.Log.Errorf("Recreating of Wireguard device failed: %v", err)
 							nextRegisterAt = time.Now().Add(time.Minute)
 						} else {
-							v.Log.Errorf("New VPN IP is %v", v.deviceIP)
+							v.Log.Errorf("New VPN IP is %v", v.ownDeviceIP)
 							nextRegisterAt = time.Now().Add(registerInterval)
 						}
 					} else {
@@ -249,7 +281,7 @@ func (v *VPN) RunRegisterLoop(exit chan bool) {
 }
 
 func (v *VPN) recreateDevice(register *proxyapi.RegisterResponseJSON) error {
-	err := v.client.TakeDeviceDown()
+	err := v.client.TakeDeviceDown(v.deviceName)
 	if err != nil && !errors.Is(err, wguser.ErrWireguardDeviceNotExist) {
 		return err
 	}
@@ -258,11 +290,11 @@ func (v *VPN) recreateDevice(register *proxyapi.RegisterResponseJSON) error {
 		return err
 	}
 
-	if err := v.client.BringDeviceUp(); err != nil {
+	if err := v.client.BringDeviceUp(v.deviceName); err != nil {
 		return err
 	}
 
-	getResp, err := v.client.GetDevice()
+	getResp, err := v.client.GetDevice(v.deviceName)
 	if err != nil {
 		return err
 	}
@@ -273,7 +305,7 @@ func (v *VPN) testAutoReconnectToKernelWG() {
 	go func() {
 		for {
 			time.Sleep(3 * time.Second)
-			v.Log.Infof("IsDeviceAlive: %v", v.client.IsDeviceAlive())
+			v.Log.Infof("IsDeviceAlive: %v", v.client.IsDeviceAlive(v.deviceName))
 		}
 	}()
 }

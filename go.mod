@@ -10,8 +10,9 @@ go 1.22.0
 
 //replace github.com/cyclopcam/safewg => ../cyclops-other/safewg
 
+//replace github.com/cyclopcam/proxyapi => ../cyclops-other/proxyapi
+
 require (
-	cloud.google.com/go/logging v1.11.0
 	cloud.google.com/go/storage v1.43.0
 	github.com/BurntSushi/migration v0.0.0-20140125045755-c45b897f1335
 	github.com/akamensky/argparse v1.4.0
@@ -22,19 +23,21 @@ require (
 	github.com/bmharper/flatbush-go v1.1.1
 	github.com/bmharper/ringbuffer v1.1.2
 	github.com/bmharper/tiledinference v1.0.3
+	github.com/caddyserver/certmagic v0.21.3
 	github.com/chewxy/math32 v1.11.0
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
+	github.com/cyclopcam/dbh v1.0.0
+	github.com/cyclopcam/logs v1.0.0
+	github.com/cyclopcam/proxyapi v1.0.0
+	github.com/cyclopcam/safewg v1.0.5
+	github.com/cyclopcam/www v0.0.0-20240905200735-e25d6f89d3bd
 	github.com/go-chi/httprate v0.14.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/julienschmidt/httprouter v1.3.0
-	github.com/lib/pq v1.10.9
-	github.com/mattn/go-sqlite3 v1.14.23
 	github.com/pion/rtp v1.8.9
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/crypto v0.27.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20230429144221-925a1e7659e6
-	gorm.io/driver/postgres v1.5.9
-	gorm.io/driver/sqlite v1.5.6
 	gorm.io/gorm v1.25.12
 )
 
@@ -44,16 +47,11 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.4 // indirect
 	cloud.google.com/go/compute/metadata v0.5.0 // indirect
 	cloud.google.com/go/iam v1.2.0 // indirect
+	cloud.google.com/go/logging v1.11.0 // indirect
 	cloud.google.com/go/longrunning v0.6.0 // indirect
 	github.com/asticode/go-astikit v0.43.0 // indirect
-	github.com/caddyserver/certmagic v0.21.3 // indirect
 	github.com/caddyserver/zerossl v0.1.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cyclopcam/dbh v0.0.0-20240905200453-8c40a309e602 // indirect
-	github.com/cyclopcam/logs v0.0.0-20240905191637-c7ae6d2e0e38 // indirect
-	github.com/cyclopcam/proxyapi v0.0.0-20240907034723-306e6a6c6e8a // indirect
-	github.com/cyclopcam/safewg v1.0.4 // indirect
-	github.com/cyclopcam/www v0.0.0-20240905200735-e25d6f89d3bd // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsoprea/go-exif/v3 v3.0.1 // indirect
 	github.com/dsoprea/go-iptc v0.0.0-20200610044640-bc9ca208b413 // indirect
@@ -68,7 +66,6 @@ require (
 	github.com/go-xmlfmt/xmlfmt v1.1.2 // indirect
 	github.com/golang/geo v0.0.0-20230421003525-6adc56603217 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -82,8 +79,9 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
-	github.com/kr/text v0.2.0 // indirect
+	github.com/lib/pq v1.10.9 // indirect
 	github.com/libdns/libdns v0.2.2 // indirect
+	github.com/mattn/go-sqlite3 v1.14.23 // indirect
 	github.com/mdlayher/genetlink v1.3.2 // indirect
 	github.com/mdlayher/netlink v1.7.2 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
@@ -93,7 +91,6 @@ require (
 	github.com/pion/rtcp v1.2.14 // indirect
 	github.com/pion/sdp/v3 v3.0.9 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/zeebo/blake3 v0.2.4 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.54.0 // indirect
@@ -113,7 +110,6 @@ require (
 	golang.org/x/text v0.18.0 // indirect
 	golang.org/x/time v0.6.0 // indirect
 	golang.org/x/tools v0.25.0 // indirect
-	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173 // indirect
 	google.golang.org/api v0.196.0 // indirect
 	google.golang.org/genproto v0.0.0-20240903143218-8af14fe29dc1 // indirect
@@ -123,4 +119,6 @@ require (
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gorm.io/driver/postgres v1.5.9 // indirect
+	gorm.io/driver/sqlite v1.5.6 // indirect
 )

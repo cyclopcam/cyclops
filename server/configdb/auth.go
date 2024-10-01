@@ -12,12 +12,12 @@ const KeyMain = "main"
 // 1. We are not using a VPN
 // 2. We are using a VPN, but the caller is not reaching us from it
 func (c *ConfigDB) IsCallerOnLAN(r *http.Request) bool {
-	if c.VpnAllowedIPs.IP == nil {
+	if c.VpnAllowedIP.IP == nil {
 		return true
 	}
 	ipStr, _, _ := strings.Cut(r.RemoteAddr, ":")
 	remoteIP := net.ParseIP(ipStr)
-	return !c.VpnAllowedIPs.Contains(remoteIP)
+	return !c.VpnAllowedIP.Contains(remoteIP)
 }
 
 /*

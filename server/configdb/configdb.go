@@ -20,8 +20,8 @@ type ConfigDB struct {
 	PublicKey  wgtypes.Key
 
 	// Addresses allowed from VPN network. Used to detect if user is connecting from LAN or VPN.
-	// Injected by VPN system after it has connected.
-	VpnAllowedIPs net.IPNet
+	// Injected by VPN system after it has connected. There can be two: an IPv4 and an IPv6.
+	VpnAllowedIP net.IPNet
 
 	configLock sync.Mutex // Guards all access to Config
 	config     ConfigJSON // Read from system_config table at startup

@@ -31,7 +31,6 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 	}
 	newUser.Password = pwdhash.HashPassword(password)
 
-	//isInitialUser := false
 	creds := s.configDB.GetUser(r)
 	if creds == nil || !creds.HasPermission(configdb.UserPermissionAdmin) {
 		n, err := s.configDB.NumAdminUsers()
@@ -43,7 +42,6 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 		if !s.configDB.IsCallerOnLAN(r) {
 			www.PanicForbiddenf("You must be on the LAN to create the initial user")
 		}
-		//isInitialUser = true
 		s.Log.Infof("Creating initial user %v", newUser.Username)
 		if !newUser.HasPermission(configdb.UserPermissionAdmin) {
 			// We must force initial creation to be an admin user, otherwise you could somehow
@@ -56,13 +54,6 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 	www.Check(s.configDB.DB.Create(&newUser).Error)
 	s.Log.Infof("Created new user %v, perms:%v", newUser.Username, newUser.Permissions)
 	www.SendOK(w)
-
-	//if isInitialUser {
-	//	// For initial login, send Cookie and BearerToken, so that caller has flexibility
-	//	s.configDB.LoginInternal(w, newUser.ID, time.Time{}, configdb.LoginModeCookieAndBearerToken)
-	//} else {
-	//	www.SendOK(w)
-	//}
 }
 
 func (s *Server) httpAuthLogin(w http.ResponseWriter, r *http.Request) {

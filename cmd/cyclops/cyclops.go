@@ -25,12 +25,28 @@ func check(err error) {
 	}
 }
 
+func isWSL2() bool {
+	data, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err != nil {
+		return false
+	}
+	release := strings.ToLower(string(data))
+	return strings.Contains(release, "microsoft") && strings.Contains(release, "wsl2")
+}
+
 func main() {
 	// This is purely for documentation of the cmd-line args
 	nominalDefaultDB := "$HOME/cyclops/config.sqlite"
 
 	//_, foo := os.ReadFile("/proc/self/auxv")
 	//fmt.Printf("Read from /proc/self/auxv: %v\n", foo)
+
+	defaultVpnNetwork := "IPv6"
+	if isWSL2() {
+		// As of 2024-10-01, Wireguard IPv6 doesn't work on WSL2 in NAT mode.
+		// Apparently it might work in Bridge mode, but I haven't tried that.
+		defaultVpnNetwork = "IPv4"
+	}
 
 	// Certain parameters are scrubbed when dropping privileges, so we specify them as constants
 	const pnVPN = "vpn"
@@ -39,6 +55,7 @@ func main() {
 	parser := argparse.NewParser("cyclops", "Camera security system")
 	configFile := parser.String("c", "config", &argparse.Options{Help: "Configuration database file", Default: nominalDefaultDB})
 	enableVPN := parser.Flag("", pnVPN, &argparse.Options{Help: "Enable automatic VPN", Default: false})
+	vpnNetwork := parser.String("", "vpnNetwork", &argparse.Options{Help: "Either IPv4 or IPv6 for VPN (IPv4 is necessary on WSL2 in NAT mode)", Default: defaultVpnNetwork})
 	username := parser.String("", pnUsername, &argparse.Options{Help: "After launching as root, change identity to this user (for dropping privileges of the main process)", Default: ""})
 	hotReloadWWW := parser.Flag("", "hot", &argparse.Options{Help: "Hot reload www instead of embedding into binary", Default: false})
 	ownIPStr := parser.String("", "ip", &argparse.Options{Help: "IP address of this machine (for network scanning)", Default: ""}) // eg for dev time, and server is running inside a NAT'ed VM such as WSL.
@@ -50,6 +67,11 @@ func main() {
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
+		os.Exit(1)
+	}
+
+	if *vpnNetwork != "IPv4" && *vpnNetwork != "IPv6" {
+		fmt.Printf("Invalid VPN network: '%v'. Valid values are IPv4, IPv6\n", *vpnNetwork)
 		os.Exit(1)
 	}
 
@@ -158,6 +180,10 @@ func main() {
 	}
 	logger.Infof("Public key: %v (short hex %v)", configDB.PublicKey, hex.EncodeToString(configDB.PublicKey[:vpn.ShortPublicKeyLen]))
 
+	if *enableVPN {
+		logger.Infof("VPN network %v", *vpnNetwork)
+	}
+
 	var vpnClient *vpn.VPN
 	vpnShutdown := make(chan bool)
 
@@ -172,13 +198,14 @@ func main() {
 	if kernelWGSecret != "" {
 		// Setup VPN and register with proxy.
 		logger.Infof("Starting VPN")
-		vpnClient, err = server.StartVPN(logger, configDB.PrivateKey, kernelWGSecret)
+		forceIPv4 := *vpnNetwork == "IPv4"
+		vpnClient, err = server.StartVPN(logger, configDB.PrivateKey, kernelWGSecret, forceIPv4)
 		if err != nil {
 			logger.Errorf("%v", err)
 			os.Exit(1)
 		}
 		vpnClient.RunRegisterLoop(vpnShutdown)
-		configDB.VpnAllowedIPs = vpnClient.AllowedIPs
+		configDB.VpnAllowedIP = vpnClient.AllowedIP
 		enableSSL = true
 	}
 

@@ -131,9 +131,9 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 }
 
 // Start a VPN client
-func StartVPN(log logs.Log, privateKey wgtypes.Key, kernelWGSecret string) (*vpn.VPN, error) {
+func StartVPN(log logs.Log, privateKey wgtypes.Key, kernelWGSecret string, forceIPv4 bool) (*vpn.VPN, error) {
 	// Setup VPN and register with proxy
-	vpnClient := vpn.NewVPN(log, privateKey, kernelWGSecret)
+	vpnClient := vpn.NewVPN(log, privateKey, kernelWGSecret, forceIPv4)
 
 	if err := vpnClient.ConnectKernelWG(); err != nil {
 		return nil, fmt.Errorf("Failed to connect to Cyclops KernelWG service: %w", err)

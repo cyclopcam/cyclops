@@ -27,7 +27,7 @@ func RequestJSON[T any](method, url string, body any) (response *T, err error) {
 	if resp.StatusCode >= 300 {
 		msg, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("%v. %v", resp.Status, msg)
+		return nil, fmt.Errorf("%v. %v", resp.Status, string(msg))
 	}
 	var responseObj T
 	if err := json.NewDecoder(resp.Body).Decode(&responseObj); err != nil {

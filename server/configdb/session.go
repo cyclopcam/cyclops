@@ -16,8 +16,7 @@ import (
 const SessionCookie = "session"
 
 func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
-	//fmt.Printf("isCallerOnLAN: %v\n", isCallerOnLAN)
-	userID := c.GetUserID(r, true)
+	userID := c.GetUserID(r)
 	if userID == 0 {
 		http.Error(w, "Not authorized", http.StatusUnauthorized)
 		return
@@ -119,25 +118,10 @@ func (c *ConfigDB) Logout(w http.ResponseWriter, r *http.Request) {
 	www.SendOK(w)
 }
 
-// Returns the user id, or zero
-// On failure, sends a 401 to 'w'
-func (c *ConfigDB) MustGetUserID(w http.ResponseWriter, r *http.Request) int64 {
-	userID := c.GetUserID(r, false)
-	if userID == 0 {
-		http.Error(w, "Not authorized", http.StatusUnauthorized)
-	}
-	return userID
-}
-
-// Returns the user or nil
+// Returns the user or nil.
+// See GetUserID() for discussion about allowBasic.
 func (c *ConfigDB) GetUser(r *http.Request) *User {
-	//userID := c.GetUserID(r, false)
-	// Initially I had c.GetUserID(r, false), so that one couldn't spam a server with
-	// BASIC auth requests, which end up consuming a lot of power (scrypt). However,
-	// I've subsequently decided that all servers should be behind a wireguard endpoint
-	// anyway, so this is no longer a concern.
-	// It's just so damn useful to be able to 'curl' your API with "-u username:password".
-	userID := c.GetUserID(r, true)
+	userID := c.GetUserID(r)
 	if userID == 0 {
 		return nil
 	}
@@ -150,13 +134,10 @@ func (c *ConfigDB) GetUser(r *http.Request) *User {
 }
 
 // Returns the user id, or zero.
-// You should only set allowBasicOnLAN to true if this is a rate limited endpoint.
-// Also, we never allow BASIC via VPN, because this would allow attackers on the public
-// internet to guess the username/password of legitimate users.
-func (c *ConfigDB) GetUserID(r *http.Request, allowBasicOnLAN bool) int64 {
-	if !c.IsCallerOnLAN(r) {
-		allowBasicOnLAN = false
-	}
+func (c *ConfigDB) GetUserID(r *http.Request) int64 {
+	// It is too dangerous to allow BASIC authentication from anywhere on the internet.
+	allowBasic := c.IsCallerOnLAN(r)
+
 	cookie, _ := r.Cookie(SessionCookie)
 	sessionCookie := ""
 	if cookie != nil {
@@ -178,9 +159,6 @@ func (c *ConfigDB) GetUserID(r *http.Request, allowBasicOnLAN bool) int64 {
 		}
 	}
 	authorization := r.Header.Get("Authorization")
-	//clientPublicKey := r.Header.Get("X-PublicKey")
-	//clientNonce := r.Header.Get("X-Nonce")
-	//if strings.HasPrefix(authorization, "Bearer ") && clientPublicKey != "" && clientNonce != "" {
 	tokenBase64 := ""
 
 	if strings.HasPrefix(authorization, "Bearer ") {
@@ -191,18 +169,15 @@ func (c *ConfigDB) GetUserID(r *http.Request, allowBasicOnLAN bool) int64 {
 	}
 
 	if tokenBase64 != "" {
-		//decryptedBearerToken := c.DecryptBearerToken(tokenBase64, clientPublicKey, clientNonce)
-		//if decryptedBearerToken != nil {
 		token, _ := base64.StdEncoding.DecodeString(tokenBase64)
 		session := Session{}
 		c.DB.Where("key = ?", pwdhash.HashSessionToken(string(token))).Find(&session)
 		if session.UserID != 0 && (session.ExpiresAt.IsZero() || session.ExpiresAt.Get().After(time.Now())) {
 			return session.UserID
 		}
-		//}
 	}
 
-	if allowBasicOnLAN {
+	if allowBasic {
 		username, password, haveBasic := r.BasicAuth()
 		if haveBasic {
 			user := User{}
