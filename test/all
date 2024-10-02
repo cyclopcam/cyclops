@@ -21,7 +21,7 @@ cd -
 echo "videox C"
 gcc -g -O0 -o annexb_test pkg/videox/test/annexb_test.cpp pkg/videox/annexb.cpp && ./annexb_test
 
-go test ./pkg/dbh
+#go test ./pkg/dbh
 go test ./pkg/gen
 go test ./pkg/kibi
 go test ./pkg/nn

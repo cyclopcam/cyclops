@@ -79,3 +79,7 @@ func (x *YUVImage) CopyFrom(src *YUVImage) {
 		copy(x.V[i*dstVStride:], src.V[i*srcVStride:i*srcVStride+widthHalf])
 	}
 }
+
+func (x *YUVImage) TotalBytes() int {
+	return len(x.Y) + len(x.U) + len(x.V)
+}

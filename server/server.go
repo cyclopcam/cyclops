@@ -17,6 +17,7 @@ import (
 	"github.com/caddyserver/certmagic"
 	"github.com/cyclopcam/cyclops/pkg/kibi"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
+	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/arc"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/livecameras"
@@ -35,7 +36,7 @@ import (
 type Server struct {
 	Log              logs.Log
 	TempFiles        *util.TempFiles
-	RingBufferSize   int
+	RingBufferSize   int            // Size of the circular buffer for each camera
 	MustRestart      bool           // Value of the 'restart' parameter to Shutdown()
 	ShutdownStarted  chan bool      // This channel is closed when shutdown starts. So you can select() on it, to wait for shutdown.
 	ShutdownComplete chan error     // Used by main() to report any shutdown errors
@@ -55,6 +56,7 @@ type Server struct {
 	videoDB                *videodb.VideoDB // Can be nil! If the video path is not accessible, then we can fail to create this.
 	wsUpgrader             websocket.Upgrader
 	monitor                *monitor.Monitor
+	seekFrameCache         *videox.FrameCache // Speeds up seeking
 	arcCredentialsLock     sync.Mutex
 	arcCredentials         *arc.ArcServerCredentials // If Arc server is not configured, then this is nil.
 	monitorToVideoDBClosed chan bool                 // If this channel is closed, then monitor to video DB has stopped
@@ -83,14 +85,20 @@ type StartupError struct {
 
 // Create a new server, load config, start cameras, and listen on HTTP
 func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModelName string) (*Server, error) {
+
+	// These are the sizes of two large memory buffers that we allocate.
+	ringBufferMB := 200    // This is *per camera*
+	seekFrameCacheMB := 50 // This is shared between all cameras
+
 	s := &Server{
 		Log:                    logger,
-		RingBufferSize:         200 * 1024 * 1024,
+		RingBufferSize:         ringBufferMB * 1024 * 1024,
 		ShutdownComplete:       make(chan error, 1),
 		ShutdownStarted:        make(chan bool),
 		HotReloadWWW:           (serverFlags & ServerFlagHotReloadWWW) != 0,
 		monitorToVideoDBClosed: make(chan bool),
 		configDB:               cfg,
+		seekFrameCache:         videox.NewFrameCache(seekFrameCacheMB * 1024 * 1024),
 	}
 
 	// Since storage location needs to be configured, we can't fail to startup just because we're

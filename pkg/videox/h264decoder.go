@@ -432,12 +432,28 @@ func DecodeSinglePacketToImage(codec Codec, packet *VideoPacket) (*cimg.Image, e
 
 // Decode the list of packets, and return the first image that successfully decodes
 func DecodeFirstImageInPacketList(codec Codec, packets []*VideoPacket) (*cimg.Image, time.Time, error) {
-	return DecodeClosestImageInPacketList(codec, packets, time.Time{})
+	return DecodeClosestImageInPacketList(codec, packets, time.Time{}, nil, "")
 }
+
+// If true, report the decode FPS
+const DebugVideoDecodeTimes = false
 
 // Decode the list of packets, and return the decoded image who's presentation time is closest to targetTime.
 // If targetTime is zero, then we return the first image coming out of the decoder.
-func DecodeClosestImageInPacketList(codec Codec, packets []*VideoPacket, targetTime time.Time) (*cimg.Image, time.Time, error) {
+// If cache is not nil, then we will insert/query the provided cache.
+// videoCacheKey is the key for this video. We use {videoCacheKey-PTS} as the complete cache key.
+func DecodeClosestImageInPacketList(codec Codec, packets []*VideoPacket, targetTime time.Time, cache *FrameCache, videoCacheKey string) (*cimg.Image, time.Time, error) {
+	// First see if the frame is in the cache
+	if cache != nil {
+		frameCacheKey := cache.MakeKey(videoCacheKey, targetTime.UnixMilli())
+		if img := cache.GetFrame(frameCacheKey); img != nil {
+			fmt.Printf("Cache hit for %v\n", frameCacheKey)
+			return img.ToCImageRGB(), targetTime, nil
+		}
+	}
+
+	startTime := time.Now()
+	nFramesDecoded := 0
 	decoder, err := NewVideoStreamDecoder(codec)
 	if err != nil {
 		return nil, time.Time{}, err
@@ -453,6 +469,11 @@ func DecodeClosestImageInPacketList(codec Codec, packets []*VideoPacket, targetT
 			firstError = err
 		}
 		if img != nil {
+			nFramesDecoded++
+			if cache != nil {
+				frameCacheKey := cache.MakeKey(videoCacheKey, p.WallPTS.UnixMilli())
+				cache.AddFrame(frameCacheKey, img.Clone())
+			}
 			timeDelta := time.Duration(0)
 			if !targetTime.IsZero() {
 				timeDelta = p.WallPTS.Sub(targetTime)
@@ -470,6 +491,9 @@ func DecodeClosestImageInPacketList(codec Codec, packets []*VideoPacket, targetT
 				break
 			}
 		}
+	}
+	if DebugVideoDecodeTimes && nFramesDecoded != 0 {
+		fmt.Printf("Decoded %v frames in %.3f seconds (%.1f FPS)\n", nFramesDecoded, time.Since(startTime).Seconds(), float64(nFramesDecoded)/time.Since(startTime).Seconds())
 	}
 	if bestImg != nil {
 		return bestImg.ToCImageRGB(), bestTime, nil

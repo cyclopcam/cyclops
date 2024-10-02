@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bmharper/cimg/v2"
+	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 	"github.com/cyclopcam/cyclops/pkg/videox"
@@ -200,18 +201,24 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	}
 	startTime := time.UnixMilli(timeMS)
 	streamName := "video"
+	videoCacheKey := cam.RecordingStreamName(res)
 	// Regardless of what the user wants, we always need to read back to a prior keyframe, so that we can initialize the decoder.
 	// So fsv.ReadFlagSeekBackToKeyFrame is mandatory here.
 	packets, err := s.videoDB.Archive.Read(cam.RecordingStreamName(res), []string{streamName}, startTime, startTime, fsv.ReadFlagSeekBackToKeyFrame)
 	if err != nil {
 		www.PanicServerErrorf("Failed to read video: %v", err)
 	}
-	if len(packets[streamName].NALS) == 0 {
+	if packets[streamName] == nil || len(packets[streamName].NALS) == 0 {
 		www.PanicBadRequestf("No video available at that time")
 	}
 	packet := &videox.VideoPacket{
 		WallPTS: packets[streamName].NALS[0].PTS,
 	}
+	// While scanning the NALs, we find the frame with the closest time to the requested one.
+	// This is important for caching, so that we can correctly identify frames that are requested twice,
+	// even if the user doesn't know that he's asking for the same frame (eg two requests 15 ms apart, when frames are actually 100ms apart).
+	bestMatchDeltaT := time.Duration(1<<63 - 1)
+	bestMatchPTS := time.Time{}
 	outPackets := []*videox.VideoPacket{}
 	packetIntervals := []time.Duration{}
 	for _, p := range packets[streamName].NALS {
@@ -227,17 +234,22 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 			Payload:         p.Payload,
 		}
 		packet.H264NALUs = append(packet.H264NALUs, n)
+		deltaT := gen.Abs(p.PTS.Sub(startTime))
+		if deltaT < bestMatchDeltaT {
+			bestMatchDeltaT = deltaT
+			bestMatchPTS = p.PTS
+		}
 	}
 	outPackets = append(outPackets, packet)
 	//fmt.Printf("%v packets. Packet 0: %v\n", len(outPackets), outPackets[0].WallPTS)
-	findImageAt := startTime
+	findImageAt := bestMatchPTS
 	if seekToPreviousKeyframe {
 		// Zero time means "return first image that decodes"
 		findImageAt = time.Time{}
 	}
 	codec, err := videox.ParseCodec(packets[streamName].Codec)
 	www.Check(err)
-	img, imgTime, err := videox.DecodeClosestImageInPacketList(codec, outPackets, findImageAt)
+	img, imgTime, err := videox.DecodeClosestImageInPacketList(codec, outPackets, findImageAt, s.seekFrameCache, videoCacheKey)
 	if err != nil {
 		www.PanicServerErrorf("Failed to decode video: %v", err)
 	}
