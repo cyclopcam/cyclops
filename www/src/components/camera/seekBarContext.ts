@@ -174,7 +174,7 @@ export class SeekBarContext {
 		let startTileIdx = Math.floor((startTimeMS / 1000) / (BaseSecondsPerTile << tileLevel)); // inclusive.
 		let endTileIdx = Math.ceil((endTimeMS / 1000) / (BaseSecondsPerTile << tileLevel)); // exclusive
 		// Clamp the number of renderings/fetches, just in case we screw something up.
-		// 10 should be PLENTY of a high enough limit when tileLevel is close to zoomLevel.
+		// 40 should be PLENTY of a high enough limit when tileLevel is close to zoomLevel.
 		// But since we sometimes render tiles from a lower level (eg when user is busy zooming out),
 		// we relax this limit a bit.
 		startTileIdx = Math.max(startTileIdx, endTileIdx - 40);
@@ -231,6 +231,8 @@ export class SeekBarContext {
 				return `${h}`;
 			case "dd":
 				return `${d.getDate()}`;
+			case "dd month":
+				return `${d.getDate()} ${monthNamesShort[d.getMonth()]}`;
 			case "month":
 				return `${monthNamesShort[d.getMonth()]}`;
 		}
@@ -251,6 +253,7 @@ export class SeekBarContext {
 			{ s: 15 * 60, f: 'hh:mm' },
 			{ s: 60 * 60, f: 'hh:mm' },
 			{ s: 60 * 60, f: 'hh' },
+			{ s: 24 * 60 * 60, f: 'dd month' },
 			{ s: 24 * 60 * 60, f: 'dd' },
 			{ s: 24 * 60 * 60 * 30, f: 'month' },
 		];

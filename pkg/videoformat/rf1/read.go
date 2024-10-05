@@ -15,6 +15,8 @@ const (
 	// If the requested time interval does not start on a keyframe,
 	// then seek back to find the first keyframe before the requested start time.
 	PacketReadFlagSeekBackToKeyFrame PacketReadFlags = 1 << iota
+	// Do not read packet data. Only read packet headers.
+	PacketReadFlagHeadersOnly
 )
 
 // Use the PTS of the last NALU in the index to figure out the duration of the track
@@ -188,8 +190,10 @@ func (t *Track) ReadAtTime(startTime, endTime time.Duration, flags PacketReadFla
 	if err != nil {
 		return nil, err
 	}
-	if err := t.ReadPayload(nalus); err != nil {
-		return nil, err
+	if flags&PacketReadFlagHeadersOnly == 0 {
+		if err := t.ReadPayload(nalus); err != nil {
+			return nil, err
+		}
 	}
 	return nalus, nil
 }

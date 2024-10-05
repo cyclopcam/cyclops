@@ -263,3 +263,91 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	}
 	w.Write(encodedImg)
 }
+
+// Get the video frames available in the given time window.
+// This is used by the seek bar to know precisely which frames to ask for.
+// Knowing the exact frames is vital for an efficient cache.
+// Granularity is specified in milliseconds-per-pixel. It is used to determine the granularity of the frames
+// that we return. If not specified, then we assume your query window is 1000 pixels wide.
+// NOTE: While writing this, I realized we could do MUCH better, by compressing the frame times at
+// the DB level.
+// ALSO NOTE: This API has not yet been used, and probably never will
+func (s *Server) httpCamGetFrames(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	type frameJSON struct {
+		PTS float64 `json:"pts"` // Frame presentation time in unix milliseconds
+	}
+	type getFramesJSON struct {
+		Frames []frameJSON `json:"frames"`
+	}
+	cam := s.getCameraFromIDOrPanic(params.ByName("cameraID"))
+	res := parseResolutionOrPanic(params.ByName("resolution"))
+	startTimeMS, _ := strconv.ParseInt(params.ByName("startTime"), 10, 64)
+	endTimeMS, _ := strconv.ParseInt(params.ByName("endTime"), 10, 64)
+	granularity := www.QueryFloat64(r, "granularity") / 1000.0 // convert milliseconds to seconds
+	if granularity == 0 {
+		// Assume 300 pixels wide
+		// The 1000.0 is to convert from milliseconds to seconds
+		granularity = float64(endTimeMS-startTimeMS) / (300.0 * 1000.0)
+	}
+	if endTimeMS <= startTimeMS {
+		www.PanicBadRequestf("Invalid time range")
+	}
+	if endTimeMS-startTimeMS > 5*3600*1000 {
+		www.PanicBadRequestf("Invalid time range")
+	}
+
+	if s.videoDB == nil {
+		www.PanicServerErrorf("VideoDB not initialized")
+	}
+	startTime := time.UnixMilli(startTimeMS)
+	endTime := time.UnixMilli(endTimeMS)
+	streamName := "video"
+	// Always start reading at a keyframe, so that we have a consistent time base when we skip frames
+	packets, err := s.videoDB.Archive.Read(cam.RecordingStreamName(res), []string{streamName}, startTime, endTime, fsv.ReadFlagHeadersOnly|fsv.ReadFlagSeekBackToKeyFrame)
+	if err != nil {
+		www.PanicServerErrorf("Failed to read video: %v", err)
+	}
+	resp := getFramesJSON{}
+	readResult := packets[streamName]
+	if readResult == nil || len(readResult.NALS) == 0 {
+		www.SendJSON(w, resp)
+		return
+	}
+	keyframeThreshold := granularity * 3
+	// Figure out the keyframe interval.
+	// If keyframes occur more frequently than keyframeThreshold, then we're zoomed out enough that we only return keyframes.
+	lastKeyframePTS := time.Time{}
+	keyframeNSample := 0
+	keyframeDeltaSum := time.Duration(0)
+	for i := range readResult.NALS {
+		if readResult.NALS[i].IsKeyFrame() {
+			delta := readResult.NALS[i].PTS.Sub(lastKeyframePTS)
+			// assume keyframes are no more than 10 seconds apart
+			if delta < 11*time.Second {
+				keyframeNSample++
+				keyframeDeltaSum += delta
+			}
+			lastKeyframePTS = readResult.NALS[i].PTS
+		}
+	}
+	keyframeGranularity := 1.0
+	if keyframeNSample != 0 {
+		keyframeGranularity = keyframeDeltaSum.Seconds() / float64(keyframeNSample)
+	}
+	onlyKeyframes := false
+	if keyframeGranularity <= keyframeThreshold {
+		// only return keyframes
+		s.Log.Infof("Only returning keyframes. %.1f <= %.1f (granularity %.1fms)", keyframeGranularity*1000, keyframeThreshold*1000, granularity*1000)
+		onlyKeyframes = true
+	}
+	lastPTS := time.Time{}
+	timeBetweenFrames := time.Duration(granularity*1000) * time.Millisecond
+	for _, n := range readResult.NALS {
+		useFrame := n.IsKeyFrame() || (!onlyKeyframes && n.PTS.Sub(lastPTS) >= timeBetweenFrames)
+		if useFrame {
+			lastPTS = n.PTS
+		}
+	}
+	s.Log.Infof("Result has %v/%v frames", len(resp.Frames), len(readResult.NALS))
+	www.SendJSON(w, resp)
+}

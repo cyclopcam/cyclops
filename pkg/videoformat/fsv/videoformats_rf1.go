@@ -103,6 +103,9 @@ func (v *VideoFileRF1) Read(trackName string, startTime, endTime time.Time, flag
 	if flags&ReadFlagSeekBackToKeyFrame != 0 {
 		rf1Flags |= rf1.PacketReadFlagSeekBackToKeyFrame
 	}
+	if flags&ReadFlagHeadersOnly != 0 {
+		rf1Flags |= rf1.PacketReadFlagHeadersOnly
+	}
 	for _, track := range v.File.Tracks {
 		if track.Name == trackName {
 			return track.ReadAtTime(startTime.Sub(track.TimeBase), endTime.Sub(track.TimeBase), rf1Flags)

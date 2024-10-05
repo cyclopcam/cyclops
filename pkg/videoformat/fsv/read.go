@@ -25,6 +25,8 @@ const (
 	// If the requested time interval does not start on a keyframe,
 	// then seek back to find the first keyframe before the requested start time.
 	ReadFlagSeekBackToKeyFrame ReadFlags = 1 << iota
+	// Do not read packet data. Only read packet headers.
+	ReadFlagHeadersOnly
 )
 
 type TrackReadResult struct {

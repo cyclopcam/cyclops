@@ -186,7 +186,7 @@ function onPointerMoveSeek(e: PointerEvent) {
 	let x = pxToCanvas(e.offsetX);
 	let tx = props.context.transform(canvas.value! as HTMLCanvasElement);
 	let timeMS = tx.pixelToTime(x);
-	// The following two are just to move the scroll position indicator around.
+	// The following two calls are just to move the scroll position indicator around.
 	// Player.vue watches for changes to seekTimeMS, and then does the actual
 	// image/video loading. It also does the debouncing.
 	props.context.seekToMillisecond(timeMS);
