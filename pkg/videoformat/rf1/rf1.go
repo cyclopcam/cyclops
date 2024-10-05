@@ -32,9 +32,6 @@ type IndexNALUFlags uint32
 
 // We have 12 bits for flags, so maximum flag value is 1 << 11 = 2048
 const (
-	//IndexNALUFlagFirst    IndexNALUFlags = 1 << iota // First NALU in packet
-	//IndexNALUFlagKeyFrame                            // Key frame
-
 	IndexNALUFlagKeyFrame      IndexNALUFlags = 1 // Key frame
 	IndexNALUFlagEssentialMeta IndexNALUFlags = 2 // Essential metadata, required to initialize the decoder (eg SPS/PPS NALUs in h264/h265)
 	IndexNALUFlagAnnexB        IndexNALUFlags = 4 // Packet has Annex-B "emulation prevention bytes" and start codes

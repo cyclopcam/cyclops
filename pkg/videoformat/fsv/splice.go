@@ -2,8 +2,6 @@ package fsv
 
 import (
 	"slices"
-
-	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 )
 
 // The functions in this file deal with the somewhat rare, but not that rare, condition where
@@ -22,7 +20,7 @@ import (
 // robustness of having it inside here, and the fact that the VideoRecorder never
 // needs to think about this little detail.
 
-func (a *Archive) splicePacketsBeforeWrite(stream *videoStream, track string, packets []rf1.NALU) []rf1.NALU {
+func (a *Archive) splicePacketsBeforeWrite(stream *videoStream, track string, packets []NALU) []NALU {
 	recent := stream.recentWrite[track]
 	if len(recent) == 0 || len(packets) == 0 {
 		return packets
@@ -59,11 +57,11 @@ func (a *Archive) splicePacketsBeforeWrite(stream *videoStream, track string, pa
 	return packets
 }
 
-func (a *Archive) addPacketsToRecentWriteList(stream *videoStream, track string, packets []rf1.NALU) {
+func (a *Archive) addPacketsToRecentWriteList(stream *videoStream, track string, packets []NALU) {
 	// Clone NALUs, then set their payload to nil, so that the garbage collector can reclaim the payload memory.
 	packets = slices.Clone(packets)
 	for i := range packets {
-		packets[i].Length = int64(len(packets[i].Payload))
+		packets[i].Length = int32(len(packets[i].Payload))
 		packets[i].Payload = nil
 	}
 

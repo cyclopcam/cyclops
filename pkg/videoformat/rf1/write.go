@@ -3,6 +3,7 @@ package rf1
 import (
 	"bytes"
 	"fmt"
+	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/cgogo"
 )
@@ -185,31 +186,27 @@ func (t *Track) WriteNALUs(nalus []NALU) error {
 	return err
 }
 
-func (t *Track) HasCapacity(nalus []NALU) bool {
+func (t *Track) HasCapacity(nNALU int, maxPTS time.Time, combinedPayloadBytes int) bool {
 	if !t.canWrite {
 		return false
 	}
-	if len(nalus) == 0 {
+	if nNALU == 0 {
 		return true
 	}
 
 	// Check if we have enough space in the packets file
-	packetBytes := int64(0)
-	for _, nalu := range nalus {
-		packetBytes += int64(len(nalu.Payload))
-	}
-	if t.packetsSize+packetBytes > MaxPacketsFileSize {
+	if t.packetsSize+int64(combinedPayloadBytes) > MaxPacketsFileSize {
 		return false
 	}
 
 	// Check if we have enough time in the index file
-	encodedTime := EncodePTSTime(nalus[len(nalus)-1].PTS, t.TimeBase)
+	encodedTime := EncodePTSTime(maxPTS, t.TimeBase)
 	if encodedTime > MaxEncodedPTS {
 		return false
 	}
 
 	// Check if we have enough index entries
-	if t.indexCount+len(nalus)+1 > MaxIndexEntries {
+	if t.indexCount+nNALU+1 > MaxIndexEntries {
 		return false
 	}
 

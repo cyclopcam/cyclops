@@ -65,7 +65,7 @@ type videoStream struct {
 	// Used to splice overlapping writes.
 	// This exists at a lower level than writeBuffer.
 	// Key is track name.
-	recentWrite map[string][]rf1.NALU
+	recentWrite map[string][]NALU
 }
 
 // Information about a stream
@@ -83,7 +83,7 @@ type TrackPayload struct {
 	Codec       string // For audio/video tracks
 	VideoWidth  int    // For video tracks
 	VideoHeight int    // For video tracks
-	NALUs       []rf1.NALU
+	NALUs       []NALU
 }
 
 // Returns true if all parameters except the payload is identical (eg same codec,width,height,etc)
@@ -91,13 +91,35 @@ func (t *TrackPayload) EqualStructure(b *TrackPayload) bool {
 	return t.TrackType == b.TrackType && t.Codec == b.Codec && t.VideoWidth == b.VideoWidth && t.VideoHeight == b.VideoHeight
 }
 
-func MakeVideoPayload(codec string, width, height int, nalus []rf1.NALU) TrackPayload {
+func MakeVideoPayload(codec string, width, height int, nalus []NALU) TrackPayload {
 	return TrackPayload{
 		Codec:       codec,
 		VideoWidth:  width,
 		VideoHeight: height,
 		NALUs:       nalus,
 	}
+}
+
+// NALU flags
+type NALUFlags uint32
+
+// We have 12 bits for flags, so maximum flag value is 1 << 11 = 2048
+const (
+	NALUFlagKeyFrame      NALUFlags = 1 // Key frame
+	NALUFlagEssentialMeta NALUFlags = 2 // Essential metadata, required to initialize the decoder (eg SPS/PPS NALUs in h264/h265)
+	NALUFlagAnnexB        NALUFlags = 4 // Packet has Annex-B "emulation prevention bytes" and start codes
+)
+
+// Network Abstraction Layer Unit (NALU)
+type NALU struct {
+	PTS     time.Time
+	Flags   NALUFlags
+	Payload []byte
+	Length  int32 // Length is only valid if Payload is nil
+}
+
+func (n *NALU) IsKeyFrame() bool {
+	return n.Flags&NALUFlagKeyFrame != 0
 }
 
 // Archive is a collection of zero or more video streams,
@@ -219,7 +241,7 @@ func Open(logger logs.Log, baseDir string, formats []VideoFormat, initSettings S
 			streamName := filepath.Base(path)
 			archive.streams[streamName] = &videoStream{
 				name:        streamName,
-				recentWrite: map[string][]rf1.NALU{},
+				recentWrite: map[string][]NALU{},
 				writeBuffer: map[string][]TrackPayload{},
 			}
 			return filepath.SkipDir
@@ -478,7 +500,7 @@ func (a *Archive) getOrCreateStream(streamName string) (*videoStream, error) {
 		stream = &videoStream{
 			name:        streamName,
 			format:      a.formats[0],
-			recentWrite: map[string][]rf1.NALU{},
+			recentWrite: map[string][]NALU{},
 			writeBuffer: map[string][]TrackPayload{},
 		}
 		a.streams[streamName] = stream
@@ -544,13 +566,13 @@ func DoTimeRangesOverlap(start1, end1, start2, end2 time.Time) bool {
 	return start1.Before(end2) && start2.Before(end1)
 }
 
-func totalPayloadBytes(p []rf1.NALU) int64 {
+func totalPayloadBytes(p []NALU) int64 {
 	total := int64(0)
 	for _, nalu := range p {
 		if nalu.Payload != nil {
 			total += int64(len(nalu.Payload))
 		} else {
-			total += nalu.Length
+			total += int64(nalu.Length)
 		}
 	}
 	return total

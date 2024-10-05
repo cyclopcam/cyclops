@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
-
-	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 )
 
 // Flags for reading packets
@@ -31,7 +29,7 @@ const (
 
 type TrackReadResult struct {
 	Codec string
-	NALS  []rf1.NALU
+	NALS  []NALU
 }
 
 // Read packets from the archive.

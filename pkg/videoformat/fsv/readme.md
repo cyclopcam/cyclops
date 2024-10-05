@@ -5,17 +5,6 @@ convention, for storing video files. We also manage the chunking of long
 recording streams into smaller files, and also the cleaning up of old files so
 that we don't exceed the storage budget.
 
-## Use of rf1 data types
-
-We borrow some rf1 data types such as rf1.NALU for convenience, but we maintain
-an abstraction interface between fsv and rf1, so that it should be easy to
-switch to a different video file format if necessary. To make things cleaner we
-should really duplicate the rf1.NALU type into fsv, but right now it would add
-zero value.
-
-Conceptually, we could have any ffmpeg compatible video format as our storage
-format, but we can go there one day if necessary.
-
 ## Archive size and index/file overhead
 
 Should we keep an in-memory index of all files in the archive?

@@ -9,7 +9,6 @@ import (
 	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
-	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/configdb"
@@ -230,7 +229,7 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 			}
 		}
 		n := videox.NALU{
-			PayloadIsAnnexB: p.Flags&rf1.IndexNALUFlagAnnexB != 0,
+			PayloadIsAnnexB: p.Flags&fsv.NALUFlagAnnexB != 0,
 			Payload:         p.Payload,
 		}
 		packet.H264NALUs = append(packet.H264NALUs, n)

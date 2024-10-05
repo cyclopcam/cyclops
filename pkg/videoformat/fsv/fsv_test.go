@@ -37,10 +37,10 @@ func testReaderWriter(t *testing.T, enableWriteBuffer bool) {
 	require.NoError(t, err)
 	require.NotNil(t, arc1)
 
-	tbase1 := todayAtTime(4, 5, 6, 7000)                               // time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
-	tbase2 := tbase1.Add(arc1.MaxVideoFileDuration())                  // Packets after tbase 2 will require a new file
-	packets1 := rf1.CreateTestNALUs(tbase1, 0, 100, 10.0, 50, 150, 13) // these go into the first file
-	packets2 := rf1.CreateTestNALUs(tbase2, 0, 50, 10.0, 50, 150, 15)  // these go into the second file
+	tbase1 := todayAtTime(4, 5, 6, 7000)                                                  // time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC)
+	tbase2 := tbase1.Add(arc1.MaxVideoFileDuration())                                     // Packets after tbase 2 will require a new file
+	packets1 := copyRf1NALUstoFsv(rf1.CreateTestNALUs(tbase1, 0, 100, 10.0, 50, 150, 13)) // these go into the first file
+	packets2 := copyRf1NALUstoFsv(rf1.CreateTestNALUs(tbase2, 0, 50, 10.0, 50, 150, 15))  // these go into the second file
 
 	require.InDelta(t, 0, arc1.TotalSize(), maxSizeDelta)
 
@@ -121,7 +121,7 @@ func testReaderWriter(t *testing.T, enableWriteBuffer bool) {
 	require.Equal(t, expectedFilesize(packets2), arc3.TotalSize())
 }
 
-func expectedFilesize(packets []rf1.NALU) int64 {
+func expectedFilesize(packets []NALU) int64 {
 	indexSize := 32 + (len(packets)+1)*8
 	packetSize := 0
 	for _, p := range packets {
@@ -138,7 +138,7 @@ func verifyRead(t *testing.T, arc *Archive, streamName string, trackName string,
 	require.InDelta(t, startTime.UnixMilli(), packets.NALS[0].PTS.UnixMilli(), float64(time.Millisecond))
 }
 
-func makeVideoPayload(packets []rf1.NALU) TrackPayload {
+func makeVideoPayload(packets []NALU) TrackPayload {
 	return TrackPayload{
 		TrackType:   rf1.TrackTypeVideo,
 		Codec:       rf1.CodecH264,

@@ -140,20 +140,22 @@ func (r *VideoRecorder) extractStreamParameters(buffer *videox.PacketBuffer) err
 }
 
 func (r *VideoRecorder) writePackets(packets []*videox.VideoPacket) {
-	nalus := []rf1.NALU{}
+	nalus := []fsv.NALU{}
 	for _, p := range packets {
 		for _, in := range p.H264NALUs {
 			inType := in.Type()
 			// We always encode as Annex-B, because this makes it very easy to
 			// get video on the screen using easily available tools.
-			flags := rf1.IndexNALUFlagAnnexB
+			// For example, you can take an fsv archive file and use ffmpeg do
+			// extract frames, or convert it to an mp4 or whatever.
+			flags := fsv.NALUFlagAnnexB
 			if inType == h264.NALUTypePPS || inType == h264.NALUTypeSPS {
-				flags |= rf1.IndexNALUFlagEssentialMeta
+				flags |= fsv.NALUFlagEssentialMeta
 			}
 			if inType == h264.NALUTypeIDR {
-				flags |= rf1.IndexNALUFlagKeyFrame
+				flags |= fsv.NALUFlagKeyFrame
 			}
-			out := rf1.NALU{
+			out := fsv.NALU{
 				PTS:     p.WallPTS,
 				Flags:   flags,
 				Payload: in.AsAnnexB().Payload,

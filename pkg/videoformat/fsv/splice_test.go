@@ -43,7 +43,7 @@ func TestSplicePerfect(t *testing.T) {
 	staticSettings := staticSettingsHugeWritebuffer()
 	arc, err := Open(logs.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, staticSettings, DefaultDynamicSettings())
 	require.NoError(t, err)
-	packets := rf1.CreateTestNALUs(todayAtTime(3, 4, 5, 7000), 0, 300, 10.0, 50, 150, 12345)
+	packets := copyRf1NALUstoFsv(rf1.CreateTestNALUs(todayAtTime(3, 4, 5, 7000), 0, 300, 10.0, 50, 150, 12345))
 
 	// Pattern:
 	//
@@ -75,7 +75,7 @@ func TestSpliceImperfect(t *testing.T) {
 	disableWriteBuffer.MaxWriteBufferSize = 0
 	arc, err := Open(logs.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, disableWriteBuffer, DefaultDynamicSettings())
 	require.EqualValues(t, 0, arc.TotalSize())
-	packets1 := rf1.CreateTestNALUs(time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC), 0, 300, 10.0, 50, 150, 12345)
+	packets1 := copyRf1NALUstoFsv(rf1.CreateTestNALUs(time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC), 0, 300, 10.0, 50, 150, 12345))
 	packets2 := slices.Clone(packets1)
 
 	// Add just enough delay to make packets no longer equal
@@ -119,25 +119,25 @@ func TestSpliceImperfect(t *testing.T) {
 	requireEqualNALUs(t, expectedPackets, rPackets.NALS)
 }
 
-func firstKeyFrameAtOrBefore(i int, packets []rf1.NALU) int {
+func firstKeyFrameAtOrBefore(i int, packets []NALU) int {
 	for ; i >= 0; i-- {
-		if packets[i].Flags&rf1.IndexNALUFlagKeyFrame != 0 {
+		if packets[i].Flags&NALUFlagKeyFrame != 0 {
 			return i
 		}
 	}
 	panic("No keyframes before this point")
 }
 
-func firstKeyFrameAtOrAfter(i int, packets []rf1.NALU) int {
+func firstKeyFrameAtOrAfter(i int, packets []NALU) int {
 	for ; i < len(packets); i++ {
-		if packets[i].Flags&rf1.IndexNALUFlagKeyFrame != 0 {
+		if packets[i].Flags&NALUFlagKeyFrame != 0 {
 			return i
 		}
 	}
 	panic("No keyframes after this point")
 }
 
-func requireEqualNALUs(t *testing.T, expected, actual []rf1.NALU) {
+func requireEqualNALUs(t *testing.T, expected, actual []NALU) {
 	require.Equal(t, len(expected), len(actual))
 	for i := range expected {
 		require.LessOrEqual(t, AbsTimeDiff(expected[i].PTS, actual[i].PTS), time.Second/4096)

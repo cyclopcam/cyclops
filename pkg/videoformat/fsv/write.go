@@ -151,7 +151,7 @@ func (a *Archive) writeInner(stream *videoStream, payload map[string]TrackPayloa
 				mustCloseReason = fmt.Sprintf("Track %v does not exist or has different dimensions", trackName)
 				break
 			}
-			if !stream.current.file.HasCapacity(trackName, packets.NALUs) {
+			if !stream.current.file.HasCapacity(trackName, len(packets.NALUs), naluMaxPTS(packets.NALUs), naluPayloadBytes(packets.NALUs)) {
 				mustCloseReason = fmt.Sprintf("Insufficient capacity for track %v", trackName)
 				break
 			}
@@ -278,6 +278,21 @@ func (a *Archive) mustFlushWriteBuffer(stream *videoStream) bool {
 		}
 	}
 	return false
+}
+
+func naluMaxPTS(nalu []NALU) time.Time {
+	if len(nalu) == 0 {
+		return time.Time{}
+	}
+	return nalu[len(nalu)-1].PTS
+}
+
+func naluPayloadBytes(nalu []NALU) int {
+	total := 0
+	for _, n := range nalu {
+		total += len(n.Payload)
+	}
+	return total
 }
 
 func canAppendToPayload(merged, addition *TrackPayload) bool {

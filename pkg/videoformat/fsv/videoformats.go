@@ -3,8 +3,6 @@ package fsv
 import (
 	"errors"
 	"time"
-
-	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 )
 
 var ErrTrackNotFound = errors.New("Track not found")
@@ -40,14 +38,14 @@ type VideoFile interface {
 	// you should arbitrarily cap the size at something smaller, because the sweeper deletes whole
 	// video files. If your entire video history is stored in one or two files, then the rolling
 	// recorder would need to delete massive chunks of history whenever it needs more space.
-	HasCapacity(trackName string, packets []rf1.NALU) bool
+	HasCapacity(trackName string, nNALU int, maxPTS time.Time, combinedPayloadBytes int) bool
 
 	// Create a new video track in the file.
 	// You must do this before writing packets to the track.
 	CreateVideoTrack(trackName string, timeBase time.Time, codec string, width, height int) error
 
-	Write(trackName string, packets []rf1.NALU) error
-	Read(trackName string, startTime, endTime time.Time, flags ReadFlags) ([]rf1.NALU, error)
+	Write(trackName string, packets []NALU) error
+	Read(trackName string, startTime, endTime time.Time, flags ReadFlags) ([]NALU, error)
 
 	// Total size of the video file(s)
 	Size() (int64, error)

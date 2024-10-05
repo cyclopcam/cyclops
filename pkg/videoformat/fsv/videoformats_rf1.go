@@ -8,6 +8,52 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 )
 
+func copyRf1FlagsToFsv(in rf1.IndexNALUFlags) NALUFlags {
+	// TestRf1Flags() validates this cast
+	return NALUFlags(in)
+}
+
+func copyFsvFlagsToRf1(in NALUFlags) rf1.IndexNALUFlags {
+	// TestRf1Flags() validates this cast
+	return rf1.IndexNALUFlags(in)
+}
+
+func copyRf1NALUtoFsv(in rf1.NALU) NALU {
+	return NALU{
+		PTS:     in.PTS,
+		Flags:   copyRf1FlagsToFsv(in.Flags),
+		Payload: in.Payload,
+		Length:  int32(in.Length),
+	}
+}
+
+func copyRf1NALUstoFsv(in []rf1.NALU) []NALU {
+	out := make([]NALU, len(in))
+	for i := range in {
+		out[i] = copyRf1NALUtoFsv(in[i])
+	}
+	return out
+}
+
+func copyFsvNALUtoRf1(in NALU) rf1.NALU {
+	return rf1.NALU{
+		PTS:     in.PTS,
+		Flags:   copyFsvFlagsToRf1(in.Flags),
+		Payload: in.Payload,
+		Length:  int64(in.Length),
+	}
+}
+
+func copyFsvNALUstoRf1(in []NALU) []rf1.NALU {
+	out := make([]rf1.NALU, len(in))
+	for i := range in {
+		out[i] = copyFsvNALUtoRf1(in[i])
+	}
+	return out
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+
 type VideoFormatRF1 struct {
 }
 
@@ -71,10 +117,10 @@ func (v *VideoFileRF1) ListTracks() map[string]Track {
 	return tracks
 }
 
-func (v *VideoFileRF1) HasCapacity(trackName string, packets []rf1.NALU) bool {
+func (v *VideoFileRF1) HasCapacity(trackName string, nNALU int, maxPTS time.Time, combinedPayloadBytes int) bool {
 	for _, track := range v.File.Tracks {
 		if track.Name == trackName {
-			return track.HasCapacity(packets)
+			return track.HasCapacity(nNALU, maxPTS, combinedPayloadBytes)
 		}
 	}
 	// Caller will likely try to create a new file, so it's OK not to return an error, but just return false
@@ -89,16 +135,16 @@ func (v *VideoFileRF1) CreateVideoTrack(trackName string, timeBase time.Time, co
 	return v.File.AddTrack(t)
 }
 
-func (v *VideoFileRF1) Write(trackName string, packets []rf1.NALU) error {
+func (v *VideoFileRF1) Write(trackName string, packets []NALU) error {
 	for _, track := range v.File.Tracks {
 		if track.Name == trackName {
-			return track.WriteNALUs(packets)
+			return track.WriteNALUs(copyFsvNALUstoRf1(packets))
 		}
 	}
 	return fmt.Errorf("%w: '%v'", ErrTrackNotFound, trackName)
 }
 
-func (v *VideoFileRF1) Read(trackName string, startTime, endTime time.Time, flags ReadFlags) ([]rf1.NALU, error) {
+func (v *VideoFileRF1) Read(trackName string, startTime, endTime time.Time, flags ReadFlags) ([]NALU, error) {
 	var rf1Flags rf1.PacketReadFlags
 	if flags&ReadFlagSeekBackToKeyFrame != 0 {
 		rf1Flags |= rf1.PacketReadFlagSeekBackToKeyFrame
@@ -108,7 +154,11 @@ func (v *VideoFileRF1) Read(trackName string, startTime, endTime time.Time, flag
 	}
 	for _, track := range v.File.Tracks {
 		if track.Name == trackName {
-			return track.ReadAtTime(startTime.Sub(track.TimeBase), endTime.Sub(track.TimeBase), rf1Flags)
+			nalus, err := track.ReadAtTime(startTime.Sub(track.TimeBase), endTime.Sub(track.TimeBase), rf1Flags)
+			if err != nil {
+				return nil, err
+			}
+			return copyRf1NALUstoFsv(nalus), nil
 		}
 	}
 	return nil, fmt.Errorf("%w: '%v'", ErrTrackNotFound, trackName)
