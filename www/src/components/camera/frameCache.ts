@@ -1,16 +1,29 @@
+import type { CameraInfo, Resolution, StreamInfo } from "@/camera/camera";
+
 class CachedFrame {
 	key: string;
 	blob: Blob;
 	lastUsed: number;
-	estimatedFPS: number; // 0 if none available
-	frameTimeMicro: number; // unix microseconds
+	frameTimeUnixMS: number;
 
-	constructor(key: string, blob: Blob, estimatedFPS: number, frameTimeMicro: number) {
+	constructor(key: string, blob: Blob, frameTimeUnixMS: number) {
 		this.key = key;
 		this.blob = blob;
 		this.lastUsed = Date.now();
-		this.estimatedFPS = estimatedFPS;
-		this.frameTimeMicro = frameTimeMicro;
+		this.frameTimeUnixMS = frameTimeUnixMS;
+	}
+}
+
+// One of these for LD and HD each
+class frameCacheStreamInfo {
+	fps: number; // from static stream info
+	keyframeInterval: number; // from static stream info
+	keyAnchorUnixMS: number; // from real frames
+
+	constructor(info?: StreamInfo) {
+		this.fps = info?.fps ?? 0;
+		this.keyframeInterval = info?.keyframeInterval ?? 0;
+		this.keyAnchorUnixMS = 0;
 	}
 }
 
@@ -18,9 +31,15 @@ export class FrameCache {
 	frames: Map<string, CachedFrame> = new Map();
 	maxSize = 2 * 1024 * 1024;
 	currentSize = 0;
+	streams = { ld: new frameCacheStreamInfo(), hd: new frameCacheStreamInfo() };
 
-	static makeKey(cameraID: number, resolution: string, timeMS: number) {
-		return `${cameraID}-${resolution}-${timeMS}`;
+	static makeKey(resolution: string, timeMS: number) {
+		return `${resolution}-${Math.round(timeMS)}`;
+	}
+
+	constructor(camera: CameraInfo) {
+		this.streams.ld = new frameCacheStreamInfo(camera.ld);
+		this.streams.hd = new frameCacheStreamInfo(camera.hd);
 	}
 
 	clear() {
@@ -28,8 +47,14 @@ export class FrameCache {
 		this.currentSize = 0;
 	}
 
-	add(key: string, blob: Blob, estimatedFPS: number, frameTime: number) {
-		const frame = new CachedFrame(key, blob, estimatedFPS, frameTime);
+	// Notify the cache of the exact PTS of a keyframe, so that it has something to anchor
+	// all subsequent keyframe requests to.
+	addKeyframeTime(resolution: Resolution, timeMS: number) {
+		this.streams[resolution].keyAnchorUnixMS = timeMS;
+	}
+
+	add(key: string, blob: Blob, frameTimeUnixMS: number) {
+		const frame = new CachedFrame(key, blob, frameTimeUnixMS);
 		if (this.frames.get(key)) {
 			this.currentSize -= this.frames.get(key)!.blob.size;
 		}
@@ -59,27 +84,32 @@ export class FrameCache {
 		}
 	}
 
-	estimatedFPS(): { fps: number, randomFrameTimeMicro: number } {
-		for (let frame of this.frames.values()) {
-			if (frame.estimatedFPS !== 0) {
-				return { fps: frame.estimatedFPS, randomFrameTimeMicro: frame.frameTimeMicro };
-			}
-		}
-		return { fps: 0, randomFrameTimeMicro: 0 };
-	}
+	//estimatedFPS(): { fps: number, randomFrameTimeMicro: number } {
+	//	for (let frame of this.frames.values()) {
+	//		if (frame.estimatedFPS !== 0) {
+	//			return { fps: frame.estimatedFPS, randomFrameTimeMicro: frame.frameTimeMicro };
+	//		}
+	//	}
+	//	return { fps: 0, randomFrameTimeMicro: 0 };
+	//}
 
-	suggestNearestFrameTime(timeMS: number): number {
-		let { fps, randomFrameTimeMicro } = this.estimatedFPS();
-		if (fps === 0) {
-			// maximum that we'd likely see
-			fps = 30;
+	// Snap to the nearest frame time, or nearest keyframe time.
+	// Input and output are unix milliseconds
+	snapToNearestFrame(timeMS: number, resolution: Resolution, keyFrame: boolean): number {
+		let info = this.streams[resolution];
+		if (info.fps === 0 || info.keyAnchorUnixMS === 0) {
+			return timeMS;
 		}
-		let frameInterval = 1 / fps;
-		let microDelta = (timeMS * 1000) - randomFrameTimeMicro;
-		let deltaFrames = (microDelta / 1000000) / frameInterval;
+		let fps = info.fps;
+		let keyframeInterval = info.keyframeInterval;
+		let anchorMS = info.keyAnchorUnixMS;
+		let msPerFrame = 1000 / fps;
+		let snapMS = keyFrame ? keyframeInterval * msPerFrame : msPerFrame;
+		let deltaFrames = (timeMS - anchorMS) / snapMS;
 		deltaFrames = Math.round(deltaFrames);
-		let newFrameTimeMicro = randomFrameTimeMicro + (deltaFrames * frameInterval * 1000000);
-		//console.log("estimated FPS", fps);
-		return Math.round(newFrameTimeMicro / 1000);
+		let newFrameTimeMS = anchorMS + (deltaFrames * snapMS);
+		let result = Math.round(newFrameTimeMS);
+		//console.log(`Snapped ${timeMS} to ${result} for ${resolution} ${fps}fps ${keyFrame ? "keyframe" : "frame"}`);
+		return result;
 	}
 }

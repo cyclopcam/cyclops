@@ -1,14 +1,19 @@
+export type Resolution = "ld" | "hd";
+
 // A live running stream
 export class StreamInfo {
 	name = "";
-	fps = 0;
+	fps = 0; // typically something like 10, 15, 30
 	width = 0;
 	height = 0;
+	keyframeInterval = 0; // Number of frames between keyframes. Typically 10, 20, 30, 40, 50, but can be anything
 
 	static fromJSON(name: string, j: any): StreamInfo {
 		let c = new StreamInfo();
+		// SYNC-STREAM-INFO-JSON
 		c.name = name;
 		c.fps = j.fps;
+		c.keyframeInterval = j.keyframeInterval;
 		c.width = j.width;
 		c.height = j.height;
 		return c;

@@ -447,7 +447,7 @@ func DecodeClosestImageInPacketList(codec Codec, packets []*VideoPacket, targetT
 	if cache != nil {
 		frameCacheKey := cache.MakeKey(videoCacheKey, targetTime.UnixMilli())
 		if img := cache.GetFrame(frameCacheKey); img != nil {
-			fmt.Printf("Cache hit for %v\n", frameCacheKey)
+			//fmt.Printf("Cache hit for %v\n", frameCacheKey)
 			return img.ToCImageRGB(), targetTime, nil
 		}
 	}

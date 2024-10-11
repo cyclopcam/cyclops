@@ -13,6 +13,7 @@ import (
 
 	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/bmharper/cimg/v2"
+	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/logs"
 )
 
@@ -61,9 +62,9 @@ const (
 
 // Codec NALU
 type NALU struct {
-	PayloadIsAnnexB    bool
-	PayloadZeroEscapes bool // True if PayloadIsAnnexB and we know that we have zero emulation prevention bytes
-	Payload            []byte
+	PayloadIsAnnexB  bool
+	PayloadNoEscapes bool // True if PayloadIsAnnexB BUT we know that we have no "emulation prevention bytes", so we can avoid decoding them.
+	Payload          []byte
 }
 
 // VideoPacket is what we store in our ring buffer
@@ -94,7 +95,7 @@ func (n *NALU) IsAnnexBWithStartCode() bool {
 	return n.PayloadIsAnnexB && n.StartCodeLen() != 0
 }
 
-// Returns true if the NALU has a start code, and the payload is not encoded with emulation prevention bytes
+// Returns true if the NALU has no start code, and the payload is not encoded with emulation prevention bytes
 func (n *NALU) IsRBSPWithNoStartCode() bool {
 	return !n.PayloadIsAnnexB && n.StartCodeLen() == 0
 }
@@ -127,9 +128,9 @@ func (n *NALU) StartCodeLen() int {
 
 func (n *NALU) DeepClone() NALU {
 	return NALU{
-		Payload:            append([]byte{}, n.Payload...),
-		PayloadIsAnnexB:    n.PayloadIsAnnexB,
-		PayloadZeroEscapes: n.PayloadZeroEscapes,
+		Payload:          append([]byte{}, n.Payload...),
+		PayloadIsAnnexB:  n.PayloadIsAnnexB,
+		PayloadNoEscapes: n.PayloadNoEscapes,
 	}
 }
 
@@ -140,15 +141,15 @@ func (n *NALU) AsAnnexB() NALU {
 		if n.StartCodeLen() == 0 {
 			// Add a 3 byte start code
 			return NALU{
-				Payload:            append(NALUStartCode(3), n.Payload...),
-				PayloadIsAnnexB:    true,
-				PayloadZeroEscapes: n.PayloadZeroEscapes,
+				Payload:          append(NALUStartCode(3), n.Payload...),
+				PayloadIsAnnexB:  true,
+				PayloadNoEscapes: n.PayloadNoEscapes,
 			}
 		} else {
 			return NALU{
-				Payload:            n.Payload,
-				PayloadIsAnnexB:    true,
-				PayloadZeroEscapes: n.PayloadZeroEscapes,
+				Payload:          n.Payload,
+				PayloadIsAnnexB:  true,
+				PayloadNoEscapes: n.PayloadNoEscapes,
 			}
 		}
 	} else {
@@ -157,9 +158,9 @@ func (n *NALU) AsAnnexB() NALU {
 		rawLen := len(n.Payload) - n.StartCodeLen()
 		payload := EncodeAnnexB(n.Payload[n.StartCodeLen():], startCodeLen, AnnexBEncodeFlagAddEmulationPreventionBytes)
 		return NALU{
-			Payload:            payload,
-			PayloadIsAnnexB:    true,
-			PayloadZeroEscapes: len(payload) == rawLen+startCodeLen,
+			Payload:          payload,
+			PayloadIsAnnexB:  true,
+			PayloadNoEscapes: len(payload) == rawLen+startCodeLen,
 		}
 	}
 }
@@ -173,7 +174,7 @@ func (n *NALU) AsRBSP() NALU {
 		}
 	} else {
 		// Decode to RBSP
-		if n.PayloadZeroEscapes {
+		if n.PayloadNoEscapes {
 			// Special optimization where we know that we don't need to do any unescaping
 			return NALU{
 				Payload: n.Payload[n.StartCodeLen():],
@@ -337,6 +338,38 @@ func ClonePacket(nalusIn [][]byte, pts time.Duration, recvTime time.Time, wallPT
 		H264PTS:   pts,
 		WallPTS:   wallPTS,
 	}
+}
+
+// Returns true if we have at least one keyframe in the buffer
+func (r *PacketBuffer) HasIDR() bool {
+	return r.FindFirstIDR() != -1
+}
+
+// Returns the index of the first keyframe in the buffer, or -1 if none found
+func (r *PacketBuffer) FindFirstIDR() int {
+	for i, p := range r.Packets {
+		if p.HasIDR() {
+			return i
+		}
+	}
+	return -1
+}
+
+// Find the packet with the WallPTS closest to the given time
+func (r *PacketBuffer) FindClosestPacketWallPTS(wallPTS time.Time, keyframeOnly bool) int {
+	bestMatchDeltaT := time.Duration(1<<63 - 1)
+	bestMatchIdx := -1
+	for i, p := range r.Packets {
+		if keyframeOnly && !p.HasIDR() {
+			continue
+		}
+		deltaT := gen.Abs(wallPTS.Sub(p.WallPTS))
+		if deltaT < bestMatchDeltaT {
+			bestMatchDeltaT = deltaT
+			bestMatchIdx = i
+		}
+	}
+	return bestMatchIdx
 }
 
 // Extract saved buffer into an MPEGTS stream

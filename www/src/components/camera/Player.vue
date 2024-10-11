@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CameraInfo } from "@/camera/camera";
+import type { CameraInfo, Resolution } from "@/camera/camera";
 import { onMounted, onUnmounted, watch, ref, reactive } from "vue";
 import { VideoStreamer } from "./videoDecode";
 import SeekBar from "./SeekBar.vue";
@@ -24,6 +24,8 @@ let streamer = new VideoStreamer(props.camera);
 let seekBar = reactive(new SeekBarContext(props.camera.id));
 let seekBarRenderKick = ref(0);
 let seekDebounceTimer = 0;
+let lastSeekAt = 0;
+let lastSeekTo = 0;
 
 // This is only useful if the camera is not showing anything (i.e. we can't connect to it),
 // but how to detect that? I guess we need an API for that.
@@ -110,19 +112,41 @@ watch(() => props.play, (newVal, oldVal) => {
 
 function onSeekEnd() {
 	clearTimeout(seekDebounceTimer);
-	streamer.seekTo(streamer.seekOverlayToMS, 'HD');
+	streamer.seekTo(streamer.seekOverlayToMS, 'hd', false);
 }
 
-function seekToNoDelay(seekTo: number) {
-	streamer.seekTo(seekTo, 'LD');
+function seekToNoDelay(seekTo: number, resolution: Resolution, keyframeOnly: boolean) {
+	streamer.seekTo(seekTo, resolution, keyframeOnly);
 	emits('seek', seekTo);
 }
 
 function seekDebounce(seekTo: number) {
+	// These two variables must be determined dynamically, based on how fast the
+	// user is moving the seek bar, and how zoomed in we are. But mostly I think,
+	// based on how fast the bar is moving.
+	let nowMS = (new Date()).getTime();
+	let sinceLastSeek = nowMS - lastSeekAt;
+	let distanceSinceLastSeek = Math.abs(seekTo - lastSeekTo);
+	let seekSpeed = distanceSinceLastSeek / sinceLastSeek; // ms per ms
+	lastSeekAt = nowMS;
+	lastSeekTo = seekTo;
+
+	let secondsPerPixel = seekBar.secondsPerPixel();
+
+	let keyframeOnly = true;
+	let delay = 30;
+	if (secondsPerPixel < 2) {
+		keyframeOnly = false;
+	}
+	if (seekSpeed < 5) {
+		delay = 10;
+	}
+	//console.log(`Zoom seconds per pixel: ${secondsPerPixel}, seekSpeed: ${seekSpeed}`);
+
 	clearTimeout(seekDebounceTimer);
 	seekDebounceTimer = window.setTimeout(() => {
-		seekToNoDelay(seekTo);
-	}, 30);
+		seekToNoDelay(seekTo, 'ld', keyframeOnly);
+	}, delay);
 }
 
 // This is how we notice that the user wants to seek to a new position
@@ -133,8 +157,10 @@ watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
 		return;
 	}
 	//console.log("Seek to ", newVal);
-	if (streamer.hasCachedSeekFrame(newVal, "LD")) {
-		seekToNoDelay(newVal);
+	if (streamer.hasCachedSeekFrame(newVal, 'hd')) {
+		seekToNoDelay(newVal, 'hd', false);
+	} else if (streamer.hasCachedSeekFrame(newVal, 'ld')) {
+		seekToNoDelay(newVal, 'ld', false);
 	} else {
 		seekDebounce(newVal);
 	}
@@ -179,16 +205,12 @@ onMounted(() => {
 </template>
 
 <style lang="scss" scoped>
-// HACK! CameraItem.vue has to match this.
 $seekBarHeight: 10%;
 
 .container {
-	//width: 100%;
-	//height: 100%;
 	position: relative;
 	border: solid 1px #000;
 	border-radius: 5px;
-	//box-shadow: 0px 0px 2px rgba(255, 255, 255, 0.4), 0px 0px 7px rgba(255, 255, 255, 0.2);
 }
 
 .videoContainer {
@@ -203,7 +225,6 @@ $seekBarHeight: 10%;
 	top: 0px;
 	width: 100%;
 	height: 100%;
-	//height: calc(100% - $seekBarHeight);
 	cursor: pointer;
 }
 

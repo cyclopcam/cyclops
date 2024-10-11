@@ -19,7 +19,7 @@ export class SeekBarContext {
 	cameraID = 0;
 	panTimeEndMS = new Date().getTime(); // Unix milliseconds at the end of the seek bar
 	panTimeEndIsNow = false; // If our last seek call was seekToNow()
-	zoomLevel = 3; // 2^zoom seconds per pixel. This can be an arbitrary real number.
+	zoomLevel = 3; // 2^zoom seconds per pixel. This can be an arbitrary real number. Higher zoom level = more zoomed out
 	desiredSeekPosMS = 0; // Unix milliseconds of the desired video seek position, or 0 if no explicit seek (i.e. seek to now)
 	actualSeekPosMS = 0; // Unix milliseconds of the actual playback position (TODO)
 	needsRender = false;
@@ -61,7 +61,7 @@ export class SeekBarContext {
 	}
 
 	setZoomLevel(zoomLevel: number) {
-		zoomLevel = clamp(zoomLevel, -6, 15);
+		zoomLevel = clamp(zoomLevel, -7, 15);
 		this.zoomLevel = zoomLevel;
 	}
 
@@ -430,6 +430,14 @@ export class SeekBarContext {
 	// Return a SeekBarTransform object for translating between pixel and time coordinates.
 	transform(canvasEl: HTMLCanvasElement): SeekBarTransform {
 		return SeekBarTransform.fromZoomLevelAndRightEdge(this.zoomLevel, this.panTimeEndMS, canvasEl.clientWidth * window.devicePixelRatio);
+	}
+
+	pixelsPerSecond(): number {
+		return 1 / Math.pow(2, this.zoomLevel);
+	}
+
+	secondsPerPixel(): number {
+		return Math.pow(2, this.zoomLevel);
 	}
 }
 

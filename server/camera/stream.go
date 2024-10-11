@@ -67,14 +67,23 @@ type StreamInfo struct {
 
 // Average observed stats from a sample of recent frames
 type StreamStats struct {
-	FPS            float64 // frames per second
-	FrameSize      float64 // average frame size in bytes
-	KeyFrameSize   float64 // average key-frame size in bytes
-	InterFrameSize float64 // average non-key-frame size in bytes
+	KeyframeInterval int     // number of frames between keyframes
+	FPS              float64 // frames per second
+	FrameSize        float64 // average frame size in bytes
+	KeyFrameSize     float64 // average key-frame size in bytes
+	InterFrameSize   float64 // average non-key-frame size in bytes
 }
 
 func (s *StreamStats) FPSRounded() int {
 	return int(math.Round(s.FPS))
+}
+
+// Time between keyframes
+func (s *StreamStats) KeyframeIntervalDuration() time.Duration {
+	if s.FPS == 0 {
+		return 0
+	}
+	return time.Duration(float64(s.KeyframeInterval) / s.FPS * float64(time.Second))
 }
 
 type frameStat struct {
@@ -142,9 +151,10 @@ type Stream struct {
 }
 
 func NewStream(logger logs.Log, cameraName, streamName string, cameraSendsAnnexBEncoded bool) *Stream {
+	// The recentFrames buffer size is 256 samples big so that we can accurately determine the keyframe interval.
 	return &Stream{
 		Log:                      logs.NewPrefixLogger(logger, "Stream "+cameraName+"."+streamName),
-		recentFrames:             ringbuffer.NewRingP[frameStat](128),
+		recentFrames:             ringbuffer.NewRingP[frameStat](256),
 		CameraName:               cameraName,
 		StreamName:               streamName,
 		Ident:                    cameraName + "." + streamName,
@@ -310,8 +320,6 @@ func (s *Stream) Listen(address string) error {
 		}
 		s.infoLock.Unlock()
 
-		s.addFrameToStats(nalus, pts)
-
 		// Before we return, we must clone the packet. This is because we send
 		// the packet via channels, to all of our stream sinks. These sinks
 		// are running on unspecified threads, so we have no idea how long
@@ -324,16 +332,14 @@ func (s *Stream) Listen(address string) error {
 		// And the answer is: only if gortsplib gave us control over that.
 		// A typical iframe packet from a 320x240 camera is around 100 bytes!
 		// A keyframe is between 10 and 20 KB.
+		// For the high resolution streams, it's quite a bit more. Still low MB/s though.
 		// NOTE: I gortsplib may have changed that memory re-use behaviour since
 		// I wrote this. Should investigate again...
 		cloned := videox.ClonePacket(nalus, pts, now, refTime, s.cameraSendsAnnexBEncoded)
 		cloned.RawRecvID = myRawPacketID
 		cloned.ValidRecvID = myValidPacketID
 
-		// Frame size stats can be interesting
-		//if s.Ident == "driveway.low" {
-		//	fmt.Printf("Stream %v: Received packet %v. Size %v\n", s.Ident, cloned.RecvID, cloned.PayloadBytes())
-		//}
+		s.addFrameToStats(cloned)
 
 		// Obtain the sinks lock, so that we can't send packets after a Close message has been sent.
 		s.sinksLock.Lock()
@@ -352,11 +358,10 @@ func (s *Stream) Listen(address string) error {
 		s.sinksLock.Unlock()
 	})
 
-	// start reading tracks
-	//err = client.SetupAndPlay(tracks, baseURL)
+	// start playback
 	_, err = client.Play(nil)
 	if err != nil {
-		return fmt.Errorf("Stream Play failed: %w", err)
+		return fmt.Errorf("client.Play failed: %w", err)
 	}
 
 	s.Log.Infof("Connection to %v success", camHost)
@@ -433,7 +438,7 @@ func (s *Stream) LastPacketReceivedAt() time.Time {
 
 func (s *Stream) statsNoMutexLock() StreamStats {
 	stats := StreamStats{}
-	if s.recentFrames.Len() < 2 {
+	if s.recentFrames.Len() < 3 {
 		return stats
 	}
 	count := s.recentFrames.Len()
@@ -443,6 +448,8 @@ func (s *Stream) statsNoMutexLock() StreamStats {
 	stats.FPS = float64(count-1) / elapsed
 	nIDR := 0
 	nInter := 0
+	lastIDR := -1
+	kfInterval := []int{}
 	for i := 0; i < count; i++ {
 		frame := s.recentFrames.Peek(i)
 		frameSize := float64(frame.size)
@@ -450,6 +457,11 @@ func (s *Stream) statsNoMutexLock() StreamStats {
 		if frame.isIDR {
 			stats.KeyFrameSize += frameSize
 			nIDR++
+			if lastIDR != -1 {
+				//fmt.Printf("kfInterval: %v -> %v = %v\n", i, lastIDR, i-lastIDR)
+				kfInterval = append(kfInterval, i-lastIDR)
+			}
+			lastIDR = i
 		} else {
 			stats.InterFrameSize += frameSize
 			nInter++
@@ -458,12 +470,18 @@ func (s *Stream) statsNoMutexLock() StreamStats {
 	stats.FrameSize /= float64(count)
 	stats.KeyFrameSize /= float64(nIDR)
 	stats.InterFrameSize /= float64(nInter)
+	if len(kfInterval) >= 2 {
+		// Some strange stuff here with my Hikvision cameras. I seem to get a keyframe when I first
+		// connect, but thereafter the keyframes are at regular intervals, which aren't related
+		// to that initial frame. That's why we make our stats buffer 256 big, so we have sufficient samples.
+		stats.KeyframeInterval, _ = gen.Mode(kfInterval)
+	}
 	return stats
 }
 
 // Connect a sink.
 //
-// Every call to ConnectSink must be accompanies by a call to RemoveSink.
+// Every call to ConnectSink must be accompanied by a call to RemoveSink.
 // The usual time to do this is when receiving StreamMsgTypeClose.
 //
 // This function will panic if you attempt to add the same sink twice.
@@ -537,26 +555,25 @@ func (s *Stream) sinkIndexNoLock(sink StreamSinkChan) int {
 	return -1
 }
 
-func (s *Stream) addFrameToStats(nalus [][]byte, pts time.Duration) {
+func (s *Stream) addFrameToStats(packet *videox.VideoPacket) {
 	s.recentFramesLock.Lock()
 	defer s.recentFramesLock.Unlock()
 
-	for _, nalu := range nalus {
-		nn := videox.WrapRawNALU(nalu)
-		nnType := nn.Type()
+	for _, nalu := range packet.H264NALUs {
+		nnType := nalu.Type()
 		if videox.IsVisualPacket(nnType) {
 			s.recentFrames.Add(frameStat{
 				isIDR: nnType == h264.NALUTypeIDR,
-				pts:   pts,
-				size:  len(nalu),
+				pts:   packet.H264PTS,
+				size:  len(nalu.Payload),
 			})
 		}
 	}
 
-	if s.loggedStatsAt.IsZero() && s.recentFrames.Len() >= s.recentFrames.Capacity() {
+	if s.loggedStatsAt.IsZero() && s.recentFrames.Len() == s.recentFrames.Capacity() {
 		s.loggedStatsAt = time.Now()
 		stats := s.statsNoMutexLock()
-		s.Log.Infof("FPS: %.1f, Avg: %.0f, Keyframe: %.0f, Intra: %.0f, Rate: %.0f KB/s", stats.FPS, stats.FrameSize, stats.KeyFrameSize, stats.InterFrameSize, stats.FrameSize*stats.FPS/1024)
+		s.Log.Infof("FPS: %.1f, KF interval: %v, Avg: %.0f, Keyframe: %.0f, Intra: %.0f, Rate: %.0f KB/s", stats.FPS, stats.KeyframeInterval, stats.FrameSize, stats.KeyFrameSize, stats.InterFrameSize, stats.FrameSize*stats.FPS/1024)
 	}
 }
 

@@ -2,12 +2,12 @@ package server
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/bmharper/cimg/v2"
-	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/camera"
@@ -35,13 +35,15 @@ func (s *Server) getCameraFromIDOrPanic(idStr string) *camera.Camera {
 	return cam
 }
 
+// SYNC-STREAM-INFO-JSON
 type streamInfoJSON struct {
-	FPS            int     `json:"fps"`
-	Width          int     `json:"width"`
-	Height         int     `json:"height"`
-	FrameSize      float64 `json:"frameSize"`
-	KeyFrameSize   float64 `json:"keyFrameSize"`
-	InterFrameSize float64 `json:"interFrameSize"`
+	FPS              int     `json:"fps"`
+	Width            int     `json:"width"`
+	Height           int     `json:"height"`
+	FrameSize        float64 `json:"frameSize"`
+	KeyFrameSize     float64 `json:"keyFrameSize"`
+	InterFrameSize   float64 `json:"interFrameSize"`
+	KeyframeInterval int     `json:"keyframeInterval"`
 }
 
 // See CameraInfo in www
@@ -57,10 +59,11 @@ type camInfoJSON struct {
 func toStreamInfoJSON(s *camera.Stream) streamInfoJSON {
 	stats := s.RecentFrameStats()
 	r := streamInfoJSON{
-		FPS:            stats.FPSRounded(),
-		FrameSize:      stats.FrameSize,
-		KeyFrameSize:   stats.KeyFrameSize,
-		InterFrameSize: stats.InterFrameSize,
+		FPS:              stats.FPSRounded(),
+		FrameSize:        math.Round(stats.FrameSize),
+		KeyFrameSize:     math.Round(stats.KeyFrameSize),
+		InterFrameSize:   math.Round(stats.InterFrameSize),
+		KeyframeInterval: stats.KeyframeInterval,
 	}
 	inf := s.Info()
 	if inf != nil {
@@ -190,7 +193,16 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	cam := s.getCameraFromIDOrPanic(params.ByName("cameraID"))
 	res := parseResolutionOrPanic(params.ByName("resolution"))
 	timeMS, _ := strconv.ParseInt(params.ByName("time"), 10, 64)
-	seekToPreviousKeyframe := www.QueryValue(r, "seekMode") == "previousKeyframe" // If toggled, then return the first keyframe before 'time'
+
+	const modePreviousKeyframe = "previousKeyframe"
+	const modeNearestKeyframe = "nearestKeyframe"
+
+	// Default seek mode (when unspecified) is 'nearest frame'
+	seekMode := www.QueryValue(r, "seekMode")
+	if seekMode != "" && seekMode != modePreviousKeyframe && seekMode != modeNearestKeyframe {
+		www.PanicBadRequestf("Invalid seekMode. Must be either blank, 'previousKeyframe' or 'nearestKeyframe'")
+	}
+
 	compressQuality := www.QueryInt(r, "quality")
 	if compressQuality < 0 || compressQuality > 100 {
 		compressQuality = 75
@@ -201,65 +213,69 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	startTime := time.UnixMilli(timeMS)
 	streamName := "video"
 	videoCacheKey := cam.RecordingStreamName(res)
+	streamStats := cam.GetStream(res).RecentFrameStats()
+
+	// Even if the user is asking for the nearest frame, we still want to read a little bit into the future, otherwise we might
+	// miss that exact frame. 200ms seems like a reasonable maximum frame interval (5 FPS).
+	endTime := startTime.Add(200 * time.Millisecond)
+
+	if seekMode == modeNearestKeyframe {
+		// The nearest keyframe could be relatively far into the future. The +50ms is just for padding/rounding
+		endTime = startTime.Add(streamStats.KeyframeIntervalDuration() + 50*time.Millisecond)
+	}
+
 	// Regardless of what the user wants, we always need to read back to a prior keyframe, so that we can initialize the decoder.
 	// So fsv.ReadFlagSeekBackToKeyFrame is mandatory here.
-	packets, err := s.videoDB.Archive.Read(cam.RecordingStreamName(res), []string{streamName}, startTime, startTime, fsv.ReadFlagSeekBackToKeyFrame)
+	readResult, err := s.videoDB.Archive.Read(cam.RecordingStreamName(res), []string{streamName}, startTime, endTime, fsv.ReadFlagSeekBackToKeyFrame)
 	if err != nil {
 		www.PanicServerErrorf("Failed to read video: %v", err)
 	}
-	if packets[streamName] == nil || len(packets[streamName].NALS) == 0 {
+	if readResult[streamName] == nil || len(readResult[streamName].NALS) == 0 {
 		www.PanicBadRequestf("No video available at that time")
 	}
-	packet := &videox.VideoPacket{
-		WallPTS: packets[streamName].NALS[0].PTS,
+	pbuffer := videox.ExtractFsvPackets(readResult[streamName].NALS)
+	if !pbuffer.HasIDR() {
+		www.PanicBadRequestf("No keyframes found")
 	}
+
 	// While scanning the NALs, we find the frame with the closest time to the requested one.
 	// This is important for caching, so that we can correctly identify frames that are requested twice,
 	// even if the user doesn't know that he's asking for the same frame (eg two requests 15 ms apart, when frames are actually 100ms apart).
-	bestMatchDeltaT := time.Duration(1<<63 - 1)
-	bestMatchPTS := time.Time{}
-	outPackets := []*videox.VideoPacket{}
-	packetIntervals := []time.Duration{}
-	for _, p := range packets[streamName].NALS {
-		if p.PTS != packet.WallPTS {
-			packetIntervals = append(packetIntervals, p.PTS.Sub(packet.WallPTS))
-			outPackets = append(outPackets, packet)
-			packet = &videox.VideoPacket{
-				WallPTS: p.PTS,
-			}
-		}
-		n := videox.NALU{
-			PayloadIsAnnexB: p.Flags&fsv.NALUFlagAnnexB != 0,
-			Payload:         p.Payload,
-		}
-		packet.H264NALUs = append(packet.H264NALUs, n)
-		deltaT := gen.Abs(p.PTS.Sub(startTime))
-		if deltaT < bestMatchDeltaT {
-			bestMatchDeltaT = deltaT
-			bestMatchPTS = p.PTS
-		}
+	// In the ideal case, the caller knows the precise time of each frame, but I'm still not sure how
+	// I'm going to structure all of this, so I want to be efficient even if the caller doesn't know
+	// the precise frame times. The the super-ideal case the user can decode all codecs, but I'm also
+	// not confident that I can rely on that yet.
+
+	// Regardless of the seek mode, make sure we find the exact frame that we want to decode, and
+	// pass the precise time of that frame into DecodeClosestImageInPacketList(). This allows DecodeClosestImageInPacketList()
+	// to correctly identify frames for caching.
+	closestPacketIdx := 0
+	if seekMode == modePreviousKeyframe {
+		closestPacketIdx = pbuffer.FindFirstIDR()
+	} else {
+		closestPacketIdx = pbuffer.FindClosestPacketWallPTS(startTime, seekMode == modeNearestKeyframe)
 	}
-	outPackets = append(outPackets, packet)
-	//fmt.Printf("%v packets. Packet 0: %v\n", len(outPackets), outPackets[0].WallPTS)
-	findImageAt := bestMatchPTS
-	if seekToPreviousKeyframe {
-		// Zero time means "return first image that decodes"
-		findImageAt = time.Time{}
+	findImageAt := pbuffer.Packets[closestPacketIdx].WallPTS
+	if seekMode == modePreviousKeyframe || seekMode == modeNearestKeyframe {
+		// Don't waste time decoding frames prior to the keyframe we're actually interested in
+		pbuffer.Packets = pbuffer.Packets[closestPacketIdx:]
 	}
-	codec, err := videox.ParseCodec(packets[streamName].Codec)
+
+	codec, err := videox.ParseCodec(readResult[streamName].Codec)
 	www.Check(err)
-	img, imgTime, err := videox.DecodeClosestImageInPacketList(codec, outPackets, findImageAt, s.seekFrameCache, videoCacheKey)
+	img, imgTime, err := videox.DecodeClosestImageInPacketList(codec, pbuffer.Packets, findImageAt, s.seekFrameCache, videoCacheKey)
 	if err != nil {
 		www.PanicServerErrorf("Failed to decode video: %v", err)
 	}
 	encodedImg, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, compressQuality, 0))
 	www.Check(err)
-	www.CacheSeconds(w, 3600) // could cache forever - but need to test different things like LD/HD and quality
+	www.CacheSeconds(w, 3600) // could probably cache forever
 	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("X-Cyclops-Frame-Time", strconv.FormatInt(imgTime.UnixMicro(), 10))
-	if len(packetIntervals) != 0 {
-		w.Header().Set("X-Cyclops-FPS", strconv.FormatFloat(camera.EstimateFPS(packetIntervals), 'f', 2, 64))
-	}
+	w.Header().Set("X-Cyclops-Frame-Time", strconv.FormatInt(imgTime.UnixMilli(), 10))
+	// Getting rid of this FPS estimate, because we already know the camera FPS
+	//if len(packetIntervals) != 0 {
+	//	w.Header().Set("X-Cyclops-FPS", strconv.FormatFloat(camera.EstimateFPS(packetIntervals), 'f', 2, 64))
+	//}
 	w.Write(encodedImg)
 }
 

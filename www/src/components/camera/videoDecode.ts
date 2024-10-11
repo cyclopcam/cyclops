@@ -1,4 +1,4 @@
-import type { CameraInfo } from "@/camera/camera";
+import type { CameraInfo, Resolution } from "@/camera/camera";
 import { AnalysisState } from "@/camera/nn";
 import JMuxer from "jmuxer";
 import { globals } from "@/globals";
@@ -114,13 +114,14 @@ export class VideoStreamer {
 
 	seekOverlayToMS = 0; // If not 0, then the overlay canvas is rendered with a keyframe closest to this time. This is for seeking back in time.
 	seekIndexNext = 1; // Used to tell if we should discard a fetch (eg if an older seek finished AFTER a newer seek, then discard the older result)
-	seekResolution: 'LD' | 'HD' = 'LD';
+	seekResolution: Resolution = 'ld';
 	seekImage: ImageBitmap | null = null; // Most recent seek frame
 	seekImageIndex = 0; // seekCount at the time when the fetch of this seekImage was initiated
-	seekCache = new FrameCache();
+	seekCache: FrameCache;
 
 	constructor(camera: CameraInfo) {
 		this.camera = camera;
+		this.seekCache = new FrameCache(camera);
 	}
 
 	posterURLUpdateTimer() {
@@ -189,31 +190,39 @@ export class VideoStreamer {
 		this.seekOverlayToMS = 0;
 	}
 
-	hasCachedSeekFrame(posMS: number, resolution: string): boolean {
-		posMS = this.seekCache.suggestNearestFrameTime(posMS);
-		let cacheKey = FrameCache.makeKey(this.camera.id, resolution, posMS);
+	hasCachedSeekFrame(posMS: number, resolution: Resolution): boolean {
+		posMS = this.seekCache.snapToNearestFrame(posMS, resolution, false);
+		let cacheKey = FrameCache.makeKey(resolution, posMS);
 		return this.seekCache.get(cacheKey) !== undefined;
 	}
 
-	async fetchSingleFrame(resolution: 'LD' | 'HD', posMS: number, quality: number): Promise<Blob | null> {
-		let cacheKey = FrameCache.makeKey(this.camera.id, resolution, posMS);
+	async fetchSingleFrame(resolution: Resolution, posMS: number, quality: number, keyframeOnly: boolean): Promise<Blob | null> {
+		let cacheKey = FrameCache.makeKey(resolution, posMS);
 		let fromCache = this.seekCache.get(cacheKey);
 		if (fromCache) {
 			return fromCache.blob;
 		}
-		let url = `/api/camera/image/${this.camera.id}/${resolution}/${posMS}?quality=${quality}`;
+		let seekMode = "";
+		if (keyframeOnly) {
+			seekMode = "nearestKeyframe";
+		}
+		let url = `/api/camera/image/${this.camera.id}/${resolution}/${Math.round(posMS)}?quality=${quality}&seekMode=${seekMode}`;
 		let r = await fetch(url);
 		if (!r.ok)
 			return null;
 		let blob = await r.blob();
-		let estimatedFPS = parseInt(r.headers.get("X-Cyclops-FPS") ?? '0', 10);
+		// Getting rid of this FPS estimate, because we already know the camera FPS
+		//let estimatedFPS = parseInt(r.headers.get("X-Cyclops-FPS") ?? '0', 10);
 		let frameTime = parseInt(r.headers.get("X-Cyclops-Frame-Time") ?? '0', 10);
-		this.seekCache.add(cacheKey, blob, estimatedFPS, frameTime);
+		if (keyframeOnly) {
+			this.seekCache.addKeyframeTime(resolution, frameTime);
+		}
+		this.seekCache.add(cacheKey, blob, frameTime);
 		return blob;
 	}
 
-	async seekTo(posMS: number, resolution: 'LD' | 'HD') {
-		posMS = this.seekCache.suggestNearestFrameTime(posMS);
+	async seekTo(posMS: number, resolution: Resolution, keyframeOnly: boolean) {
+		posMS = this.seekCache.snapToNearestFrame(posMS, resolution, keyframeOnly);
 		this.seekOverlayToMS = posMS;
 		this.seekResolution = resolution;
 		let myIndex = this.seekIndexNext;
@@ -222,8 +231,10 @@ export class VideoStreamer {
 		// We have two potential API calls to make here, and we want to kick them
 		// off in parallel. That's why we structure the fetches as individual
 		// promises, so that we can await on them both at the same time.
-		let quality = resolution === 'LD' ? 70 : 85;
-		let fetchFrame = this.fetchSingleFrame(resolution, posMS, quality);
+		// uhh.. I don't understand this comment now!
+
+		let quality = resolution === 'ld' ? 70 : 85;
+		let fetchFrame = this.fetchSingleFrame(resolution, posMS, quality, keyframeOnly);
 		let [blob] = await Promise.all([fetchFrame]);
 		if (!blob) {
 			return;
