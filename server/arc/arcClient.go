@@ -7,9 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 
-	"github.com/cyclopcam/cyclops/server/eventdb"
 	"github.com/cyclopcam/www"
 )
 
@@ -49,7 +47,10 @@ func addFileToZip(zw *zip.Writer, filenameInZip, filenameOnDisk string, compress
 }
 
 // Share the recording with an Arc server.
-func UploadToArc(credentials *ArcServerCredentials, eventDBVideoRoot string, recording *eventdb.Recording, cameraName string) error {
+// TODO: Fix this. It was originally written for our old 'eventdb' package, but it would
+// need to change to use our new 'videodb' and 'fsv' packages.
+// func UploadToArc(credentials *ArcServerCredentials, eventDBVideoRoot string, recording *eventdb.Recording, cameraName string) error {
+func UploadToArc_FixMe(credentials *ArcServerCredentials, lowRes, highRes string, cameraName string) error {
 	// Create the zip file
 	zipBuf := bytes.Buffer{}
 	zw := zip.NewWriter(&zipBuf)
@@ -58,8 +59,10 @@ func UploadToArc(credentials *ArcServerCredentials, eventDBVideoRoot string, rec
 		diskName string
 		compress bool
 	}{
-		{"lowRes.mp4", filepath.Join(eventDBVideoRoot, recording.VideoFilenameLD()), false},
-		{"highRes.mp4", filepath.Join(eventDBVideoRoot, recording.VideoFilenameHD()), false},
+		//{"lowRes.mp4", filepath.Join(eventDBVideoRoot, recording.VideoFilenameLD()), false},
+		//{"highRes.mp4", filepath.Join(eventDBVideoRoot, recording.VideoFilenameHD()), false},
+		{"lowRes.mp4", lowRes, false},
+		{"highRes.mp4", highRes, false},
 	}
 	for _, file := range files {
 		if err := addFileToZip(zw, file.zipName, file.diskName, file.compress); err != nil {

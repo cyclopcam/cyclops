@@ -107,17 +107,19 @@ func (s *Server) httpCamGetLatestImage(w http.ResponseWriter, r *http.Request, p
 	var encodedImg []byte
 
 	// First try to get latest frame that has had NN detections run on it
-	img, detections, analysis, err := s.monitor.LatestFrame(cam.ID())
+	//img, detections, analysis, err := s.monitor.LatestFrame(cam.ID())
+	img, _, analysis, err := s.monitor.LatestFrame(cam.ID())
 	if err == nil {
 		encodedImg, err = cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, 85, 0))
 		www.Check(err)
 		// We must send Content-Type before X-Detections or X-Analysis... not sure if that's browser or Go HTTP infra, but it's a thing.
 		w.Header().Set("Content-Type", contentType)
-		if detections != nil {
-			jsDet, err := json.Marshal(detections)
-			www.Check(err)
-			w.Header().Set("X-Detections", string(jsDet))
-		}
+		// Detections are superfluous, because they're already in the analysis
+		//if detections != nil {
+		//	jsDet, err := json.Marshal(detections)
+		//	www.Check(err)
+		//	w.Header().Set("X-Detections", string(jsDet))
+		//}
 		if analysis != nil {
 			jsAna, err := json.Marshal(analysis)
 			www.Check(err)
@@ -269,6 +271,7 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	}
 	encodedImg, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, compressQuality, 0))
 	www.Check(err)
+
 	www.CacheSeconds(w, 3600) // could probably cache forever
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("X-Cyclops-Frame-Time", strconv.FormatInt(imgTime.UnixMilli(), 10))
