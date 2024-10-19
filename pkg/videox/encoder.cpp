@@ -1,10 +1,7 @@
-//extern "C" {
-//#include <libavcodec/avcodec.h>
-//#include <libavformat/avformat.h>
-//#include <libavformat/avio.h>
-//}
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavformat/avio.h>
 
-#include <stdint.h>
 #include "encoder.h"
 #include "tsf.hpp"
 
@@ -53,19 +50,8 @@ struct EncoderCleanup {
 	}
 };
 
-#define RETURN_ERROR(msg)   \
-	{                       \
-		*err = strdup(msg); \
-		return nullptr;     \
-	}
-
-#define RETURN_STR(msg)             \
-	{                               \
-		*err = strdup(msg.c_str()); \
-		return nullptr;             \
-	}
-
-std::string AvErr(int e) {
+// Get the string error message for the given error code
+inline std::string AvErr(int e) {
 	char msg[AV_ERROR_MAX_STRING_SIZE] = {0};
 	av_make_error_string(msg, AV_ERROR_MAX_STRING_SIZE, e);
 	return msg;
@@ -139,22 +125,22 @@ void* MakeEncoder(char** err, const char* format, const char* filename, int widt
 
 	encoder->Format = av_guess_format(format, nullptr, nullptr);
 	if (encoder->Format == nullptr)
-		RETURN_ERROR("Failed to find format");
+		RETURN_ERROR_STATIC("Failed to find format");
 
 	if (avformat_alloc_output_context2(&encoder->OutFormatCtx, encoder->Format, nullptr, nullptr) < 0)
-		RETURN_ERROR("Failed to allocate output context");
+		RETURN_ERROR_STATIC("Failed to allocate output context");
 
 	encoder->Codec = avcodec_find_encoder(codec);
 	if (encoder->Codec == nullptr)
-		RETURN_ERROR("Failed to find codec");
+		RETURN_ERROR_STATIC("Failed to find codec");
 
 	encoder->CodecCtx = avcodec_alloc_context3(encoder->Codec);
 	if (encoder->CodecCtx == nullptr)
-		RETURN_ERROR("Failed to allocate codec context");
+		RETURN_ERROR_STATIC("Failed to allocate codec context");
 
 	encoder->OutStream = avformat_new_stream(encoder->OutFormatCtx, encoder->Codec);
 	if (encoder->OutStream == nullptr)
-		RETURN_ERROR("Failed to allocate output format stream");
+		RETURN_ERROR_STATIC("Failed to allocate output format stream");
 
 	encoder->OutStream->codecpar->codec_id   = codec;
 	encoder->OutStream->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
@@ -166,28 +152,28 @@ void* MakeEncoder(char** err, const char* format, const char* filename, int widt
 	encoder->CodecCtx->time_base             = AVRational{1, 1000000};
 
 	if (avcodec_parameters_to_context(encoder->CodecCtx, encoder->OutStream->codecpar) < 0)
-		RETURN_ERROR("avcodec_parameters_to_context failed");
+		RETURN_ERROR_STATIC("avcodec_parameters_to_context failed");
 
 	encoder->CodecCtx->profile = FF_PROFILE_H264_HIGH;
 	if (encoder->OutFormatCtx->oformat->flags & AVFMT_GLOBALHEADER)
 		encoder->CodecCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
 	if (avcodec_parameters_from_context(encoder->OutStream->codecpar, encoder->CodecCtx) < 0)
-		RETURN_ERROR("avcodec_parameters_from_context failed");
+		RETURN_ERROR_STATIC("avcodec_parameters_from_context failed");
 
 	if (avcodec_open2(encoder->CodecCtx, encoder->Codec, nullptr) < 0)
-		RETURN_ERROR("avcodec_open2 failed");
+		RETURN_ERROR_STATIC("avcodec_open2 failed");
 
 	if (!!(encoder->CodecCtx->flags & AVFMT_NOFILE))
-		RETURN_ERROR("codec does not write to a file");
+		RETURN_ERROR_STATIC("codec does not write to a file");
 
 	e = avio_open2(&encoder->OutFormatCtx->pb, filename, AVIO_FLAG_WRITE, nullptr, nullptr);
 	if (e < 0)
-		RETURN_STR(tsf::fmt("avio_open2(%v) failed: %v", filename, AvErr(e)));
+		RETURN_ERROR_STR(tsf::fmt("avio_open2(%v) failed: %v", filename, AvErr(e)));
 
 	e = avformat_write_header(encoder->OutFormatCtx, nullptr);
 	if (e < 0)
-		RETURN_STR(tsf::fmt("avformat_write_header failed: %v", AvErr(e)));
+		RETURN_ERROR_STR(tsf::fmt("avformat_write_header failed: %v", AvErr(e)));
 
 	av_dump_format(encoder->OutFormatCtx, 0, filename, 1);
 
@@ -367,13 +353,6 @@ void SetPacketDataPointer(void* _pkt, const void* buf, size_t bufLen) {
 	pkt->size     = (int) bufLen;
 }
 
-// I can't figure out how to get AV_ERROR_MAX_STRING_SIZE into Go code.. so we need this extra malloc
-// Note that this means you must free() the result.
-char* GetAvErrorStr(int averr) {
-	char msg[AV_ERROR_MAX_STRING_SIZE] = {0};
-	av_make_error_string(msg, AV_ERROR_MAX_STRING_SIZE, averr);
-	return strdup(msg);
-}
 
 int AvCodecSendPacket(AVCodecContext* ctx, const void* buf, size_t bufLen) {
 	AVPacket* pkt = av_packet_alloc();

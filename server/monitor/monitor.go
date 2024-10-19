@@ -22,17 +22,6 @@ import (
 	"github.com/cyclopcam/logs"
 )
 
-/* monitor runs our neural networks on the camera streams
-
-We process camera frames in phases:
-1. Read frames from cameras (frameReader)
-2. Process frames with a neural network (nnThread)
-3. Analyze results from the neural network (analyzer)
-
-We connect these phases with channels.
-
-*/
-
 // If not specified, then this is our list of classes that we pay attention to.
 // Other classes (such as potplant, frisbee, etc) are ignored.
 // The classes in our abstract list are implicitly also inside this list.
@@ -61,10 +50,20 @@ var abstractClasses = map[string]string{
 	"bus":        "vehicle",
 }
 
+/*
+	Monitor runs our neural networks on the camera streams
+
+We process camera frames in phases:
+1. Read frames from cameras (frameReader)
+2. Process frames with a neural network (nnThread)
+3. Analyze results from the neural network (analyzer)
+
+We connect these phases with channels.
+*/
 type Monitor struct {
 	Log                       logs.Log
 	detector                  nn.ObjectDetector
-	enabled                   bool                   // If false, then we don't run the frame reader
+	enableFrameReader         bool                   // If false, then we don't run the frame reader
 	mustStopFrameReader       atomic.Bool            // True if stopFrameReader() has been called
 	mustStopNNThreads         atomic.Bool            // NN threads must exit
 	analyzerQueue             chan analyzerQueueItem // Analyzer work queue. When closed, analyzer must exit.
@@ -131,7 +130,11 @@ type analyzerQueueItem struct {
 	detection *nn.DetectionResult
 }
 
-func NewMonitor(logger logs.Log, nnModelName string) (*Monitor, error) {
+// Create a new monitor
+// enableFrameReader is allowed to be false for unit tests, so that the tests can feed the monitor
+// frames directly, without having the monitor pull frames from the cameras.
+// nnModelName is the NN model name, such as "yolov8m"
+func NewMonitor(logger logs.Log, nnModelName string, enableFrameReader bool) (*Monitor, error) {
 	tryPaths := []string{"models", "/var/lib/cyclops/models"}
 	basePath := ""
 	for _, tryPath := range tryPaths {
@@ -238,7 +241,7 @@ func NewMonitor(logger logs.Log, nnModelName string) (*Monitor, error) {
 		},
 		watchers:           map[int64][]chan *AnalysisState{},
 		watchersAllCameras: []chan *AnalysisState{},
-		enabled:            true,
+		enableFrameReader:  enableFrameReader,
 		debugDumpFrames:    true,
 		hasDumpedCamera:    map[int64]bool{},
 	}
@@ -246,7 +249,7 @@ func NewMonitor(logger logs.Log, nnModelName string) (*Monitor, error) {
 	for i := 0; i < m.numNNThreads; i++ {
 		go m.nnThread()
 	}
-	if m.enabled {
+	if m.enableFrameReader {
 		m.startFrameReader()
 	}
 	go m.analyzer()
@@ -264,7 +267,7 @@ func (m *Monitor) Close() {
 	m.Log.Infof("Monitor shutting down")
 
 	// Stop reading images from cameras
-	if m.enabled {
+	if m.enableFrameReader {
 		m.stopFrameReader()
 	}
 
@@ -440,7 +443,7 @@ func (m *Monitor) SetCameras(cameras []*camera.Camera) {
 	// Stopping and starting the frame reader is the simplest solution to prevent
 	// race conditions, but we could probably make this process more seamless, and
 	// not have to stop the world whenever cameras are changed.
-	if m.enabled {
+	if m.enableFrameReader {
 		m.stopFrameReader()
 	}
 
@@ -470,7 +473,7 @@ func (m *Monitor) SetCameras(cameras []*camera.Camera) {
 	//m.watchers = newWatchers
 	//m.watchersLock.Unlock()
 
-	if m.enabled {
+	if m.enableFrameReader {
 		m.startFrameReader()
 	}
 }

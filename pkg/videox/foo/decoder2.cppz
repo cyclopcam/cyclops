@@ -1,0 +1,13 @@
+#include "decoder2.h"
+#include "tsf.hpp"
+
+extern "C" {
+
+void* MakeDecoder(char** err, const char* filename) {
+	return nullptr;
+}
+
+void Decoder_Close(void* encoder) {
+}
+
+}

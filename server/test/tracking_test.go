@@ -1,6 +1,15 @@
 package test
 
-import "testing"
+import (
+	"errors"
+	"io"
+	"testing"
+
+	"github.com/cyclopcam/cyclops/pkg/videox"
+	"github.com/cyclopcam/cyclops/server/monitor"
+	"github.com/cyclopcam/logs"
+	"github.com/stretchr/testify/require"
+)
 
 type EventTrackingParams struct {
 	ModelName  string  // eg "yolov8m"
@@ -14,9 +23,31 @@ type EventTrackingTestCase struct {
 }
 
 func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *EventTrackingTestCase) {
-	// TODO!
+	decoder, err := videox.NewVideoFileDecoder(tcase.VideoFilename)
+	require.NoError(t, err)
+	defer decoder.Close()
+
+	logger := logs.NewTestingLog(t)
+
+	monitor, err := monitor.NewMonitor(logger, params.ModelName, false)
+	require.NoError(t, err)
+	defer monitor.Close()
+
+	monitor.InjectTestCamera()
+
+	for i := 0; true; i++ {
+		frame, err := decoder.NextFrame()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		frame.ToCImageRGB()
+		//monitor.InjectTestFrame(0, frame.PTS, frame.Image)
+	}
 }
 
+// Test NN object detection, and our interpretation of what is a 'new' object,
+// vs an existing object that has moved.
 func TestEventTracking(t *testing.T) {
 	paramPurmutations := []*EventTrackingParams{
 		{

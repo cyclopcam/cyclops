@@ -1,0 +1,15 @@
+#include "common.h"
+
+#include <string.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void* MakeDecoder(char** err, const char* filename);
+void  Decoder_Close(void* encoder);
+
+#ifdef __cplusplus
+}
+#endif

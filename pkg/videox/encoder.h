@@ -1,18 +1,11 @@
+#include "common.h"
+
 #include <string.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavformat/avio.h>
-
-struct NALU {
-	const void* Data;
-	size_t      Size;
-};
 
 void* MakeEncoder(char** err, const char* format, const char* filename, int width, int height);
 void  Encoder_Close(void* encoder);

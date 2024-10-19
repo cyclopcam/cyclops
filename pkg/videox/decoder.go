@@ -242,6 +242,11 @@ func (d *VideoDecoder) NextFrameDeepRef() (*accel.YUVImage, error) {
 		// increasing.
 		cerr := C.avcodec_receive_frame(d.codecCtx, d.srcFrame)
 		if cerr == 0 {
+			// Extract time out of d.srcFrame.pts
+			//var pts time.Time
+			//if d.srcFrame.pts != 0 {
+			//	pts = time.UnixMilli(int64(d.srcFrame.pts) * int64(d.formatCtx.streams[d.videoStream].time_base.num) / int64(d.formatCtx.streams[d.videoStream].time_base.den))
+			//}
 			//dumpYUV420pFrame(d.srcFrame)
 			deepRef := makeYUV420ImageDeepUnsafeReference(d.srcFrame)
 			return &deepRef, nil
