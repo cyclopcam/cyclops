@@ -476,6 +476,7 @@ func (r *PacketBuffer) SaveToMP4(filename string) error {
 		dts := packet.H264PTS - baseTime
 		//pts := dts + time.Nanosecond*1000
 		pts := dts
+		//fmt.Printf("%v\n", pts.Milliseconds())
 		for _, nalu := range packet.H264NALUs {
 			err := enc.WriteNALU(dts, pts, nalu)
 			if err != nil {

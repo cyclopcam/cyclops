@@ -33,6 +33,8 @@ let grabber = ref(null);
 let points: Point[] = []; // when there are 2 points, points[0] is on the left and points[1] is on the right
 let txAtPinchStart = new SeekBarTransform();
 let state = States.Neutral;
+let enableDevTools = true; // Enable developer tools, like exporting a video clip to disc
+let exportClipStartTime = 0;
 
 watch(() => props.renderKick, () => {
 	if (canvas.value) {
@@ -73,6 +75,11 @@ function loadHighResAfterSeek() {
 	}
 }
 
+function canvasWidth(): number {
+	let canv = canvas.value! as HTMLCanvasElement
+	return canv.clientWidth;
+}
+
 // On desktop, you can scroll with the mouse wheel
 function onWheel(e: WheelEvent) {
 	//console.log("onWheel", e.deltaX, e.deltaY);
@@ -96,8 +103,19 @@ function onWheel(e: WheelEvent) {
 //	props.context.render(canv);
 //}
 
+function onPointerDownRightMouse(e: PointerEvent) {
+	if (!enableDevTools) {
+		return;
+	}
+	e.preventDefault();
+}
+
 function onPointerDown(e: PointerEvent) {
 	//console.log("onPointerDown", e.pointerId);
+	if (e.button === 2) {
+		onPointerDownRightMouse(e);
+		return;
+	}
 	let canv = canvas.value! as HTMLCanvasElement
 	let grab = grabber.value! as HTMLDivElement;
 	grab.setPointerCapture(e.pointerId);
@@ -121,8 +139,39 @@ function onPointerDown(e: PointerEvent) {
 	}
 }
 
+function onContextMenu(e: MouseEvent) {
+	if (!enableDevTools) {
+		return;
+	}
+	e.preventDefault();
+}
+
+function onPointerUpRightMouse(e: PointerEvent) {
+	if (!enableDevTools) {
+		return;
+	}
+	e.preventDefault();
+
+	let pointerTime = Math.round(props.context.pixelToTimeMS(pxToCanvas(e.offsetX), pxToCanvas(canvasWidth())));
+
+	if (exportClipStartTime === 0) {
+		// Start clip export 
+		exportClipStartTime = pointerTime;
+	} else {
+		fetch(`/api/camera/debug/saveClip/${props.camera.id}/${exportClipStartTime}/${pointerTime}`, {
+			method: 'POST',
+		});
+		// Reset for another grab
+		exportClipStartTime = 0;
+	}
+}
+
 function onPointerUp(e: PointerEvent) {
 	//console.log("onPointerUp", e.pointerId);
+	if (e.button === 2) {
+		onPointerUpRightMouse(e);
+		return;
+	}
 	pointerUpOrCancel(e);
 }
 
@@ -286,7 +335,7 @@ onMounted(() => {
 <template>
 	<div class="seekBarB">
 		<div ref="grabber" class="grabber" @wheel="onWheel" @pointerdown="onPointerDown" @pointerup="onPointerUp"
-			@pointermove="onPointerMove" @pointercancel="onPointerCancel" />
+			@pointermove="onPointerMove" @pointercancel="onPointerCancel" @contextmenu="onContextMenu" />
 		<canvas ref="canvas" class="canvas" />
 	</div>
 </template>

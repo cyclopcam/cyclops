@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -272,6 +273,19 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	encodedImg, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, compressQuality, 0))
 	www.Check(err)
 
+	// Read events, so that the front-end can show boxes around detected objects.
+	events, err := s.videoDB.ReadEvents(cam.LongLivedName(), imgTime, imgTime)
+	if err != nil {
+		s.Log.Errorf("Failed to read events at %v: %v", imgTime, err)
+	} else {
+		// Create a monitor.Analysis data structure, because we're already using this to transmit detection information
+		// during live view playback, so might as well use the same thing.
+		analysis := s.copyEventsToMonitorAnalysis(cam.ID(), events, imgTime)
+		jsAna, err := json.Marshal(analysis)
+		www.Check(err)
+		w.Header().Set("X-Analysis", string(jsAna))
+	}
+
 	www.CacheSeconds(w, 3600) // could probably cache forever
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("X-Cyclops-Frame-Time", strconv.FormatInt(imgTime.UnixMilli(), 10))
@@ -368,4 +382,25 @@ func (s *Server) httpCamGetFrames(w http.ResponseWriter, r *http.Request, params
 	}
 	s.Log.Infof("Result has %v/%v frames", len(resp.Frames), len(readResult.NALS))
 	www.SendJSON(w, resp)
+}
+
+// This is for developers, for gathering unit tests data.
+// We save mp4 files of the camera's footage, to the local disc.
+func (s *Server) httpCamDebugSaveClip(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	cam := s.getCameraFromIDOrPanic(params.ByName("cameraID"))
+	startTimeMS, _ := strconv.ParseInt(params.ByName("startTime"), 10, 64)
+	endTimeMS, _ := strconv.ParseInt(params.ByName("endTime"), 10, 64)
+	duration := time.Duration(endTimeMS-startTimeMS) * time.Millisecond
+	if duration <= 0 {
+		www.PanicBadRequestf("Invalid time range")
+	}
+	resolutions := []defs.Resolution{defs.ResLD, defs.ResHD}
+	for _, res := range resolutions {
+		result, err := s.videoDB.Archive.Read(cam.RecordingStreamName(res), []string{"video"}, time.UnixMilli(startTimeMS), time.UnixMilli(endTimeMS), fsv.ReadFlagSeekBackToKeyFrame)
+		www.Check(err)
+		pbuffer := videox.ExtractFsvPackets(result["video"].NALS)
+		fn := filepath.Join(s.configDB.GetConfig().Recording.Path, "clip-"+string(res)+".mp4")
+		www.Check(pbuffer.SaveToMP4(fn))
+	}
+	www.SendOK(w)
 }

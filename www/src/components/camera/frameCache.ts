@@ -1,16 +1,19 @@
 import type { CameraInfo, Resolution, StreamInfo } from "@/camera/camera";
+import type { AnalysisState } from "@/camera/nn";
 
-class CachedFrame {
+export class CachedFrame {
 	key: string;
 	blob: Blob;
 	lastUsed: number;
 	frameTimeUnixMS: number;
+	analysis?: AnalysisState;
 
-	constructor(key: string, blob: Blob, frameTimeUnixMS: number) {
+	constructor(key: string, blob: Blob, frameTimeUnixMS: number, analysis?: AnalysisState) {
 		this.key = key;
 		this.blob = blob;
 		this.lastUsed = Date.now();
 		this.frameTimeUnixMS = frameTimeUnixMS;
+		this.analysis = analysis;
 	}
 }
 
@@ -53,14 +56,16 @@ export class FrameCache {
 		this.streams[resolution].keyAnchorUnixMS = timeMS;
 	}
 
-	add(key: string, blob: Blob, frameTimeUnixMS: number) {
-		const frame = new CachedFrame(key, blob, frameTimeUnixMS);
+	add(key: string, blob: Blob, frameTimeUnixMS: number, analysis?: AnalysisState): CachedFrame {
+		const frame = new CachedFrame(key, blob, frameTimeUnixMS, analysis);
 		if (this.frames.get(key)) {
+			// In the unexpected case that we're replacing a frame
 			this.currentSize -= this.frames.get(key)!.blob.size;
 		}
 		this.frames.set(key, frame);
 		this.currentSize += blob.size;
 		this.trim();
+		return frame;
 	}
 
 	get(key: string): CachedFrame | undefined {

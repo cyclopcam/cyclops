@@ -118,8 +118,10 @@ func (v *VideoDB) ReadEvents(camera string, startTime, endTime time.Time) ([]*Ev
 		return nil, err
 	}
 
+	// In the DB, events have 'time' and 'duration', and we want to find all event records that overlap the
+	// requested startTime-to-endTime interval.
 	events := []*Event{}
-	if err := v.db.Where("camera = ? AND time >= ? AND time < ?", cameraID, startTime, endTime).Find(&events).Error; err != nil {
+	if err := v.db.Where("camera = ? AND time < ? AND time + duration > ?", cameraID, endTime.UnixMilli(), startTime.UnixMilli()).Find(&events).Error; err != nil {
 		return nil, err
 	}
 

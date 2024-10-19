@@ -4,7 +4,7 @@ import JMuxer from "jmuxer";
 import { globals } from "@/globals";
 import { drawAnalyzedObjects } from "./detections";
 import { encodeQuery } from "@/util/util";
-import { FrameCache } from "./frameCache";
+import { CachedFrame, FrameCache } from "./frameCache";
 
 /*
 
@@ -196,11 +196,11 @@ export class VideoStreamer {
 		return this.seekCache.get(cacheKey) !== undefined;
 	}
 
-	async fetchSingleFrame(resolution: Resolution, posMS: number, quality: number, keyframeOnly: boolean): Promise<Blob | null> {
+	async fetchSingleFrame(resolution: Resolution, posMS: number, quality: number, keyframeOnly: boolean): Promise<CachedFrame | null> {
 		let cacheKey = FrameCache.makeKey(resolution, posMS);
 		let fromCache = this.seekCache.get(cacheKey);
 		if (fromCache) {
-			return fromCache.blob;
+			return fromCache;
 		}
 		let seekMode = "";
 		if (keyframeOnly) {
@@ -217,8 +217,12 @@ export class VideoStreamer {
 		if (keyframeOnly) {
 			this.seekCache.addKeyframeTime(resolution, frameTime);
 		}
-		this.seekCache.add(cacheKey, blob, frameTime);
-		return blob;
+		let analysis: AnalysisState | undefined;
+		let analysisHeader = r.headers.get("X-Analysis");
+		if (analysisHeader) {
+			analysis = AnalysisState.fromJSON(JSON.parse(analysisHeader));
+		}
+		return this.seekCache.add(cacheKey, blob, frameTime, analysis);
 	}
 
 	async seekTo(posMS: number, resolution: Resolution, keyframeOnly: boolean) {
@@ -235,15 +239,16 @@ export class VideoStreamer {
 
 		let quality = resolution === 'ld' ? 70 : 85;
 		let fetchFrame = this.fetchSingleFrame(resolution, posMS, quality, keyframeOnly);
-		let [blob] = await Promise.all([fetchFrame]);
-		if (!blob) {
+		let [cachedFrame] = await Promise.all([fetchFrame]);
+		if (!cachedFrame) {
 			return;
 		}
-		let img = await createImageBitmap(blob);
+		let img = await createImageBitmap(cachedFrame.blob);
 		if (this.seekImageIndex > myIndex) {
 			// A newer image has already been fetched and decoded
 			return;
 		}
+		this.lastDetection = cachedFrame.analysis ?? new AnalysisState();
 		this.seekImageIndex = myIndex;
 		this.seekImage = img;
 		this.updateOverlay();
