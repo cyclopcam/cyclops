@@ -1,7 +1,3 @@
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavformat/avio.h>
-
 #include "encoder.h"
 #include "tsf.hpp"
 
@@ -56,6 +52,24 @@ inline std::string AvErr(int e) {
 	av_make_error_string(msg, AV_ERROR_MAX_STRING_SIZE, e);
 	return msg;
 }
+
+#define RETURN_ERROR_STATIC(msg) \
+	{                            \
+		*err = strdup(msg);      \
+		return nullptr;          \
+	}
+
+#define RETURN_ERROR_STR(msg)       \
+	{                               \
+		*err = strdup(msg.c_str()); \
+		return nullptr;             \
+	}
+
+#define RETURN_ERROR_EOF()    \
+	{                         \
+		*err = strdup("EOF"); \
+		return nullptr;       \
+	}
 
 std::string WithPrefix(const void* nalu, size_t size) {
 	std::string s;
@@ -352,7 +366,6 @@ void SetPacketDataPointer(void* _pkt, const void* buf, size_t bufLen) {
 	pkt->data     = (uint8_t*) buf;
 	pkt->size     = (int) bufLen;
 }
-
 
 int AvCodecSendPacket(AVCodecContext* ctx, const void* buf, size_t bufLen) {
 	AVPacket* pkt = av_packet_alloc();

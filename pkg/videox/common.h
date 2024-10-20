@@ -1,29 +1,29 @@
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavformat/avio.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavformat/avio.h>
+#include <libavutil/imgutils.h>
+#include <libswscale/swscale.h>
 
 struct NALU {
 	const void* Data;
 	size_t      Size;
 };
 
+// Planar YUV 420 image
+struct YUVImage {
+	int32_t     Width;
+	int32_t     Height;
+	const void* Y;
+	const void* U;
+	const void* V;
+};
+typedef struct YUVImage YUVImage;
+
 char* GetAvErrorStr(int averr);
-
-#define RETURN_ERROR_STATIC(msg)   \
-	{                       \
-		*err = strdup(msg); \
-		return nullptr;     \
-	}
-
-#define RETURN_ERROR_STR(msg)             \
-	{                               \
-		*err = strdup(msg.c_str()); \
-		return nullptr;             \
-	}
 
 #ifdef __cplusplus
 }
