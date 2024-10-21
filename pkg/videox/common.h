@@ -17,6 +17,9 @@ struct NALU {
 struct YUVImage {
 	int32_t     Width;
 	int32_t     Height;
+	int32_t     YStride;
+	int32_t     UStride;
+	int32_t     VStride;
 	const void* Y;
 	const void* U;
 	const void* V;

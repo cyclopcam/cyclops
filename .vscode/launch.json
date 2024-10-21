@@ -208,6 +208,28 @@
 			]
 		},
 		{
+			"name": "decoder_test C++",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/pkg/videox/test/decoder_test",
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}/pkg/videox",
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				},
+				{
+					"description": "Set Disassembly Flavor to Intel",
+					"text": "-gdb-set disassembly-flavor intel",
+					"ignoreFailures": true
+				}
+			]
+		},
+		{
 			"name": "Debug module_hailo (go)",
 			"type": "go",
 			"request": "launch",

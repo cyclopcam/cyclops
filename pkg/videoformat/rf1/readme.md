@@ -31,7 +31,7 @@ our time limit of 1024 seconds. Our index size in such a case is 1024 \* 30 \* 8
 
 Inside the header of our index file, we store a 16-bit value that tells us how
 many packets the file has. 16 bits seems like a small number for this day and
-age, but is a limiting factor here? If we consider that our maximum number of
+age, but is it a limiting factor here? If we consider that our maximum number of
 seconds is 1024, and imagine a high framerate of 30 (most systems use 10 fps),
 then we get 1024 \* 30 = 30720 frames before we hit our 1024-second limit. This
 number is well within the 16-bit limit of 65535.
