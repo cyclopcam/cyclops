@@ -21,23 +21,23 @@ string GetErr(char* e) {
 	return err;
 }
 
-bool IsFramePopulated(YUVImage img, int expectWidth, int expectHeight) {
-	if (img.Width != expectWidth)
+bool IsFramePopulated(AVFrame* img, int expectWidth, int expectHeight) {
+	if (img->width != expectWidth)
 		return false;
-	if (img.Height != expectHeight)
+	if (img->height != expectHeight)
 		return false;
-	if (img.Y == nullptr)
+	if (img->format != AV_PIX_FMT_YUV420P)
 		return false;
-	if (img.U == nullptr)
-		return false;
-	if (img.V == nullptr)
-		return false;
-	if (img.YStride < img.Width)
-		return false;
-	if (img.UStride < img.Width / 2)
-		return false;
-	if (img.VStride < img.Width / 2)
-		return false;
+	//if (img.U == nullptr)
+	//	return false;
+	//if (img.V == nullptr)
+	//	return false;
+	//if (img.YStride < img.Width)
+	//	return false;
+	//if (img.UStride < img.Width / 2)
+	//	return false;
+	//if (img.VStride < img.Width / 2)
+	//	return false;
 	return true;
 }
 
@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
 	// Decode frames
 	int nframes = 0;
 	while (true) {
-		YUVImage img;
+		AVFrame* img;
 		err = GetErr(Decoder_NextFrame(decoder, &img));
 		if (err == "EOF")
 			break;
@@ -132,7 +132,7 @@ int main(int argc, char** argv) {
 		free(packet);
 		assert(err == "");
 		nframes++;
-		YUVImage img;
+		AVFrame* img;
 		err = GetErr(Decoder_DecodePacket(decoder2, packetB.data(), packetB.size(), &img));
 		assert(IsFramePopulated(img, width, height));
 	}

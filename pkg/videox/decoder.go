@@ -511,6 +511,9 @@ func DecodeClosestImageInPacketList(codec Codec, packets []*VideoPacket, targetT
 
 // Create a deep (and unsafe) reference to the YUV 420 frame from ffmpeg.
 func makeYUV420ImageDeepUnsafeReference(frame *C.AVFrame) accel.YUVImage {
+	if frame.format != C.AV_PIX_FMT_YUV420P {
+		panic("Unsupported pixel format. Only YUV420p is supported.")
+	}
 	width := int(frame.width)
 	height := int(frame.height)
 	strideY := int(frame.linesize[0])

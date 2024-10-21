@@ -45,25 +45,30 @@ inline std::string AvErr(int e) {
 #define RETURN_ERROR_STATIC(msg) return strdup(msg)
 #define ERROR_EOF "EOF"
 
-inline char* ShallowCopyFrameToYUVImage(AVFrame* srcFrame, YUVImage* output) {
-	// The strides are typically quite a bit more than the width (or width/2 for UV).
-	if (srcFrame->linesize[0] < srcFrame->width)
-		return DUPSTR(tsf::fmt("Only 4:2:0 images supported (plane 0): %v < %v", srcFrame->linesize[0], srcFrame->width));
-	if (srcFrame->linesize[1] < srcFrame->width / 2)
-		return DUPSTR(tsf::fmt("Only 4:2:0 images supported (plane 1): %v < %v", srcFrame->linesize[1], srcFrame->width / 2));
-	if (srcFrame->linesize[2] < srcFrame->width / 2)
-		return DUPSTR(tsf::fmt("Only 4:2:0 images supported (plane 2): %v < %v", srcFrame->linesize[2], srcFrame->width / 2));
-
-	output->Width   = srcFrame->width;
-	output->Height  = srcFrame->height;
-	output->YStride = srcFrame->linesize[0];
-	output->UStride = srcFrame->linesize[1];
-	output->VStride = srcFrame->linesize[2];
-	output->Y       = srcFrame->data[0];
-	output->U       = srcFrame->data[1];
-	output->V       = srcFrame->data[2];
-	return nullptr;
-}
+//inline char* ShallowCopyFrameToYUVImage(AVFrame* srcFrame, YUVImage* output) {
+//	// The strides are typically quite a bit more than the width (or width/2 for UV).
+//	//if (srcFrame->linesize[0] < srcFrame->width)
+//	//	return DUPSTR(tsf::fmt("Only 4:2:0 images supported (plane 0): %v < %v", srcFrame->linesize[0], srcFrame->width));
+//	//if (srcFrame->linesize[1] < srcFrame->width / 2)
+//	//	return DUPSTR(tsf::fmt("Only 4:2:0 images supported (plane 1): %v < %v", srcFrame->linesize[1], srcFrame->width / 2));
+//	//if (srcFrame->linesize[2] < srcFrame->width / 2)
+//	//	return DUPSTR(tsf::fmt("Only 4:2:0 images supported (plane 2): %v < %v", srcFrame->linesize[2], srcFrame->width / 2));
+//
+//	// Limit it here, because our 'accel' package assume 420P
+//	if (srcFrame->format != AV_PIX_FMT_YUV420P)
+//		return DUPSTR(tsf::fmt("Only YUV420P images supported: %v", srcFrame->format));
+//
+//	output->Chroma  = ChromaSampling_420;
+//	output->Width   = srcFrame->width;
+//	output->Height  = srcFrame->height;
+//	output->YStride = srcFrame->linesize[0];
+//	output->UStride = srcFrame->linesize[1];
+//	output->VStride = srcFrame->linesize[2];
+//	output->Y       = srcFrame->data[0];
+//	output->U       = srcFrame->data[1];
+//	output->V       = srcFrame->data[2];
+//	return nullptr;
+//}
 
 extern "C" {
 
@@ -142,7 +147,7 @@ void Decoder_VideoSize(void* decoder, int* width, int* height) {
 }
 
 // Decode the next frame in the video file
-char* Decoder_NextFrame(void* decoder, YUVImage* output) {
+char* Decoder_NextFrame(void* decoder, AVFrame** output) {
 	int       e      = 0;
 	Decoder*  d      = (Decoder*) decoder;
 	AVPacket* packet = d->DecodePacket;
@@ -173,7 +178,9 @@ char* Decoder_NextFrame(void* decoder, YUVImage* output) {
 		else if (e < 0)
 			return DUPSTR(tsf::fmt("avcodec_receive_frame() failed: %v", AvErr(e)));
 
-		return ShallowCopyFrameToYUVImage(d->SrcFrame, output);
+		//return ShallowCopyFrameToYUVImage(d->SrcFrame, output);
+		*output = d->SrcFrame;
+		return nullptr;
 	}
 }
 
@@ -216,7 +223,7 @@ char* Decoder_NextPacket(void* decoder, void** packet, size_t* packetSize) {
 }
 
 // Decode a packet from a video stream
-char* Decoder_DecodePacket(void* decoder, const void* packet, size_t packetSize, YUVImage* output) {
+char* Decoder_DecodePacket(void* decoder, const void* packet, size_t packetSize, AVFrame** output) {
 	int       e = 0;
 	Decoder*  d = (Decoder*) decoder;
 	AVPacket* p = d->DecodePacket;
@@ -225,7 +232,6 @@ char* Decoder_DecodePacket(void* decoder, const void* packet, size_t packetSize,
 	p->size = packetSize;
 
 	e = avcodec_send_packet(d->CodecCtx, p);
-	//av_packet_free(&p);
 	if (e < 0)
 		return DUPSTR(tsf::fmt("avcodec_send_packet() failed: %v", AvErr(e)));
 
@@ -235,7 +241,9 @@ char* Decoder_DecodePacket(void* decoder, const void* packet, size_t packetSize,
 	else if (e < 0)
 		return DUPSTR(tsf::fmt("avcodec_receive_frame() failed: %v", AvErr(e)));
 
-	return ShallowCopyFrameToYUVImage(d->SrcFrame, output);
+	//return ShallowCopyFrameToYUVImage(d->SrcFrame, output);
+	*output = d->SrcFrame;
+	return nullptr;
 }
 
 } // extern "C"
