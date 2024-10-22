@@ -43,7 +43,7 @@ func RunInferenceOnVideoFile(model ObjectDetector, inputFile string, options Inf
 		nnClassToOutputClass[iIn] = iOut
 	}
 
-	decoder, err := videox.NewVideoFileDecoder(inputFile)
+	decoder, err := videox.NewVideoFileDecoder2(inputFile)
 	if err != nil {
 		return nil, err
 	}
@@ -62,9 +62,11 @@ func RunInferenceOnVideoFile(model ObjectDetector, inputFile string, options Inf
 	frameIdx := -1
 	for {
 		frame, err := decoder.NextFrame()
-		if errors.Is(err, videox.ErrResourceTemporarilyUnavailable) {
-			continue
-		}
+		// Since rewriting decoder in C++, I haven't implemented ErrResourceTemporarilyUnavailable.
+		// If you need that, implement it now.
+		//if errors.Is(err, videox.ErrResourceTemporarilyUnavailable) {
+		//	continue
+		//}
 		if errors.Is(err, io.EOF) {
 			break
 		}

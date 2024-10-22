@@ -525,7 +525,7 @@ func (r *PacketBuffer) ResetPTS() {
 // Decode the center-most keyframe
 // This is O(1), assuming no errors or funny business like no keyframes.
 func (r *PacketBuffer) ExtractThumbnail() (*cimg.Image, error) {
-	decoder, err := NewVideoStreamDecoder("h264")
+	decoder, err := NewVideoStreamDecoder2("h264")
 	if err != nil {
 		return nil, err
 	}

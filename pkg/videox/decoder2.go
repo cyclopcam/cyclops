@@ -62,6 +62,20 @@ func (d *VideoDecoder2) Close() {
 	}
 }
 
+func (d *VideoDecoder2) Width() int {
+	var width C.int
+	var height C.int
+	C.Decoder_VideoSize(d.decoder, &width, &height)
+	return int(width)
+}
+
+func (d *VideoDecoder2) Height() int {
+	var width C.int
+	var height C.int
+	C.Decoder_VideoSize(d.decoder, &width, &height)
+	return int(height)
+}
+
 // NextFrame reads the next frame from a file and returns a copy of the YUV image.
 func (d *VideoDecoder2) NextFrame() (*accel.YUVImage, error) {
 	img, err := d.NextFrameDeepRef()

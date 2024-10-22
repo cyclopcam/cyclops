@@ -23,7 +23,7 @@ type EventTrackingTestCase struct {
 }
 
 func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *EventTrackingTestCase) {
-	decoder, err := videox.NewVideoFileDecoder(tcase.VideoFilename)
+	decoder, err := videox.NewVideoFileDecoder2(tcase.VideoFilename)
 	require.NoError(t, err)
 	defer decoder.Close()
 

@@ -23,7 +23,7 @@ type VideoDecodeReader struct {
 	Log logs.Log
 	//TrackID int
 	//Track   *gortsplib.TrackH264
-	Decoder *videox.VideoDecoder
+	Decoder *videox.VideoDecoder2
 
 	incoming     StreamSinkChan
 	nPackets     int64
@@ -45,7 +45,7 @@ func NewVideoDecodeReader() *VideoDecodeReader {
 func (r *VideoDecodeReader) OnConnect(stream *Stream) (StreamSinkChan, error) {
 	r.Log = stream.Log
 
-	decoder, err := videox.NewVideoStreamDecoder(stream.Codec)
+	decoder, err := videox.NewVideoStreamDecoder2(stream.Codec)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to start '%v' decoder: %w", stream.Codec, err)
 	}
