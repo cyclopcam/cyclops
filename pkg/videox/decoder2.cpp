@@ -77,7 +77,7 @@ char* MakeDecoder(const char* filename, const char* codecName, void** output_dec
 	memset(d, 0, sizeof(Decoder));
 	DecoderCleanup cleanup(d);
 	int            e     = 0;
-	AVCodec*       codec = nullptr;
+	const AVCodec* codec = nullptr;
 
 	if (filename != nullptr) {
 		e = avformat_open_input(&d->FormatCtx, filename, nullptr, nullptr);

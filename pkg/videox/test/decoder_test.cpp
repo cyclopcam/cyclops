@@ -4,6 +4,9 @@
 #include "annexb.h"
 #include "tsf.hpp"
 
+// Step 1:
+// cd pkg/videox
+
 // Build and run:
 // clang++    -O2 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder2.cpp annexb.cpp && ./test/decoder_test
 // clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder2.cpp annexb.cpp && ./test/decoder_test
