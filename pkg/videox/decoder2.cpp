@@ -76,8 +76,12 @@ char* MakeDecoder(const char* filename, const char* codecName, void** output_dec
 	Decoder* d = (Decoder*) malloc(sizeof(Decoder));
 	memset(d, 0, sizeof(Decoder));
 	DecoderCleanup cleanup(d);
-	int            e     = 0;
+	int            e = 0;
+#if LIBAVCODEC_VERSION_MAJOR < 59
+	AVCodec* codec = nullptr;
+#else
 	const AVCodec* codec = nullptr;
+#endif
 
 	if (filename != nullptr) {
 		e = avformat_open_input(&d->FormatCtx, filename, nullptr, nullptr);
