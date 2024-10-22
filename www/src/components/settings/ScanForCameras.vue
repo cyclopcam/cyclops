@@ -89,6 +89,7 @@ onMounted(async () => {
 
 	await fetchExisting();
 
+	console.log(`ScanForCameras onMounted usePreviousScan=${props.usePreviousScan}, lastNetworkCameraScanJSON=`, globals.lastNetworkCameraScanJSON);
 	if (props.usePreviousScan === '1' && globals.lastNetworkCameraScanJSON) {
 		// The user is busy setting up a bunch of cameras, so we don't want to rescan after each one.
 		scanned.value = (globals.lastNetworkCameraScanJSON as []).map(x => CameraRecord.fromJSON(x));

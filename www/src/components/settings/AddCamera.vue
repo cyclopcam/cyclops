@@ -8,11 +8,13 @@ import TextPlus from '@/icons/text-plus.svg';
 const router = useRouter();
 
 function onManual() {
-	pushRoute(router, { name: 'rtSettingsEditCamera', params: { id: 'new', host: '', model: '', returnToScan: 0 } });
+	// Params are not allowed to be empty strings, so we use a space as a placeholder.
+	// The edit camera component recognizes this and treats it like an empty string.
+	pushRoute(router, { name: 'rtSettingsEditCamera', params: { id: 'new', host: ' ', model: ' ', returnToScan: 0 } });
 }
 
 function onScan() {
-	pushRoute(router, { name: 'rtSettingsScanForCameras' });
+	pushRoute(router, { name: 'rtSettingsScanForCameras', params: { usePreviousScan: '0' } });
 }
 
 </script>

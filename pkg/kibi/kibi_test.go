@@ -25,6 +25,7 @@ func TestKibi(t *testing.T) {
 	}
 
 	goodParse(int64(0), "0")
+	goodParse(int64(12345), "12345")
 	goodParse(int64(50), "50 bytes")
 	goodParse(int64(50), "50")
 	goodParse(int64(50*1024), "50 kb")

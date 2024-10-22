@@ -33,8 +33,9 @@ let grabber = ref(null);
 let points: Point[] = []; // when there are 2 points, points[0] is on the left and points[1] is on the right
 let txAtPinchStart = new SeekBarTransform();
 let state = States.Neutral;
+
 let enableDevTools = true; // Enable developer tools, like exporting a video clip to disc
-let exportClipStartTime = 0;
+let exportClipStartTime = 0; // dev tool (export clip by right clicking once on the left, once on the right of the clip)
 
 watch(() => props.renderKick, () => {
 	if (canvas.value) {

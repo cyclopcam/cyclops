@@ -213,33 +213,9 @@ func (s *Server) httpConfigMeasureStorageSpace(w http.ResponseWriter, r *http.Re
 	}
 
 	s.Log.Infof("Measure space available at %v (raw %v)", path, inPath)
-	availB := int64(0)
-
-	// Keep walking up the directory tree until we can find the free space.
-	// This is useful because often the path specified won't exist yet, but
-	// it will be rooted in a valid directory, somewhere higher up.
-	availPath := path
-	for {
-		// On linux
-		// df -B1 --output=avail /path
-		// Example output:
-		//        Avail
-		// 815667085312
-		res, err := shell.Run("df", "-B1", "--output=avail", availPath)
-		if err != nil {
-			if strings.Contains(err.Error(), "No such file or directory") {
-				availPath = filepath.Dir(availPath)
-				if availPath == "\\" || availPath == "/" || availPath == "." {
-					www.PanicBadRequestf("Invalid path: %v", availPath)
-				} else {
-					continue
-				}
-			}
-			www.PanicBadRequestf("Failed to read space available: %v", err)
-		}
-		availStr := digitRegex.FindString(res)
-		availB, _ = strconv.ParseInt(availStr, 10, 64)
-		break
+	availB, err := configdb.MeasureDiscSpaceAvailable(path)
+	if err != nil {
+		www.PanicBadRequestf("%v", err)
 	}
 
 	// For the disk used portion, we don't consider it a failed API call

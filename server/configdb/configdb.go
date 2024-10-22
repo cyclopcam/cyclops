@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/cyclopcam/cyclops/pkg/kibi"
 	"github.com/cyclopcam/dbh"
 	"github.com/cyclopcam/logs"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -42,19 +43,45 @@ func NewConfigDB(logger logs.Log, dbFilename, explicitPrivateKey string) (*Confi
 		return nil, fmt.Errorf("Failed to read or create private key: %w", err)
 	}
 
-	systemConfig := SystemConfig{}
-	configDB.First(&systemConfig)
-
 	cdb := &ConfigDB{
 		Log:        logger,
 		DB:         configDB,
 		PrivateKey: privateKey,
 		PublicKey:  privateKey.PublicKey(),
 	}
-	if systemConfig.Value != nil {
+
+	systemConfig := SystemConfig{}
+	configDB.First(&systemConfig)
+	if systemConfig.Value == nil || systemConfig.Value.Data.Recording.Path == "" {
+		// New system, so choose some defaults.
+		// Note that systemConfig.Value is never nil in practice, due to the way migrations evolved.
+		// But we leave that check in there for sanity.
+		cfg := chooseInitialDefaults(dbFilename)
+		cdb.SetConfig(cfg)
+	} else {
+		// Existing system, save config from DB into local variable 'config', for convenience
+		cdb.configLock.Lock()
 		cdb.config = systemConfig.Value.Data
+		cdb.configLock.Unlock()
 	}
 	return cdb, nil
+}
+
+func chooseInitialDefaults(dbFilename string) ConfigJSON {
+	cfg := ConfigJSON{}
+	if cfg.Recording.Mode == "" {
+		cfg.Recording.Mode = RecordModeOnDetection
+	}
+	if cfg.Recording.Path == "" {
+		cfg.Recording.Path = filepath.Join(filepath.Dir(dbFilename), "video")
+	}
+	if cfg.Recording.MaxStorageSize == "" {
+		avail, _ := MeasureDiscSpaceAvailable(cfg.Recording.Path)
+		if avail != 0 {
+			cfg.Recording.MaxStorageSize = kibi.FormatBytes(avail * 80 / 100)
+		}
+	}
+	return cfg
 }
 
 func readOrCreatePrivateKey(logger logs.Log, db *gorm.DB, explicitPrivateKey string) (wgtypes.Key, error) {

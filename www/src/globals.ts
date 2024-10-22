@@ -11,10 +11,10 @@ import { natNotifyNetworkDown } from "./nativeOut";
 // A global reactive object used throughout the app
 export class Globals {
 	// If isApp is true, then we are running in a WebView inside our mobile app.
-	// If isApp is false, then we running in a regular browser.
+	// If isApp is false, then we running in a regular browser (but could still be a mobile device).
 	isApp = false;
 
-	isUsingProxy = window.location.origin.startsWith("https://proxy");
+	isUsingProxy = window.location.origin.startsWith("https://") && window.location.hostname.includes(".p.cyclopcam.org");
 
 	isFirstVideoPlay = true;
 
@@ -134,7 +134,12 @@ export class Globals {
 		this.startupErrors = root.startupErrors;
 		console.log(`startupErrors`, root.startupErrors);
 
-		if (root.cameras.length === 0) {
+		// I'd rather get rid of this special welcome screen and just use our regular
+		// configuration screens, even on initial load.
+		let gotoWelcome = root.cameras.length === 0;
+		gotoWelcome = false;
+
+		if (gotoWelcome) {
 			if (setVueRoute)
 				replaceRoute(router, { name: "rtWelcome" });
 		} else {

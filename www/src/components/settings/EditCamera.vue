@@ -216,12 +216,16 @@ onMounted(async () => {
 		//	password.value = recentPasswords[recentPasswords.length - 1];
 		//}
 	} else {
+		// Params are not allowed to be empty strings, so we use a single space
+		// as a special value that we interpret as an empty string.
 		console.log("EditCamera props.host", props.host);
 		console.log("EditCamera props.model", props.model);
-		if (props.host) {
+		console.log("globals.lastCameraPassword", globals.lastCameraPassword);
+		console.log("globals.lastCameraUsername", globals.lastCameraUsername);
+		if (props.host && props.host !== ' ') {
 			host.value = props.host;
 		}
-		if (props.model) {
+		if (props.model && props.model !== ' ') {
 			model.value = props.model;
 		}
 		if (globals.lastCameraPassword) {
@@ -264,8 +268,8 @@ onMounted(async () => {
 				<div style="width:10px" />
 				<button :class="{ focalButton: canSave(), submitButtons: true }" :disabled="!canSave() || busySaving"
 					@click="onSave">{{
-			saveButtonTitle()
-		}}</button>
+						saveButtonTitle()
+					}}</button>
 			</div>
 			<div v-if="!isNewCamera || testResultImageBlob || testBusy" class="previewContainer">
 				<camera-preview :camera="original" :image-blob="testResultImageBlob" />

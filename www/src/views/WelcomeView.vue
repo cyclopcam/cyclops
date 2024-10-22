@@ -14,14 +14,14 @@ const router = useRouter();
 enum Stages {
 	SetupVPN = 0, // This is disabled.. but maybe someday we bring it back.
 	CreateFirstUser = 1,
-	ConfigureVariables = 2,
-	ConfigureCameras = 3,
+	//ConfigureVariables = 2,
+	ConfigureCameras = 2,
 }
 
 let stage = ref(Stages.CreateFirstUser);
 let isSetupVPN = computed(() => stage.value === Stages.SetupVPN);
 let isCreateFirstUser = computed(() => stage.value === Stages.CreateFirstUser);
-let isConfigureVariables = computed(() => stage.value === Stages.ConfigureVariables);
+//let isConfigureVariables = computed(() => stage.value === Stages.ConfigureVariables);
 let isConfigureCameras = computed(() => stage.value === Stages.ConfigureCameras);
 
 function stageText() {
@@ -30,15 +30,20 @@ function stageText() {
 			return "VPN Activation";
 		case Stages.CreateFirstUser:
 			return "Create a username and password for yourself";
-		case Stages.ConfigureVariables:
-			return "System configuration";
+		//case Stages.ConfigureVariables:
+		//	return "System configuration";
 		case Stages.ConfigureCameras:
 			return "Let's find your cameras";
 	}
 }
 
 async function moveToNextStage() {
-	//console.log("moveToNextStage");
+	console.log("moveToNextStage");
+	await globals.postAuthenticateLoadSystemInfo(false);
+	replaceRoute(router, { name: "rtSettingsHome" });
+
+
+	/*
 	if (stage.value === Stages.ConfigureCameras) {
 		// we're done
 		globals.networkError = '';
@@ -56,6 +61,7 @@ async function moveToNextStage() {
 			moveToNextStage();
 		}
 	}
+	*/
 }
 
 onMounted(async () => {

@@ -50,11 +50,10 @@ async function onSubmit() {
 <template>
 	<div class="flexColumnCenter">
 		<form-text :ctx="ctx" v-model="username" placeholder="username" :required="true" :focus="true" />
-		<form-text :ctx="ctx" v-model="password" placeholder="password" :required="true" :password="true" />
+		<form-text :ctx="ctx" v-model="password" placeholder="password" :required="true" :password="true"
+			:submit-on-enter="true" />
 		<form-bottom :ctx="ctx" @submit="onSubmit" />
 	</div>
 </template>
 
-<style lang="scss" scoped>
-
-</style>
+<style lang="scss" scoped></style>

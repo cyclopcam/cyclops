@@ -76,6 +76,8 @@ func ValidateConfig(c *ConfigJSON) error {
 	return nil
 }
 
+// If isDefaults is true, then this is the default recording config for the whole system.
+// If isDefaults is false, then this is the recording config for a specific camera.
 func ValidateRecordingConfig(isDefaults bool, c *RecordingJSON) error {
 	if isDefaults && c.Mode == "" {
 		return fmt.Errorf("Recording mode is required")
