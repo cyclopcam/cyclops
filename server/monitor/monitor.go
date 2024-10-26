@@ -77,6 +77,7 @@ type Monitor struct {
 	avgTimeNSPerFrameNNDet    atomic.Int64           // Average time (ns) per frame, for just the neural network (time inside a thread)
 	hasShownResolutionWarning atomic.Bool            // True if we've shown a warning about camera resolution vs NN resolution
 	nnClassList               []string               // All the classes that the NN emits (in their native order)
+	nnClassMap                map[string]int         // Map from class name to class index
 	nnClassFilterSet          map[string]bool        // NN classes that we're interested in (eg person, car)
 	nnClassBoxMerge           map[string]string      // Merge overlapping boxes eg car/truck -> car
 	nnClassAbstract           map[string]string      // Remap classes to a more abstract class (eg car -> vehicle, truck -> vehicle)
@@ -130,14 +131,31 @@ type analyzerQueueItem struct {
 	detection *nn.DetectionResult
 }
 
+type MonitorOptions struct {
+	// EnableFrameReader is allowed to be false for unit tests, so that the tests can feed the monitor
+	// frames directly, without having the monitor pull frames from the cameras.
+	EnableFrameReader bool
+
+	// ModelName is the NN model name, such as "yolov8m"
+	ModelName string
+
+	// ModelPaths is a list of directories to search for NN models
+	ModelPaths []string
+}
+
+// DefaultMonitorOptions returns a new MonitorOptions object with default values
+func DefaultMonitorOptions() *MonitorOptions {
+	return &MonitorOptions{
+		EnableFrameReader: true,
+		ModelName:         "yolov8m",
+		ModelPaths:        []string{"models", "/var/lib/cyclops/models"},
+	}
+}
+
 // Create a new monitor
-// enableFrameReader is allowed to be false for unit tests, so that the tests can feed the monitor
-// frames directly, without having the monitor pull frames from the cameras.
-// nnModelName is the NN model name, such as "yolov8m"
-func NewMonitor(logger logs.Log, nnModelName string, enableFrameReader bool) (*Monitor, error) {
-	tryPaths := []string{"models", "/var/lib/cyclops/models"}
+func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	basePath := ""
-	for _, tryPath := range tryPaths {
+	for _, tryPath := range options.ModelPaths {
 		abs, err := filepath.Abs(tryPath)
 		if err != nil {
 			logger.Warnf("Unable to resolve model path candidate '%v' to an absolute path: %v", tryPath, err)
@@ -149,7 +167,7 @@ func NewMonitor(logger logs.Log, nnModelName string, enableFrameReader bool) (*M
 		}
 	}
 	if basePath == "" {
-		return nil, fmt.Errorf("Could not find models directory. Searched in [%v]", strings.Join(tryPaths, ", "))
+		return nil, fmt.Errorf("Could not find models directory. Searched in [%v]", strings.Join(options.ModelPaths, ", "))
 	}
 	logger.Infof("Loading NN models from '%v'", basePath)
 
@@ -191,11 +209,11 @@ func NewMonitor(logger logs.Log, nnModelName string, enableFrameReader bool) (*M
 	// SYNC-NN-THREAD-QUEUE-MIN-SIZE
 	nnQueueSize := nnThreads * 3
 
-	logger.Infof("Loading NN model '%v'", nnModelName)
+	logger.Infof("Loading NN model '%v'", options.ModelName)
 
 	modelSetup := nn.NewModelSetup()
 
-	detector, err := nnload.LoadModel(logger, basePath, nnModelName, nnThreadingModel, modelSetup)
+	detector, err := nnload.LoadModel(logger, basePath, options.ModelName, nnThreadingModel, modelSetup)
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +232,12 @@ func NewMonitor(logger logs.Log, nnModelName string, enableFrameReader bool) (*M
 	// been emitted by the NN.
 	analysisQueueSize := 20
 
+	classList := detector.Config().Classes
+	classMap := map[string]int{}
+	for i, c := range classList {
+		classMap[c] = i
+	}
+
 	logger.Infof("Starting %v NN detection threads", nnThreads)
 
 	m := &Monitor{
@@ -224,7 +248,8 @@ func NewMonitor(logger logs.Log, nnModelName string, enableFrameReader bool) (*M
 		analyzerStopped:  make(chan bool),
 		nnModelSetup:     modelSetup,
 		numNNThreads:     nnThreads,
-		nnClassList:      detector.Config().Classes,
+		nnClassList:      classList,
+		nnClassMap:       classMap,
 		nnClassFilterSet: makeClassFilter(classFilterList),
 		nnClassAbstract:  abstractClasses,
 		nnClassBoxMerge:  boxMergeClasses,
@@ -241,8 +266,8 @@ func NewMonitor(logger logs.Log, nnModelName string, enableFrameReader bool) (*M
 		},
 		watchers:           map[int64][]chan *AnalysisState{},
 		watchersAllCameras: []chan *AnalysisState{},
-		enableFrameReader:  enableFrameReader,
-		debugDumpFrames:    true,
+		enableFrameReader:  options.EnableFrameReader,
+		debugDumpFrames:    false,
 		hasDumpedCamera:    map[int64]bool{},
 	}
 	//m.sendTestImageToNN()
@@ -293,6 +318,11 @@ func (m *Monitor) Close() {
 // Return the list of all classes that the NN detects
 func (m *Monitor) AllClasses() []string {
 	return m.detector.Config().Classes
+}
+
+// Returns the number of items awaiting processing in the NN queue
+func (m *Monitor) NNThreadQueueLength() int {
+	return len(m.nnThreadQueue)
 }
 
 // Return the most recent frame and detection result for a camera

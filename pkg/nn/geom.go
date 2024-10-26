@@ -1,6 +1,8 @@
 package nn
 
 import (
+	"fmt"
+
 	"github.com/chewxy/math32"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 )
@@ -90,6 +92,10 @@ func (r *Rect) MaxDelta(b Rect) int {
 	maxP := max(gen.Abs(r.X-b.X), gen.Abs(r.Y-b.Y))
 	maxS := max(gen.Abs(r.Width-b.Width), gen.Abs(r.Height-b.Height))
 	return int(max(maxP, maxS))
+}
+
+func (r *Rect) String() string {
+	return fmt.Sprintf("[%v,%v,%v,%v]", r.X, r.Y, r.X+r.Width, r.Y+r.Height)
 }
 
 // ResizeTransform expresses a transformation that we've made on an image (eg resizing, or resizing + moving)

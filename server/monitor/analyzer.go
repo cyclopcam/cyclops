@@ -163,13 +163,38 @@ func (m *Monitor) analyzer() {
 	m.analyzerStopped <- true
 }
 
+// Create abstract objects for each detection, based on nnClassAbstract.
+// For example, car -> vehicle, truck -> vehicle, etc.
+func (m *Monitor) createAbstractObjects(objects []nn.ObjectDetection) []nn.ObjectDetection {
+	orgLen := len(objects)
+	for i := 0; i < orgLen; i++ {
+		abstractClass := m.nnClassAbstract[m.nnClassList[objects[i].Class]]
+		if abstractClass != "" {
+			objects = append(objects, nn.ObjectDetection{
+				Class:      m.nnClassMap[abstractClass],
+				Confidence: objects[i].Confidence,
+				Box:        objects[i].Box,
+			})
+		}
+	}
+	return objects
+}
+
 func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem) {
 	settings := &m.analyzerSettings
 	itemPTS := item.detection.FramePTS
 	positionHistorySize := nextPowerOf2(settings.positionHistorySize)
 
+	// Create abstract objects before merging, because this tends to create duplicates.
+	// For example, you'll often get a car and a truck detection of the same object.
+	objects := m.createAbstractObjects(item.detection.Objects)
+
 	// Merge objects together such as 'car' and 'truck' if they have tight overlap
-	keepDetections := nn.MergeSimilarObjects(item.detection.Objects, m.nnClassBoxMerge, m.nnClassList, 0.9)
+	//keepDetections := nn.MergeSimilarObjects(objects, m.nnClassBoxMerge, m.nnClassList, 0.9)
+	keepDetections := make([]int, len(objects))
+	for i := range objects {
+		keepDetections[i] = i
+	}
 
 	// Discard detections of classes that we're not interested in
 	shortList := make([]int, 0, 100)
@@ -177,7 +202,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 		shortList = keepDetections
 	} else {
 		for _, i := range keepDetections {
-			if m.nnClassFilterSet[m.nnClassList[item.detection.Objects[i].Class]] {
+			if m.nnClassFilterSet[m.nnClassList[objects[i].Class]] {
 				shortList = append(shortList, i)
 			}
 		}
@@ -186,7 +211,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	// Sort from largest to smallest, and retain only the top N
 	if len(shortList) > settings.maxAnalyzeObjectsPerFrame {
 		sort.Slice(shortList, func(i, j int) bool {
-			return item.detection.Objects[shortList[i]].Box.Area() > item.detection.Objects[shortList[j]].Box.Area()
+			return objects[shortList[i]].Box.Area() > objects[shortList[j]].Box.Area()
 		})
 		shortList = shortList[:settings.maxAnalyzeObjectsPerFrame]
 	}
@@ -195,7 +220,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	// a high enough IOU, then create a new tracked object.
 	previousHasMatch := make([]bool, len(cam.tracked))
 	for _, i := range shortList {
-		det := item.detection.Objects[i]
+		det := objects[i]
 		// Check if this detection is already in the recentDetections list
 		bestJ := -1
 		bestIOU := float32(0)

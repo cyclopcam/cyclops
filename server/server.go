@@ -114,7 +114,9 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 
 	s.ApplyConfig()
 
-	monitor, err := monitor.NewMonitor(s.Log, nnModelName, true)
+	monitorOptions := monitor.DefaultMonitorOptions()
+	monitorOptions.ModelName = nnModelName
+	monitor, err := monitor.NewMonitor(s.Log, monitorOptions)
 	if err != nil {
 		return nil, err
 	}
