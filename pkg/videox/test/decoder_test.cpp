@@ -90,7 +90,8 @@ int main(int argc, char** argv) {
 	assert(width == 320);
 	assert(height == 240);
 	// Decode frames
-	int nframes = 0;
+	int     nframes = 0;
+	int64_t ptsPrev = 0;
 	while (true) {
 		AVFrame* img;
 		err = GetErr(Decoder_NextFrame(decoder, &img));
@@ -98,6 +99,9 @@ int main(int argc, char** argv) {
 			break;
 		nframes++;
 		assert(IsFramePopulated(img, width, height));
+		//int64_t ptsNano = Decoder_PTSNano(decoder, img->pts);
+		//tsf::print("%18d %18d %18d %18d\n", ptsNano, ptsNano / 1000000, img->pts, img->pts - ptsPrev);
+		//ptsPrev = img->pts;
 	}
 	// To get the true number of frames in a video, do this:
 	// ffmpeg -i ../../testdata/tracking/0001-LD.mp4 -map 0:v:0 -c copy -f null - 2>&1 | grep "frame="

@@ -34,11 +34,11 @@ func DecodeSinglePacketToImage(codec Codec, packet *VideoPacket) (*cimg.Image, e
 		return nil, err
 	}
 	defer decoder.Close()
-	img, err := decoder.Decode(packet)
+	frame, err := decoder.Decode(packet)
 	if err != nil {
 		return nil, err
 	}
-	return img.ToCImageRGB(), nil
+	return frame.Image.ToCImageRGB(), nil
 }
 
 // Decode the list of packets, and return the first image that successfully decodes
@@ -75,15 +75,15 @@ func DecodeClosestImageInPacketList(codec Codec, packets []*VideoPacket, targetT
 	bestDelta := time.Duration(1<<63 - 1)
 	var firstError error
 	for _, p := range packets {
-		img, err := decoder.DecodeDeepRef(p)
+		frame, err := decoder.DecodeDeepRef(p)
 		if err != nil && firstError == nil {
 			firstError = err
 		}
-		if img != nil {
+		if frame != nil {
 			nFramesDecoded++
 			if cache != nil {
 				frameCacheKey := cache.MakeKey(videoCacheKey, p.WallPTS.UnixMilli())
-				cache.AddFrame(frameCacheKey, img.Clone())
+				cache.AddFrame(frameCacheKey, frame.Image.Clone())
 			}
 			timeDelta := time.Duration(0)
 			if !targetTime.IsZero() {
@@ -95,7 +95,7 @@ func DecodeClosestImageInPacketList(codec Codec, packets []*VideoPacket, targetT
 			if timeDelta < bestDelta {
 				bestTime = p.WallPTS
 				bestDelta = timeDelta
-				bestImg = img.Clone()
+				bestImg = frame.Image.Clone()
 			}
 			if p.WallPTS.After(targetTime) || targetTime.IsZero() || bestDelta == 0 {
 				// No point decoding packets once we've passed our desired time, or if we're 100% on our desired time

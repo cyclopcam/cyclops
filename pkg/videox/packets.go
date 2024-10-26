@@ -544,9 +544,9 @@ func (r *PacketBuffer) ExtractThumbnail() (*cimg.Image, error) {
 	}
 	for ; i < len(r.Packets); i++ {
 		//fmt.Printf("%v: %v\n", i, r.Packets[i].Summary())
-		img, _ := decoder.Decode(r.Packets[i])
-		if img != nil {
-			return img.ToCImageRGB(), nil
+		frame, _ := decoder.Decode(r.Packets[i])
+		if frame != nil {
+			return frame.Image.ToCImageRGB(), nil
 		}
 	}
 	return nil, errors.New("No thumbnail available")

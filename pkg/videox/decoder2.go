@@ -9,6 +9,7 @@ import "C"
 import (
 	"errors"
 	"io"
+	"time"
 	"unsafe"
 
 	"github.com/cyclopcam/cyclops/pkg/accel"
@@ -17,6 +18,20 @@ import (
 // This will replace VideoDecoder once it's finished
 type VideoDecoder2 struct {
 	decoder unsafe.Pointer
+}
+
+// A decoded frame
+type Frame struct {
+	Image *accel.YUVImage // Image (might be a deep reference into ffmpeg memory)
+	PTS   int64           // Presentation time in native time units. Use VideoDecoder2.FrameTimeToDuration() to convert to a time.Duration
+}
+
+// Return a deep clone of the frame (new image memory)
+func (f *Frame) DeepClone() *Frame {
+	return &Frame{
+		Image: f.Image.Clone(),
+		PTS:   f.PTS,
+	}
 }
 
 func takeCError(err *C.char) error {
@@ -77,35 +92,38 @@ func (d *VideoDecoder2) Height() int {
 }
 
 // NextFrame reads the next frame from a file and returns a copy of the YUV image.
-func (d *VideoDecoder2) NextFrame() (*accel.YUVImage, error) {
+func (d *VideoDecoder2) NextFrame() (*Frame, error) {
 	img, err := d.NextFrameDeepRef()
 	if err != nil {
 		return nil, err
 	}
-	return img.Clone(), nil
+	return img.DeepClone(), nil
 }
 
 // NextFrameDeepRef will read the next frame from a file and return a deep
 // reference into the libavcodec decoded image buffer.
 // The next call to NextFrame/NextFrameDeepRef will invalidate that image.
-func (d *VideoDecoder2) NextFrameDeepRef() (*accel.YUVImage, error) {
+func (d *VideoDecoder2) NextFrameDeepRef() (*Frame, error) {
 	var frame *C.AVFrame
 	err := takeCError(C.Decoder_NextFrame(d.decoder, &frame))
 	if err != nil {
 		return nil, err
 	}
 	img := makeYUV420ImageDeepUnsafeReference(frame)
-	return &img, nil
+	return &Frame{
+		Image: &img,
+		PTS:   int64(frame.pts),
+	}, nil
 }
 
 // Decode the packet and return a copy of the YUV image.
 // This is used when decoding a stream (not a file).
-func (d *VideoDecoder2) Decode(packet *VideoPacket) (*accel.YUVImage, error) {
-	img, err := d.DecodeDeepRef(packet)
+func (d *VideoDecoder2) Decode(packet *VideoPacket) (*Frame, error) {
+	frame, err := d.DecodeDeepRef(packet)
 	if err != nil {
 		return nil, err
 	}
-	return img.Clone(), nil
+	return frame.DeepClone(), nil
 }
 
 // WARNING: The image returned is only valid while the decoder is still alive,
@@ -113,7 +131,7 @@ func (d *VideoDecoder2) Decode(packet *VideoPacket) (*accel.YUVImage, error) {
 // The pixels in the returned image are not a garbage-collected Go slice.
 // They point directly into the libavcodec decode buffer.
 // That's why the function name has the "DeepRef" suffix.
-func (d *VideoDecoder2) DecodeDeepRef(packet *VideoPacket) (*accel.YUVImage, error) {
+func (d *VideoDecoder2) DecodeDeepRef(packet *VideoPacket) (*Frame, error) {
 	var frame *C.AVFrame
 	encoded := packet.EncodeToAnnexBPacket()
 	err := takeCError(C.Decoder_DecodePacket(d.decoder, unsafe.Pointer(&encoded[0]), C.size_t(len(encoded)), &frame))
@@ -121,5 +139,13 @@ func (d *VideoDecoder2) DecodeDeepRef(packet *VideoPacket) (*accel.YUVImage, err
 		return nil, err
 	}
 	img := makeYUV420ImageDeepUnsafeReference(frame)
-	return &img, nil
+	return &Frame{
+		Image: &img,
+		PTS:   int64(frame.pts),
+	}, nil
+}
+
+// Convert a native frame time to a time.Duration
+func (d *VideoDecoder2) FrameTimeToDuration(pts int64) time.Duration {
+	return time.Duration(C.int64_t(C.Decoder_PTSNano(d.decoder, C.int64_t(pts))))
 }

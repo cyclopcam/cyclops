@@ -62,8 +62,8 @@ func toStreamInfoJSON(s *camera.Stream) streamInfoJSON {
 	r := streamInfoJSON{
 		FPS:              stats.FPSRounded(),
 		FrameSize:        math.Round(stats.FrameSize),
-		KeyFrameSize:     math.Round(stats.KeyFrameSize),
-		InterFrameSize:   math.Round(stats.InterFrameSize),
+		KeyFrameSize:     math.Round(stats.KeyframeSize),
+		InterFrameSize:   math.Round(stats.InterframeSize),
 		KeyframeInterval: stats.KeyframeInterval,
 	}
 	inf := s.Info()
@@ -403,4 +403,30 @@ func (s *Server) httpCamDebugSaveClip(w http.ResponseWriter, r *http.Request, pa
 		www.Check(pbuffer.SaveToMP4(fn))
 	}
 	www.SendOK(w)
+}
+
+// Example usage: curl -u USERNAME:PASSWORD localhost:8080/api/camera/debug/stats
+func (s *Server) httpCamDebugStats(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	result := map[string]camera.StreamStats{}
+	for _, cam := range s.LiveCameras.Cameras() {
+		result[cam.Name()+"-HD"] = cam.HighStream.RecentFrameStats()
+		result[cam.Name()+"-LD"] = cam.LowStream.RecentFrameStats()
+	}
+	www.SendJSON(w, result)
+}
+
+// Example usage: curl -u USERNAME:PASSWORD localhost:8080/api/camera/debug/frameTimes/1/HD
+func (s *Server) httpCamDebugFrameTimes(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	cam := s.getCameraFromIDOrPanic(params.ByName("cameraID"))
+	res := parseResolutionOrPanic(params.ByName("resolution"))
+	stream := cam.GetStream(res)
+	times := stream.RecentFrameTimes()
+	// Turn absolute times into intervals
+	for i := len(times) - 1; i > 0; i-- {
+		times[i] = times[i] - times[i-1]
+		times[i] = math.Round(times[i]*1000) / 1000
+	}
+
+	times = times[1:]
+	www.SendJSON(w, times)
 }

@@ -8,10 +8,10 @@ extern "C" {
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 
-struct NALU {
+typedef struct NALU {
 	const void* Data;
 	size_t      Size;
-};
+} NALU;
 
 char* GetAvErrorStr(int averr);
 

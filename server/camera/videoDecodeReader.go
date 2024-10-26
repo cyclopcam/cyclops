@@ -133,19 +133,19 @@ func (r *VideoDecodeReader) OnPacketRTP(packet *videox.VideoPacket) {
 	// That's why we join all NALUs into a single packet and send that to avcodec.
 
 	// convert H264 NALUs to RGB frames
-	img, err := r.Decoder.DecodeDeepRef(packet)
+	frame, err := r.Decoder.DecodeDeepRef(packet)
 	if err != nil {
 		r.Log.Errorf("Failed to decode H264 NALU: %v", err)
 		return
 	}
 
-	if img == nil {
+	if frame == nil {
 		return
 	}
 
 	// The 'img' returned by Decode is transient, so we need make a copy of it.
 	// See comment about the potential wastefulness of this memcpy at the top of VideoDecodeReader
-	r.cloneIntoLastImg(img, packet.WallPTS)
+	r.cloneIntoLastImg(frame.Image, packet.WallPTS)
 	//r.Log.Infof("[Packet %v] Decoded frame with size %v", r.nPackets, img.Bounds().Max)
 }
 

@@ -98,6 +98,8 @@ func (s *Server) SetupHTTP() error {
 	protected("v", "GET", "/api/camera/image/:cameraID/:resolution/:time", s.httpCamGetImage)
 	protected("v", "GET", "/api/camera/frames/:cameraID/:resolution/:startTime/:endTime", s.httpCamGetFrames)
 	protected("a", "POST", "/api/camera/debug/saveClip/:cameraID/:startTime/:endTime", s.httpCamDebugSaveClip)
+	protected("v", "GET", "/api/camera/debug/stats", s.httpCamDebugStats)
+	protected("v", "GET", "/api/camera/debug/frameTimes/:cameraID/:resolution", s.httpCamDebugFrameTimes)
 	protected("v", "GET", "/api/ws/camera/stream/:cameraID/:resolution", s.httpCamStreamVideo)
 	protected("a", "GET", "/api/config/camera/:cameraID", s.httpConfigGetCamera)
 	protected("a", "GET", "/api/config/cameras", s.httpConfigGetCameras)

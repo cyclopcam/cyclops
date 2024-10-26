@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/monitor"
@@ -33,7 +34,8 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	require.NoError(t, err)
 	defer monitor.Close()
 
-	monitor.InjectTestCamera()
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	monitor.InjectTestCamera() // cameraIndex = 0
 
 	for i := 0; true; i++ {
 		frame, err := decoder.NextFrame()
@@ -41,8 +43,8 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 			break
 		}
 		require.NoError(t, err)
-		frame.ToCImageRGB()
-		//monitor.InjectTestFrame(0, frame.PTS, frame.Image)
+		//frame.Image.ToCImageRGB()
+		monitor.InjectTestFrame(0, baseTime.Add(decoder.FrameTimeToDuration(frame.PTS)), frame.Image)
 	}
 }
 

@@ -81,7 +81,7 @@ func RunInferenceOnVideoFile(model ObjectDetector, inputFile string, options Inf
 			continue
 		}
 		//fmt.Printf("%v,", frameIdx)
-		rgb := frame.ToCImageRGB()
+		rgb := frame.Image.ToCImageRGB()
 
 		if rgb.Height > options.MaxVideoHeight && options.MaxVideoHeight > 0 {
 			aspect := float64(rgb.Width) / float64(rgb.Height)

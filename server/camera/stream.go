@@ -13,6 +13,7 @@ import (
 	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/bmharper/ringbuffer"
 	"github.com/cyclopcam/cyclops/pkg/gen"
+	"github.com/cyclopcam/cyclops/pkg/stats"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/logs"
 	"github.com/pion/rtp"
@@ -67,11 +68,13 @@ type StreamInfo struct {
 
 // Average observed stats from a sample of recent frames
 type StreamStats struct {
-	KeyframeInterval int     // number of frames between keyframes
-	FPS              float64 // frames per second
-	FrameSize        float64 // average frame size in bytes
-	KeyFrameSize     float64 // average key-frame size in bytes
-	InterFrameSize   float64 // average non-key-frame size in bytes
+	KeyframeInterval int     `json:"keyframeInterval"` // number of frames between keyframes
+	FPS              float64 `json:"fps"`              // frames per second
+	FrameSize        float64 `json:"frameSize"`        // average frame size in bytes
+	KeyframeSize     float64 `json:"keyframeSize"`     // average key-frame size in bytes
+	InterframeSize   float64 `json:"interframeSize"`   // average non-key-frame size in bytes
+	FrameIntervalAvg float64 `json:"frameIntervalAvg"` // Average seconds between frames
+	FrameIntervalVar float64 `json:"frameIntervalVar"` // Variance of seconds between frames
 }
 
 func (s *StreamStats) FPSRounded() int {
@@ -429,6 +432,16 @@ func (s *Stream) RecentFrameStats() StreamStats {
 	return s.statsNoMutexLock()
 }
 
+func (s *Stream) RecentFrameTimes() []float64 {
+	s.recentFramesLock.Lock()
+	defer s.recentFramesLock.Unlock()
+	times := make([]float64, s.recentFrames.Len())
+	for i := 0; i < s.recentFrames.Len(); i++ {
+		times[i] = s.recentFrames.Peek(i).pts.Seconds()
+	}
+	return times
+}
+
 // Return the wall time of the most recently received packet
 func (s *Stream) LastPacketReceivedAt() time.Time {
 	s.livenessLock.Lock()
@@ -437,25 +450,32 @@ func (s *Stream) LastPacketReceivedAt() time.Time {
 }
 
 func (s *Stream) statsNoMutexLock() StreamStats {
-	stats := StreamStats{}
+	ss := StreamStats{}
 	if s.recentFrames.Len() < 3 {
-		return stats
+		return ss
 	}
 	count := s.recentFrames.Len()
 	oldest := s.recentFrames.Peek(0)
 	latest := s.recentFrames.Peek(count - 1)
 	elapsed := latest.pts.Seconds() - oldest.pts.Seconds()
-	stats.FPS = float64(count-1) / elapsed
+	ss.FPS = float64(count-1) / elapsed
 	nIDR := 0
 	nInter := 0
 	lastIDR := -1
 	kfInterval := []int{}
+	intervals := make([]float64, count-1)
+	prevPTS := oldest.pts.Seconds()
 	for i := 0; i < count; i++ {
 		frame := s.recentFrames.Peek(i)
 		frameSize := float64(frame.size)
-		stats.FrameSize += frameSize
+		framePTSSeconds := frame.pts.Seconds()
+		ss.FrameSize += frameSize
+		if i != 0 {
+			intervals[i-1] = framePTSSeconds - prevPTS
+		}
+		prevPTS = framePTSSeconds
 		if frame.isIDR {
-			stats.KeyFrameSize += frameSize
+			ss.KeyframeSize += frameSize
 			nIDR++
 			if lastIDR != -1 {
 				//fmt.Printf("kfInterval: %v -> %v = %v\n", i, lastIDR, i-lastIDR)
@@ -463,20 +483,21 @@ func (s *Stream) statsNoMutexLock() StreamStats {
 			}
 			lastIDR = i
 		} else {
-			stats.InterFrameSize += frameSize
+			ss.InterframeSize += frameSize
 			nInter++
 		}
 	}
-	stats.FrameSize /= float64(count)
-	stats.KeyFrameSize /= float64(nIDR)
-	stats.InterFrameSize /= float64(nInter)
+	ss.FrameSize /= float64(count)
+	ss.KeyframeSize /= float64(nIDR)
+	ss.InterframeSize /= float64(nInter)
+	ss.FrameIntervalAvg, ss.FrameIntervalVar = stats.MeanVar(intervals)
 	if len(kfInterval) >= 2 {
 		// Some strange stuff here with my Hikvision cameras. I seem to get a keyframe when I first
 		// connect, but thereafter the keyframes are at regular intervals, which aren't related
 		// to that initial frame. That's why we make our stats buffer 256 big, so we have sufficient samples.
-		stats.KeyframeInterval, _ = gen.Mode(kfInterval)
+		ss.KeyframeInterval, _ = stats.Mode(kfInterval)
 	}
-	return stats
+	return ss
 }
 
 // Connect a sink.
@@ -572,8 +593,8 @@ func (s *Stream) addFrameToStats(packet *videox.VideoPacket) {
 
 	if s.loggedStatsAt.IsZero() && s.recentFrames.Len() == s.recentFrames.Capacity() {
 		s.loggedStatsAt = time.Now()
-		stats := s.statsNoMutexLock()
-		s.Log.Infof("FPS: %.1f, KF interval: %v, Avg: %.0f, Keyframe: %.0f, Intra: %.0f, Rate: %.0f KB/s", stats.FPS, stats.KeyframeInterval, stats.FrameSize, stats.KeyFrameSize, stats.InterFrameSize, stats.FrameSize*stats.FPS/1024)
+		ss := s.statsNoMutexLock()
+		s.Log.Infof("FPS: %.1f, KF interval: %v, Avg: %.0f, Keyframe: %.0f, Intra: %.0f, Rate: %.0f KB/s", ss.FPS, ss.KeyframeInterval, ss.FrameSize, ss.KeyframeSize, ss.InterframeSize, ss.FrameSize*ss.FPS/1024)
 	}
 }
 

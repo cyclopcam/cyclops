@@ -14,13 +14,13 @@ func TestDecoder2(t *testing.T) {
 
 	nframes := 0
 	for {
-		img, err := decoder.NextFrame()
+		frame, err := decoder.NextFrame()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		require.NoError(t, err)
-		require.Equal(t, 320, img.Width)
-		require.Equal(t, 240, img.Height)
+		require.Equal(t, 320, frame.Image.Width)
+		require.Equal(t, 240, frame.Image.Height)
 		// The following snippet is useful as a sanity check,
 		// but I'm not too worried about fleshing this test out too much, because
 		// we've already got a test of the underlying C code decoder_test.cpp

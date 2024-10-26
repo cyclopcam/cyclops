@@ -478,6 +478,7 @@ func (m *Monitor) SetCameras(cameras []*camera.Camera) {
 	}
 }
 
+// State internal to the NN frame reader, for each camera
 type frameReaderCameraState struct {
 	mcam               *monitorCamera
 	lastFrameID        int64 // Last frame we've seen from this camera
@@ -518,6 +519,10 @@ func (m *Monitor) readFrames() {
 	nStats := 0
 	for !m.mustStopFrameReader.Load() {
 		idle := true
+		// Why do we have this inner loop?
+		// We keep it so that we can detect when to idle.
+		// If we complete a loop over all looperCameras, and we didn't have any work to do,
+		// then we idle for a few milliseconds.
 		for i := 0; i < len(looperCameras); i++ {
 			if m.mustStopFrameReader.Load() {
 				break

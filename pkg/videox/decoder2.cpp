@@ -182,7 +182,6 @@ char* Decoder_NextFrame(void* decoder, AVFrame** output) {
 		else if (e < 0)
 			return DUPSTR(tsf::fmt("avcodec_receive_frame() failed: %v", AvErr(e)));
 
-		//return ShallowCopyFrameToYUVImage(d->SrcFrame, output);
 		*output = d->SrcFrame;
 		return nullptr;
 	}
@@ -245,9 +244,16 @@ char* Decoder_DecodePacket(void* decoder, const void* packet, size_t packetSize,
 	else if (e < 0)
 		return DUPSTR(tsf::fmt("avcodec_receive_frame() failed: %v", AvErr(e)));
 
-	//return ShallowCopyFrameToYUVImage(d->SrcFrame, output);
 	*output = d->SrcFrame;
 	return nullptr;
+}
+
+// Return the native PTS in nanoseconds, or -1 on error
+int64_t Decoder_PTSNano(void* decoder, int64_t pts) {
+	Decoder* d = (Decoder*) decoder;
+	if (d->FormatCtx == nullptr || d->VideoStream >= d->FormatCtx->nb_streams)
+		return -1;
+	return av_rescale_q(pts, d->FormatCtx->streams[d->VideoStream]->time_base, (AVRational){1, 1000000000});
 }
 
 } // extern "C"
