@@ -13,7 +13,7 @@ import (
 func disabledTestEncoder(t *testing.T) {
 	root := "/home/ben/dev/cyclops"
 
-	enc, err := NewVideoEncoder("mp4", root+"/dump/test-go.mp4", 2048, 1536)
+	enc, err := NewVideoEncoder("h264", "mp4", root+"/dump/test-go.mp4", 2048, 1536, AVPixelFormatYUV420P, AVPixelFormatYUV420P, VideoEncoderTypePackets, 10)
 	require.Nil(t, err)
 	defer enc.Close()
 

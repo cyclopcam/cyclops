@@ -457,7 +457,7 @@ func (r *PacketBuffer) SaveToMP4(filename string) error {
 	}
 	baseTime := r.Packets[firstIDR_i].H264PTS
 
-	enc, err := NewVideoEncoder("mp4", filename, width, height)
+	enc, err := NewVideoEncoder("h264", "mp4", filename, width, height, AVPixelFormatYUV420P, AVPixelFormatYUV420P, VideoEncoderTypePackets, 0)
 	if err != nil {
 		return err
 	}

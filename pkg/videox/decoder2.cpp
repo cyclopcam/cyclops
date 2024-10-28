@@ -2,14 +2,14 @@
 #include "tsf.hpp"
 
 struct Decoder {
-	AVFormatContext* FormatCtx;   // Only populated for files
-	int              VideoStream; // Only populated for files
-	AVCodecContext*  CodecCtx;
-	AVFrame*         SrcFrame;
-	SwsContext*      SwsCtx;
-	AVFrame*         DstFrame;
-	uint8_t*         DstFramePtr;
-	AVPacket*        DecodePacket; // Used during decode
+	AVFormatContext* FormatCtx    = nullptr; // Only populated for files
+	int              VideoStream  = 0;       // Only populated for files
+	AVCodecContext*  CodecCtx     = nullptr;
+	AVFrame*         SrcFrame     = nullptr;
+	SwsContext*      SwsCtx       = nullptr;
+	AVFrame*         DstFrame     = nullptr;
+	uint8_t*         DstFramePtr  = nullptr;
+	AVPacket*        DecodePacket = nullptr; // Used during decode
 };
 
 struct DecoderCleanup {
@@ -28,8 +28,7 @@ struct DecoderCleanup {
 			avcodec_free_context(&D->CodecCtx);
 		if (D->FormatCtx)
 			avformat_close_input(&D->FormatCtx);
-		//avformat_free_context(D->FormatCtx);
-		free(D);
+		delete D;
 	}
 };
 
@@ -73,8 +72,7 @@ inline std::string AvErr(int e) {
 extern "C" {
 
 char* MakeDecoder(const char* filename, const char* codecName, void** output_decoder) {
-	Decoder* d = (Decoder*) malloc(sizeof(Decoder));
-	memset(d, 0, sizeof(Decoder));
+	Decoder*       d = new Decoder();
 	DecoderCleanup cleanup(d);
 	int            e = 0;
 #if LIBAVCODEC_VERSION_MAJOR < 59
