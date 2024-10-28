@@ -13,7 +13,11 @@ enum EncoderType {
 };
 
 typedef struct EncoderParams {
-	AVCodec*           Codec;
+#if LIBAVCODEC_VERSION_MAJOR < 59
+	AVCodec* Codec;
+#else
+	const AVCodec* Codec;
+#endif
 	int                Width;
 	int                Height;
 	enum EncoderType   Type;
