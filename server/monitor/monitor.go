@@ -32,6 +32,8 @@ var defaultClassFilterList = []string{
 	nn.COCOClasses[nn.COCOBus],
 	nn.COCOClasses[nn.COCOMotorcycle],
 	nn.COCOClasses[nn.COCOTruck],
+	// abstract classes
+	"vehicle",
 }
 
 // If we get detection boxes of any of these pairs, and the boxes have very high
@@ -43,6 +45,7 @@ var boxMergeClasses = map[string]string{
 }
 
 // Class map from concrete to abstract (eg car -> vehicle, truck -> vehicle)
+// NOTE: If you add new mappings here, also add them to defaultClassFilterList
 var abstractClasses = map[string]string{
 	"car":        "vehicle",
 	"motorcycle": "vehicle",
@@ -81,6 +84,7 @@ type Monitor struct {
 	nnClassFilterSet          map[string]bool        // NN classes that we're interested in (eg person, car)
 	nnClassBoxMerge           map[string]string      // Merge overlapping boxes eg car/truck -> car
 	nnClassAbstract           map[string]string      // Remap classes to a more abstract class (eg car -> vehicle, truck -> vehicle)
+	nnAbstractClassSet        map[int]bool           // Set of abstract class indices
 	analyzerSettings          analyzerSettings       // Analyzer settings
 	nextTrackedObjectID       idgen.Uint32           // Next ID to assign to a tracked object
 
@@ -141,14 +145,18 @@ type MonitorOptions struct {
 
 	// ModelPaths is a list of directories to search for NN models
 	ModelPaths []string
+
+	// If true, force NCNN to run in multithreaded mode. Used to speed up unit tests.
+	MaxSingleThreadPerformance bool
 }
 
 // DefaultMonitorOptions returns a new MonitorOptions object with default values
 func DefaultMonitorOptions() *MonitorOptions {
 	return &MonitorOptions{
-		EnableFrameReader: true,
-		ModelName:         "yolov8m",
-		ModelPaths:        []string{"models", "/var/lib/cyclops/models"},
+		EnableFrameReader:          true,
+		ModelName:                  "yolov8m",
+		ModelPaths:                 []string{"models", "/var/lib/cyclops/models"},
+		MaxSingleThreadPerformance: false,
 	}
 }
 
@@ -182,6 +190,8 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		// If we can do model parallelism with NN accelerators, then we'll probably
 		// use some kind of queue issued by a single CPU thread, instead of having
 		// a bunch of CPU threads hitting the accelerator.
+		nnThreads = 1
+	} else if options.MaxSingleThreadPerformance {
 		nnThreads = 1
 	} else if numCPU > 4 {
 		nnThreads = numCPU / 2
@@ -233,6 +243,9 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	analysisQueueSize := 20
 
 	classList := detector.Config().Classes
+	for _, v := range abstractClasses {
+		classList = append(classList, v)
+	}
 	classMap := map[string]int{}
 	for i, c := range classList {
 		classMap[c] = i
@@ -241,18 +254,19 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	logger.Infof("Starting %v NN detection threads", nnThreads)
 
 	m := &Monitor{
-		Log:              logger,
-		detector:         detector,
-		nnThreadQueue:    make(chan monitorQueueItem, nnQueueSize),
-		analyzerQueue:    make(chan analyzerQueueItem, analysisQueueSize),
-		analyzerStopped:  make(chan bool),
-		nnModelSetup:     modelSetup,
-		numNNThreads:     nnThreads,
-		nnClassList:      classList,
-		nnClassMap:       classMap,
-		nnClassFilterSet: makeClassFilter(classFilterList),
-		nnClassAbstract:  abstractClasses,
-		nnClassBoxMerge:  boxMergeClasses,
+		Log:                logger,
+		detector:           detector,
+		nnThreadQueue:      make(chan monitorQueueItem, nnQueueSize),
+		analyzerQueue:      make(chan analyzerQueueItem, analysisQueueSize),
+		analyzerStopped:    make(chan bool),
+		nnModelSetup:       modelSetup,
+		numNNThreads:       nnThreads,
+		nnClassList:        classList,
+		nnClassMap:         classMap,
+		nnClassFilterSet:   makeClassFilter(classFilterList),
+		nnClassAbstract:    abstractClasses,
+		nnClassBoxMerge:    boxMergeClasses,
+		nnAbstractClassSet: makeAbstractClassSet(abstractClasses, classMap),
 		analyzerSettings: analyzerSettings{
 			positionHistorySize:         30,   // at 10 fps, 30 frames = 3 seconds
 			maxAnalyzeObjectsPerFrame:   20,   // We have O(n^2) analysis functions, so we need to keep this small.
@@ -317,7 +331,7 @@ func (m *Monitor) Close() {
 
 // Return the list of all classes that the NN detects
 func (m *Monitor) AllClasses() []string {
-	return m.detector.Config().Classes
+	return m.nnClassList
 }
 
 // Returns the number of items awaiting processing in the NN queue
@@ -435,6 +449,15 @@ func (m *Monitor) sendToWatchers(state *AnalysisState) {
 //	}
 //	return r
 //}
+
+// Return a set containing all the abstract class indices
+func makeAbstractClassSet(abstractClasses map[string]string, classMap map[string]int) map[int]bool {
+	r := map[int]bool{}
+	for _, abstract := range abstractClasses {
+		r[classMap[abstract]] = true
+	}
+	return r
+}
 
 func makeClassFilter(classes []string) map[string]bool {
 	r := map[string]bool{}

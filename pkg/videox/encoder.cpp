@@ -287,6 +287,11 @@ char* MakeEncoder(const char* format, const char* filename, EncoderParams* encod
 			encoder->InputFrame = av_frame_alloc();
 			if (encoder->InputFrame == nullptr)
 				RETURN_ERROR_STATIC("Failed to allocate input frame");
+			// Since we allow RGB24, we should maybe also allow setting
+			// encoder->InputFrame->color_range. For example, it should perhaps be AVCOL_RANGE_JPEG.
+			// We leave it unspecified, and I'm not sure what ffmpeg does in that case.
+			// ChatGPT thinks that RGB24 will by default use full range (aka JPEG range), so this
+			// is probably not a problem for us right now.
 			encoder->InputFrame->format = encoderParams->PixelFormatInput;
 			encoder->InputFrame->width  = encoderParams->Width;
 			encoder->InputFrame->height = encoderParams->Height;

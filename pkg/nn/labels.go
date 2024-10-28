@@ -15,7 +15,8 @@ type ImageLabels struct {
 
 // ObjectDetection is an object that a neural network has found in an image
 type ObjectDetection struct {
-	Class      int     `json:"class"`
-	Confidence float32 `json:"confidence"`
-	Box        Rect    `json:"box"`
+	Class         int     `json:"class"`
+	ConcreteClass int     `json:"concreteClass"` // If this is an abstract object (eg vehicle), then concreteClass is the class of the original object (eg car, truck)
+	Confidence    float32 `json:"confidence"`
+	Box           Rect    `json:"box"`
 }

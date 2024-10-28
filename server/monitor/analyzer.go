@@ -170,10 +170,16 @@ func (m *Monitor) createAbstractObjects(objects []nn.ObjectDetection) []nn.Objec
 	for i := 0; i < orgLen; i++ {
 		abstractClass := m.nnClassAbstract[m.nnClassList[objects[i].Class]]
 		if abstractClass != "" {
+			//fmt.Printf("abstractClass %v -> %v\n", m.nnClassList[objects[i].Class], abstractClass)
+			abstractIdx, ok := m.nnClassMap[abstractClass]
+			if !ok {
+				panic("Abstract class not found in nnClassMap")
+			}
 			objects = append(objects, nn.ObjectDetection{
-				Class:      m.nnClassMap[abstractClass],
-				Confidence: objects[i].Confidence,
-				Box:        objects[i].Box,
+				Class:         abstractIdx,
+				ConcreteClass: objects[i].Class,
+				Confidence:    objects[i].Confidence,
+				Box:           objects[i].Box,
 			})
 		}
 	}
@@ -189,12 +195,20 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	// For example, you'll often get a car and a truck detection of the same object.
 	objects := m.createAbstractObjects(item.detection.Objects)
 
+	// If a small pickup ends up producing a car and a truck with very similar boxes, and we create two
+	// abstract vehicle objects out of those, then delete one of those vehicles, so that we only
+	// end up with one vehicle.
+	// MergeSimilarObjects() was my first stab at this, but that was before introducing the concept
+	// of abstract classes.
+	keepDetections := nn.MergeSimilarAbstractObjects(objects, m.nnAbstractClassSet, 0.9)
+
 	// Merge objects together such as 'car' and 'truck' if they have tight overlap
 	//keepDetections := nn.MergeSimilarObjects(objects, m.nnClassBoxMerge, m.nnClassList, 0.9)
-	keepDetections := make([]int, len(objects))
-	for i := range objects {
-		keepDetections[i] = i
-	}
+
+	//keepDetections := make([]int, len(objects))
+	//for i := range objects {
+	//	keepDetections[i] = i
+	//}
 
 	// Discard detections of classes that we're not interested in
 	shortList := make([]int, 0, 100)
@@ -224,11 +238,20 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 		// Check if this detection is already in the recentDetections list
 		bestJ := -1
 		bestIOU := float32(0)
+		bestDistance := float32(9e20)
 		for j, tracked := range cam.tracked {
 			if !previousHasMatch[j] && det.Class == tracked.firstDetection.Class {
 				iou := det.Box.IOU(tracked.lastPosition)
+				distance := det.Box.Center().Distance(tracked.lastPosition.Center())
+				// We allow objects to have zero overlap, because our effective framerate (i.e. NN framerate)
+				// is often low enough that an object can move a significant distance between frames, so much
+				// that the boxes don't overlap at all.
+				// So if iou is zero, then we fall back to distance between rectangle centers.
 				if iou > bestIOU {
 					bestIOU = iou
+					bestJ = j
+				} else if bestIOU == 0 && distance < bestDistance {
+					bestDistance = distance
 					bestJ = j
 				}
 			}
@@ -286,6 +309,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 
 	// Publish results so that live feed can display them in the app.
 	// This is useful for debugging the analyzer, and people just like to see it operate.
+	// In addition, this goes into the event database. It's not just for live viewing!
 	result := &AnalysisState{
 		CameraID: cam.cameraID,
 		Objects:  make([]TrackedObject, 0), // non-nil, so that we always get an array in our JSON output
