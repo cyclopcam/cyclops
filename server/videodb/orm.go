@@ -1,6 +1,8 @@
 package videodb
 
 import (
+	"time"
+
 	"github.com/cyclopcam/dbh"
 )
 
@@ -19,6 +21,11 @@ type Event struct {
 	Duration   int32                               `json:"duration"`   // Duration of event in milliseconds
 	Camera     uint32                              `json:"camera"`     // LongLived camera name (via lookup in 'strings' table)
 	Detections *dbh.JSONField[EventDetectionsJSON] `json:"detections"` // Objects detected in the event
+}
+
+// Return the end time of the event.
+func (e *Event) EndTime() time.Time {
+	return e.Time.Get().Add(time.Duration(e.Duration) * time.Millisecond)
 }
 
 // SYNC-VIDEODB-EVENTDETECTIONS

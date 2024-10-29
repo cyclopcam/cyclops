@@ -19,7 +19,10 @@ export class Globals {
 	isFirstVideoPlay = true;
 
 	cameras: CameraInfo[] = [];
+
 	objectClasses: string[] = []; // Objects detected by our neural network(s) (eg person, car, truck,...)
+	abstractClasses: { [index: string]: string } = {}; // Abstract classes, eg {"car": "vehicle", "truck": "vehicle"}
+
 	isLoggedIn = false; // Only valid after isSystemInfoLoadFinished = true
 	startupErrors: StartupErrorJSON[] = []; // Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
 	isSystemInfoLoadFinished = false;
@@ -136,6 +139,7 @@ export class Globals {
 		if (this.startupErrors.length > 0)
 			console.log(`startupErrors`, root.startupErrors);
 		this.objectClasses = root.objectClasses;
+		this.abstractClasses = root.abstractClasses;
 
 		// I'd rather get rid of this special welcome screen and just use our regular
 		// configuration screens, even on initial load.
@@ -210,4 +214,5 @@ export class Globals {
 }
 
 export const globals = reactive(new Globals());
+
 

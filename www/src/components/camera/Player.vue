@@ -117,6 +117,9 @@ function onSeekEnd() {
 
 function seekToNoDelay(seekTo: number, resolution: Resolution, keyframeOnly: boolean) {
 	streamer.seekTo(seekTo, resolution, keyframeOnly);
+
+	// This emit is how we end up stopping/pausing the live stream (if it's currently busy).
+	// The 'seek' event is picked up by Monitor.vue, which then stops the live stream.
 	emits('seek', seekTo);
 }
 

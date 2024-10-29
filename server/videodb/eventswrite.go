@@ -95,14 +95,18 @@ func (v *VideoDB) addBoxToTrackedObject(camera string, cameraResolution [2]int, 
 		v.current[id] = obj
 	}
 
-	// Ignore boxes if they move less than this many pixels,
-	// and if their confidence changes by less than this amount.
+	// Ignore boxes if:
+	// 1. They move less than this many pixels AND
+	// 2. Their confidence changes by less than this amount AND
+	// 3. It has been less than this amount of time since we last recorded a box (SCRAP THIS. It's just a crutch. Shouldn't be any need for it)
 	const minMovement = 5
 	const minConfidenceDelta = 0.1
+	//const maxTimeDelta = 5 * time.Second // SCRAPPED
 
 	if len(obj.Boxes) == 0 ||
 		obj.Boxes[len(obj.Boxes)-1].Box.MaxDelta(box) > minMovement ||
 		gen.Abs(obj.Boxes[len(obj.Boxes)-1].Confidence-confidence) > minConfidenceDelta {
+		//lastSeen.Sub(obj.Boxes[len(obj.Boxes)-1].Time) > maxTimeDelta {
 		obj.Boxes = append(obj.Boxes, TrackedBox{
 			Time:       lastSeen,
 			Box:        box,
@@ -180,7 +184,7 @@ func (v *VideoDB) writeAgingEventsToDB(force bool) {
 	// We flush a camera if any of these are true:
 	// 1. All objects are stale
 	// 2. Any object is old
-	// 3. There are too many frames
+	// 3. There are too many boxes
 
 	// Process each camera separately, because our Event records in the DB are specific
 	// to a single camera.
@@ -188,7 +192,7 @@ func (v *VideoDB) writeAgingEventsToDB(force bool) {
 		nObjects      int
 		nStaleObjects int
 		nOldObjects   int
-		nFrames       int
+		nBoxes        int
 	}
 
 	cameras := make(map[uint32]*cameraInfo)
@@ -208,12 +212,12 @@ func (v *VideoDB) writeAgingEventsToDB(force bool) {
 			cam.nOldObjects++
 		}
 		cam.nObjects++
-		cam.nFrames += len(c.Boxes)
+		cam.nBoxes += len(c.Boxes)
 	}
 
 	for cam, inf := range cameras {
-		if inf.nStaleObjects == inf.nObjects || inf.nOldObjects > 0 || inf.nFrames > maxFrames {
-			v.log.Infof("Flushing camera %v events to DB (total=%v stale=%v old=%v frames=%v)", cam, inf.nObjects, inf.nStaleObjects, inf.nOldObjects, inf.nFrames)
+		if inf.nStaleObjects == inf.nObjects || inf.nOldObjects > 0 || inf.nBoxes > maxFrames {
+			v.log.Infof("Flushing camera %v events to DB (total=%v stale=%v old=%v frames=%v)", cam, inf.nObjects, inf.nStaleObjects, inf.nOldObjects, inf.nBoxes)
 			v.flushCameraToDB(cam)
 		}
 	}
@@ -235,6 +239,18 @@ func (v *VideoDB) flushCameraToDB(camera uint32) {
 	v.current = otherCameraObjects
 }
 
+func copyTrackedBoxToObjectPositionJSON(b TrackedBox, basetime time.Time) ObjectPositionJSON {
+	x1 := int16(gen.Clamp(b.Box.X, -32768, 32767))
+	y1 := int16(gen.Clamp(b.Box.Y, -32768, 32767))
+	x2 := int16(gen.Clamp(b.Box.X2(), -32768, 32767))
+	y2 := int16(gen.Clamp(b.Box.Y2(), -32768, 32767))
+	return ObjectPositionJSON{
+		Box:        [4]int16{x1, y1, x2, y2},
+		Time:       int32(b.Time.Sub(basetime).Milliseconds()),
+		Confidence: math32.Round(b.Confidence*100) / 100,
+	}
+}
+
 // Extract all of the current TrackedObjects for the given camera, and package
 // them up as a DB Event record. Return a new 'current' map with those objects
 // excluded.
@@ -252,8 +268,8 @@ func (v *VideoDB) buildEventRecord(camera uint32) (*Event, map[uint32]*TrackedOb
 			if c.Boxes[0].Time.Before(basetime) {
 				basetime = c.Boxes[0].Time
 			}
-			if c.Boxes[len(c.Boxes)-1].Time.After(maxtime) {
-				maxtime = c.Boxes[len(c.Boxes)-1].Time
+			if c.LastSeen.After(maxtime) {
+				maxtime = c.LastSeen
 			}
 			if resolution[0] == 0 {
 				resolution = c.CameraResolution
@@ -282,15 +298,12 @@ func (v *VideoDB) buildEventRecord(camera uint32) (*Event, map[uint32]*TrackedOb
 			// so it might be possible to filter out jitter here, which would otherwise be allowed
 			// through the early filter. I started on such a filter in compress.go, but did not finish it.
 			for _, b := range c.Boxes {
-				x1 := int16(gen.Clamp(b.Box.X, -32768, 32767))
-				y1 := int16(gen.Clamp(b.Box.Y, -32768, 32767))
-				x2 := int16(gen.Clamp(b.Box.X2(), -32768, 32767))
-				y2 := int16(gen.Clamp(b.Box.Y2(), -32768, 32767))
-				obj.Positions = append(obj.Positions, ObjectPositionJSON{
-					Box:        [4]int16{x1, y1, x2, y2},
-					Time:       int32(b.Time.Sub(basetime).Milliseconds()),
-					Confidence: math32.Round(b.Confidence*100) / 100,
-				})
+				obj.Positions = append(obj.Positions, copyTrackedBoxToObjectPositionJSON(b, basetime))
+			}
+			if c.Boxes[len(c.Boxes)-1].Time != c.LastSeen {
+				// Create one more box, which is a copy of the final box, but with the last time set to LastSeen.
+				obj.Positions = append(obj.Positions, obj.Positions[len(obj.Positions)-1])
+				obj.Positions[len(obj.Positions)-1].Time = int32(c.LastSeen.Sub(basetime).Milliseconds())
 			}
 			detectionsJSON.Data.Objects = append(detectionsJSON.Data.Objects, obj)
 		}

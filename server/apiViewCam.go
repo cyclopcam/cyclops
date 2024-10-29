@@ -274,7 +274,7 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	www.Check(err)
 
 	// Read events, so that the front-end can show boxes around detected objects.
-	events, err := s.videoDB.ReadEvents(cam.LongLivedName(), imgTime, imgTime)
+	events, err := s.videoDB.ReadEvents(cam.LongLivedName(), imgTime.Add(-time.Second), imgTime.Add(time.Second))
 	if err != nil {
 		s.Log.Errorf("Failed to read events at %v: %v", imgTime, err)
 	} else {

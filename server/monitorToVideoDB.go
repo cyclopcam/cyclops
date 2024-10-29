@@ -56,15 +56,24 @@ func (s *Server) copyEventsToMonitorAnalysis(cameraID int64, events []*videodb.E
 		},
 		Objects: make([]monitor.TrackedObject, 0),
 	}
+	// Events that ended before oldCutoff are ignored
+	oldCutoff := frameTime.Add(50 * -time.Millisecond)
+	// Events that started after newCutoff are ignored
+	newCutoff := frameTime.Add(50 * time.Millisecond)
 	for _, e := range events {
-		if e.Time.Get().After(frameTime) || e.Time.Get().Add(time.Duration(e.Duration)*time.Millisecond).Before(frameTime) {
-			// event doesn't span frameTime, so skip it entirely
-			continue
-		}
+		//if e.Time.Get().After(frameTime) || e.Time.Get().Add(time.Duration(e.Duration)*time.Millisecond).Before(frameTime) {
+		//	// event doesn't span frameTime, so skip it entirely
+		//	continue
+		//}
 		if e.Detections != nil {
 			analysis.Input.ImageWidth = e.Detections.Data.Resolution[0]
 			analysis.Input.ImageHeight = e.Detections.Data.Resolution[1]
 			for _, d := range e.Detections.Data.Objects {
+				objectStartTime := e.Time.Get().Add(time.Duration(d.Positions[0].Time) * time.Millisecond)
+				objectEndTime := e.Time.Get().Add(time.Duration(d.Positions[len(d.Positions)-1].Time) * time.Millisecond)
+				if objectEndTime.Before(oldCutoff) || objectStartTime.After(newCutoff) {
+					continue
+				}
 				// Find the frame closest to frameTime
 				frameTimeMilli := frameTime.UnixMilli()
 				bestDelta := int64(1<<63 - 1)

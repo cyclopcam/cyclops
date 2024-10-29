@@ -344,6 +344,11 @@ func (m *Monitor) AllClasses() []string {
 	return m.nnClassList
 }
 
+// Returns the map of concrete -> abstract NN classes
+func (m *Monitor) AbstractClasses() map[string]string {
+	return m.nnClassAbstract
+}
+
 // Returns the special index of the "class unrecognized" class if 'cls' is not recognized
 func (m *Monitor) ClassToIdx(cls string) int {
 	idx, ok := m.nnClassMap[cls]

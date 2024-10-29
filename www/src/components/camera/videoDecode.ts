@@ -237,7 +237,7 @@ export class VideoStreamer {
 		// promises, so that we can await on them both at the same time.
 		// uhh.. I don't understand this comment now!
 
-		let quality = resolution === 'ld' ? 70 : 85;
+		let quality = resolution === 'ld' ? 70 : 75;
 		let fetchFrame = this.fetchSingleFrame(resolution, posMS, quality, keyframeOnly);
 		let [cachedFrame] = await Promise.all([fetchFrame]);
 		if (!cachedFrame) {
@@ -246,6 +246,10 @@ export class VideoStreamer {
 		let img = await createImageBitmap(cachedFrame.blob);
 		if (this.seekImageIndex > myIndex) {
 			// A newer image has already been fetched and decoded
+			return;
+		}
+		if (this.isPlaying()) {
+			// User clicked 'play' to play the live stream while we were waiting for our seek frame
 			return;
 		}
 		this.lastDetection = cachedFrame.analysis ?? new AnalysisState();
@@ -259,6 +263,10 @@ export class VideoStreamer {
 			this.muxer.destroy();
 			this.muxer = null;
 		}
+	}
+
+	isPlaying(): boolean {
+		return this.muxer !== null;
 	}
 
 	play(videoElementID: string) {

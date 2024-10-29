@@ -69,13 +69,6 @@ function poll() {
 	setTimeout(poll, 5000);
 }
 
-function loadHighResAfterSeek() {
-	if (!canvas.value) {
-		// we have been destroyed. Strange that unmount didn't catch this.
-		return;
-	}
-}
-
 function canvasWidth(): number {
 	let canv = canvas.value! as HTMLCanvasElement
 	return canv.clientWidth;

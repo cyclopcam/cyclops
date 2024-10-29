@@ -7,6 +7,16 @@ export function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingC
 	let sx = can.width / detection.input.imageWidth;
 	let sy = can.height / detection.input.imageHeight;
 	for (let d of detection.objects) {
+		let cls = globals.objectClasses[d.class];
+		if (globals.abstractClasses[cls]) {
+			// Skip concrete classes, when there is an abstract class equivalent.
+			// The abstract class is cleaner, because we merge abstract objects together.
+			// For example, you might have "car" and "truck" detected on the same pixels,
+			// but since we merge abstract objects together, these two would become just
+			// one object. If you were to draw "car" and "truck", then you'd end up seeing
+			// two objects.
+			continue;
+		}
 		if (d.genuine) {
 			cx.lineWidth = 4;
 			cx.strokeStyle = "#f00";
@@ -20,7 +30,7 @@ export function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingC
 		cx.fillStyle = '#fff';
 		cx.textAlign = 'left';
 		cx.textBaseline = 'top';
-		cx.fillText(globals.objectClasses[d.class] + ' ' + d.id, d.box.x * sx, d.box.y * sy);
+		cx.fillText(cls + ' ' + d.id, d.box.x * sx, d.box.y * sy);
 	}
 }
 
