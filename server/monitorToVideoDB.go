@@ -79,10 +79,12 @@ func (s *Server) copyEventsToMonitorAnalysis(cameraID int64, events []*videodb.E
 				}
 				if bestPos != -1 {
 					best := d.Positions[bestPos]
+					cls, _ := s.videoDB.IDToString(d.Class)
+					clsIdx := s.monitor.ClassToIdx(cls)
 					analysis.Objects = append(analysis.Objects, monitor.TrackedObject{
-						ID: d.ID,
-						//Class:      d.Class,
-						Box: nn.MakeRect(int(best.Box[0]), int(best.Box[1]), int(best.Box[2]-best.Box[0]), int(best.Box[3]-best.Box[1])),
+						ID:    d.ID,
+						Class: clsIdx,
+						Box:   nn.MakeRect(int(best.Box[0]), int(best.Box[1]), int(best.Box[2]-best.Box[0]), int(best.Box[3]-best.Box[1])),
 						//Genuine:    true,
 						Confidence: best.Confidence,
 					})

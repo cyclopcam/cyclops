@@ -1,4 +1,5 @@
-import { AnalysisState, DetectionResult, COCOClasses } from "@/camera/nn";
+import { AnalysisState, DetectionResult } from "@/camera/nn";
+import { globals } from "@/globals";
 
 export function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingContext2D, detection: AnalysisState) {
 	if (!detection.input)
@@ -19,7 +20,7 @@ export function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingC
 		cx.fillStyle = '#fff';
 		cx.textAlign = 'left';
 		cx.textBaseline = 'top';
-		cx.fillText(COCOClasses[d.class] + ' ' + d.id, d.box.x * sx, d.box.y * sy);
+		cx.fillText(globals.objectClasses[d.class] + ' ' + d.id, d.box.x * sx, d.box.y * sy);
 	}
 }
 
@@ -34,7 +35,7 @@ export function drawRawNNObjects(can: HTMLCanvasElement, cx: CanvasRenderingCont
 		cx.fillStyle = '#fff';
 		cx.textAlign = 'left';
 		cx.textBaseline = 'top';
-		cx.fillText(COCOClasses[d.class], d.box.x * sx, d.box.y * sy);
+		cx.fillText(globals.objectClasses[d.class], d.box.x * sx, d.box.y * sy);
 	}
 }
 

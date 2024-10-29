@@ -85,6 +85,7 @@ type Monitor struct {
 	nnClassBoxMerge           map[string]string      // Merge overlapping boxes eg car/truck -> car
 	nnClassAbstract           map[string]string      // Remap classes to a more abstract class (eg car -> vehicle, truck -> vehicle)
 	nnAbstractClassSet        map[int]bool           // Set of abstract class indices
+	nnUnrecognizedClass       int                    // Special index for the "class unrecognized" class
 	analyzerSettings          analyzerSettings       // Analyzer settings
 	nextTrackedObjectID       idgen.Uint32           // Next ID to assign to a tracked object
 
@@ -243,9 +244,17 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	analysisQueueSize := 20
 
 	classList := detector.Config().Classes
+	seenAbstract := map[string]bool{}
 	for _, v := range abstractClasses {
-		classList = append(classList, v)
+		if !seenAbstract[v] {
+			classList = append(classList, v)
+			seenAbstract[v] = true
+		}
 	}
+	// Add a special "class unrecognized" class
+	unrecognizedIdx := len(classList)
+	classList = append(classList, "class unrecognized")
+
 	classMap := map[string]int{}
 	for i, c := range classList {
 		classMap[c] = i
@@ -254,19 +263,20 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	logger.Infof("Starting %v NN detection threads", nnThreads)
 
 	m := &Monitor{
-		Log:                logger,
-		detector:           detector,
-		nnThreadQueue:      make(chan monitorQueueItem, nnQueueSize),
-		analyzerQueue:      make(chan analyzerQueueItem, analysisQueueSize),
-		analyzerStopped:    make(chan bool),
-		nnModelSetup:       modelSetup,
-		numNNThreads:       nnThreads,
-		nnClassList:        classList,
-		nnClassMap:         classMap,
-		nnClassFilterSet:   makeClassFilter(classFilterList),
-		nnClassAbstract:    abstractClasses,
-		nnClassBoxMerge:    boxMergeClasses,
-		nnAbstractClassSet: makeAbstractClassSet(abstractClasses, classMap),
+		Log:                 logger,
+		detector:            detector,
+		nnThreadQueue:       make(chan monitorQueueItem, nnQueueSize),
+		analyzerQueue:       make(chan analyzerQueueItem, analysisQueueSize),
+		analyzerStopped:     make(chan bool),
+		nnModelSetup:        modelSetup,
+		numNNThreads:        nnThreads,
+		nnClassList:         classList,
+		nnClassMap:          classMap,
+		nnClassFilterSet:    makeClassFilter(classFilterList),
+		nnClassAbstract:     abstractClasses,
+		nnClassBoxMerge:     boxMergeClasses,
+		nnAbstractClassSet:  makeAbstractClassSet(abstractClasses, classMap),
+		nnUnrecognizedClass: unrecognizedIdx,
 		analyzerSettings: analyzerSettings{
 			positionHistorySize:         30,   // at 10 fps, 30 frames = 3 seconds
 			maxAnalyzeObjectsPerFrame:   20,   // We have O(n^2) analysis functions, so we need to keep this small.
@@ -332,6 +342,20 @@ func (m *Monitor) Close() {
 // Return the list of all classes that the NN detects
 func (m *Monitor) AllClasses() []string {
 	return m.nnClassList
+}
+
+// Returns the special index of the "class unrecognized" class if 'cls' is not recognized
+func (m *Monitor) ClassToIdx(cls string) int {
+	idx, ok := m.nnClassMap[cls]
+	if !ok {
+		return m.nnUnrecognizedClass
+	}
+	return idx
+}
+
+// Returns the class index of the special "class unrecognized" class
+func (m *Monitor) UnrecognizedClassIdx() int {
+	return m.nnUnrecognizedClass
 }
 
 // Returns the number of items awaiting processing in the NN queue

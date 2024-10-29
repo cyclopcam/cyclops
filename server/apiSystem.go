@@ -20,6 +20,7 @@ import (
 type systemInfoJSON struct {
 	StartupErrors []StartupError `json:"startupErrors"` // If system is not yet ready to run, these are the errors encountered during startup
 	Cameras       []*camInfoJSON `json:"cameras"`
+	ObjectClasses []string       `json:"objectClasses"` // Classes of objects detected by our neural network(s) (eg person, car, truck,...)
 }
 
 // If this gets too bloated, then we can split it up
@@ -83,6 +84,7 @@ func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, param
 	j := systemInfoJSON{
 		Cameras:       make([]*camInfoJSON, 0),
 		StartupErrors: s.StartupErrors, // NEW, replaces j.ReadyError
+		ObjectClasses: s.monitor.AllClasses(),
 	}
 	if len(j.StartupErrors) == 0 {
 		j.StartupErrors = make([]StartupError, 0) // create an empty array, so the JSON gets a "[]" instead of "null"
@@ -98,6 +100,7 @@ func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, param
 			j.Cameras = append(j.Cameras, cfgToCamInfoJSON(cfg))
 		}
 	}
+
 	www.SendJSON(w, &j)
 }
 
