@@ -277,22 +277,12 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		nnClassBoxMerge:     boxMergeClasses,
 		nnAbstractClassSet:  makeAbstractClassSet(abstractClasses, classMap),
 		nnUnrecognizedClass: unrecognizedIdx,
-		analyzerSettings: analyzerSettings{
-			positionHistorySize:         30,   // at 10 fps, 30 frames = 3 seconds
-			maxAnalyzeObjectsPerFrame:   20,   // We have O(n^2) analysis functions, so we need to keep this small.
-			minDistanceForObject:        0.02, // 2% of the frame width (0.02 * 320 = 6 pixels)
-			minDiscreetPositionsDefault: 2,
-			minDiscreetPositions: map[string]int{
-				"person": 3, // People move much slower than cars, and people are almost always alarmable events, so we need a super low false positive rate
-			},
-			objectForgetTime: 5 * time.Second,
-			verbose:          false,
-		},
-		watchers:           map[int64][]chan *AnalysisState{},
-		watchersAllCameras: []chan *AnalysisState{},
-		enableFrameReader:  options.EnableFrameReader,
-		debugDumpFrames:    false,
-		hasDumpedCamera:    map[int64]bool{},
+		analyzerSettings:    *newAnalyzerSettings(),
+		watchers:            map[int64][]chan *AnalysisState{},
+		watchersAllCameras:  []chan *AnalysisState{},
+		enableFrameReader:   options.EnableFrameReader,
+		debugDumpFrames:     false,
+		hasDumpedCamera:     map[int64]bool{},
 	}
 	//m.sendTestImageToNN()
 	for i := 0; i < m.numNNThreads; i++ {

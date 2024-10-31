@@ -68,12 +68,13 @@ func MergeSimilarObjects(input []ObjectDetection, mergeMap map[string]string, cl
 // A car and a truck.
 // After creating abstract classes, we'll have car, truck, and two vehicles.
 // The goal of this function is to squash those two vehicles into a single vehicle.
-func MergeSimilarAbstractObjects(input []ObjectDetection, abstractClasses map[int]bool, minIoU float32) []int {
+// Returns the indices of the objects that should be retained.
+func MergeSimilarAbstractObjects(input []ProcessedObject, abstractClasses map[int]bool, minIoU float32) []int {
 	// Create spatial index to avoid O(N^2) comparisons
 	fb := flatbush.NewFlatbush[int32]()
 	fb.Reserve(len(input))
 	for _, b := range input {
-		fb.Add(b.Box.X, b.Box.Y, b.Box.X2(), b.Box.Y2())
+		fb.Add(b.Raw.Box.X, b.Raw.Box.Y, b.Raw.Box.X2(), b.Raw.Box.Y2())
 	}
 	fb.Finish()
 
@@ -90,7 +91,7 @@ func MergeSimilarAbstractObjects(input []ObjectDetection, abstractClasses map[in
 			if _, ok := abstractClasses[in.Class]; !ok {
 				continue
 			}
-			for j := range fb.Search(in.Box.X, in.Box.Y, in.Box.X2(), in.Box.Y2()) {
+			for j := range fb.Search(in.Raw.Box.X, in.Raw.Box.Y, in.Raw.Box.X2(), in.Raw.Box.Y2()) {
 				if i == j {
 					continue
 				}
@@ -100,11 +101,11 @@ func MergeSimilarAbstractObjects(input []ObjectDetection, abstractClasses map[in
 				if _, ok := abstractClasses[input[j].Class]; !ok {
 					continue
 				}
-				if input[j].ConcreteClass == in.ConcreteClass {
+				if input[j].Raw.Class == in.Raw.Class {
 					// The concrete classes must be different (eg truck and car).
 					continue
 				}
-				if in.Box.IOU(input[j].Box) >= minIoU {
+				if in.Raw.Box.IOU(input[j].Raw.Box) >= minIoU {
 					// Delete the object 'j' and keep object 'i'
 					//fmt.Printf("Deleting %v, and keeping %v\n", input[j].Class, in.Class)
 					deleted[j] = true

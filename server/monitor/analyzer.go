@@ -35,36 +35,63 @@ the right solution.
 const includeAllClasses = false
 
 type analyzerSettings struct {
-	positionHistorySize         int            // Keep a ring buffer of the last N positions of each object
-	maxAnalyzeObjectsPerFrame   int            // Maximum number of objects to analyze per frame
-	minDistanceForObject        float32        // Minimum distance that an object must travel to be considered a true detection (as a fraction of the frame width)
-	minDiscreetPositions        map[string]int // For each class, the minimum number of discreet positions that an object must have to be considered a true detection
-	minDiscreetPositionsDefault int            // The default minimum number of discreet positions that an object must have to be considered a true detection
-	objectForgetTime            time.Duration  // After this amount of time of not seeing an object, we believe it has left the frame, or was a false detection
-	verbose                     bool           // Print out debug information
+	positionHistorySize       int            // Keep a ring buffer of the last N positions of each object
+	maxAnalyzeObjectsPerFrame int            // Maximum number of objects to analyze per frame
+	minDistance               map[string]int // Minimum distance that an object must travel to be considered a true detection (in pixels)
+	minDistanceDefault        int            // Default, if no class override
+	minSightings              map[string]int // Minimum number of sightings that an object must have to be considered a true detection
+	minSightingsDefault       int            // Default, if no class override
+	objectForgetTime          time.Duration  // After this amount of time of not seeing an object, we believe it has left the frame, or was a false detection
+	verbose                   bool           // Print out debug information
 }
 
-func (a *analyzerSettings) minDiscreetPositionsForClass(cls string) int {
-	if val, ok := a.minDiscreetPositions[cls]; ok {
+func newAnalyzerSettings() *analyzerSettings {
+	return &analyzerSettings{
+		positionHistorySize:       30,  // at 10 fps, 30 frames = 3 seconds
+		maxAnalyzeObjectsPerFrame: 100, // This is just a sanity thing, but perhaps we shouldn't have any limit
+		minDistanceDefault:        5,   // 5 pixels
+		minDistance: map[string]int{
+			"person":  5, // People must be moving to be considered genuine
+			"vehicle": 0, // Vehicles can be stationary
+		},
+		minSightingsDefault: 2,
+		minSightings: map[string]int{
+			"person": 3, // People are almost always alarmable events, so we need a super low false positive rate
+		},
+		objectForgetTime: 5 * time.Second,
+		verbose:          false,
+	}
+}
+
+func (a *analyzerSettings) minSightingsForClass(cls string) int {
+	if val, ok := a.minSightings[cls]; ok {
 		return val
 	}
-	return a.minDiscreetPositionsDefault
+	return a.minSightingsDefault
+}
+
+func (a *analyzerSettings) minDistanceForClass(cls string) int {
+	if val, ok := a.minDistance[cls]; ok {
+		return val
+	}
+	return a.minDistanceDefault
 }
 
 // A time and position where we saw an object
 type timeAndPosition struct {
 	time      time.Time
-	detection nn.ObjectDetection
+	detection nn.ProcessedObject
 }
 
 // Internal state of an object that we're tracking
 type trackedObject struct {
 	id             uint32 // every new tracked object gets a unique id
-	firstDetection nn.ObjectDetection
+	firstDetection nn.ProcessedObject
 	cameraWidth    int
 	cameraHeight   int
 	lastPosition   nn.Rect // equivalent to mostRecent().detection.Box, but kept here for convenience/lookup speed
 	history        ringbuffer.RingP[timeAndPosition]
+	totalSightings int  // Total number of times we've seen this object
 	genuine        bool // True if we're convinced this is a genuine detection
 }
 
@@ -103,7 +130,7 @@ func (t *trackedObject) numDiscreetPositions() int {
 	n := 0
 	seen := map[int32]bool{}
 	for i := 0; i < t.history.Len(); i++ {
-		pos := t.history.Peek(i).detection.Box
+		pos := t.history.Peek(i).detection.Raw.Box
 		hash := pos.X<<24 + pos.Y<<16 + pos.Width<<8 + pos.Height
 		if !seen[hash] {
 			n++
@@ -114,14 +141,14 @@ func (t *trackedObject) numDiscreetPositions() int {
 }
 
 func (t *trackedObject) distanceFromOrigin() float32 {
-	return t.firstDetection.Box.Center().Distance(t.mostRecent().detection.Box.Center())
+	return t.firstDetection.Raw.Box.Center().Distance(t.mostRecent().detection.Raw.Box.Center())
 }
 
 func (t *trackedObject) averageConfidence() float32 {
 	avg := float32(0)
 	count := t.history.Len()
 	for i := 0; i < count; i++ {
-		avg += t.history.Peek(i).detection.Confidence
+		avg += t.history.Peek(i).detection.Raw.Confidence
 	}
 	return avg / float32(count)
 }
@@ -165,7 +192,8 @@ func (m *Monitor) analyzer() {
 
 // Create abstract objects for each detection, based on nnClassAbstract.
 // For example, car -> vehicle, truck -> vehicle, etc.
-func (m *Monitor) createAbstractObjects(objects []nn.ObjectDetection) []nn.ObjectDetection {
+func (m *Monitor) createAbstractObjects(objects []nn.ObjectDetection) []nn.ProcessedObject {
+	processed := []nn.ProcessedObject{}
 	orgLen := len(objects)
 	for i := 0; i < orgLen; i++ {
 		abstractClass := m.nnClassAbstract[m.nnClassList[objects[i].Class]]
@@ -175,40 +203,39 @@ func (m *Monitor) createAbstractObjects(objects []nn.ObjectDetection) []nn.Objec
 			if !ok {
 				panic("Abstract class not found in nnClassMap")
 			}
-			objects = append(objects, nn.ObjectDetection{
-				Class:         abstractIdx,
-				ConcreteClass: objects[i].Class,
-				Confidence:    objects[i].Confidence,
-				Box:           objects[i].Box,
+			processed = append(processed, nn.ProcessedObject{
+				Raw:   objects[i],
+				Class: abstractIdx,
+			})
+		} else {
+			processed = append(processed, nn.ProcessedObject{
+				Raw:   objects[i],
+				Class: objects[i].Class,
 			})
 		}
 	}
-	return objects
+	return processed
 }
 
 func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem) {
 	settings := &m.analyzerSettings
-	itemPTS := item.detection.FramePTS
-	positionHistorySize := nextPowerOf2(settings.positionHistorySize)
+	framePTS := item.detection.FramePTS
 
 	// Create abstract objects before merging, because this tends to create duplicates.
 	// For example, you'll often get a car and a truck detection of the same object.
-	objects := m.createAbstractObjects(item.detection.Objects)
+	processed := m.createAbstractObjects(item.detection.Objects)
 
 	// If a small pickup ends up producing a car and a truck with very similar boxes, and we create two
 	// abstract vehicle objects out of those, then delete one of those vehicles, so that we only
 	// end up with one vehicle.
 	// MergeSimilarObjects() was my first stab at this, but that was before introducing the concept
 	// of abstract classes.
-	keepDetections := nn.MergeSimilarAbstractObjects(objects, m.nnAbstractClassSet, 0.9)
+	keepDetections := nn.MergeSimilarAbstractObjects(processed, m.nnAbstractClassSet, 0.9)
 
 	// Merge objects together such as 'car' and 'truck' if they have tight overlap
+	// NOTE: I've removed this after implementing abstract classes.
+	// Abstract classes seem like a more robust approach.
 	//keepDetections := nn.MergeSimilarObjects(objects, m.nnClassBoxMerge, m.nnClassList, 0.9)
-
-	//keepDetections := make([]int, len(objects))
-	//for i := range objects {
-	//	keepDetections[i] = i
-	//}
 
 	// Discard detections of classes that we're not interested in
 	shortList := make([]int, 0, 100)
@@ -216,7 +243,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 		shortList = keepDetections
 	} else {
 		for _, i := range keepDetections {
-			if m.nnClassFilterSet[m.nnClassList[objects[i].Class]] {
+			if m.nnClassFilterSet[m.nnClassList[processed[i].Class]] {
 				shortList = append(shortList, i)
 			}
 		}
@@ -225,71 +252,30 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	// Sort from largest to smallest, and retain only the top N
 	if len(shortList) > settings.maxAnalyzeObjectsPerFrame {
 		sort.Slice(shortList, func(i, j int) bool {
-			return objects[shortList[i]].Box.Area() > objects[shortList[j]].Box.Area()
+			return processed[shortList[i]].Raw.Box.Area() > processed[shortList[j]].Raw.Box.Area()
 		})
 		shortList = shortList[:settings.maxAnalyzeObjectsPerFrame]
 	}
 
-	// Greedily find the closest tracked object, but if there is no match with
-	// a high enough IOU, then create a new tracked object.
-	previousHasMatch := make([]bool, len(cam.tracked))
+	filteredProcessed := []nn.ProcessedObject{}
 	for _, i := range shortList {
-		det := objects[i]
-		// Check if this detection is already in the recentDetections list
-		bestJ := -1
-		bestIOU := float32(0)
-		bestDistance := float32(9e20)
-		for j, tracked := range cam.tracked {
-			if !previousHasMatch[j] && det.Class == tracked.firstDetection.Class {
-				iou := det.Box.IOU(tracked.lastPosition)
-				distance := det.Box.Center().Distance(tracked.lastPosition.Center())
-				// We allow objects to have zero overlap, because our effective framerate (i.e. NN framerate)
-				// is often low enough that an object can move a significant distance between frames, so much
-				// that the boxes don't overlap at all.
-				// So if iou is zero, then we fall back to distance between rectangle centers.
-				if iou > bestIOU {
-					bestIOU = iou
-					bestJ = j
-				} else if bestIOU == 0 && distance < bestDistance {
-					bestDistance = distance
-					bestJ = j
-				}
-			}
-		}
-		if bestJ != -1 {
-			// Update the tracked object
-			previousHasMatch[bestJ] = true
-		} else {
-			// Add a new object
-			bestJ = len(cam.tracked)
-			previousHasMatch = append(previousHasMatch, true) // keep the slice length the same
-			objectID := m.nextTrackedObjectID.Next()
-			cam.tracked = append(cam.tracked, &trackedObject{
-				id:             objectID,
-				firstDetection: det,
-				history:        ringbuffer.NewRingP[timeAndPosition](positionHistorySize),
-				cameraWidth:    item.detection.ImageWidth,
-				cameraHeight:   item.detection.ImageHeight,
-			})
-			if m.analyzerSettings.verbose {
-				m.Log.Infof("Analyzer (cam %v): New '%v' at %v,%v", cam.cameraID, m.nnClassList[det.Class], det.Box.Center().X, det.Box.Center().Y)
-			}
-		}
-		cam.tracked[bestJ].lastPosition = det.Box
-		cam.tracked[bestJ].history.Add(timeAndPosition{
-			time:      itemPTS,
-			detection: det,
-		})
+		filteredProcessed = append(filteredProcessed, processed[i])
 	}
+	processed = filteredProcessed
+
+	// Map every detected/processed object to an existing tracked object.
+	// If there is no match, then create a new tracked object.
+	m.trackDetectedObjects(cam, processed, item.detection.ImageWidth, item.detection.ImageHeight, framePTS)
 
 	// Figure out if any of our tracked objects are genuine
 	for _, tracked := range cam.tracked {
+		cls := m.nnClassList[tracked.firstDetection.Class]
 		if !tracked.genuine &&
-			tracked.distanceFromOrigin() > settings.minDistanceForObject*float32(tracked.cameraWidth) &&
-			tracked.numDiscreetPositions() > settings.minDiscreetPositionsForClass(m.nnClassList[tracked.firstDetection.Class]) {
+			tracked.distanceFromOrigin() >= float32(settings.minDistanceForClass(cls)) &&
+			tracked.totalSightings >= settings.minSightingsForClass(cls) {
 			if m.analyzerSettings.verbose {
-				center := tracked.mostRecent().detection.Box.Center()
-				m.Log.Infof("Analyzer (cam %v): Genuine '%v' at %v,%v (%.1f px, %v positions)", cam.cameraID, m.nnClassList[tracked.firstDetection.Class],
+				center := tracked.mostRecent().detection.Raw.Box.Center()
+				m.Log.Infof("Analyzer (cam %v): Genuine '%v' at %v,%v (%.1f px, %v positions)", cam.cameraID, cls,
 					center.X, center.Y, tracked.distanceFromOrigin(), tracked.numDiscreetPositions())
 			}
 			tracked.genuine = true
@@ -299,7 +285,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	// Handle objects that have disappeared
 	remaining := []*trackedObject{}
 	for _, tracked := range cam.tracked {
-		if itemPTS.Sub(tracked.mostRecent().time) > settings.objectForgetTime {
+		if framePTS.Sub(tracked.mostRecent().time) > settings.objectForgetTime {
 			m.analyzeDisappearedObject(cam, tracked)
 		} else {
 			remaining = append(remaining, tracked)
@@ -320,7 +306,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 		obj := TrackedObject{
 			ID:         tracked.id,
 			Class:      tracked.firstDetection.Class,
-			Box:        mostRecent.detection.Box,
+			Box:        mostRecent.detection.Raw.Box,
 			Genuine:    tracked.genuine,
 			Confidence: tracked.averageConfidence(),
 			LastSeen:   mostRecent.time,
@@ -337,7 +323,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 
 // Decide what to do with an object that has disappeared
 func (m *Monitor) analyzeDisappearedObject(cam *analyzerCameraState, tracked *trackedObject) {
-	center := tracked.mostRecent().detection.Box.Center()
+	center := tracked.mostRecent().detection.Raw.Box.Center()
 	distance := tracked.distanceFromOrigin()
 	if m.analyzerSettings.verbose {
 		m.Log.Infof("Analyzer (cam %v): '%v' at %v,%v disappeared, after moving %.1f pixels, %v discreet positions",
