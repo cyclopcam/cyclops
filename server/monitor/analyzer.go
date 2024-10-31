@@ -89,10 +89,10 @@ type trackedObject struct {
 	firstDetection nn.ProcessedObject
 	cameraWidth    int
 	cameraHeight   int
-	lastPosition   nn.Rect // equivalent to mostRecent().detection.Box, but kept here for convenience/lookup speed
-	history        ringbuffer.RingP[timeAndPosition]
-	totalSightings int  // Total number of times we've seen this object
-	genuine        bool // True if we're convinced this is a genuine detection
+	lastPosition   nn.Rect                           // equivalent to mostRecent().detection.Box, but kept here for convenience/lookup speed
+	history        ringbuffer.RingP[timeAndPosition] // unfiltered ring buffer of recent detections
+	totalSightings int                               // Total number of times we've seen this object
+	genuine        int                               // Number of frames for which we've considered this object genuine. 0 = not yet, 1 = first time, 2 = second time, etc.
 }
 
 // Internal state of the analyzer for a single camera
@@ -103,15 +103,33 @@ type analyzerCameraState struct {
 	lastSeen time.Time
 }
 
+// SYNC-TIME-AND-POSITION
+type TimeAndPosition struct {
+	Time       time.Time `json:"-"`
+	Box        nn.Rect   `json:"box"`
+	Confidence float32   `json:"confidence"`
+}
+
 // An object that was detected by the Object Detector, and is now being tracked by a post-process
 // SYNC-TRACKED-OBJECT
 type TrackedObject struct {
-	ID         uint32    `json:"id"`
-	LastSeen   time.Time `json:"lastSeen"`
-	Box        nn.Rect   `json:"box"`
-	Class      int       `json:"class"`
-	Genuine    bool      `json:"genuine"`
-	Confidence float32   `json:"confidence"`
+	ID    uint32 `json:"id"`
+	Class int    `json:"class"`
+
+	// Number of frames that we have considered this object genuine.
+	// If Genuine = 0, then we still don't consider it genuine.
+	// If Genuine = 1, then this is the first time we consider it genuine.
+	// If Genuine > 1, then we've considered it genuine for this many frames.
+	Genuine int `json:"genuine"`
+
+	// If Genuine = 1, then Frames contains all the historical frames that we know about.
+	// In all other cases, Frames contains only the single most recent frame.
+	// Frames is never empty.
+	Frames []TimeAndPosition `json:"frames"`
+}
+
+func (t *TrackedObject) LastFrame() TimeAndPosition {
+	return t.Frames[len(t.Frames)-1]
 }
 
 // Result of post-process analysis on the Object Detection neural network output
@@ -267,10 +285,12 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	// If there is no match, then create a new tracked object.
 	m.trackDetectedObjects(cam, processed, item.detection.ImageWidth, item.detection.ImageHeight, framePTS)
 
-	// Figure out if any of our tracked objects are genuine
+	//newGenuine := map[uint32]bool{}
+
+	// Figure out if any of our tracked objects are genuine, and increment the genuine counter for those that are
 	for _, tracked := range cam.tracked {
 		cls := m.nnClassList[tracked.firstDetection.Class]
-		if !tracked.genuine &&
+		if tracked.genuine == 0 &&
 			tracked.distanceFromOrigin() >= float32(settings.minDistanceForClass(cls)) &&
 			tracked.totalSightings >= settings.minSightingsForClass(cls) {
 			if m.analyzerSettings.verbose {
@@ -278,7 +298,10 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 				m.Log.Infof("Analyzer (cam %v): Genuine '%v' at %v,%v (%.1f px, %v positions)", cam.cameraID, cls,
 					center.X, center.Y, tracked.distanceFromOrigin(), tracked.numDiscreetPositions())
 			}
-			tracked.genuine = true
+			tracked.genuine = 1
+			//newGenuine[tracked.id] = true
+		} else if tracked.genuine > 0 {
+			tracked.genuine++
 		}
 	}
 
@@ -302,14 +325,27 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 		Input:    item.detection,
 	}
 	for _, tracked := range cam.tracked {
-		mostRecent := tracked.mostRecent()
 		obj := TrackedObject{
-			ID:         tracked.id,
-			Class:      tracked.firstDetection.Class,
-			Box:        mostRecent.detection.Raw.Box,
-			Genuine:    tracked.genuine,
-			Confidence: tracked.averageConfidence(),
-			LastSeen:   mostRecent.time,
+			ID:    tracked.id,
+			Class: tracked.firstDetection.Class,
+			//Box:        mostRecent.detection.Raw.Box,
+			Genuine: tracked.genuine,
+			//Confidence: tracked.averageConfidence(),
+			//LastSeen:   mostRecent.time,
+		}
+		// In the default case (not genuine, or was already genuine previously), send only the most recent frame
+		startFrame := tracked.history.Len() - 1
+		if tracked.genuine == 1 {
+			// If this is the first time that the object is considered genuine, then send all frames
+			startFrame = 0
+		}
+		for i := startFrame; i < tracked.history.Len(); i++ {
+			pos := tracked.history.Peek(i)
+			obj.Frames = append(obj.Frames, TimeAndPosition{
+				Time:       pos.time,
+				Box:        pos.detection.Raw.Box,
+				Confidence: pos.detection.Raw.Confidence,
+			})
 		}
 		result.Objects = append(result.Objects, obj)
 	}

@@ -144,7 +144,7 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 				if ignoreClasses[mon.AllClasses()[obj.Class]] {
 					continue
 				}
-				if !obj.Genuine {
+				if obj.Genuine == 0 {
 					// We haven't seen enough frames of this object to confirm that it's a true positive
 					continue
 				}
@@ -154,18 +154,18 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 						found = true
 						existing.NumDetections++
 						existing.PrevRect = existing.Rect
-						existing.Rect = obj.Box
+						existing.Rect = obj.LastFrame().Box
 						break
 					}
 				}
 				if !found {
 					className := mon.AllClasses()[obj.Class]
-					t.Logf("Found new object: %v at %v", className, obj.Box)
+					t.Logf("Found new object: %v at %v", className, obj.LastFrame().Box)
 					trackedObjects = append(trackedObjects, &EventTrackingObject{
 						ID:            obj.ID,
 						NumDetections: 1,
 						Class:         className,
-						Rect:          obj.Box,
+						Rect:          obj.LastFrame().Box,
 					})
 				}
 			}

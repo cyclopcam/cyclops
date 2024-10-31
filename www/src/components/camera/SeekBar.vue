@@ -34,6 +34,10 @@ let points: Point[] = []; // when there are 2 points, points[0] is on the left a
 let txAtPinchStart = new SeekBarTransform();
 let state = States.Neutral;
 
+// Allow zooming in/out by starting a seek, then moving finger up/down.
+// Not very intuitive, and often kicks in when you don't want it.
+let enableOneFingerZoom = false;
+
 let enableDevTools = true; // Enable developer tools, like exporting a video clip to disc
 let exportClipStartTime = 0; // dev tool (export clip by right clicking once on the left, once on the right of the clip)
 
@@ -219,7 +223,7 @@ function onPointerMoveSeek(e: PointerEvent) {
 	let cssDeltaX = Math.abs(e.offsetX - points[0].offsetX1);
 	if (state === States.Neutral && cssDeltaX >= minDeltaCssPx) {
 		state = States.Seek;
-		if (e.pointerType !== "mouse") {
+		if (enableOneFingerZoom && e.pointerType !== "mouse") {
 			setTimeout(oneFingerZoomTimer, 20);
 		}
 	}

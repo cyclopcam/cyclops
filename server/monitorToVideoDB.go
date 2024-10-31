@@ -29,8 +29,12 @@ func (s *Server) attachMonitorToVideoDB() {
 					continue
 				}
 				for _, obj := range msg.Objects {
-					if obj.Genuine {
-						s.videoDB.ObjectDetected(cam.LongLivedName(), resolution, obj.ID, obj.Box, obj.Confidence, classes[obj.Class], obj.LastSeen)
+					if obj.Genuine >= 1 {
+						frames := []videodb.TrackedBox{}
+						for _, frame := range obj.Frames {
+							frames = append(frames, videodb.TrackedBox{Time: frame.Time, Box: frame.Box, Confidence: frame.Confidence})
+						}
+						s.videoDB.ObjectDetected(cam.LongLivedName(), resolution, obj.ID, frames, classes[obj.Class])
 					}
 				}
 			}
@@ -90,12 +94,19 @@ func (s *Server) copyEventsToMonitorAnalysis(cameraID int64, events []*videodb.E
 					best := d.Positions[bestPos]
 					cls, _ := s.videoDB.IDToString(d.Class)
 					clsIdx := s.monitor.ClassToIdx(cls)
+					// TrackedObject typically only represents a single frame, which is exactly
+					// what we're doing here. The only reason 'Frames' is a slice is so that we can
+					// send the backlog of detections that led up to an object becoming genuine,
+					// during live analysis.
 					analysis.Objects = append(analysis.Objects, monitor.TrackedObject{
-						ID:    d.ID,
-						Class: clsIdx,
-						Box:   nn.MakeRect(int(best.Box[0]), int(best.Box[1]), int(best.Box[2]-best.Box[0]), int(best.Box[3]-best.Box[1])),
-						//Genuine:    true,
-						Confidence: best.Confidence,
+						ID:      d.ID,
+						Class:   clsIdx,
+						Genuine: 1, // Objects only end up in eventdb if they are genuine
+						Frames: []monitor.TimeAndPosition{{
+							Time:       e.Time.Get().Add(time.Duration(best.Time) * time.Millisecond),
+							Box:        nn.MakeRect(int(best.Box[0]), int(best.Box[1]), int(best.Box[2]-best.Box[0]), int(best.Box[3]-best.Box[1])),
+							Confidence: best.Confidence,
+						}},
 					})
 				}
 			}

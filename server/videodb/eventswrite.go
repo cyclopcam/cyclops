@@ -57,9 +57,9 @@ type TrackedBox struct {
 // object is no longer in frame.
 // Also, id must be unique across cameras.
 // This is currently the way our 'monitor' package works, but I'm just codifying it here.
-func (v *VideoDB) ObjectDetected(camera string, cameraResolution [2]int, id uint32, box nn.Rect, confidence float32, class string, lastSeen time.Time) {
+func (v *VideoDB) ObjectDetected(camera string, cameraResolution [2]int, id uint32, detections []TrackedBox, class string) {
 	// See comments above addBoxToTrackedObject for why we split this into two phases.
-	trackedObjectCopy, err := v.addBoxToTrackedObject(camera, cameraResolution, id, box, confidence, class, lastSeen)
+	trackedObjectCopy, err := v.addBoxToTrackedObject(camera, cameraResolution, id, detections, class)
 	if err == nil {
 		v.updateTilesWithNewDetection(&trackedObjectCopy)
 	}
@@ -70,9 +70,11 @@ func (v *VideoDB) ObjectDetected(camera string, cameraResolution [2]int, id uint
 // because that is a potentially expensive copy, and we don't need that for our tile update.
 // Our goal with splitting this into two phases is to get out of 'currentLock' before passing
 // control onto the tile updater.
-func (v *VideoDB) addBoxToTrackedObject(camera string, cameraResolution [2]int, id uint32, box nn.Rect, confidence float32, class string, lastSeen time.Time) (TrackedObject, error) {
+func (v *VideoDB) addBoxToTrackedObject(camera string, cameraResolution [2]int, id uint32, detections []TrackedBox, class string) (TrackedObject, error) {
 	v.currentLock.Lock()
 	defer v.currentLock.Unlock()
+
+	latestFrame := &detections[len(detections)-1]
 
 	obj := v.current[id]
 
@@ -89,32 +91,36 @@ func (v *VideoDB) addBoxToTrackedObject(camera string, cameraResolution [2]int, 
 			Camera:           cameraID,
 			CameraResolution: cameraResolution,
 			Class:            classID,
-			LastSeen:         lastSeen,
+			LastSeen:         latestFrame.Time,
 			NumDetections:    0,
 		}
 		v.current[id] = obj
 	}
 
-	// Ignore boxes if:
-	// 1. They move less than this many pixels AND
-	// 2. Their confidence changes by less than this amount AND
-	// 3. It has been less than this amount of time since we last recorded a box (SCRAP THIS. It's just a crutch. Shouldn't be any need for it)
-	const minMovement = 5
-	const minConfidenceDelta = 0.1
-	//const maxTimeDelta = 5 * time.Second // SCRAPPED
-
-	if len(obj.Boxes) == 0 ||
-		obj.Boxes[len(obj.Boxes)-1].Box.MaxDelta(box) > minMovement ||
-		gen.Abs(obj.Boxes[len(obj.Boxes)-1].Confidence-confidence) > minConfidenceDelta {
-		//lastSeen.Sub(obj.Boxes[len(obj.Boxes)-1].Time) > maxTimeDelta {
-		obj.Boxes = append(obj.Boxes, TrackedBox{
-			Time:       lastSeen,
-			Box:        box,
-			Confidence: confidence,
-		})
+	// Decide whether to add the frames or ignore them
+	var addFrames bool
+	if len(obj.Boxes) == 0 {
+		// For a new object, always add frames
+		addFrames = true
+		//v.log.Infof("Adding %v frames for new object %v", len(detections), id)
+	} else {
+		// For an existing object, only add frames if there is movement
+		const minMovementPx = 5
+		last := &obj.Boxes[len(obj.Boxes)-1]
+		addFrames = last.Box.MaxDelta(latestFrame.Box) > minMovementPx
 	}
 
-	obj.LastSeen = lastSeen
+	if addFrames {
+		for _, d := range detections {
+			obj.Boxes = append(obj.Boxes, TrackedBox{
+				Time:       d.Time,
+				Box:        d.Box,
+				Confidence: d.Confidence,
+			})
+		}
+	}
+
+	obj.LastSeen = latestFrame.Time
 	obj.NumDetections++
 
 	// Once we return this object, the caller is no longer inside currentLock,

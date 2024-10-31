@@ -26,6 +26,7 @@ let seekBarRenderKick = ref(0);
 let seekDebounceTimer = 0;
 let lastSeekAt = 0;
 let lastSeekTo = 0;
+let lastSeekFetchAt = 0;
 
 // This is only useful if the camera is not showing anything (i.e. we can't connect to it),
 // but how to detect that? I guess we need an API for that.
@@ -130,26 +131,59 @@ function seekDebounce(seekTo: number) {
 	let nowMS = (new Date()).getTime();
 	let sinceLastSeek = nowMS - lastSeekAt;
 	let distanceSinceLastSeek = Math.abs(seekTo - lastSeekTo);
-	let seekSpeed = distanceSinceLastSeek / sinceLastSeek; // ms per ms
+
+	// seekSpeed is how fast the user is seeking around, in ms per ms (i.e. NOT pixels, which we probably also want to use)
+	let seekSpeed = distanceSinceLastSeek / sinceLastSeek;
 	lastSeekAt = nowMS;
 	lastSeekTo = seekTo;
 
+	// secondsPerPixel is the seek bar's zoom level
 	let secondsPerPixel = seekBar.secondsPerPixel();
 
+	// These constants here are all just empirical thumbsucks
 	let keyframeOnly = true;
 	let delay = 30;
-	if (secondsPerPixel < 2) {
+	if (secondsPerPixel < 2 || seekSpeed < 8) {
 		keyframeOnly = false;
 	}
-	if (seekSpeed < 5) {
-		delay = 10;
-	}
-	//console.log(`Zoom seconds per pixel: ${secondsPerPixel}, seekSpeed: ${seekSpeed}`);
 
-	clearTimeout(seekDebounceTimer);
-	seekDebounceTimer = window.setTimeout(() => {
+	// It would be nice to algorithmically determine the maxFetchesPerSecond. I'm thinking of
+	// something along the lines of TCP. For example, you could keep trying to fetch at a slightly
+	// higher rate, and if you determine that you're unable to receive frames at that rate, then
+	// you bring your matchFetchesPerSecond down, so that you're only just barely exceeding your
+	// observed max rate.
+	let maxFetchesPerSecond = 1;
+	if (seekSpeed < 5) {
+		maxFetchesPerSecond = 10;
+	} else if (seekSpeed < 20) {
+		maxFetchesPerSecond = 2;
+	}
+	//console.log(`Zoom seconds per pixel: ${secondsPerPixel}, seekSpeed: ${seekSpeed}, maxFetchesPerSecond: ${maxFetchesPerSecond}`);
+
+	let intervalMS = 1000 / maxFetchesPerSecond;
+	let sinceLastSeekFetch = nowMS - lastSeekFetchAt;
+	if (sinceLastSeekFetch > intervalMS) {
+		// If we're without our FPS budget, just kick off the fetch without any delay.
+		// What's nice about this code path, is we don't fall victim to that thing with
+		// a debounce, where you're moving the seek point slowly but consistently, so
+		// every single movement keeps getting debounced. Kicking the can down the road.
+		// With this path, we at least maintain some FPS.
+		clearTimeout(seekDebounceTimer);
 		seekToNoDelay(seekTo, 'ld', keyframeOnly);
-	}, delay);
+		lastSeekFetchAt = nowMS;
+	} else {
+		// BUT, if we're in a low FPS regime (eg high seekSpeed), then debounce is still a great thing
+		// to have, so that when your finger rests on your desired destination, you still get the frame
+		// after a few MS. Without this, you might move your finger fast to where you want to be, and
+		// then the system will just sit there, waiting for you to move slowly, before it will fetch
+		// another frame.
+		clearTimeout(seekDebounceTimer);
+		seekDebounceTimer = window.setTimeout(() => {
+			lastSeekFetchAt = nowMS;
+			seekToNoDelay(seekTo, 'ld', keyframeOnly);
+		}, delay);
+	}
+
 }
 
 // This is how we notice that the user wants to seek to a new position

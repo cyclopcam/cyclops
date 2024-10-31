@@ -43,18 +43,23 @@ export class DetectionResult {
 }
 
 // An object that was detected by the Object Detector, and is now being tracked by a post-process
-// SYNC-TRACKED-OBJECT
 export class TrackedObject {
 	id = 0;
 	class = 0;
 	box = new Rect();
-	genuine = false;
+	confidence = 0;
+	genuine = 0;
 
+	// SYNC-TRACKED-OBJECT
 	parseJSON(j: any) {
 		this.id = j.id;
 		this.class = j.class;
-		this.box.parseJSON(j.box);
 		this.genuine = j.genuine;
+		// We're only ever interested in the latest frame
+		// SYNC-TIME-AND-POSITION
+		let latest = j.frames[j.frames.length - 1];
+		this.box.parseJSON(latest.box);
+		this.confidence = latest.confidence;
 	}
 }
 
