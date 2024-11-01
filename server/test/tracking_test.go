@@ -10,6 +10,7 @@ import (
 
 	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/nn"
+	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/monitor"
 	"github.com/cyclopcam/logs"
@@ -298,13 +299,15 @@ func TestEventTracking(t *testing.T) {
 			NumVehicles:   Range{0, 0},
 		},
 	}
-	// uncomment to test just the last case
-	onlyTestLastCase := false
+	// uncomment the following line, to test just the last case
+	onlyTestLastCase := false // DO NOT COMMIT
 
 	if onlyTestLastCase {
 		cases = cases[len(cases)-1:]
 		t.Logf("WARNING! Only testing the LAST case") // just in case you forget and commit "onlyTestLastCase := true"
 	}
+
+	nnload.LoadAccelerators(logs.NewTestingLog(t), true)
 
 	for iparams, params := range paramPurmutations {
 		t.Logf("Testing parameter permutation %v/%v (%v, %v)", iparams, len(paramPurmutations), params.ModelName, params.NNCoverage)
