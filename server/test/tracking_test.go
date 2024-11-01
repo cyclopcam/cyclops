@@ -105,7 +105,10 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	monitorOptions.ModelName = params.ModelName
 	monitorOptions.EnableFrameReader = false
 	monitorOptions.ModelPaths = []string{FromTestPathToRepoRoot("models")}
-	monitorOptions.MaxSingleThreadPerformance = true
+
+	// MaxSingleThreadPerformance hurts performance during regular testing, when DumpTrackingVideo = false
+	//monitorOptions.MaxSingleThreadPerformance = true
+
 	mon, err := monitor.NewMonitor(logger, monitorOptions)
 	require.NoError(t, err)
 	defer mon.Close()
@@ -287,11 +290,26 @@ func TestEventTracking(t *testing.T) {
 			NumPeople:     Range{1, 1},
 			NumVehicles:   Range{0, 0},
 		},
+		{
+			// This generated a false positive of a "person" on the hailo8L yolov8m, but it was
+			// actually a cat at night. The NCNN model doesn't have this problem.
+			VideoFilename: "testdata/tracking/0010-LD.mp4",
+			NumPeople:     Range{0, 0},
+			NumVehicles:   Range{0, 0},
+		},
 	}
 	// uncomment to test just the last case
-	cases = cases[len(cases)-1:]
-	for _, params := range paramPurmutations {
+	onlyTestLastCase := false
+
+	if onlyTestLastCase {
+		cases = cases[len(cases)-1:]
+		t.Logf("WARNING! Only testing the LAST case") // just in case you forget and commit "onlyTestLastCase := true"
+	}
+
+	for iparams, params := range paramPurmutations {
+		t.Logf("Testing parameter permutation %v/%v (%v, %v)", iparams, len(paramPurmutations), params.ModelName, params.NNCoverage)
 		for _, tcase := range cases {
+			t.Logf("Testing case %v", tcase.VideoFilename)
 			testEventTrackingCase(t, params, tcase)
 		}
 		//break
