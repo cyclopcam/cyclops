@@ -214,6 +214,13 @@ func (m *Monitor) createAbstractObjects(objects []nn.ObjectDetection) []nn.Proce
 	processed := []nn.ProcessedObject{}
 	orgLen := len(objects)
 	for i := 0; i < orgLen; i++ {
+		// Always add the original, regardless of whether it maps to an abstract class or not.
+		// If we didn't do this, we'd be throwing away information (eg was the vehicle a car or a truck).
+		processed = append(processed, nn.ProcessedObject{
+			Raw:   objects[i],
+			Class: objects[i].Class,
+		})
+
 		abstractClass := m.nnClassAbstract[m.nnClassList[objects[i].Class]]
 		if abstractClass != "" {
 			//fmt.Printf("abstractClass %v -> %v\n", m.nnClassList[objects[i].Class], abstractClass)
@@ -224,11 +231,6 @@ func (m *Monitor) createAbstractObjects(objects []nn.ObjectDetection) []nn.Proce
 			processed = append(processed, nn.ProcessedObject{
 				Raw:   objects[i],
 				Class: abstractIdx,
-			})
-		} else {
-			processed = append(processed, nn.ProcessedObject{
-				Raw:   objects[i],
-				Class: objects[i].Class,
 			})
 		}
 	}
