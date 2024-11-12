@@ -407,6 +407,10 @@ func (s *Stream) extractSPSInfo(nalus [][]byte) *StreamInfo {
 				if err != nil {
 					s.Log.Errorf("Failed to decode SPS: %v", err)
 				}
+
+				// The following commented-outline is useful for debugging SPS parsing issues, or creating test data
+				//os.WriteFile("/tmp/sps-"+s.CameraName+"-"+s.StreamName+".h264", nalu, 0644)
+
 				return &StreamInfo{
 					Width:  width,
 					Height: height,
