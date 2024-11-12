@@ -27,8 +27,8 @@ import (
 // A stream sink is fundamentally just a channel
 type StreamSinkChan chan StreamMsg
 
-// StandardStreamSink allows you to run the stream with RunStandardStream()
-// This is really just a convenience wrapper around StreamSinkChan.
+// StandardStreamSink allows you to implement an interface for receiving stream
+// packets, instead of writing a select loop.
 type StandardStreamSink interface {
 	// OnConnect is called by Stream.ConnectSinkAndRun().
 	// You must return a channel to which all stream messages will be sent.
@@ -317,13 +317,14 @@ func (s *Stream) Listen(address string) error {
 		// with every keyframe, so this is a tiny price to pay.
 		if inf := s.extractSPSInfo(nalus); inf != nil {
 			s.infoLock.Lock()
-			if s.info == nil {
-				s.Log.Infof("Size: %v x %v (after %v packets)", inf.Width, inf.Height, myValidPacketID)
-			} else if s.info != nil && (s.info.Width != inf.Width || s.info.Height != inf.Height) {
-				s.Log.Infof("Size changed from %v x %v to %v x %v", s.info.Width, s.info.Height, inf.Width, inf.Height)
-			}
+			prev := s.info
 			s.info = inf
 			s.infoLock.Unlock()
+			if prev == nil {
+				s.Log.Infof("Size: %v x %v (after %v packets)", inf.Width, inf.Height, myValidPacketID)
+			} else if prev.Width != inf.Width || prev.Height != inf.Height {
+				s.Log.Infof("Size changed from %v x %v to %v x %v", prev.Width, prev.Height, inf.Width, inf.Height)
+			}
 		}
 
 		// Before we return, we must clone the packet. This is because we send
