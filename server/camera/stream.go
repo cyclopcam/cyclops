@@ -310,18 +310,21 @@ func (s *Stream) Listen(address string) error {
 			//}
 		}
 
-		// Populate width & height
-		s.infoLock.Lock()
-		if s.info == nil {
-			if inf := s.extractSPSInfo(nalus); inf != nil {
-				s.info = inf
+		// Populate width & height whenever an SPS packet is sent.
+		// Initially, we only did this if s.info was nil. However, I subsequently decided
+		// to support the camera changing resolution while the system is running.
+		// On Rpi5, reading the SPS takes about 300ns, and I believe we only get an SPS
+		// with every keyframe, so this is a tiny price to pay.
+		if inf := s.extractSPSInfo(nalus); inf != nil {
+			s.infoLock.Lock()
+			if s.info == nil {
 				s.Log.Infof("Size: %v x %v (after %v packets)", inf.Width, inf.Height, myValidPacketID)
+			} else if s.info != nil && (s.info.Width != inf.Width || s.info.Height != inf.Height) {
+				s.Log.Infof("Size changed from %v x %v to %v x %v", s.info.Width, s.info.Height, inf.Width, inf.Height)
 			}
-			//if myPacketID == 100 && s.info == nil {
-			//	s.Log.Warnf("Failed to extract SPS info after 100 packets")
-			//}
+			s.info = inf
+			s.infoLock.Unlock()
 		}
-		s.infoLock.Unlock()
 
 		// Before we return, we must clone the packet. This is because we send
 		// the packet via channels, to all of our stream sinks. These sinks
