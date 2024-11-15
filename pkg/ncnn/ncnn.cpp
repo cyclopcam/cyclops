@@ -39,6 +39,8 @@ NcnnDetector* CreateDetector(int detectorFlags, const char* type, const char* pa
 		mtype = ModelTypes::YOLOv7;
 	else if (strcmp(type, "yolov8") == 0)
 		mtype = ModelTypes::YOLOv8;
+	else if (strcmp(type, "yolo11") == 0)
+		mtype = ModelTypes::YOLO11;
 	else
 		return nullptr;
 
@@ -86,7 +88,8 @@ void DetectObjects(NcnnDetector* detector, int nchan, const uint8_t* img, int wi
 	cv::Mat                mat(height, width, nchan, (void*) img);
 	std::vector<Detection> objects;
 	if (detector->Type == ModelTypes::YOLOv7 ||
-	    detector->Type == ModelTypes::YOLOv8) {
+	    detector->Type == ModelTypes::YOLOv8 ||
+	    detector->Type == ModelTypes::YOLO11) {
 		DetectYOLO(detector->Type, detector->Net, detector->Width, detector->Height, detectFlags, minProbability, nmsIouThreshold, mat, objects);
 	}
 	int n = std::min(maxDetections, (int) objects.size());

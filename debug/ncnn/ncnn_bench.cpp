@@ -59,14 +59,14 @@ double SecondsSince(int64_t ms) {
 	return (timeInMilliseconds() - ms) / 1000.0;
 }
 
-void RunDetection(NcnnDetector detector, const cv::Mat& img, bool benchmark, const TestModel& tm) {
+void RunDetection(NcnnDetector* detector, const cv::Mat& img, bool benchmark, const TestModel& tm) {
 	Detection dets[100];
 	int       numDetections = 0;
 	bool      draw          = DumpImages && !Benchmark;
 	cv::Mat   copy;
 	float     minProb      = 0.5f;
 	float     nmsThreshold = 0.45f;
-	DetectObjects(detector, 3, img.data, img.cols, img.rows, img.cols * 3, minProb, nmsThreshold, 100, dets, &numDetections);
+	DetectObjects(detector, 3, img.data, img.cols, img.rows, img.cols * 3, 0, minProb, nmsThreshold, 100, dets, &numDetections);
 	if (!benchmark) {
 		if (draw)
 			copy = img.clone();
@@ -114,8 +114,8 @@ void DetectionThread(std::mutex* lock, std::vector<cv::Mat*>* queue, std::atomic
 }
 
 int main(int argc, char** argv) {
-	//const char* imagepath = "testdata/driveway001-man.jpg";
-	const char* imagepath = "testdata/porch003-man.jpg";
+	const char* imagepath = "testdata/driveway001-man.jpg";
+	//const char* imagepath = "testdata/porch003-man.jpg";
 	//const char* imagepath = "testdata/man-pos-2-0.jpg";
 	cv::Mat m = cv::imread(imagepath, 1);
 	if (m.empty()) {
@@ -124,9 +124,12 @@ int main(int argc, char** argv) {
 	}
 
 	std::vector<TestModel> testModels = {
-	    {"yolov7t", "yolov7", "models/yolov7-tiny.param", "models/yolov7-tiny.bin", 320, 320},
-	    {"yolov8n", "yolov8", "models/yolov8n.param", "models/yolov8n.bin", 320, 256},
-	    {"yolov8s", "yolov8", "models/yolov8s.param", "models/yolov8s.bin", 320, 256},
+	    {"yolov8s_320_256", "yolov8", "models/standard/ncnn/yolov8s_320_256.param", "models/standard/ncnn/yolov8s_320_256.bin", 320, 256},
+	    {"yolov8m_320_256", "yolov8", "models/standard/ncnn/yolov8m_320_256.param", "models/standard/ncnn/yolov8m_320_256.bin", 320, 256},
+	    {"yolov8m_640_480", "yolov8", "models/standard/ncnn/yolov8m_640_480.param", "models/standard/ncnn/yolov8m_640_480.bin", 640, 480},
+	    {"yolo11s_320_256", "yolo11", "models/standard/ncnn/yolo11s_320_256.param", "models/standard/ncnn/yolo11s_320_256.bin", 320, 256},
+	    {"yolo11m_320_256", "yolo11", "models/standard/ncnn/yolo11m_320_256.param", "models/standard/ncnn/yolo11m_320_256.bin", 320, 256},
+	    {"yolo11m_640_480", "yolo11", "models/standard/ncnn/yolo11m_640_480.param", "models/standard/ncnn/yolo11m_640_480.bin", 640, 480},
 	};
 
 	if (CSV) {
@@ -170,7 +173,7 @@ int main(int argc, char** argv) {
 			}
 
 			double estimateRuntime = SecondsSince(start);
-			double targetSeconds   = 5.0;
+			double targetSeconds   = 3.0;
 			int    nReps           = 1;
 			if (Benchmark) {
 				nReps = (int) ceil(nThreads * targetSeconds / estimateRuntime);

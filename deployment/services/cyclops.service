@@ -4,6 +4,10 @@ After=network.target network-online.target
 Requires=network-online.target
  
 [Service]
+# Restart=on-failure is necessary for cyclops to restart itself, when certain config changes are made
+# You'll see that the function ExitNoRestart() exits with code 0, which is the way we communicate
+# to systemd that we should not be restarted.
+Restart=on-failure
 ExecStart=/usr/local/bin/cyclops --vpn --username cyclops --config /var/lib/cyclops/config.sqlite
 
 [Install]

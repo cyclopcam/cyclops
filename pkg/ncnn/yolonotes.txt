@@ -1,0 +1,20 @@
+Build full ncnn debug, with examples and tools
+#cmake -DNCNN_SIMPLEOCV=1 -DCMAKE_BUILD_TYPE=Release ..
+cmake -DCMAKE_BUILD_TYPE=Debug -DNCNN_BUILD_TOOLS=ON -DNCNN_BUILD_EXAMPLES=ON ..
+
+
+pnnx doesn't get included by the regular cmake lists.
+OK.. it magically seemed to build successfully, if I just did the regular cmake/make thing from inside the 'pnnx' directory.
+
+Great, looks like YOLOv11 output format (for object detection) is 100% compatible with YOLOv8.
+
+2024-11-12: Getting weird behaviour when using non-square YOLO models (eg 320 x 256).
+For example, on driveway test image, I get 4 images coming out.
+Square models like 320x320 works fine.
+OK!! The answer was simply that imgsz must be imgsz=h,w instead of imgsz=w,h
+
+yolov8
+	output shape: w=1680, h=84
+
+yolov11
+	output shape: w=1680, h=84

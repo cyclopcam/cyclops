@@ -261,7 +261,7 @@
 			"args": []
 		},
 		{
-			"name": "Server (cyclops.go)",
+			"name": "cyclops.go",
 			"type": "go",
 			"request": "launch",
 			"mode": "auto",

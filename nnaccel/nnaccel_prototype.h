@@ -28,7 +28,8 @@ typedef struct _NNAObjectDetection {
 	int      Height;
 } NNAObjectDetection;
 
-typedef int (*nna_load_model_func)(const char* modelDir, const char* modelName, const NNModelSetup* setup, void** model);
+typedef void (*nna_model_files_func)(const char** subdir, const char** ext);
+typedef int (*nna_load_model_func)(const char* filename, const NNModelSetup* setup, void** model);
 typedef void (*nna_close_model_func)(void* model);
 typedef void (*nna_model_info_func)(void* model, NNModelInfo* info);
 typedef const char* (*nna_status_str_func)(int s);
@@ -41,7 +42,8 @@ typedef void (*nna_close_job_func)(void* job_handle);
 extern "C" {
 #endif
 
-int         nna_load_model(const char* modelDir, const char* modelName, const NNModelSetup* setup, void** model);
+void        nna_model_files(const char** subdir, const char** ext);
+int         nna_load_model(const char* filename, const NNModelSetup* setup, void** model);
 void        nna_close_model(void* model);
 void        nna_model_info(void* model, NNModelInfo* info);
 const char* nna_status_str(int s);

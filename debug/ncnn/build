@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SOURCE_DIR=server/ncnn
+SOURCE_DIR=pkg/ncnn
 OPT_FLAGS=-O3
 NCNN_LIB=ncnn
 AUX_BENCH_CPP_FILES="$SOURCE_DIR/yolo.cpp $SOURCE_DIR/ncnn.cpp $SOURCE_DIR/ncnn_helpers.cpp"

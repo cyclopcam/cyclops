@@ -84,7 +84,7 @@ type StartupError struct {
 }
 
 // Create a new server, load config, start cameras, and listen on HTTP
-func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModelName string) (*Server, error) {
+func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModelsDir, nnModelName string) (*Server, error) {
 
 	// These are the sizes of two large memory buffers that we allocate.
 	ringBufferMB := 200    // This is *per camera*
@@ -115,7 +115,12 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 	s.ApplyConfig()
 
 	monitorOptions := monitor.DefaultMonitorOptions()
-	monitorOptions.ModelName = nnModelName
+	if nnModelsDir != "" {
+		monitorOptions.ModelsDir = nnModelsDir
+	}
+	if nnModelName != "" {
+		monitorOptions.ModelName = nnModelName
+	}
 	monitor, err := monitor.NewMonitor(s.Log, monitorOptions)
 	if err != nil {
 		return nil, err

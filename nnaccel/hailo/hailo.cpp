@@ -32,7 +32,14 @@ NNModel::~NNModel() {
 
 extern "C" {
 
-int nna_load_model(const char* modelDir, const char* modelName, const NNModelSetup* setup, void** model) {
+void nna_model_files(const char** subdir, const char** ext) {
+	// Right now we've only tested with 8L, but if we supported other hailo architectures,
+	// then we'd return different values here. These must match the filenames on models.cyclopcam.org
+	*subdir = "hailo/8L";
+	*ext    = ".hef";
+}
+
+int nna_load_model(const char* filename, const NNModelSetup* setup, void** model) {
 	using namespace hailort;
 	using namespace std::chrono_literals;
 
@@ -50,28 +57,34 @@ int nna_load_model(const char* modelDir, const char* modelName, const NNModelSet
 
 	debug_printf("hailo nna_load_model 2\n");
 
-	std::string fullpath;
-	if (!modelDir || modelDir[0] == 0) {
-		// absolute path specified by modelName
-		fullpath = modelName;
-	} else {
-		// combine modelDir and modelName
-		// eg
-		//   modelDir = /var/lib/cyclops/models
-		//   modelName = "yolov8s"
-		//   fullpath = /var/lib/cyclops/models/hailo/8L/yolov8s.hef
-		// So!
-		// Here we add "hailo/8L" to the model directory. Only we can do this, because only we
-		// know that we have an 8L accelerator. If we had support for others, then we'd have
-		// more model directories, eg hailo/15
-		fullpath = modelDir;
-		if (fullpath.back() != '/') {
-			fullpath += "/";
-		}
-		fullpath += "hailo/8L/";
-		fullpath += modelName;
-		fullpath += ".hef";
-	}
+	std::string fullpath = filename;
+	//if (fullpath.length() > 4 && fullpath.substr(fullpath.length() - 4) != ".hef") {
+	//	fullpath += ".hef";
+	//}
+	//std::string fullpath;
+	//if (!modelDir || modelDir[0] == 0) {
+	//	// absolute path specified by modelName
+	//	fullpath = modelName;
+	//} else {
+	//	// combine modelDir and modelName
+	//	// eg
+	//	//   modelDir = /var/lib/cyclops/models
+	//	//   modelName = "yolov8s"
+	//	//   fullpath = /var/lib/cyclops/models/hailo/8L/yolov8s.hef
+	//	// So!
+	//	// Here we add "hailo/8L" to the model directory. Only we can do this, because only we
+	//	// know that we have an 8L accelerator. If we had support for others, then we'd have
+	//	// more model directories, eg hailo/15
+	//	// MKAY! Since making the above comment, I decided to push the knowledge of the filename/architecture
+	//	// up into the Go code, because the Go code needs to know what to download from S3.
+	//	fullpath = modelDir;
+	//	if (fullpath.back() != '/') {
+	//		fullpath += "/";
+	//	}
+	//	fullpath += "hailo/8L/";
+	//	fullpath += modelName;
+	//	fullpath += ".hef";
+	//}
 
 	debug_printf("hailo nna_load_model fullpath = %s\n", fullpath.c_str());
 

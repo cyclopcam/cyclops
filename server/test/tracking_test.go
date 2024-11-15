@@ -105,7 +105,7 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	monitorOptions := monitor.DefaultMonitorOptions()
 	monitorOptions.ModelName = params.ModelName
 	monitorOptions.EnableFrameReader = false
-	monitorOptions.ModelPaths = []string{FromTestPathToRepoRoot("models")}
+	monitorOptions.ModelsDir = FromTestPathToRepoRoot("models")
 
 	// MaxSingleThreadPerformance hurts performance during regular testing, when DumpTrackingVideo = false
 	//monitorOptions.MaxSingleThreadPerformance = true

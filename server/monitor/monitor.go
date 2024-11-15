@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -89,9 +89,11 @@ type Monitor struct {
 	analyzerSettings          analyzerSettings       // Analyzer settings
 	nextTrackedObjectID       idgen.Uint32           // Next ID to assign to a tracked object
 
-	debugDumpFrames bool // Dump the first frame of each camera, immediately before it gets sent to the NN for processing.
+	// Dump the first frame of each camera, immediately before it gets sent to the NN for processing.
+	// You get the RGB from the camera, and an RGB that was resized and letterboxed for the NN.
+	debugDumpFrames bool
 	dumpLock        sync.Mutex
-	hasDumpedCamera map[int64]bool
+	hasDumpedFrame  map[string]bool
 
 	camerasLock sync.Mutex       // Guards access to cameras
 	cameras     []*monitorCamera // Cameras that we're monitoring
@@ -144,8 +146,8 @@ type MonitorOptions struct {
 	// ModelName is the NN model name, such as "yolov8m"
 	ModelName string
 
-	// ModelPaths is a list of directories to search for NN models
-	ModelPaths []string
+	// ModelsDir is the directory where we store NN models
+	ModelsDir string
 
 	// If true, force NCNN to run in multithreaded mode. Used to speed up unit tests.
 	MaxSingleThreadPerformance bool
@@ -156,29 +158,35 @@ func DefaultMonitorOptions() *MonitorOptions {
 	return &MonitorOptions{
 		EnableFrameReader:          true,
 		ModelName:                  "yolov8m",
-		ModelPaths:                 []string{"models", "/var/lib/cyclops/models"},
+		ModelsDir:                  "/var/lib/cyclops/models",
 		MaxSingleThreadPerformance: false,
 	}
 }
 
 // Create a new monitor
 func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
-	basePath := ""
-	for _, tryPath := range options.ModelPaths {
-		abs, err := filepath.Abs(tryPath)
-		if err != nil {
-			logger.Warnf("Unable to resolve model path candidate '%v' to an absolute path: %v", tryPath, err)
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(abs, "yolov8s.json")); err == nil {
-			basePath = abs
-			break
-		}
-	}
-	if basePath == "" {
-		return nil, fmt.Errorf("Could not find models directory. Searched in [%v]", strings.Join(options.ModelPaths, ", "))
-	}
-	logger.Infof("Loading NN models from '%v'", basePath)
+	// Commenting this out when switching to auto-downloaded model files.
+	// My new methodology has just a single ModelsDir, and this is automatically
+	// populated by downloading from models.cyclopcam.org
+	//basePath := ""
+	//for _, tryPath := range options.ModelPaths {
+	//	abs, err := filepath.Abs(tryPath)
+	//	if err != nil {
+	//		logger.Warnf("Unable to resolve model path candidate '%v' to an absolute path: %v", tryPath, err)
+	//		continue
+	//	}
+	//	if _, err := os.Stat(filepath.Join(abs, "yolov8s.json")); err == nil {
+	//		basePath = abs
+	//		break
+	//	}
+	//}
+	//if basePath == "" {
+	//	return nil, fmt.Errorf("Could not find models directory. Searched in [%v]", strings.Join(options.ModelPaths, ", "))
+	//}
+	logger.Infof("Loading NN models from '%v'", options.ModelsDir)
+
+	// Default size for CPU inference.
+	nnWidth, nnHeight := 320, 256
 
 	// On a Raspberry Pi 4, a single NN thread is best. But on my larger desktops, more threads helps.
 	// I have some numbers in a spreadsheet. Basically, on a Pi, we want to have all cores processing
@@ -192,9 +200,11 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		// use some kind of queue issued by a single CPU thread, instead of having
 		// a bunch of CPU threads hitting the accelerator.
 		nnThreads = 1
+		nnWidth, nnHeight = 640, 480
 	} else if options.MaxSingleThreadPerformance {
 		nnThreads = 1
 	} else if numCPU > 4 {
+		// Vague empirical fudge value for my Ryzen 5900X with hyperthreading enabled
 		nnThreads = numCPU / 2
 	} else {
 		// Raspberry Pi, or some other SBC (4 cores)
@@ -220,11 +230,11 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	// SYNC-NN-THREAD-QUEUE-MIN-SIZE
 	nnQueueSize := nnThreads * 3
 
-	logger.Infof("Loading NN model '%v'", options.ModelName)
+	logger.Infof("Loading NN model '%v' %v x %v", options.ModelName, nnWidth, nnHeight)
 
 	modelSetup := nn.NewModelSetup()
 
-	detector, err := nnload.LoadModel(logger, basePath, options.ModelName, nnThreadingModel, modelSetup)
+	detector, err := nnload.LoadModel(logger, options.ModelsDir, options.ModelName, nnWidth, nnHeight, nnThreadingModel, modelSetup)
 	if err != nil {
 		return nil, err
 	}
@@ -281,8 +291,8 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		watchers:            map[int64][]chan *AnalysisState{},
 		watchersAllCameras:  []chan *AnalysisState{},
 		enableFrameReader:   options.EnableFrameReader,
-		debugDumpFrames:     false,
-		hasDumpedCamera:     map[int64]bool{},
+		debugDumpFrames:     true,
+		hasDumpedFrame:      map[string]bool{},
 	}
 	//m.sendTestImageToNN()
 	for i := 0; i < m.numNNThreads; i++ {
@@ -681,17 +691,29 @@ func (m *Monitor) prepareImageForNN(yuv *accel.YUVImage) (nn.ResizeTransform, *c
 		xform.ScaleY = scale
 		newWidth := int(float32(rgb.Width)*scale + 0.5)
 		newHeight := int(float32(rgb.Height)*scale + 0.5)
-		resizeParams := cimg.ResizeParams{
-			CheapSRGBFilter: true,
+		if (newWidth == rgb.Width/2 || newHeight == rgb.Height/2) && false {
+			// exactly 2x downsize, so we can use our cheap and fast "SIMD" filter
+			small := cimg.NewImage(newWidth, newHeight, cimg.PixelFormatRGB)
+			accel.ReduceHalf(rgb.Width, rgb.Height, 3, rgb.Pixels, rgb.Stride, small.Pixels, small.Stride)
+			rgb = small
+		} else {
+			// For consistency with 2x downsize, use a box filter here too.
+			// For discussion of quality/performance tradeoffs, see speed_test.go
+			resizeParams := cimg.ResizeParams{
+				CheapSRGBFilter: true,
+				Filter:          cimg.ResizeFilterBox,
+			}
+			rgb = cimg.ResizeNew(rgb, newWidth, newHeight, &resizeParams)
 		}
-		rgb = cimg.ResizeNew(rgb, newWidth, newHeight, &resizeParams)
 		if newWidth != nnWidth || newHeight != nnHeight {
 			// Insert resized image into black canvas. There will be a block on the right
-			// or the bottom of black pixels. This is not ideal. We should really aim to
-			// have NNs that are a closer match to the aspect ratio of our camera images.
-			// We could get rid of this step if we made ResizeNew capable of accepting
+			// or the bottom of black pixels, depending on the aspect ratio of input vs NN.
+			// This is not ideal.
+			// We could get rid of this additional copy if we made ResizeNew capable of accepting
 			// a 'view' instead of a contiguous image, but that would require changes
-			// to cimg.
+			// to cimg. For reference, this additional copy adds a cost of 0.04ms on a
+			// Ryzen 5900X. The NN inference on yolov8m on that CPU takes 120ms, which
+			// is why I'm not bothering to optimize this away.
 			big := cimg.NewImage(nnWidth, nnHeight, cimg.PixelFormatRGB)
 			big.CopyImage(rgb, 0, 0)
 			rgb = big
@@ -713,18 +735,19 @@ func (m *Monitor) prepareImageForNN(yuv *accel.YUVImage) (nn.ResizeTransform, *c
 //	}
 //}
 
-func (m *Monitor) dumpFrame(rgb *cimg.Image, cam *camera.Camera) {
+func (m *Monitor) dumpFrame(rgb *cimg.Image, cam *camera.Camera, variant string) {
+	frameKey := strconv.FormatInt(cam.ID(), 10) + "-" + variant
 	m.dumpLock.Lock()
-	hasDumped := m.hasDumpedCamera[cam.ID()]
+	hasDumped := m.hasDumpedFrame[frameKey]
 	if hasDumped {
 		m.dumpLock.Unlock()
 		return
 	}
-	m.hasDumpedCamera[cam.ID()] = true
+	m.hasDumpedFrame[frameKey] = true
 	m.dumpLock.Unlock()
 
-	b, _ := cimg.Compress(rgb, cimg.MakeCompressParams(cimg.Sampling(cimg.Sampling420), 85, cimg.Flags(0)))
-	os.WriteFile(fmt.Sprintf("frame-%v.jpg", cam.Name()), b, 0644)
+	b, _ := cimg.Compress(rgb, cimg.MakeCompressParams(cimg.Sampling(cimg.Sampling420), 95, cimg.Flags(0)))
+	os.WriteFile(fmt.Sprintf("frame-%v-%v.jpg", cam.Name(), variant), b, 0644)
 }
 
 // An NN processing thread
@@ -768,7 +791,8 @@ func (m *Monitor) nnThread() {
 		yuv := item.image
 		xformRgbToNN, rgbPure, rgbNN := m.prepareImageForNN(yuv)
 		if m.debugDumpFrames {
-			m.dumpFrame(rgbNN, item.monCam.camera)
+			m.dumpFrame(rgbPure, item.monCam.camera, "rgb")
+			m.dumpFrame(rgbNN, item.monCam.camera, "nn")
 		}
 		start := time.Now()
 		objects, err := m.detector.DetectObjects(nn.WholeImage(rgbNN.NChan(), rgbNN.Pixels, rgbNN.Width, rgbNN.Height), detectionParams)

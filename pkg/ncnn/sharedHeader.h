@@ -5,6 +5,7 @@
 enum ModelTypes {
 	YOLOv7,
 	YOLOv8,
+	YOLO11, // same input/output as YOLOv8
 };
 
 enum DetectFlags {

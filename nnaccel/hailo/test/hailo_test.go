@@ -23,7 +23,7 @@ func loadModel(modelName string, batchSize int) (*nnaccel.Accelerator, *nnaccel.
 
 	setup := nn.NewModelSetup()
 	setup.BatchSize = batchSize
-	model, err := device.LoadModel(filepath.Join(repoRoot, "models"), modelName, setup)
+	model, err := device.LoadModel(filepath.Join(repoRoot, "models/coco/hailo/8L", modelName)+".hef", setup)
 	if err != nil {
 		return nil, nil, err
 	}

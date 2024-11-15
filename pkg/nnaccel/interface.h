@@ -7,13 +7,14 @@
 extern "C" {
 #endif
 
-// Load an NN module from a shared library
+// Load an NN module from a shared library called "filename"
 char* LoadNNAccel(const char* filename, void** nnModule);
 
 // It might be possible to expose the dynamically loaded C function pointers into Go,
-// it's much easier to provide these wrappers here, which can be used easily from cgo.
+// but I find it much easier to provide these wrappers here, which can be used easily from cgo.
 
-int         NALoadModel(void* nnModule, const char* modelDir, const char* modelName, const NNModelSetup* setup, void** model);
+void        NAModelFiles(void* nnModule, const char** subdir, const char** ext);
+int         NALoadModel(void* nnModule, const char* filename, const NNModelSetup* setup, void** model);
 void        NACloseModel(void* nnModule, void* model);
 void        NAModelInfo(void* nnModule, void* model, NNModelInfo* info);
 const char* NAStatusStr(void* nnModule, int s);

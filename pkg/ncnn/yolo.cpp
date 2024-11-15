@@ -301,7 +301,8 @@ static void detect_yolov7_8(ModelTypes modelType, ncnn::Net& net, int nn_width, 
 
 	switch (modelType) {
 	case ModelTypes::YOLOv7: ex.input("images", in_pad); break;
-	case ModelTypes::YOLOv8: ex.input("in0", in_pad); break;
+	case ModelTypes::YOLOv8:
+	case ModelTypes::YOLO11: ex.input("in0", in_pad); break;
 	}
 
 	std::vector<Object> proposals;
@@ -366,7 +367,7 @@ static void detect_yolov7_8(ModelTypes modelType, ncnn::Net& net, int nn_width, 
 
 			proposals.insert(proposals.end(), objects32.begin(), objects32.end());
 		}
-	} else if (modelType == ModelTypes::YOLOv8) {
+	} else if (modelType == ModelTypes::YOLOv8 || modelType == ModelTypes::YOLO11) {
 		ncnn::Mat outRaw;
 		ex.extract("out0", outRaw);
 		//ncnn::Mat shape = out.shape();
@@ -413,41 +414,7 @@ static void detect_yolov7_8(ModelTypes modelType, ncnn::Net& net, int nn_width, 
 				//printf("proposal %d: %f %f %f %f (cls: %d, prob: %.2f)\n", (int) i, obj.rect.x, obj.rect.y, obj.rect.width, obj.rect.height, obj.label, obj.prob);
 			}
 		}
-
-		/*
-		size_t stride = out.w;
-		for (int ibox = 0; ibox < out.w; ibox++) {
-			const float* ptr = (const float*) out.data;
-			ptr += ibox;
-			float a[8];
-			a[0] = ptr[0];
-			a[1] = ptr[stride];
-			a[2] = ptr[stride * 2];
-			a[3] = ptr[stride * 3];
-			a[4] = ptr[stride * 4];
-			a[5] = ptr[stride * 5];
-			a[6] = ptr[stride * 6];
-			a[7] = ptr[stride * 7];
-
-			if (a[4] > 0.1) {
-				printf("hi!\n");
-			}
-			maxPerson = std::max(maxPerson, a[4]);
-
-			float b[8];
-			b[0] = ptr[stride * 76];
-			b[1] = ptr[stride * 77];
-			b[2] = ptr[stride * 78];
-			b[3] = ptr[stride * 79];
-			b[4] = ptr[stride * 80];
-			b[5] = ptr[stride * 81];
-			b[6] = ptr[stride * 82];
-			b[7] = ptr[stride * 83];
-			printf("box %d: %5.1f %5.1f %5.1f %5.1f %.1f %.1f %.1f %.1f ... %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f\n", ibox, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]);
-		}
-		*/
 	}
-	//printf("max person: %f\n", maxPerson);
 
 	// sort all proposals by score from highest to lowest
 	qsort_descent_inplace(proposals);
@@ -512,106 +479,3 @@ void DetectYOLO(ModelTypes modelType, ncnn::Net& net, int nn_width, int nn_heigh
 		objects.push_back(det);
 	}
 }
-
-/*
-static void draw_objects(const cv::Mat& bgr, const std::vector<Object>& objects)
-{
-    static const char* class_names[] = {
-        "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
-        "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-        "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-        "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
-        "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-        "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-        "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
-        "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
-        "hair drier", "toothbrush"};
-
-    static const unsigned char colors[19][3] = {
-        {54, 67, 244},
-        {99, 30, 233},
-        {176, 39, 156},
-        {183, 58, 103},
-        {181, 81, 63},
-        {243, 150, 33},
-        {244, 169, 3},
-        {212, 188, 0},
-        {136, 150, 0},
-        {80, 175, 76},
-        {74, 195, 139},
-        {57, 220, 205},
-        {59, 235, 255},
-        {7, 193, 255},
-        {0, 152, 255},
-        {34, 87, 255},
-        {72, 85, 121},
-        {158, 158, 158},
-        {139, 125, 96}};
-
-    int color_index = 0;
-
-    cv::Mat image = bgr.clone();
-
-    for (size_t i = 0; i < objects.size(); i++)
-    {
-        const Object& obj = objects[i];
-
-        const unsigned char* color = colors[color_index % 19];
-        color_index++;
-
-        cv::Scalar cc(color[0], color[1], color[2]);
-
-        fprintf(stderr, "%d = %.5f at %.2f %.2f %.2f x %.2f\n", obj.label, obj.prob,
-                obj.rect.x, obj.rect.y, obj.rect.width, obj.rect.height);
-
-        cv::rectangle(image, obj.rect, cc, 2);
-
-        char text[256];
-        sprintf(text, "%s %.1f%%", class_names[obj.label], obj.prob * 100);
-
-        int baseLine = 0;
-        cv::Size label_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
-
-        int x = obj.rect.x;
-        int y = obj.rect.y - label_size.height - baseLine;
-        if (y < 0)
-            y = 0;
-        if (x + label_size.width > image.cols)
-            x = image.cols - label_size.width;
-
-        cv::rectangle(image, cv::Rect(cv::Point(x, y), cv::Size(label_size.width, label_size.height + baseLine)),
-                      cc, -1);
-
-        cv::putText(image, text, cv::Point(x, y + label_size.height),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255));
-    }
-
-    cv::imshow("image", image);
-    cv::waitKey(0);
-}
-
-int main(int argc, char** argv)
-{
-    if (argc != 2)
-    {
-        fprintf(stderr, "Usage: %s [imagepath]\n", argv[0]);
-        return -1;
-    }
-
-    const char* imagepath = argv[1];
-
-    cv::Mat m = cv::imread(imagepath, 1);
-    if (m.empty())
-    {
-        fprintf(stderr, "cv::imread %s failed\n", imagepath);
-        return -1;
-    }
-
-    std::vector<Object> objects;
-    detect_yolov7(m, objects);
-
-    draw_objects(m, objects);
-
-    return 0;
-}
-*/

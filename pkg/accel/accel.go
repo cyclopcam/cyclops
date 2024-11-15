@@ -21,3 +21,11 @@ func YUV420pToRGB(width, height int, y, u, v []byte, strideY, strideU, strideV, 
 		C.int(strideY), C.int(strideU), C.int(strideV),
 		(*C.uint8_t)(unsafe.Pointer(&rgb[0])), C.int(strideRGB))
 }
+
+// Shrink by 2x.
+// nchannel must be 1,3,4, which correspond to Gray, RGB, RGBA.
+func ReduceHalf(width, height, nchannel int, src []byte, srcStride int, dst []byte, dstStride int) {
+	C.ReduceHalf(C.int(width), C.int(height), C.int(nchannel),
+		(*C.uint8_t)(unsafe.Pointer(&src[0])), C.int(srcStride),
+		(*C.uint8_t)(unsafe.Pointer(&dst[0])), C.int(dstStride))
+}

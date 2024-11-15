@@ -34,9 +34,26 @@ func isWSL2() bool {
 	return strings.Contains(release, "microsoft") && strings.Contains(release, "wsl2")
 }
 
+// The exit values look nominally wrong, since usually a zero exit code means we
+// exited cleanly. The reason we flip the codes around, is so that we can use
+// systemd restart=on-failure. on-failure will capture all exit conditions except
+// for the one where we explicitly tell it "don't try". The only way to achieve
+// this is by flipping the meaning around of zero vs non-zero exit codes.
+
+// Exit and tell systemd that it should not attempt a restart
+func ExitNoRestart() {
+	os.Exit(0)
+}
+
+// Exit and tell systemd that it should restart us.
+func ExitAndRestart() {
+	os.Exit(1)
+}
+
 func main() {
-	// This is purely for documentation of the cmd-line args
+	// These are purely for documentation of the cmd-line args
 	nominalDefaultDB := "$HOME/cyclops/config.sqlite"
+	nominalModelsDir := "$HOME/cyclops/models"
 
 	//_, foo := os.ReadFile("/proc/self/auxv")
 	//fmt.Printf("Read from /proc/self/auxv: %v\n", foo)
@@ -61,18 +78,19 @@ func main() {
 	ownIPStr := parser.String("", "ip", &argparse.Options{Help: "IP address of this machine (for network scanning)", Default: ""}) // eg for dev time, and server is running inside a NAT'ed VM such as WSL.
 	privateKey := parser.String("", "privatekey", &argparse.Options{Help: "Change private key of system (e.g. for recreating a system using a prior identity)", Default: ""})
 	disableHailo := parser.Flag("", "nohailo", &argparse.Options{Help: "Disable Hailo neural network accelerator support", Default: false})
-	nnModelName := parser.String("", "nn", &argparse.Options{Help: "Specify the neural network for object detection", Default: "yolov8m"})
+	modelsDir := parser.String("", "models", &argparse.Options{Help: "Neural network models directory", Default: nominalModelsDir})
+	nnModelName := parser.String("", "nn", &argparse.Options{Help: "Specify the neural network for object detection", Default: ""})
 	elevated := parser.Flag("", "elevated", &argparse.Options{Help: "Maintain elevated permissions, instead of setuid(username)", Default: false})
 	kernelWG := parser.Flag("", "kernelwg", &argparse.Options{Help: "(Internal) Run the kernel-mode wireguard interface", Default: false})
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
-		os.Exit(1)
+		ExitNoRestart()
 	}
 
 	if *vpnNetwork != "IPv4" && *vpnNetwork != "IPv6" {
 		fmt.Printf("Invalid VPN network: '%v'. Valid values are IPv4, IPv6\n", *vpnNetwork)
-		os.Exit(1)
+		ExitNoRestart()
 	}
 
 	if *kernelWG {
@@ -84,7 +102,7 @@ func main() {
 	logger, err := logs.NewLog()
 	if err != nil {
 		fmt.Printf("Failed to create logger: %v\n", err)
-		os.Exit(1)
+		ExitNoRestart()
 	}
 
 	home, _ := os.UserHomeDir()
@@ -101,7 +119,7 @@ func main() {
 		// We are running as the cyclops server, and our first step is to launch the kernel-mode wireguard sub-process.
 		if err, kernelWGSecret = wgroot.LaunchRootModeSubProcess(); err != nil {
 			logger.Errorf("Error launching wireguard management sub-process: %v", err)
-			os.Exit(1)
+			ExitNoRestart()
 		}
 		logger.Infof("Wireguard management sub-process launched")
 	}
@@ -125,7 +143,7 @@ func main() {
 		privilegeLimiter, err = wgroot.NewPrivilegeLimiter(*username, wgroot.PrivilegeLimiterFlagSetEnvVars)
 		if err != nil {
 			logger.Errorf("Error creating privilege limiter: %v", err)
-			os.Exit(1)
+			ExitNoRestart()
 		}
 
 		// Update home directory to lower privilege user
@@ -148,12 +166,17 @@ func main() {
 		*configFile = actualDefaultConfigDB
 	}
 
+	actualDefaultModelsDir := filepath.Join(home, "cyclops", "models")
+	if *modelsDir == nominalModelsDir {
+		*modelsDir = actualDefaultModelsDir
+	}
+
 	var ownIP net.IP
 	if *ownIPStr != "" {
 		ownIP = net.ParseIP(*ownIPStr)
 		if ownIP == nil {
 			logger.Errorf("Invalid IP address: %v", *ownIPStr)
-			os.Exit(1)
+			ExitNoRestart()
 		}
 	}
 
@@ -176,7 +199,7 @@ func main() {
 	configDB, err := configdb.NewConfigDB(logger, *configFile, *privateKey)
 	if err != nil {
 		logger.Errorf("Failed to open config database: %v", err)
-		os.Exit(1)
+		ExitNoRestart()
 	}
 	logger.Infof("Public key: %v (short hex %v)", configDB.PublicKey, hex.EncodeToString(configDB.PublicKey[:vpn.ShortPublicKeyLen]))
 
@@ -202,65 +225,73 @@ func main() {
 		vpnClient, err = server.StartVPN(logger, configDB.PrivateKey, kernelWGSecret, forceIPv4)
 		if err != nil {
 			logger.Errorf("%v", err)
-			os.Exit(1)
+			ExitNoRestart()
 		}
 		vpnClient.RunRegisterLoop(vpnShutdown)
 		configDB.VpnAllowedIP = vpnClient.AllowedIP
 		enableSSL = true
 	}
 
-	// Run in a continuous loop, so that the server can restart itself
-	// due to major configuration changes.
-	// TODO: Get rid of this restart loop. Rather rely on systemd to restart us.
-	// That's much cleaner, and simplifies privilege dropping, and also improves security.
-	for {
-		flags := 0
-		if *hotReloadWWW {
-			flags |= server.ServerFlagHotReloadWWW
-		}
-		srv, err := server.NewServer(logger, configDB, flags, *nnModelName)
+	////////////////////////////////////////////////////////////////////////////////////////
+	// This used to be the start of a continuous run-restart loop, but now we rather rely
+	// on systemd to restart us if necessary. This change was brought about to simplify
+	// our privilege dropping behaviour. If we need to be able to restart indefinitely,
+	// then it means we need to keep our elevated privileges. All the pain around reading
+	// from /proc/self/auxv, listening on low ports, etc, brings this about.
+	flags := 0
+	if *hotReloadWWW {
+		flags |= server.ServerFlagHotReloadWWW
+	}
+	srv, err := server.NewServer(logger, configDB, flags, *modelsDir, *nnModelName)
+	if err != nil {
+		logger.Errorf("%v", err)
+		ExitNoRestart()
+	}
+	if ownIP != nil {
+		srv.OwnIP = ownIP
+	}
+	srv.ListenForKillSignals()
+
+	//logger.Warnf("Sleeping for 1 hour")
+	//time.Sleep(time.Hour)
+
+	// Tell systemd that we're alive.
+	// We might also want to implement a liveness ping.
+	// See this article for more details: https://vincent.bernat.ch/en/blog/2017-systemd-golang
+	daemon.SdNotify(false, daemon.SdNotifyReady)
+
+	if enableSSL {
+		err = srv.ListenHTTPS(sslCertDirectory, privilegeLimiter)
 		if err != nil {
-			logger.Errorf("%v", err)
-			os.Exit(1)
+			logger.Infof("ListenHTTPS returned: %v", err)
+			//if !srv.MustRestart {
+			//	break
+			//}
 		}
-		if ownIP != nil {
-			srv.OwnIP = ownIP
-		}
-		srv.ListenForKillSignals()
-
-		//logger.Warnf("Sleeping for 1 hour")
-		//time.Sleep(time.Hour)
-
-		// Tell systemd that we're alive.
-		// We might also want to implement a liveness ping.
-		// See this article for more details: https://vincent.bernat.ch/en/blog/2017-systemd-golang
-		daemon.SdNotify(false, daemon.SdNotifyReady)
-
-		if enableSSL {
-			err = srv.ListenHTTPS(sslCertDirectory, privilegeLimiter)
-			if err != nil {
-				logger.Infof("ListenHTTPS returned: %v", err)
-				if !srv.MustRestart {
-					break
-				}
-			}
-		} else {
-			// SYNC-SERVER-PORT
-			err = srv.ListenHTTP(":8080")
-			if err != nil {
-				logger.Infof("ListenHTTP returned: %v", err)
-				if !srv.MustRestart {
-					break
-				}
-			}
-		}
-
-		err = <-srv.ShutdownComplete
-		//fmt.Printf("Server sent ShutdownComplete: %v", err)
-		if !srv.MustRestart {
-			break
+	} else {
+		// SYNC-SERVER-PORT
+		err = srv.ListenHTTP(":8080")
+		if err != nil {
+			logger.Infof("ListenHTTP returned: %v", err)
+			//if !srv.MustRestart {
+			//	break
+			//}
 		}
 	}
 
+	err = <-srv.ShutdownComplete
+	//fmt.Printf("Server sent ShutdownComplete: %v", err)
+	//if !srv.MustRestart {
+	//	break
+	//}
+	// This was the end of the original run-restart loop, mentioned above.
+	////////////////////////////////////////////////////////////////////////////////////////
+
 	close(vpnShutdown)
+
+	if srv.MustRestart {
+		ExitAndRestart()
+	} else {
+		ExitNoRestart()
+	}
 }
