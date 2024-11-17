@@ -34,6 +34,12 @@ int  MinThreads = 1;
 //int  MaxThreads = Benchmark ? 12 : 1;
 int MaxThreads = 1;
 
+// If you make DetectorFlags = 0, then NCNN will run each NN on as many CPU cores
+// as it can. This is how we run NCNN in practice on Rpi5. On a desktop CPU, we
+// run it single threaded, and spawn our own NN threads.
+int DetectorFlags = DetectorFlagSingleThreaded;
+//int DetectorFlags = 0;
+
 bool QuitThreadsSignal = false;
 
 struct TestModel {
@@ -97,7 +103,7 @@ void RunDetection(NcnnDetector* detector, const cv::Mat& img, bool benchmark, co
 }
 
 void DetectionThread(std::mutex* lock, std::vector<cv::Mat*>* queue, std::atomic<int>* numResults, TestModel tm) {
-	auto detector = CreateDetector(DetectorFlagSingleThreaded, tm.ModelType.c_str(), tm.ParamFile.c_str(), tm.BinFile.c_str(), tm.Width, tm.Height);
+	auto detector = CreateDetector(DetectorFlags, tm.ModelType.c_str(), tm.ParamFile.c_str(), tm.BinFile.c_str(), tm.Width, tm.Height);
 
 	while (true) {
 		if (QuitThreadsSignal) {
@@ -195,13 +201,13 @@ int main(int argc, char** argv) {
 
 			// Measure the speed of a single run, so that we can figure out how many iterations to perform
 			if (Benchmark) {
-				auto detector = CreateDetector(DetectorFlagSingleThreaded, tm.ModelType.c_str(), tm.ParamFile.c_str(), tm.BinFile.c_str(), tm.Width, tm.Height);
+				auto detector = CreateDetector(DetectorFlags, tm.ModelType.c_str(), tm.ParamFile.c_str(), tm.BinFile.c_str(), tm.Width, tm.Height);
 				RunDetection(detector, m, true, tm);
 				DeleteDetector(detector);
 			}
 
 			double estimateRuntime = SecondsSince(start);
-			double targetSeconds   = 3.0;
+			double targetSeconds   = 4.0;
 			int    nReps           = 1;
 			if (Benchmark) {
 				nReps = (int) ceil(nThreads * targetSeconds / estimateRuntime);
@@ -243,7 +249,8 @@ int main(int argc, char** argv) {
 		if (CSV) {
 			printf("%d,", nThreads);
 			for (size_t i = 0; i < fps.size(); i++) {
-				printf("%.2f", fps[i]);
+				//printf("%.2f", fps[i]);
+				printf("%.2f", 1000.0 / fps[i]);
 				if (i < fps.size() - 1)
 					printf(",");
 			}
