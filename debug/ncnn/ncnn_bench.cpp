@@ -5,10 +5,18 @@
 #include "layer.h"
 #include "net.h"
 #include "simpleocv.h"
-//#include "stb_image_write.h"
 
 // Our own ncnn wrapper/helper
 #include "ncnn.h"
+
+// stb_image and stb_image_write implementations are inside ncnn's simpleocv, so we don't
+// have to instantiate them here.
+//#define STB_IMAGE_IMPLEMENTATION
+#include "../stb/stb_image.h"
+#include "../stb/stb_image_write.h"
+
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include "../stb/stb_image_resize2.h"
 
 #include <float.h>
 #include <stdio.h>
@@ -82,8 +90,8 @@ void RunDetection(NcnnDetector* detector, const cv::Mat& img, bool benchmark, co
 		if (draw) {
 			char fn[256];
 			sprintf(fn, "%s-detection.jpg", tm.Name.c_str());
-			//stbi_write_jpg(fn, img.cols, img.rows, 3, img.data, 95);
-			cv::imwrite(fn, copy);
+			stbi_write_jpg(fn, copy.cols, copy.rows, 3, copy.data, 95);
+			//cv::imwrite(fn, copy);
 		}
 	}
 }
@@ -117,19 +125,25 @@ int main(int argc, char** argv) {
 	const char* imagepath = "testdata/driveway001-man.jpg";
 	//const char* imagepath = "testdata/porch003-man.jpg";
 	//const char* imagepath = "testdata/man-pos-2-0.jpg";
-	cv::Mat m = cv::imread(imagepath, 1);
-	if (m.empty()) {
-		fprintf(stderr, "cv::imread %s failed\n", imagepath);
+	//cv::Mat m = cv::imread(imagepath, 1);
+	//if (m.empty()) {
+	//	fprintf(stderr, "cv::imread %s failed\n", imagepath);
+	//	return -1;
+	//}
+	int      width, height, channels;
+	uint8_t* img = stbi_load(imagepath, &width, &height, &channels, 3);
+	if (channels != 3) {
+		fprintf(stderr, "stbi_load %s failed - channels (%d) != 3\n", imagepath, channels);
 		return -1;
 	}
 
 	std::vector<TestModel> testModels = {
-	    {"yolov8s_320_256", "yolov8", "models/standard/ncnn/yolov8s_320_256.param", "models/standard/ncnn/yolov8s_320_256.bin", 320, 256},
-	    {"yolov8m_320_256", "yolov8", "models/standard/ncnn/yolov8m_320_256.param", "models/standard/ncnn/yolov8m_320_256.bin", 320, 256},
-	    {"yolov8m_640_480", "yolov8", "models/standard/ncnn/yolov8m_640_480.param", "models/standard/ncnn/yolov8m_640_480.bin", 640, 480},
-	    {"yolo11s_320_256", "yolo11", "models/standard/ncnn/yolo11s_320_256.param", "models/standard/ncnn/yolo11s_320_256.bin", 320, 256},
-	    {"yolo11m_320_256", "yolo11", "models/standard/ncnn/yolo11m_320_256.param", "models/standard/ncnn/yolo11m_320_256.bin", 320, 256},
-	    {"yolo11m_640_480", "yolo11", "models/standard/ncnn/yolo11m_640_480.param", "models/standard/ncnn/yolo11m_640_480.bin", 640, 480},
+	    {"yolov8s_320_256", "yolov8", "models/coco/ncnn/yolov8s_320_256.param", "models/coco/ncnn/yolov8s_320_256.bin", 320, 256},
+	    {"yolov8m_320_256", "yolov8", "models/coco/ncnn/yolov8m_320_256.param", "models/coco/ncnn/yolov8m_320_256.bin", 320, 256},
+	    //{"yolov8m_640_480", "yolov8", "models/coco/ncnn/yolov8m_640_480.param", "models/coco/ncnn/yolov8m_640_480.bin", 640, 480},
+	    //{"yolo11s_320_256", "yolo11", "models/coco/ncnn/yolo11s_320_256.param", "models/coco/ncnn/yolo11s_320_256.bin", 320, 256},
+	    //{"yolo11m_320_256", "yolo11", "models/coco/ncnn/yolo11m_320_256.param", "models/coco/ncnn/yolo11m_320_256.bin", 320, 256},
+	    //{"yolo11m_640_480", "yolo11", "models/coco/ncnn/yolo11m_640_480.param", "models/coco/ncnn/yolo11m_640_480.bin", 640, 480},
 	};
 
 	if (CSV) {
@@ -151,6 +165,20 @@ int main(int argc, char** argv) {
 		for (auto tm : testModels) {
 			if (!CSV)
 				printf("Testing %s\n", tm.Name.c_str());
+
+			// letterbox to top-left
+			double   scale         = tm.Width / (double) width;
+			int      resizedWidth  = tm.Width;
+			int      resizedHeight = (int) (height * scale);
+			uint8_t* imgResized    = (uint8_t*) malloc(resizedWidth * resizedHeight * 3);
+
+			uint8_t* imgNN = (uint8_t*) malloc(tm.Width * tm.Height * 3);
+			memset(imgNN, 0, tm.Width * tm.Height * 3);
+			for (int y = 0; y < std::min(resizedHeight, tm.Height); y++)
+				memcpy(imgNN + y * tm.Width * 3, img + y * width * 3, resizedWidth * 3);
+			free(imgResized);
+
+			cv::Mat m(tm.Height, tm.Width, CV_8UC3, imgNN);
 
 			QuitThreadsSignal = false;
 			std::vector<std::thread> threads;
@@ -206,15 +234,16 @@ int main(int argc, char** argv) {
 			if (!Benchmark && elapsed >= 3)
 				break;
 			if (Benchmark && !CSV)
-				printf("  %.1f FPS, %.1f ms/frame (%d reps)\n", nReps / elapsed, elapsed * 1000 / nReps, nReps);
+				printf("  %.2f FPS, %.1f ms/frame (%d reps)\n", nReps / elapsed, elapsed * 1000 / nReps, nReps);
 			fps.push_back(nReps / elapsed);
 			if (!CSV)
 				printf("\n");
+			free(imgResized);
 		}
 		if (CSV) {
 			printf("%d,", nThreads);
 			for (size_t i = 0; i < fps.size(); i++) {
-				printf("%.1f", fps[i]);
+				printf("%.2f", fps[i]);
 				if (i < fps.size() - 1)
 					printf(",");
 			}
@@ -222,5 +251,6 @@ int main(int argc, char** argv) {
 		}
 	}
 
+	free(img);
 	return 0;
 }
