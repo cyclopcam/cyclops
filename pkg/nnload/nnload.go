@@ -49,6 +49,9 @@ func downloadFile(srcUrl, targetFile string) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("HTTP error %v", resp.Status)
+	}
 	file, err := os.Create(tempFile)
 	if err != nil {
 		return err

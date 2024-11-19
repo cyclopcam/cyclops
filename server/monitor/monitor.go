@@ -198,9 +198,12 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	if nnload.HaveAccelerator() {
 		// If we can do model parallelism with NN accelerators, then we'll probably
 		// use some kind of queue issued by a single CPU thread, instead of having
-		// a bunch of CPU threads hitting the accelerator.
+		// a bunch of CPU threads hitting the accelerator, so we'd probably still be
+		// using just a single thread here.
 		nnThreads = 1
-		nnWidth, nnHeight = 640, 480
+		// This must match one of the standard models that we host on models.cyclopcam.org.
+		// The YOLO models that Hailo provides are configured for 640x640.
+		nnWidth, nnHeight = 640, 640
 	} else if options.MaxSingleThreadPerformance {
 		nnThreads = 1
 	} else if numCPU > 4 {
