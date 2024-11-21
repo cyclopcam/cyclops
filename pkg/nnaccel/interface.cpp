@@ -96,9 +96,9 @@ const char* NAStatusStr(void* nnModule, int s) {
 	return m->status_str(s);
 }
 
-int NARunModel(void* nnModule, void* model, int batchSize, int width, int height, int nchan, int stride, const void* data, void** job_handle) {
+int NARunModel(void* nnModule, void* model, int batchSize, int batchStride, int width, int height, int nchan, int stride, const void* data, void** job_handle) {
 	NNAccel* m = (NNAccel*) nnModule;
-	return m->run_model(model, batchSize, width, height, nchan, stride, data, job_handle);
+	return m->run_model(model, batchSize, batchStride, width, height, nchan, stride, data, job_handle);
 }
 
 int NAWaitForJob(void* nnModule, void* job_handle, uint32_t max_wait_milliseconds) {
@@ -106,9 +106,9 @@ int NAWaitForJob(void* nnModule, void* job_handle, uint32_t max_wait_millisecond
 	return m->wait_for_job(job_handle, max_wait_milliseconds);
 }
 
-int NAGetObjectDetections(void* nnModule, void* job_handle, size_t maxDetections, NNAObjectDetection** detections, size_t* numDetections) {
+int NAGetObjectDetections(void* nnModule, void* job_handle, int batchEl, size_t maxDetections, NNAObjectDetection** detections, size_t* numDetections) {
 	NNAccel* m = (NNAccel*) nnModule;
-	return m->get_object_detections(job_handle, maxDetections, detections, numDetections);
+	return m->get_object_detections(job_handle, batchEl, maxDetections, detections, numDetections);
 }
 
 void NACloseJob(void* nnModule, void* job_handle) {

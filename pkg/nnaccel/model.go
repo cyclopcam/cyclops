@@ -21,11 +21,11 @@ func (m *Model) Close() {
 	C.NACloseModel(m.accel.handle, m.handle)
 }
 
-func (m *Model) Run(batchSize, width, height, nchan int, stride int, data unsafe.Pointer) (*AsyncJob, error) {
+func (m *Model) Run(batchSize, batchStride, width, height, nchan int, stride int, data unsafe.Pointer) (*AsyncJob, error) {
 	job := &AsyncJob{
 		accel: m.accel,
 	}
-	err := m.accel.StatusToErr(C.NARunModel(m.accel.handle, m.handle, C.int(batchSize), C.int(width), C.int(height), C.int(nchan), C.int(stride), data, &job.handle))
+	err := m.accel.StatusToErr(C.NARunModel(m.accel.handle, m.handle, C.int(batchSize), C.int(batchStride), C.int(width), C.int(height), C.int(nchan), C.int(stride), data, &job.handle))
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func (m *Model) Run(batchSize, width, height, nchan int, stride int, data unsafe
 
 // Detection thresholds are ignored here. They need to be setup when the model is initially loaded.
 func (m *Model) DetectObjects(img nn.ImageCrop, params *nn.DetectionParams) ([]nn.ObjectDetection, error) {
-	job, err := m.Run(1, img.CropWidth, img.CropHeight, img.NChan, img.Stride(), img.Pointer())
+	job, err := m.Run(1, 0, img.CropWidth, img.CropHeight, img.NChan, img.Stride(), img.Pointer())
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func (m *Model) DetectObjects(img nn.ImageCrop, params *nn.DetectionParams) ([]n
 	if !job.Wait(5 * time.Second) {
 		return nil, fmt.Errorf("Timeout waiting for NN result")
 	}
-	return job.GetObjectDetections()
+	return job.GetObjectDetections(0)
 }
 
 func (m *Model) Config() *nn.ModelConfig {

@@ -1,6 +1,7 @@
 package hailotest
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,7 +15,7 @@ import (
 
 const repoRoot = "../../.."
 
-// modelName is eg "yolov8s"
+// modelName is eg "yolov8s_640_640"
 func loadModel(modelName string, batchSize int) (*nnaccel.Accelerator, *nnaccel.Model, error) {
 	device, err := nnaccel.Load("hailo")
 	if err != nil {
@@ -32,8 +33,9 @@ func loadModel(modelName string, batchSize int) (*nnaccel.Accelerator, *nnaccel.
 }
 
 func BenchmarkObjectDetection(b *testing.B) {
-	modelName := "yolov8s"
+	modelName := "yolov8m_640_640"
 	batchSize := 1
+	batchStride := 0
 
 	_, model, err := loadModel(modelName, batchSize)
 	require.NoError(b, err)
@@ -46,7 +48,7 @@ func BenchmarkObjectDetection(b *testing.B) {
 	}
 
 	// The first inference run is slow, so don't include that in the benchmark
-	job, _ := model.Run(batchSize, img.Width, img.Height, img.NChan(), 0, unsafe.Pointer(&batch[0]))
+	job, _ := model.Run(batchSize, batchStride, img.Width, img.Height, img.NChan(), 0, unsafe.Pointer(&batch[0]))
 	job.Wait(5 * time.Second)
 	job.Close()
 	b.ResetTimer()
@@ -64,7 +66,7 @@ func BenchmarkObjectDetection(b *testing.B) {
 		var job *nnaccel.AsyncJob
 		for i := 0; i < 20; i++ {
 			var err error
-			job, err = model.Run(batchSize, img.Width, img.Height, img.NChan(), 0, unsafe.Pointer(&batch[0]))
+			job, err = model.Run(batchSize, batchStride, img.Width, img.Height, img.NChan(), 0, unsafe.Pointer(&batch[0]))
 			if err == nil {
 				break
 			} else if i == 19 {
@@ -74,7 +76,7 @@ func BenchmarkObjectDetection(b *testing.B) {
 			time.Sleep(time.Millisecond * (1 << i))
 		}
 		job.Wait(time.Second)
-		job.GetObjectDetections()
+		job.GetObjectDetections(0)
 		job.Close()
 		runTicket <- true
 		doneQueue <- true
@@ -109,8 +111,10 @@ func BenchmarkObjectDetection(b *testing.B) {
 }
 
 func TestObjectDetection(t *testing.T) {
-	_, model, err := loadModel("yolov8s", 1)
+	_, model, err := loadModel("yolov8s_640_640", 1)
 	require.NoError(t, err)
+
+	fmt.Printf("cache breaker 1\n")
 
 	img, err := cimg.ReadFile(filepath.Join(repoRoot, "testdata/yard-640x640.jpg"))
 	require.NoError(t, err)
@@ -118,13 +122,13 @@ func TestObjectDetection(t *testing.T) {
 
 	// 1st run, where everything is as straightforward and 'default' as possible
 
-	job, err := model.Run(1, img.Width, img.Height, img.NChan(), 0, unsafe.Pointer(&rgb.Pixels[0]))
+	job, err := model.Run(1, 0, img.Width, img.Height, img.NChan(), 0, unsafe.Pointer(&rgb.Pixels[0]))
 	require.NoError(t, err)
 
 	// Wait for async job to complete
 	require.True(t, job.Wait(time.Second))
 
-	dets, err := job.GetObjectDetections()
+	dets, err := job.GetObjectDetections(0)
 	require.NoError(t, err)
 	for _, d := range dets {
 		t.Logf("Class %v (confidence %.3f): %v,%v - %v,%v", d.Class, d.Confidence, d.Box.X, d.Box.Y, d.Box.X+d.Box.Width, d.Box.Y+d.Box.Height)

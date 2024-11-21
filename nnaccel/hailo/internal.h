@@ -11,6 +11,7 @@
 #include <string>
 
 #include "defs.h"
+#include "pagealloc.h"
 
 inline cyStatus _make_own_status(hailo_status s) {
 	switch (s) {
@@ -23,7 +24,8 @@ inline cyStatus _make_own_status(hailo_status s) {
 	}
 }
 
-// List of buffers that are freed by our destructor
+// List of buffers that were allocated with malloc(), which we free()
+// in our destructor.
 class BufferList {
 public:
 	std::vector<void*> Buffers;
@@ -32,7 +34,7 @@ public:
 
 	~BufferList() {
 		for (auto b : Buffers) {
-			free(b);
+			PageAlignedFree(b);
 		}
 	}
 
@@ -46,7 +48,7 @@ struct NNModel {
 	std::unique_ptr<hailort::VDevice>              Device;
 	std::shared_ptr<hailort::InferModel>           InferModel;
 	std::shared_ptr<hailort::ConfiguredInferModel> ConfiguredInferModel;
-	hailort::ConfiguredInferModel::Bindings        Bindings;
+	//hailort::ConfiguredInferModel::Bindings        Bindings;
 
 	~NNModel();
 };
@@ -75,15 +77,22 @@ public:
 // A job that is busy executing on the Hailo TPU
 class OwnAsyncJobHandle {
 public:
-	NNModel*               Model;
-	std::vector<OutTensor> OutTensors;
-	hailort::AsyncInferJob HailoJob;
-	BufferList             Buffers;
+	NNModel*                                             Model;
+	std::vector<hailort::ConfiguredInferModel::Bindings> Bindings;   // Length equal to batch size
+	std::vector<OutTensor>                               OutTensors; // Parallel to Bindings
+	hailort::AsyncInferJob                               HailoJob;
+	BufferList                                           Buffers;
 
-	OwnAsyncJobHandle(NNModel* model, std::vector<OutTensor>&& outTensors, hailort::AsyncInferJob&& hailoJob) {
+	OwnAsyncJobHandle(NNModel*                                               model,
+	                  std::vector<hailort::ConfiguredInferModel::Bindings>&& bindings,
+	                  std::vector<OutTensor>&&                               outTensors,
+	                  hailort::AsyncInferJob&&                               hailoJob,
+	                  BufferList&&                                           buffers) {
 		Model      = model;
+		Bindings   = std::move(bindings);
 		OutTensors = std::move(outTensors);
 		HailoJob   = std::move(hailoJob);
+		Buffers    = std::move(buffers);
 	}
 
 	~OwnAsyncJobHandle() {

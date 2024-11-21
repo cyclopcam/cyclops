@@ -25,12 +25,12 @@ func (j *AsyncJob) Wait(wait time.Duration) bool {
 	return C.NAWaitForJob(j.accel.handle, j.handle, C.uint32_t(milliseconds)) == 0
 }
 
-func (j *AsyncJob) GetObjectDetections() ([]nn.ObjectDetection, error) {
+func (j *AsyncJob) GetObjectDetections(batchEl int) ([]nn.ObjectDetection, error) {
 	// This is an arbitrary limit.
 	maxDetections := 1000
 	var detections *C.NNAObjectDetection
 	var numDetections C.size_t
-	C.NAGetObjectDetections(j.accel.handle, j.handle, C.size_t(maxDetections), &detections, &numDetections)
+	C.NAGetObjectDetections(j.accel.handle, j.handle, C.int(batchEl), C.size_t(maxDetections), &detections, &numDetections)
 	dets := unsafe.Slice(detections, int(numDetections))
 	out := make([]nn.ObjectDetection, len(dets))
 	for i := 0; i < len(dets); i++ {

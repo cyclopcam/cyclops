@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "internal.h"
+#include "pagealloc.h"
 
 void CopyImageToDenseBuffer(const void* image, int width, int height, int nchan, int stride, void* denseBuffer);
 
@@ -17,7 +18,7 @@ void _model_input_sizes(hailort::InferModel* model, int& width, int& height) {
 	height = model->inputs()[0].shape().height;
 }
 
-//#define debug_printf printf
+//#define debug_printf(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
 #define debug_printf(...) ((void) 0)
 
 NNModel::~NNModel() {
@@ -113,22 +114,31 @@ int nna_load_model(const char* filename, const NNModelSetup* setup, void** model
 
 	debug_printf("hailo nna_load_model 4\n");
 
-	//configured_infer_model = nullptr;
-
-	// Create infer bindings
-	Expected<ConfiguredInferModel::Bindings> bindings_exp = configured_infer_model->create_bindings();
-	if (!bindings_exp) {
-		//LOG_ERROR("Failed to create infer bindings, status = " << bindings_exp.status());
-		return _make_own_status(bindings_exp.status());
-	}
+	// TODO: Get rid of this special case for BatchSize = 1, once we've got higher batch sizes working.
+	// OR.... move all the setup of bindings and output buffers into this setup phase. I'm guessing
+	// we'd need at least 2 sets of bindings in order to do overlapped work. But I still have no idea
+	// how much paralellism one can get additionally by queing up multiple jobs.
+	//ConfiguredInferModel::Bindings bindings;
+	//if (setup->BatchSize == 1) {
+	//	// Create infer bindings
+	//	Expected<ConfiguredInferModel::Bindings> bindings_exp = configured_infer_model->create_bindings();
+	//	if (!bindings_exp) {
+	//		//LOG_ERROR("Failed to create infer bindings, status = " << bindings_exp.status());
+	//		return _make_own_status(bindings_exp.status());
+	//	} else {
+	//		bindings = std::move(bindings_exp.release());
+	//	}
+	//}
 
 	NNModel* m              = new NNModel();
 	m->Device               = std::move(vdevice);
 	m->BatchSize            = setup->BatchSize;
 	m->InferModel           = infer_model;
 	m->ConfiguredInferModel = configured_infer_model;
-	m->Bindings             = std::move(bindings_exp.release());
-	*model                  = m;
+	//if (setup->BatchSize == 1) {
+	//	m->Bindings = std::move(bindings);
+	//}
+	*model = m;
 
 	//debug_printf("Users of configured_infer_model: %d\n", (int) configured_infer_model.use_count());
 
@@ -162,7 +172,7 @@ const char* nna_status_str(int _s) {
 	return _cyhailo_status_str_own(s);
 }
 
-int nna_run_model(void* model, int batchSize, int width, int height, int nchan, int stride, const void* data, void** asyncHandle) {
+int nna_run_model(void* model, int batchSize, int batchStride, int width, int height, int nchan, int stride, const void* data, void** asyncHandle) {
 	using namespace hailort;
 	using namespace std::chrono_literals;
 
@@ -183,7 +193,10 @@ int nna_run_model(void* model, int batchSize, int width, int height, int nchan, 
 	if (batchSize != info.BatchSize || width != info.Width || height != info.Height || nchan != info.NChan) {
 		return cySTATUS_INVALID_INPUT_DIMENSIONS;
 	}
-	if (batchSize * width * height * nchan != (int) input_frame_size) {
+	if (batchSize != 1 && (size_t) batchStride < input_frame_size) {
+		return cySTATUS_INVALID_INPUT_DIMENSIONS;
+	}
+	if (width * height * nchan != (int) input_frame_size) {
 		return cySTATUS_INVALID_INPUT_DIMENSIONS;
 	}
 
@@ -191,7 +204,9 @@ int nna_run_model(void* model, int batchSize, int width, int height, int nchan, 
 
 	uint8_t* denseInput = nullptr;
 	if (stride != width * nchan) {
-		denseInput = (uint8_t*) malloc(batchSize * width * height * nchan);
+		if (batchSize != 1)
+			return cySTATUS_SPARSE_SCANLINES;
+		denseInput = (uint8_t*) PageAlignedAlloc(batchSize * width * height * nchan);
 		if (!denseInput) {
 			return cySTATUS_OUT_OF_CPU_MEMORY;
 		}
@@ -201,58 +216,85 @@ int nna_run_model(void* model, int batchSize, int width, int height, int nchan, 
 		denseInput = (uint8_t*) data;
 	}
 
-	auto status = m->Bindings.input(input_name)->set_buffer(MemoryView(denseInput, input_frame_size));
+	// Waiting for available requests in the pipeline.
+	// I'm not 100% sure whether we need to do this before binding, or if we can do it after binding.
+	hailo_status status = m->ConfiguredInferModel->wait_for_async_ready(2s, batchSize);
 	if (status != HAILO_SUCCESS) {
+		debug_printf("Failed to wait for async ready, status = %d", (int) status);
 		return _make_own_status(status);
 	}
 
-	//OwnAsyncJobHandle ownJob;
-	std::vector<OutTensor> outputTensors;
+	std::vector<ConfiguredInferModel::Bindings> bindings_batch;
+	std::vector<OutTensor>                      output_tensors_batch;
 
-	// Bind output tensors
-	for (auto const& output_name : m->InferModel->get_output_names()) {
-		size_t output_size = m->InferModel->output(output_name)->get_frame_size();
-
-		uint8_t* outputBuffer = (uint8_t*) malloc(output_size);
-		if (!outputBuffer) {
-			//printf("Could not allocate an output buffer!");
-			return cySTATUS_OUT_OF_CPU_MEMORY;
+	for (int iBatchEl = 0; iBatchEl < batchSize; iBatchEl++) {
+		Expected<ConfiguredInferModel::Bindings> bindings_exp = m->ConfiguredInferModel->create_bindings();
+		if (!bindings_exp) {
+			printf("Failed to get infer model bindings\n");
+			return bindings_exp.status();
 		}
-		buffers.Add(outputBuffer);
+		ConfiguredInferModel::Bindings bindings = bindings_exp.release();
+		bindings_batch.push_back(bindings);
 
-		status = m->Bindings.output(output_name)->set_buffer(MemoryView(outputBuffer, output_size));
+		uint8_t* elInput = denseInput + iBatchEl * batchStride;
+		status           = bindings.input(input_name)->set_buffer(MemoryView(elInput, input_frame_size));
 		if (status != HAILO_SUCCESS) {
-			//printf("Failed to set infer output buffer, status = %d", (int) status);
 			return _make_own_status(status);
 		}
 
-		std::vector<hailo_quant_info_t> quant  = m->InferModel->output(output_name)->get_quant_infos();
-		hailo_3d_image_shape_t          shape  = m->InferModel->output(output_name)->shape();
-		hailo_format_t                  format = m->InferModel->output(output_name)->format();
-		outputTensors.push_back(OutTensor(outputBuffer, output_name, quant[0], shape, format));
+		//std::vector<OutTensor> outputTensors;
 
-		//printf("Output tensor %s, %d bytes, shape (%d, %d, %d)\n", output_name.c_str(), (int) output_size, (int) shape.height, (int) shape.width, (int) shape.features);
-		// printf("  %s\n", DumpFormat(format).c_str());
-		//for (auto q : quant) {
-		//	printf("  Quantization scale: %f offset: %f\n", q.qp_scale, q.qp_zp);
-		//}
+		// Bind output tensors
+		for (auto const& output_name : m->InferModel->get_output_names()) {
+			size_t output_size = m->InferModel->output(output_name)->get_frame_size();
+
+			uint8_t* outputBuffer = (uint8_t*) PageAlignedAlloc(output_size);
+			if (!outputBuffer) {
+				//printf("Could not allocate an output buffer!");
+				return cySTATUS_OUT_OF_CPU_MEMORY;
+			}
+			buffers.Add(outputBuffer);
+
+			status = bindings.output(output_name)->set_buffer(MemoryView(outputBuffer, output_size));
+			if (status != HAILO_SUCCESS) {
+				//printf("Failed to set infer output buffer, status = %d", (int) status);
+				return _make_own_status(status);
+			}
+
+			std::vector<hailo_quant_info_t> quant  = m->InferModel->output(output_name)->get_quant_infos();
+			hailo_3d_image_shape_t          shape  = m->InferModel->output(output_name)->shape();
+			hailo_format_t                  format = m->InferModel->output(output_name)->format();
+			output_tensors_batch.push_back(OutTensor(outputBuffer, output_name, quant[0], shape, format));
+
+			debug_printf("Output tensor %s, %d bytes, shape (%d, %d, %d)\n", output_name.c_str(), (int) output_size, (int) shape.height, (int) shape.width, (int) shape.features);
+			// printf("  %s\n", DumpFormat(format).c_str());
+			//for (auto q : quant) {
+			//	printf("  Quantization scale: %f offset: %f\n", q.qp_scale, q.qp_zp);
+			//}
+		}
 	}
 
 	// Prepare tensors for postprocessing.
 	// This is from the original SDK/demos, but I don't understand why this sorting step is necessary.
 	// It's quite obviously NOT necessary when there's only one output, which is the case with
 	// YOLOv8 object detection on Rpi5+Hailo8L.
-	std::sort(outputTensors.begin(), outputTensors.end(), OutTensor::SortFunction);
+	//std::sort(outputTensors.begin(), outputTensors.end(), OutTensor::SortFunction);
 
 	// Waiting for available requests in the pipeline.
-	status = m->ConfiguredInferModel->wait_for_async_ready(2s);
-	if (status != HAILO_SUCCESS) {
-		//printf("Failed to wait for async ready, status = %d", (int) status);
-		return _make_own_status(status);
-	}
+	//status = m->ConfiguredInferModel->wait_for_async_ready(2s, batchSize);
+	//if (status != HAILO_SUCCESS) {
+	//	//printf("Failed to wait for async ready, status = %d", (int) status);
+	//	return _make_own_status(status);
+	//}
 
 	// Dispatch the job.
-	Expected<AsyncInferJob> job_exp = m->ConfiguredInferModel->run_async(m->Bindings);
+	Expected<AsyncInferJob> job_exp = m->ConfiguredInferModel->run_async(bindings_batch);
+
+	//Expected<AsyncInferJob> job_exp = m->ConfiguredInferModel->run_async(bindings_batch, [](const AsyncInferCompletionInfo& completion_info) {
+	//	// Use completion_info to get the async operation status
+	//	// Note that this callback must be executed as quickly as possible
+	//	(void) completion_info.status;
+	//});
 	if (!job_exp) {
 		//printf("Failed to start async infer job, status = %d\n", (int) job_exp.status());
 		return _make_own_status(job_exp.status());
@@ -265,31 +307,35 @@ int nna_run_model(void* model, int batchSize, int width, int height, int nchan, 
 	// Our destructor is supposed to run on nna_finish_run().
 	//job->detach();
 
-	OwnAsyncJobHandle* myJob = new OwnAsyncJobHandle(m, std::move(outputTensors), std::move(job_exp.release()));
-	myJob->Buffers           = std::move(buffers);
+	OwnAsyncJobHandle* myJob = new OwnAsyncJobHandle(m, std::move(bindings_batch), std::move(output_tensors_batch), std::move(job_exp.release()), std::move(buffers));
 	*asyncHandle             = myJob;
 
 	return cySTATUS_OK;
 }
 
 int nna_wait_for_job(void* job_handle, uint32_t max_wait_milliseconds) {
+	//debug_printf("Waiting for job for %d ms\n", max_wait_milliseconds);
 	OwnAsyncJobHandle* ownJob = (OwnAsyncJobHandle*) job_handle;
 	hailo_status       status = ownJob->HailoJob.wait(std::chrono::milliseconds(max_wait_milliseconds));
+	//debug_printf("Result: %d\n", status);
 	return _make_own_status(status);
 }
 
-int nna_get_object_detections(void* job_handle, size_t maxDetections, NNAObjectDetection** detections, size_t* numDetections) {
+int nna_get_object_detections(void* job_handle, int batchEl, size_t maxDetections, NNAObjectDetection** detections, size_t* numDetections) {
 	*detections    = nullptr;
 	*numDetections = 0;
 
+	OwnAsyncJobHandle* ownJob = (OwnAsyncJobHandle*) job_handle;
+
 	// We expect the caller to have used nna_wait_for_job() before calling this function, but we call wait(0)
 	// here for safety, and return a timeout error if the job is not finished.
-	OwnAsyncJobHandle* ownJob                = (OwnAsyncJobHandle*) job_handle;
-	uint32_t           max_wait_milliseconds = 0;
-	hailo_status       status                = ownJob->HailoJob.wait(std::chrono::milliseconds(max_wait_milliseconds));
-	if (status != HAILO_SUCCESS) {
-		return cySTATUS_TIMEOUT;
-	}
+	// NA, scrap that. After introducing batch size > 1, I decided to get rid of this.
+	// Just use the API as intended.
+	//uint32_t           max_wait_milliseconds = 0;
+	//hailo_status       status                = ownJob->HailoJob.wait(std::chrono::milliseconds(max_wait_milliseconds));
+	//if (status != HAILO_SUCCESS) {
+	//	return cySTATUS_TIMEOUT;
+	//}
 	NNModel* model = ownJob->Model;
 
 	int nnWidth;
@@ -299,7 +345,7 @@ int nna_get_object_detections(void* job_handle, size_t maxDetections, NNAObjectD
 	bool nmsOnHailo = model->InferModel->outputs().size() == 1 && model->InferModel->outputs()[0].is_nms();
 
 	if (nmsOnHailo) {
-		OutTensor* out = &ownJob->OutTensors[0];
+		OutTensor* out = &ownJob->OutTensors[batchEl];
 
 		const float* raw = (const float*) out->Data;
 

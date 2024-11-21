@@ -16,6 +16,8 @@ const char* _cyhailo_status_str_own(cyStatus s) {
 		return "Timeout";
 	case cySTATUS_CPU_NMS_NOT_IMPLEMENTED:
 		return "CPU NMS not implemented";
+	case cySTATUS_SPARSE_SCANLINES:
+		return "Scanlines are not densely packed. Stride must be nchan*width for batch sizes other than 1";
 	default:
 		return "Unknown status";
 	}

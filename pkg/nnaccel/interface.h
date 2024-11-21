@@ -18,9 +18,9 @@ int         NALoadModel(void* nnModule, const char* filename, const NNModelSetup
 void        NACloseModel(void* nnModule, void* model);
 void        NAModelInfo(void* nnModule, void* model, NNModelInfo* info);
 const char* NAStatusStr(void* nnModule, int s);
-int         NARunModel(void* nnModule, void* model, int batchSize, int width, int height, int nchan, int stride, const void* data, void** job_handle);
+int         NARunModel(void* nnModule, void* model, int batchSize, int batchStride, int width, int height, int nchan, int stride, const void* data, void** job_handle);
 int         NAWaitForJob(void* nnModule, void* job_handle, uint32_t max_wait_milliseconds);
-int         NAGetObjectDetections(void* nnModule, void* job_handle, size_t maxDetections, NNAObjectDetection** detections, size_t* numDetections);
+int         NAGetObjectDetections(void* nnModule, void* job_handle, int batchEl, size_t maxDetections, NNAObjectDetection** detections, size_t* numDetections);
 void        NACloseJob(void* nnModule, void* job_handle);
 
 #ifdef __cplusplus
