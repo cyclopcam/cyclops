@@ -17,7 +17,11 @@ const char* _cyhailo_status_str_own(cyStatus s) {
 	case cySTATUS_CPU_NMS_NOT_IMPLEMENTED:
 		return "CPU NMS not implemented";
 	case cySTATUS_SPARSE_SCANLINES:
-		return "Scanlines are not densely packed. Stride must be nchan*width for batch sizes other than 1";
+		return "Scanlines are not densely packed. Stride must be nchan*width";
+	case cySTATUS_BATCH_SIZE_MISMATCH:
+		return "Batch size of job doesn't match batch size at model setup time";
+	case cySTATUS_BATCH_STRIDE_TOO_SMALL:
+		return "Batch stride is too small";
 	default:
 		return "Unknown status";
 	}

@@ -50,32 +50,39 @@ func (d *Detector) Close() {
 	C.DeleteDetector(d.detector)
 }
 
-func (d *Detector) DetectObjects(img nn.ImageCrop, params *nn.DetectionParams) ([]nn.ObjectDetection, error) {
-	detections := make([]C.Detection, 100)
-	nDetections := C.int(0)
-	flags := C.int(0)
-	if params.Unclipped {
-		flags |= C.DetectFlagNoClip
-	}
-	C.DetectObjects(d.detector,
-		C.int(img.NChan), (*C.uchar)(img.Pointer()), C.int(img.CropWidth), C.int(img.CropHeight), C.int(img.Stride()),
-		flags, C.float(params.ProbabilityThreshold), C.float(params.NmsIouThreshold),
-		C.int(len(detections)), (*C.Detection)(unsafe.Pointer(&detections[0])), &nDetections)
-	result := make([]nn.ObjectDetection, nDetections)
-
-	for i := 0; i < int(nDetections); i++ {
-		result[i] = nn.ObjectDetection{
-			Class:      int(detections[i].Class),
-			Confidence: float32(detections[i].Confidence),
-			Box: nn.Rect{
-				X:      int32(detections[i].Box.X),
-				Y:      int32(detections[i].Box.Y),
-				Width:  int32(detections[i].Box.Width),
-				Height: int32(detections[i].Box.Height),
-			},
+func (d *Detector) DetectObjects(batch nn.ImageBatch, params *nn.DetectionParams) ([][]nn.ObjectDetection, error) {
+	// NCNN is built for single element operation (i.e. batch size 1), so we just loop over
+	// all the images in the batch.
+	batchResult := make([][]nn.ObjectDetection, batch.BatchSize)
+	for i := 0; i < batch.BatchSize; i++ {
+		detections := make([]C.Detection, 100)
+		nDetections := C.int(0)
+		flags := C.int(0)
+		if params.Unclipped {
+			flags |= C.DetectFlagNoClip
 		}
+		img := batch.Image(i)
+		C.DetectObjects(d.detector,
+			C.int(img.NChan), (*C.uchar)(img.Pointer()), C.int(img.CropWidth), C.int(img.CropHeight), C.int(img.Stride()),
+			flags, C.float(params.ProbabilityThreshold), C.float(params.NmsIouThreshold),
+			C.int(len(detections)), (*C.Detection)(unsafe.Pointer(&detections[0])), &nDetections)
+		result := make([]nn.ObjectDetection, nDetections)
+
+		for i := 0; i < int(nDetections); i++ {
+			result[i] = nn.ObjectDetection{
+				Class:      int(detections[i].Class),
+				Confidence: float32(detections[i].Confidence),
+				Box: nn.Rect{
+					X:      int32(detections[i].Box.X),
+					Y:      int32(detections[i].Box.Y),
+					Width:  int32(detections[i].Box.Width),
+					Height: int32(detections[i].Box.Height),
+				},
+			}
+		}
+		batchResult[i] = result
 	}
-	return result, nil
+	return batchResult, nil
 }
 
 func (d *Detector) Config() *nn.ModelConfig {

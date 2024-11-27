@@ -55,6 +55,56 @@ func NewModelSetup() *ModelSetup {
 	}
 }
 
+// ImageBatch is 1 or more images sent to a Neural Network
+type ImageBatch struct {
+	BatchSize   int    // Number of images in this batch
+	BatchStride int    // Number of bytes between each image
+	Width       int    // Image width
+	Height      int    // Image height
+	Stride      int    // Image stride (bytes from one row to the next)
+	NChan       int    // Number of channels (eg 3 for RGB)
+	Pixels      []byte // The images
+}
+
+func (b *ImageBatch) Image(i int) ImageCrop {
+	return ImageCrop{
+		NChan:       b.NChan,
+		Pixels:      b.Pixels[i*b.BatchStride : (i+1)*b.BatchStride],
+		ImageWidth:  b.Width,
+		ImageHeight: b.Height,
+		CropX:       0,
+		CropY:       0,
+		CropWidth:   b.Width,
+		CropHeight:  b.Height,
+	}
+}
+
+// Setup an ImageBatch struct for 1 or more images
+func MakeImageBatch(batchSize, batchStride, width, height, nchan, stride int, pixels []byte) ImageBatch {
+	return ImageBatch{
+		BatchSize:   batchSize,
+		BatchStride: batchStride,
+		Width:       width,
+		Height:      height,
+		Stride:      stride,
+		NChan:       nchan,
+		Pixels:      pixels,
+	}
+}
+
+// Setup an ImageBatch struct for a single image
+func MakeImageBatchSingle(width, height, nchan, stride int, pixels []byte) ImageBatch {
+	return ImageBatch{
+		BatchSize:   1,
+		BatchStride: width * height * nchan,
+		Width:       width,
+		Height:      height,
+		Stride:      stride,
+		NChan:       nchan,
+		Pixels:      pixels,
+	}
+}
+
 // ImageCrop is a crop of an image.
 // In C we would represent this as a pointer and a stride, but since that's not memory safe,
 // we must resort to this kind of thing. Once we get into the C world for NN inference, then
@@ -101,6 +151,13 @@ func (c ImageCrop) Crop(x1, y1, x2, y2 int) ImageCrop {
 	return nc
 }
 
+// Return an ImageBatch containing this image
+func (c ImageCrop) ToBatch() ImageBatch {
+	p1 := c.CropY*c.Stride() + c.CropX*c.NChan
+	p2 := (c.CropY+c.CropHeight)*c.Stride() + (c.CropX+c.CropWidth)*c.NChan
+	return MakeImageBatchSingle(c.CropWidth, c.CropHeight, c.NChan, c.Stride(), c.Pixels[p1:p2])
+}
+
 // Return a 'crop' of the entire image
 func WholeImage(nchan int, pixels []byte, width, height int) ImageCrop {
 	return ImageCrop{
@@ -127,10 +184,10 @@ type ObjectDetector interface {
 	// Close closes the detector (you MUST call this when finished, because it's a C++ object underneath)
 	Close()
 
-	// DetectObjects returns a list of objects detected in the image
-	// nchan is expected to be 3, and image is a 24-bit RGB image.
+	// DetectObjects returns a list of objects detected in the batch of images.
+	// nchan is expected to be 3, and batch is a batch of 24-bit RGB images.
 	// You can create a default DetectionParams with NewDetectionParams()
-	DetectObjects(img ImageCrop, params *DetectionParams) ([]ObjectDetection, error)
+	DetectObjects(batch ImageBatch, params *DetectionParams) ([][]ObjectDetection, error)
 
 	// Model Config.
 	// Callers assume that ModelConfig will remain constant, so don't change it

@@ -9,7 +9,8 @@ import (
 )
 
 // Conclusion?
-// Well, my Hikvision 640x480 images are badly downsampled. SIGH. The camera should do better!
+// Well, my Hikvision 640x480 images are badly downsampled from their original. SIGH. The camera should do better!
+// But this is on a camera from the 2010 era. I haven't checked if modern cameras are better.
 // Here we're testing downsampling that image further to 320x240. This presents an opportunity
 // to fix some of the bad sampling that the camera did. But is it worth it?
 // The default filter on stb_image_resize is great - not sure what it is. Probably any of the
@@ -77,7 +78,7 @@ func BenchmarkImageResize640to320(b *testing.B) {
 	// This simulates an original code path for resizing incoming 640x480 images, for inference on a 320x256 NN
 	src := cimg.NewImage(srcWidth, srcHeight, cimg.PixelFormatRGB)
 
-	useSimdBox := true // implies twoStep=false
+	useSimdBox := false // implies twoStep=false
 	twoStep := false
 
 	b.ResetTimer()

@@ -90,7 +90,7 @@ func TiledInference(model ObjectDetector, img ImageCrop, _params *DetectionParam
 		merged = allObjects
 
 		// We disabled clipping for tiling sake, so we need to clip now
-		for i, _ := range merged {
+		for i := range merged {
 			merged[i].Box = merged[i].Box.Intersection(finalClip)
 		}
 	} else {
@@ -140,10 +140,11 @@ func detectTile(model ObjectDetector, params *DetectionParams, tiling tiledinfer
 	tileRect := tiling.TileRect(tx, ty)
 	crop := img.Crop(int(tileRect.X1), int(tileRect.Y1), int(tileRect.X2), int(tileRect.Y2))
 	//dumpTile(crop)
-	objects, err := model.DetectObjects(crop, params)
+	batchResults, err := model.DetectObjects(crop.ToBatch(), params)
 	if err != nil {
 		return nil, nil, err
 	}
+	objects := batchResults[0]
 	boxes := []tiledinference.Box{}
 	for i, obj := range objects {
 		box := tiledinference.Box{

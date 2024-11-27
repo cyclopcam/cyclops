@@ -1,6 +1,9 @@
 package accel
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 )
@@ -82,4 +85,37 @@ func (x *YUVImage) CopyFrom(src *YUVImage) {
 
 func (x *YUVImage) TotalBytes() int {
 	return len(x.Y) + len(x.U) + len(x.V)
+}
+
+// Load 3 raw YUV files into a YUVImage
+func LoadYUVFiles(filenameY, filenameU, filenameV string, width, height int) (*YUVImage, error) {
+	y, err := os.ReadFile(filenameY)
+	if err != nil {
+		return nil, err
+	}
+	u, err := os.ReadFile(filenameU)
+	if err != nil {
+		return nil, err
+	}
+	v, err := os.ReadFile(filenameV)
+	if err != nil {
+		return nil, err
+	}
+	// Assume it's 420p
+	if len(y) != width*height {
+		return nil, fmt.Errorf("Y buffer size is %v, expected %v", len(y), width*height)
+	}
+	if len(u) != width*height/4 {
+		return nil, fmt.Errorf("U buffer size is %v, expected %v", len(u), width*height/4)
+	}
+	if len(v) != width*height/4 {
+		return nil, fmt.Errorf("V buffer size is %v, expected %v", len(v), width*height/4)
+	}
+	return &YUVImage{
+		Width:  width,
+		Height: height,
+		Y:      y,
+		U:      u,
+		V:      v,
+	}, nil
 }

@@ -2,10 +2,7 @@ package monitor
 
 import (
 	"fmt"
-	"math"
-	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,7 +15,6 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/server/camera"
-	"github.com/cyclopcam/cyclops/server/perfstats"
 	"github.com/cyclopcam/logs"
 )
 
@@ -68,10 +64,10 @@ type Monitor struct {
 	detector                  nn.ObjectDetector
 	enableFrameReader         bool                   // If false, then we don't run the frame reader
 	mustStopFrameReader       atomic.Bool            // True if stopFrameReader() has been called
-	mustStopNNThreads         atomic.Bool            // NN threads must exit
 	analyzerQueue             chan analyzerQueueItem // Analyzer work queue. When closed, analyzer must exit.
 	analyzerStopped           chan bool              // Analyzer thread has exited
 	numNNThreads              int                    // Number of NN threads
+	nnBatchSize               int                    // Batch size for NN
 	nnModelSetup              *nn.ModelSetup         // Configuration of NN models
 	nnThreadStopWG            sync.WaitGroup         // Wait for all NN threads to exit
 	frameReaderStopped        chan bool              // When frameReaderStopped channel is closed, then the frame reader has stopped
@@ -195,6 +191,7 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	// using OpenMP and whatever other threading mechanisms NCNN uses internally.
 	numCPU := runtime.NumCPU()
 	nnThreads := numCPU
+	nnBatchSize := 1
 	if nnload.HaveAccelerator() {
 		// If we can do model parallelism with NN accelerators, then we'll probably
 		// use some kind of queue issued by a single CPU thread, instead of having
@@ -204,6 +201,9 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		// This must match one of the standard models that we host on models.cyclopcam.org.
 		// The YOLO models that Hailo provides are configured for 640x640.
 		nnWidth, nnHeight = 640, 640
+		// 8 is a decent batch size for Hailo 8L, and it's likely to be a good number for other accelerators too.
+		// On Hailo 8L YOLOv8m, a batch size of 10 gives milder better perf (50 vs 48 fps), but 8 just feels right.
+		nnBatchSize = 8
 	} else if options.MaxSingleThreadPerformance {
 		nnThreads = 1
 	} else if numCPU > 4 {
@@ -219,23 +219,15 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		// many cores it can.
 		nnThreadingModel = nn.ThreadingModeParallel
 	}
-	logger.Infof("Using %v NN threads, mode %v", nnThreads, nnThreadingModel)
+	logger.Infof("Using %v NN threads, mode %v, batch size %v", nnThreads, nnThreadingModel, nnBatchSize)
 
-	// nnQueueSize should be at least equal to nnThreads, otherwise we'll never reach full utilization.
-	// But perhaps we can use nnQueueSize as a throttle, to optimize the number of active threads.
-	// One important point:
-	// queueSize must be at least twice the size of nnThreads, so that our exit mechanism can work.
-	// Once we signal mustStopNNThreads, we fill the queue with dummy jobs, so that the NN threads
-	// can wake up from their channel receive operation, and exit.
-	// If the queue size was too small, then this would deadlock.
-	// nnQueueSize must not be less than 1, otherwise our backoff mechanism will never allow a
-	// frame through.
 	// SYNC-NN-THREAD-QUEUE-MIN-SIZE
-	nnQueueSize := nnThreads * 3
+	nnQueueSize := nnBatchSize * nnThreads * 2
 
 	logger.Infof("Loading NN model '%v' %v x %v", options.ModelName, nnWidth, nnHeight)
 
 	modelSetup := nn.NewModelSetup()
+	modelSetup.BatchSize = nnBatchSize
 
 	detector, err := nnload.LoadModel(logger, options.ModelsDir, options.ModelName, nnWidth, nnHeight, nnThreadingModel, modelSetup)
 	if err != nil {
@@ -283,6 +275,7 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		analyzerStopped:     make(chan bool),
 		nnModelSetup:        modelSetup,
 		numNNThreads:        nnThreads,
+		nnBatchSize:         nnBatchSize,
 		nnClassList:         classList,
 		nnClassMap:          classMap,
 		nnClassFilterSet:    makeClassFilter(classFilterList),
@@ -326,17 +319,14 @@ func (m *Monitor) Close() {
 	// Stop NN threads
 	m.Log.Infof("Monitor waiting for NN threads")
 	m.nnThreadStopWG.Add(m.numNNThreads)
-	m.mustStopNNThreads.Store(true)
-	for i := 0; i < m.numNNThreads; i++ {
-		m.nnThreadQueue <- monitorQueueItem{}
-	}
+	close(m.nnThreadQueue)
 	m.nnThreadStopWG.Wait()
 
 	// Stop analyzer
 	m.Log.Infof("Monitor waiting for analyzer")
 	close(m.analyzerQueue)
 
-	// Close the C++ object
+	// Close the C++ NN object
 	m.detector.Close()
 
 	m.Log.Infof("Monitor is closed")
@@ -466,22 +456,6 @@ func (m *Monitor) sendToWatchers(state *AnalysisState) {
 	m.watchersLock.RUnlock()
 }
 
-// Resolve class names to integer indices.
-// If a class is not found, it is ignored.
-//func lookupClassIndices(classes []string, allClasses []string) []int {
-//	clsToIndex := map[string]int{}
-//	for i, c := range allClasses {
-//		clsToIndex[c] = i
-//	}
-//	r := []int{}
-//	for _, c := range classes {
-//		if idx, ok := clsToIndex[c]; ok {
-//			r = append(r, idx)
-//		}
-//	}
-//	return r
-//}
-
 // Return a set containing all the abstract class indices
 func makeAbstractClassSet(abstractClasses map[string]string, classMap map[string]int) map[int]bool {
 	r := map[int]bool{}
@@ -510,7 +484,8 @@ func (m *Monitor) cameraByID(cameraID int64) *monitorCamera {
 	return nil
 }
 
-// Stop listening to cameras
+// Stop listening to cameras.
+// This function only returns once the frame reader thread has exited.
 func (m *Monitor) stopFrameReader() {
 	m.mustStopFrameReader.Store(true)
 	<-m.frameReaderStopped
@@ -561,276 +536,4 @@ func (m *Monitor) SetCameras(cameras []*camera.Camera) {
 	if m.enableFrameReader {
 		m.startFrameReader()
 	}
-}
-
-// State internal to the NN frame reader, for each camera
-type frameReaderCameraState struct {
-	mcam               *monitorCamera
-	lastFrameID        int64 // Last frame we've seen from this camera
-	numFramesTotal     int64 // Number of frames from this camera that we've seen
-	numFramesProcessed int64 // Number of frames from this camera that we've analyzed
-}
-
-func frameReaderStats(cameraStates []*frameReaderCameraState) (totalFrames, totalProcessed int64) {
-	for _, state := range cameraStates {
-		totalFrames += state.numFramesTotal
-		totalProcessed += state.numFramesProcessed
-	}
-	return
-}
-
-// Read camera frames and send them off for analysis.
-// A single thread runs this operation.
-func (m *Monitor) readFrames() {
-	// Make our own private copy of cameras.
-	// If the list of cameras changes, then SetCameras() will stop and restart this function
-	m.camerasLock.Lock()
-	looperCameras := []*frameReaderCameraState{}
-	for _, mcam := range m.cameras {
-		looperCameras = append(looperCameras, &frameReaderCameraState{
-			mcam: mcam,
-		})
-	}
-	m.camerasLock.Unlock()
-
-	// Maintain camera index outside of main loop, so that we're not
-	// biased towards processing the frames of the first camera(s).
-	// I still need to figure out how to boost priority for cameras
-	// that have likely activity in them.
-	icam := uint(0)
-
-	lastStats := time.Now()
-
-	nStats := 0
-	for !m.mustStopFrameReader.Load() {
-		idle := true
-		// Why do we have this inner loop?
-		// We keep it so that we can detect when to idle.
-		// If we complete a loop over all looperCameras, and we didn't have any work to do,
-		// then we idle for a few milliseconds.
-		for i := 0; i < len(looperCameras); i++ {
-			if m.mustStopFrameReader.Load() {
-				break
-			}
-			// SYNC-NN-THREAD-QUEUE-MIN-SIZE
-			if len(m.nnThreadQueue) >= 2*cap(m.nnThreadQueue)/3 {
-				// Our NN queue is 2/3 full, so drop frames.
-				break
-			}
-
-			// It's vital that this incrementing happens after the queue check above,
-			// otherwise you don't get round robin behaviour.
-			icam = (icam + 1) % uint(len(looperCameras))
-			camState := looperCameras[icam]
-			mcam := camState.mcam
-
-			//m.Log.Infof("%v", icam)
-			img, imgID, imgPTS := mcam.camera.LowDecoder.GetLastImageIfDifferent(camState.lastFrameID)
-			if img != nil {
-				if camState.lastFrameID == 0 {
-					camState.numFramesTotal++
-				} else {
-					camState.numFramesTotal += imgID - camState.lastFrameID
-				}
-				//m.Log.Infof("Got image %d from camera %s (%v / %v)", imgID, mcam.camera.Name, camState.numFramesProcessed, camState.numFramesTotal)
-				camState.numFramesProcessed++
-				camState.lastFrameID = imgID
-				idle = false
-				m.nnThreadQueue <- monitorQueueItem{
-					monCam:   mcam,
-					image:    img,
-					framePTS: imgPTS,
-				}
-			}
-		}
-		if m.mustStopFrameReader.Load() {
-			break
-		}
-		if idle {
-			time.Sleep(5 * time.Millisecond)
-		}
-
-		interval := 10 * math.Pow(1.5, float64(nStats))
-		interval = max(interval, 5)
-		interval = min(interval, 3600)
-		if time.Now().Sub(lastStats) > time.Duration(interval)*time.Second {
-			nStats++
-			totalFrames, totalProcessed := frameReaderStats(looperCameras)
-			m.Log.Infof("%.0f%% frames analyzed by NN. %v Threads. Times per frame: (%.1f ms Prep, %.1f ms NN)",
-				100*float64(totalProcessed)/float64(totalFrames),
-				m.numNNThreads,
-				float64(m.avgTimeNSPerFrameNNPrep.Load())/1e6,
-				float64(m.avgTimeNSPerFrameNNDet.Load())/1e6,
-			)
-			lastStats = time.Now()
-		}
-	}
-	close(m.frameReaderStopped)
-}
-
-// Perform image format conversions and resizing so that we can send to our NN.
-// We should consider having the resizing done by ffmpeg.
-// Images returned are (originalRgb, nnScaledRgb)
-func (m *Monitor) prepareImageForNN(yuv *accel.YUVImage) (nn.ResizeTransform, *cimg.Image, *cimg.Image) {
-	start := time.Now()
-	nnConfig := m.detector.Config()
-	nnWidth := nnConfig.Width
-	nnHeight := nnConfig.Height
-
-	xform := nn.IdentityResizeTransform()
-
-	rgb := cimg.NewImage(yuv.Width, yuv.Height, cimg.PixelFormatRGB)
-	yuv.CopyToCImageRGB(rgb)
-	if (rgb.Width > nnWidth || rgb.Height > nnHeight) && m.hasShownResolutionWarning.CompareAndSwap(false, true) {
-		m.Log.Warnf("Camera image size %vx%v is larger than NN input size %vx%v", rgb.Width, rgb.Height, nnWidth, nnHeight)
-	}
-	originalRgb := rgb
-
-	if rgb.Width != nnWidth || rgb.Height != nnHeight {
-		scaleX := float32(nnWidth) / float32(rgb.Width)
-		scaleY := float32(nnHeight) / float32(rgb.Height)
-		scale := min(scaleX, scaleY)
-		xform.ScaleX = scale
-		xform.ScaleY = scale
-		newWidth := int(float32(rgb.Width)*scale + 0.5)
-		newHeight := int(float32(rgb.Height)*scale + 0.5)
-		if (newWidth == rgb.Width/2 || newHeight == rgb.Height/2) && false {
-			// exactly 2x downsize, so we can use our cheap and fast "SIMD" filter
-			small := cimg.NewImage(newWidth, newHeight, cimg.PixelFormatRGB)
-			accel.ReduceHalf(rgb.Width, rgb.Height, 3, rgb.Pixels, rgb.Stride, small.Pixels, small.Stride)
-			rgb = small
-		} else {
-			// For consistency with 2x downsize, use a box filter here too.
-			// For discussion of quality/performance tradeoffs, see speed_test.go
-			resizeParams := cimg.ResizeParams{
-				CheapSRGBFilter: true,
-				Filter:          cimg.ResizeFilterBox,
-			}
-			rgb = cimg.ResizeNew(rgb, newWidth, newHeight, &resizeParams)
-		}
-		if newWidth != nnWidth || newHeight != nnHeight {
-			// Insert resized image into black canvas. There will be a block on the right
-			// or the bottom of black pixels, depending on the aspect ratio of input vs NN.
-			// This is not ideal.
-			// We could get rid of this additional copy if we made ResizeNew capable of accepting
-			// a 'view' instead of a contiguous image, but that would require changes
-			// to cimg. For reference, this additional copy adds a cost of 0.04ms on a
-			// Ryzen 5900X. The NN inference on yolov8m on that CPU takes 120ms, which
-			// is why I'm not bothering to optimize this away.
-			big := cimg.NewImage(nnWidth, nnHeight, cimg.PixelFormatRGB)
-			big.CopyImage(rgb, 0, 0)
-			rgb = big
-		}
-	}
-	perfstats.UpdateMovingAverage(&m.avgTimeNSPerFrameNNPrep, time.Now().Sub(start).Nanoseconds())
-	return xform, originalRgb, rgb
-}
-
-//func (m *Monitor) scaleDetectionsToOriginalImage(orgWidth, orgHeight, nnWidth, nnHeight int, detections []nn.ObjectDetection) {
-//	xscale := float32(orgWidth) / float32(nnWidth)
-//	yscale := float32(orgHeight) / float32(nnHeight)
-//	for i := range detections {
-//		d := &detections[i]
-//		d.Box.X = int(float32(d.Box.X) * xscale)
-//		d.Box.Y = int(float32(d.Box.Y) * yscale)
-//		d.Box.Width = int(float32(d.Box.Width) * xscale)
-//		d.Box.Height = int(float32(d.Box.Height) * yscale)
-//	}
-//}
-
-func (m *Monitor) dumpFrame(rgb *cimg.Image, cam *camera.Camera, variant string) {
-	frameKey := strconv.FormatInt(cam.ID(), 10) + "-" + variant
-	m.dumpLock.Lock()
-	hasDumped := m.hasDumpedFrame[frameKey]
-	if hasDumped {
-		m.dumpLock.Unlock()
-		return
-	}
-	m.hasDumpedFrame[frameKey] = true
-	m.dumpLock.Unlock()
-
-	b, _ := cimg.Compress(rgb, cimg.MakeCompressParams(cimg.Sampling(cimg.Sampling420), 95, cimg.Flags(0)))
-	os.WriteFile(fmt.Sprintf("frame-%v-%v.jpg", cam.Name(), variant), b, 0644)
-}
-
-// An NN processing thread
-func (m *Monitor) nnThread() {
-	lastErrAt := time.Time{}
-
-	// I was originally tempted to reuse the same RGB image across iterations
-	// of the loop (the 'rgb' variable). However, this doesn't actually help
-	// performance at all, since we need to store a unique lastImg inside the
-	// monitorCamera object.
-	// I mean.. it did perhaps help performance a tiny bit, but it introduced
-	// the bug of returning the incorrect lastImg for a camera (all cameras
-	// would share the same lastImg).
-
-	// Resizing image for NN inference:
-	// When implementing support for the Hailo8L on Raspberry Pi5, the easiest
-	// thing to do was to use the pretrained YOLOv8 model, which has an input
-	// size of 640x640. Our cameras are typically setup to emit 2nd stream
-	// images as a lower resolution (eg 320 x 256). Until this time, my NCNN
-	// YOLOv8 used an input resolution of 320 x 256, so it perfectly matched
-	// the camera 2nd streams. So my decision at the time of implementing
-	// support for the Hailo8L was to simply add black padding around the
-	// 320x256 images, to make them 640x640. This is not ideal. We should
-	// either be using larger 2nd stream images from the camera, or creating
-	// a custom Hailo8L YOLOv8 model with a smaller input resolution.
-	// But now you know why we do it this way. It's not the best, just the
-	// easiest, an good enough for now.
-
-	// For Hailo/Accelerators, these parameters are defined at model setup time,
-	// but for NCNN, we control them with each detection. We should probably get
-	// rid of the per-detection mechanism so that it all goes in through one mechanism.
-	detectionParams := nn.NewDetectionParams()
-	detectionParams.ProbabilityThreshold = m.nnModelSetup.ProbabilityThreshold
-	detectionParams.NmsIouThreshold = m.nnModelSetup.NmsIouThreshold
-
-	for frameCount := 0; true; frameCount++ {
-		item, ok := <-m.nnThreadQueue
-		if !ok || m.mustStopNNThreads.Load() {
-			break
-		}
-		yuv := item.image
-		xformRgbToNN, rgbPure, rgbNN := m.prepareImageForNN(yuv)
-		if m.debugDumpFrames {
-			m.dumpFrame(rgbPure, item.monCam.camera, "rgb")
-			m.dumpFrame(rgbNN, item.monCam.camera, "nn")
-		}
-		start := time.Now()
-		objects, err := m.detector.DetectObjects(nn.WholeImage(rgbNN.NChan(), rgbNN.Pixels, rgbNN.Width, rgbNN.Height), detectionParams)
-		xformRgbToNN.ApplyBackward(objects)
-		perfstats.UpdateMovingAverage(&m.avgTimeNSPerFrameNNDet, time.Now().Sub(start).Nanoseconds())
-		if err != nil {
-			if time.Now().Sub(lastErrAt) > 15*time.Second {
-				m.Log.Errorf("Error detecting objects: %v", err)
-				lastErrAt = time.Now()
-			}
-		} else {
-			//m.Log.Infof("Camera %v detected %v objects", mcam.camera.ID, len(objects))
-			result := &nn.DetectionResult{
-				CameraID:    item.monCam.camera.ID(),
-				ImageWidth:  yuv.Width,
-				ImageHeight: yuv.Height,
-				Objects:     objects,
-				FramePTS:    item.framePTS,
-			}
-			item.monCam.lock.Lock()
-			item.monCam.lastDetection = result
-			item.monCam.lastImg = rgbPure
-			item.monCam.lock.Unlock()
-
-			if len(m.analyzerQueue) >= cap(m.analyzerQueue)*9/10 {
-				// We do not expect this
-				m.Log.Warnf("NN analyzer queue is falling behind - dropping frames")
-			} else {
-				m.analyzerQueue <- analyzerQueueItem{
-					monCam:    item.monCam,
-					detection: result,
-				}
-			}
-		}
-	}
-
-	m.nnThreadStopWG.Done()
 }

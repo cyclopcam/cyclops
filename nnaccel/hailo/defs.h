@@ -9,6 +9,8 @@ enum cyStatus {
 	cySTATUS_TIMEOUT                  = 5,
 	cySTATUS_CPU_NMS_NOT_IMPLEMENTED  = 6,
 	cySTATUS_SPARSE_SCANLINES         = 7,
+	cySTATUS_BATCH_SIZE_MISMATCH      = 8,
+	cySTATUS_BATCH_STRIDE_TOO_SMALL   = 9,
 	cySTATUS_HAILO_STATUS_OFFSET      = 10000, // This must be greater than the max Hailo status code (HAILO_STATUS_COUNT), which is 85 at this moment.
 };
 

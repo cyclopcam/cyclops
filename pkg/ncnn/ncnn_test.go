@@ -58,10 +58,15 @@ func TestYoloV8s(t *testing.T) {
 func testModel(t *testing.T, modelFilename string) {
 	config, err := nn.LoadModelConfig(filepath.Join(modelsDir(), modelFilename+".json"))
 	require.NoError(t, err)
+	nnWidth, nnHeight := config.Width, config.Height
 	detector, _ := ncnn.NewDetector(config, nn.ThreadingModeSingle, filepath.Join(modelsDir(), modelFilename+".param"), filepath.Join(modelsDir(), modelFilename+".bin"))
 	defer detector.Close()
 	img := loadImage("driveway001-man.jpg")
-	detections, _ := detector.DetectObjects(nn.WholeImage(img.NChan(), img.Pixels, img.Width, img.Height), nn.NewDetectionParams())
+	img = cimg.ResizeNew(img, nnWidth, nnHeight, nil)
+	batch := nn.MakeImageBatchSingle(img.Width, img.Height, img.NChan(), img.Stride, img.Pixels)
+	detectionsBatch, _ := detector.DetectObjects(batch, nn.NewDetectionParams())
+	require.Equal(t, 1, len(detectionsBatch))
+	detections := detectionsBatch[0]
 	t.Logf("num detections: %v", len(detections))
 	for _, det := range detections {
 		t.Logf("det: %v", det)
@@ -80,6 +85,7 @@ func benchmarkModel(b *testing.B, modelFilename string) {
 	img := loadImage("driveway001-man.jpg")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		detector.DetectObjects(nn.WholeImage(img.NChan(), img.Pixels, img.Width, img.Height), nn.NewDetectionParams())
+		batch := nn.MakeImageBatchSingle(img.Width, img.Height, img.NChan(), img.Stride, img.Pixels)
+		detector.DetectObjects(batch, nn.NewDetectionParams())
 	}
 }

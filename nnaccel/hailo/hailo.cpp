@@ -188,12 +188,18 @@ int nna_run_model(void* model, int batchSize, int batchStride, int width, int he
 	if (stride == 0) {
 		stride = width * nchan;
 	}
-	NNModelInfo info;
-	nna_model_info(model, &info);
-	if (batchSize != info.BatchSize || width != info.Width || height != info.Height || nchan != info.NChan) {
+	if (stride != width * nchan) {
+		return cySTATUS_SPARSE_SCANLINES;
+	}
+	if (batchSize > 1 && batchStride < width * height * nchan) {
 		return cySTATUS_INVALID_INPUT_DIMENSIONS;
 	}
-	if (batchSize != 1 && (size_t) batchStride < input_frame_size) {
+	NNModelInfo info;
+	nna_model_info(model, &info);
+	if (batchSize != info.BatchSize) {
+		return cySTATUS_BATCH_SIZE_MISMATCH;
+	}
+	if (width != info.Width || height != info.Height || nchan != info.NChan) {
 		return cySTATUS_INVALID_INPUT_DIMENSIONS;
 	}
 	if (width * height * nchan != (int) input_frame_size) {
@@ -202,27 +208,29 @@ int nna_run_model(void* model, int batchSize, int batchStride, int width, int he
 
 	BufferList buffers;
 
-	uint8_t* denseInput = nullptr;
-	if (stride != width * nchan) {
-		if (batchSize != 1)
-			return cySTATUS_SPARSE_SCANLINES;
-		denseInput = (uint8_t*) PageAlignedAlloc(batchSize * width * height * nchan);
-		if (!denseInput) {
-			return cySTATUS_OUT_OF_CPU_MEMORY;
-		}
-		buffers.Add(denseInput);
-		CopyImageToDenseBuffer(data, width, height, nchan, stride, denseInput);
-	} else {
-		denseInput = (uint8_t*) data;
-	}
+	//uint8_t* denseInput = nullptr;
+	//if (stride != width * nchan) {
+	//	if (batchSize != 1)
+	//		return cySTATUS_SPARSE_SCANLINES;
+	//	denseInput = (uint8_t*) PageAlignedAlloc(batchSize * width * height * nchan);
+	//	if (!denseInput) {
+	//		return cySTATUS_OUT_OF_CPU_MEMORY;
+	//	}
+	//	buffers.Add(denseInput);
+	//	CopyImageToDenseBuffer(data, width, height, nchan, stride, denseInput);
+	//} else {
+	//	denseInput = (uint8_t*) data;
+	//}
 
+	hailo_status status;
 	// Waiting for available requests in the pipeline.
 	// I'm not 100% sure whether we need to do this before binding, or if we can do it after binding.
-	hailo_status status = m->ConfiguredInferModel->wait_for_async_ready(2s, batchSize);
-	if (status != HAILO_SUCCESS) {
-		debug_printf("Failed to wait for async ready, status = %d", (int) status);
-		return _make_own_status(status);
-	}
+	// mkay -- I have moved this check back down below our bindings, and I'm not seeing any crashes.
+	//hailo_status status = m->ConfiguredInferModel->wait_for_async_ready(2s, batchSize);
+	//if (status != HAILO_SUCCESS) {
+	//	debug_printf("Failed to wait for async ready, status = %d", (int) status);
+	//	return _make_own_status(status);
+	//}
 
 	std::vector<ConfiguredInferModel::Bindings> bindings_batch;
 	std::vector<OutTensor>                      output_tensors_batch;
@@ -236,7 +244,9 @@ int nna_run_model(void* model, int batchSize, int batchStride, int width, int he
 		ConfiguredInferModel::Bindings bindings = bindings_exp.release();
 		bindings_batch.push_back(bindings);
 
-		uint8_t* elInput = denseInput + iBatchEl * batchStride;
+		//uint8_t* elInput = (uint8_t*) denseInput[iBatchEl];
+		//uint8_t* elInput = (uint8_t*) data[iBatchEl];
+		uint8_t* elInput = ((uint8_t*) data) + iBatchEl * batchStride;
 		status           = bindings.input(input_name)->set_buffer(MemoryView(elInput, input_frame_size));
 		if (status != HAILO_SUCCESS) {
 			return _make_own_status(status);
@@ -281,11 +291,11 @@ int nna_run_model(void* model, int batchSize, int batchStride, int width, int he
 	//std::sort(outputTensors.begin(), outputTensors.end(), OutTensor::SortFunction);
 
 	// Waiting for available requests in the pipeline.
-	//status = m->ConfiguredInferModel->wait_for_async_ready(2s, batchSize);
-	//if (status != HAILO_SUCCESS) {
-	//	//printf("Failed to wait for async ready, status = %d", (int) status);
-	//	return _make_own_status(status);
-	//}
+	status = m->ConfiguredInferModel->wait_for_async_ready(2s, batchSize);
+	if (status != HAILO_SUCCESS) {
+		debug_printf("Failed to wait for async ready, status = %d", (int) status);
+		return _make_own_status(status);
+	}
 
 	// Dispatch the job.
 	Expected<AsyncInferJob> job_exp = m->ConfiguredInferModel->run_async(bindings_batch);
