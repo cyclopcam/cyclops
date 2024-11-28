@@ -1,4 +1,4 @@
-#include "decoder2.h"
+#include "decoder.h"
 #include "tsf.hpp"
 
 struct Decoder {
