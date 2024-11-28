@@ -15,15 +15,15 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/accel"
 )
 
-// This will replace VideoDecoder once it's finished
-type VideoDecoder2 struct {
+// VideoDecoder is a wrapper around ffmpeg, for decoding videos
+type VideoDecoder struct {
 	decoder unsafe.Pointer
 }
 
 // A decoded frame
 type Frame struct {
 	Image *accel.YUVImage // Image (might be a deep reference into ffmpeg memory)
-	PTS   int64           // Presentation time in native time units. Use VideoDecoder2.FrameTimeToDuration() to convert to a time.Duration
+	PTS   int64           // Presentation time in native time units. Use VideoDecoder.FrameTimeToDuration() to convert to a time.Duration
 }
 
 // Return a deep clone of the frame (new image memory)
@@ -47,8 +47,8 @@ func takeCError(err *C.char) error {
 }
 
 // Create a new decoder that you will feed with packets
-func NewVideoStreamDecoder2(codec Codec) (*VideoDecoder2, error) {
-	d := &VideoDecoder2{}
+func NewVideoStreamDecoder(codec Codec) (*VideoDecoder, error) {
+	d := &VideoDecoder{}
 	codecC := C.CString(codec.ToFFmpeg())
 	err := takeCError(C.MakeDecoder(nil, codecC, &d.decoder))
 	C.free(unsafe.Pointer(codecC))
@@ -59,8 +59,8 @@ func NewVideoStreamDecoder2(codec Codec) (*VideoDecoder2, error) {
 }
 
 // Create a new decoder that will decode a file
-func NewVideoFileDecoder2(filename string) (*VideoDecoder2, error) {
-	d := &VideoDecoder2{}
+func NewVideoFileDecoder(filename string) (*VideoDecoder, error) {
+	d := &VideoDecoder{}
 	filenameC := C.CString(filename)
 	err := takeCError(C.MakeDecoder(filenameC, nil, &d.decoder))
 	C.free(unsafe.Pointer(filenameC))
@@ -70,21 +70,21 @@ func NewVideoFileDecoder2(filename string) (*VideoDecoder2, error) {
 	return d, nil
 }
 
-func (d *VideoDecoder2) Close() {
+func (d *VideoDecoder) Close() {
 	if d.decoder != nil {
 		C.Decoder_Close(d.decoder)
 		d.decoder = nil
 	}
 }
 
-func (d *VideoDecoder2) Width() int {
+func (d *VideoDecoder) Width() int {
 	var width C.int
 	var height C.int
 	C.Decoder_VideoSize(d.decoder, &width, &height)
 	return int(width)
 }
 
-func (d *VideoDecoder2) Height() int {
+func (d *VideoDecoder) Height() int {
 	var width C.int
 	var height C.int
 	C.Decoder_VideoSize(d.decoder, &width, &height)
@@ -92,7 +92,7 @@ func (d *VideoDecoder2) Height() int {
 }
 
 // NextFrame reads the next frame from a file and returns a copy of the YUV image.
-func (d *VideoDecoder2) NextFrame() (*Frame, error) {
+func (d *VideoDecoder) NextFrame() (*Frame, error) {
 	img, err := d.NextFrameDeepRef()
 	if err != nil {
 		return nil, err
@@ -103,7 +103,7 @@ func (d *VideoDecoder2) NextFrame() (*Frame, error) {
 // NextFrameDeepRef will read the next frame from a file and return a deep
 // reference into the libavcodec decoded image buffer.
 // The next call to NextFrame/NextFrameDeepRef will invalidate that image.
-func (d *VideoDecoder2) NextFrameDeepRef() (*Frame, error) {
+func (d *VideoDecoder) NextFrameDeepRef() (*Frame, error) {
 	var frame *C.AVFrame
 	err := takeCError(C.Decoder_NextFrame(d.decoder, &frame))
 	if err != nil {
@@ -118,7 +118,7 @@ func (d *VideoDecoder2) NextFrameDeepRef() (*Frame, error) {
 
 // Decode the packet and return a copy of the YUV image.
 // This is used when decoding a stream (not a file).
-func (d *VideoDecoder2) Decode(packet *VideoPacket) (*Frame, error) {
+func (d *VideoDecoder) Decode(packet *VideoPacket) (*Frame, error) {
 	frame, err := d.DecodeDeepRef(packet)
 	if err != nil {
 		return nil, err
@@ -131,7 +131,7 @@ func (d *VideoDecoder2) Decode(packet *VideoPacket) (*Frame, error) {
 // The pixels in the returned image are not a garbage-collected Go slice.
 // They point directly into the libavcodec decode buffer.
 // That's why the function name has the "DeepRef" suffix.
-func (d *VideoDecoder2) DecodeDeepRef(packet *VideoPacket) (*Frame, error) {
+func (d *VideoDecoder) DecodeDeepRef(packet *VideoPacket) (*Frame, error) {
 	var frame *C.AVFrame
 	encoded := packet.EncodeToAnnexBPacket()
 	err := takeCError(C.Decoder_DecodePacket(d.decoder, unsafe.Pointer(&encoded[0]), C.size_t(len(encoded)), &frame))
@@ -146,6 +146,6 @@ func (d *VideoDecoder2) DecodeDeepRef(packet *VideoPacket) (*Frame, error) {
 }
 
 // Convert a native frame time to a time.Duration
-func (d *VideoDecoder2) FrameTimeToDuration(pts int64) time.Duration {
+func (d *VideoDecoder) FrameTimeToDuration(pts int64) time.Duration {
 	return time.Duration(C.int64_t(C.Decoder_PTSNano(d.decoder, C.int64_t(pts))))
 }

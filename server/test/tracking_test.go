@@ -27,6 +27,8 @@ const DumpTrackingVideo = false
 type EventTrackingParams struct {
 	ModelName  string  // eg "yolov8m"
 	NNCoverage float64 // eg 75%, if we're able to run NN analysis on 75% of video frames (i.e. because we're resource constrained)
+	NNWidth    int     // if zero, then use default
+	NNHeight   int     // if zero, then use default
 }
 
 type Range struct {
@@ -87,7 +89,7 @@ func drawImageToVideo(t *testing.T, video *videox.VideoEncoder, d *gg.Context, p
 
 func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *EventTrackingTestCase) {
 	absPath := FromTestPathToRepoRoot(tcase.VideoFilename)
-	decoder, err := videox.NewVideoFileDecoder2(absPath)
+	decoder, err := videox.NewVideoFileDecoder(absPath)
 	require.NoError(t, err)
 	defer decoder.Close()
 
@@ -295,6 +297,13 @@ func TestEventTracking(t *testing.T) {
 			// This generated a false positive of a "person" on the hailo8L yolov8m, but it was
 			// actually a cat at night. The NCNN model doesn't have this problem.
 			VideoFilename: "testdata/tracking/0010-LD.mp4",
+			NumPeople:     Range{0, 0},
+			NumVehicles:   Range{0, 0},
+		},
+		{
+			// This generated a false positive of a "person" on the hailo8L yolov8m, but it was
+			// just leaves blowing in front of the camera. The NCNN model doesn't have this problem.
+			VideoFilename: "testdata/tracking/0011-LD.mp4",
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{0, 0},
 		},

@@ -29,7 +29,7 @@ var ErrResourceTemporarilyUnavailable = errors.New("Resource temporarily unavail
 // Obviously this is a bit expensive, because you're creating a decoder
 // for just a single frame.
 func DecodeSinglePacketToImage(codec Codec, packet *VideoPacket) (*cimg.Image, error) {
-	decoder, err := NewVideoStreamDecoder2(codec)
+	decoder, err := NewVideoStreamDecoder(codec)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func DecodeClosestImageInPacketList(codec Codec, packets []*VideoPacket, targetT
 
 	startTime := time.Now()
 	nFramesDecoded := 0
-	decoder, err := NewVideoStreamDecoder2(codec)
+	decoder, err := NewVideoStreamDecoder(codec)
 	if err != nil {
 		return nil, time.Time{}, err
 	}

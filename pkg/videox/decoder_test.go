@@ -9,7 +9,7 @@ import (
 )
 
 func TestDecoder2(t *testing.T) {
-	decoder, err := NewVideoFileDecoder2("../../testdata/tracking/0001-LD.mp4")
+	decoder, err := NewVideoFileDecoder("../../testdata/tracking/0001-LD.mp4")
 	require.NoError(t, err)
 
 	nframes := 0
