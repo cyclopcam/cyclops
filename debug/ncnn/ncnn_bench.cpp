@@ -128,7 +128,7 @@ void DetectionThread(std::mutex* lock, std::vector<cv::Mat*>* queue, std::atomic
 }
 
 int main(int argc, char** argv) {
-	const char* imagepath = "testdata/driveway001-man.jpg";
+	const char* imagepath = "testdata/yard-640x640.jpg";
 	//const char* imagepath = "testdata/porch003-man.jpg";
 	//const char* imagepath = "testdata/man-pos-2-0.jpg";
 	//cv::Mat m = cv::imread(imagepath, 1);
@@ -144,11 +144,11 @@ int main(int argc, char** argv) {
 	}
 
 	std::vector<TestModel> testModels = {
-	    {"yolov8s_320_256", "yolov8", "models/coco/ncnn/yolov8s_320_256.param", "models/coco/ncnn/yolov8s_320_256.bin", 320, 256},
-	    {"yolov8m_320_256", "yolov8", "models/coco/ncnn/yolov8m_320_256.param", "models/coco/ncnn/yolov8m_320_256.bin", 320, 256},
-	    //{"yolov8m_640_480", "yolov8", "models/coco/ncnn/yolov8m_640_480.param", "models/coco/ncnn/yolov8m_640_480.bin", 640, 480},
-	    {"yolo11s_320_256", "yolo11", "models/coco/ncnn/yolo11s_320_256.param", "models/coco/ncnn/yolo11s_320_256.bin", 320, 256},
-	    {"yolo11m_320_256", "yolo11", "models/coco/ncnn/yolo11m_320_256.param", "models/coco/ncnn/yolo11m_320_256.bin", 320, 256},
+	    //{"yolov8s_320_256", "yolov8", "models/coco/ncnn/yolov8s_320_256.param", "models/coco/ncnn/yolov8s_320_256.bin", 320, 256},
+	    //{"yolov8m_320_256", "yolov8", "models/coco/ncnn/yolov8m_320_256.param", "models/coco/ncnn/yolov8m_320_256.bin", 320, 256},
+	    {"yolov8m_640_480", "yolov8", "models/coco/ncnn/yolov8m_640_480.param", "models/coco/ncnn/yolov8m_640_480.bin", 640, 480},
+	    //{"yolo11s_320_256", "yolo11", "models/coco/ncnn/yolo11s_320_256.param", "models/coco/ncnn/yolo11s_320_256.bin", 320, 256},
+	    //{"yolo11m_320_256", "yolo11", "models/coco/ncnn/yolo11m_320_256.param", "models/coco/ncnn/yolo11m_320_256.bin", 320, 256},
 	    //{"yolo11m_640_480", "yolo11", "models/coco/ncnn/yolo11m_640_480.param", "models/coco/ncnn/yolo11m_640_480.bin", 640, 480},
 	};
 
@@ -172,19 +172,25 @@ int main(int argc, char** argv) {
 			if (!CSV)
 				printf("Testing %s\n", tm.Name.c_str());
 
-			// letterbox to top-left
-			double   scale         = tm.Width / (double) width;
-			int      resizedWidth  = tm.Width;
-			int      resizedHeight = (int) (height * scale);
-			uint8_t* imgResized    = (uint8_t*) malloc(resizedWidth * resizedHeight * 3);
+			// letterbox to top-left.
+			double   scaleX        = tm.Width / (double) width;
+			double   scaleY        = tm.Height / (double) height;
+			double   scale         = std::max(scaleX, scaleY);
+			int      resizedWidth  = (int) (tm.Width * scale + 0.5);
+			int      resizedHeight = (int) (tm.Height * scale + 0.5);
+			uint8_t* imgResized    = (uint8_t*) malloc(tm.Width * tm.Height * 3);
+			memset(imgResized, 0, resizedWidth * resizedHeight * 3);
+			stbir_resize_uint8_linear(img, width, height, width * 3, imgResized, resizedWidth, resizedHeight, tm.Width * 3, STBIR_RGB);
 
-			uint8_t* imgNN = (uint8_t*) malloc(tm.Width * tm.Height * 3);
-			memset(imgNN, 0, tm.Width * tm.Height * 3);
-			for (int y = 0; y < std::min(resizedHeight, tm.Height); y++)
-				memcpy(imgNN + y * tm.Width * 3, img + y * width * 3, resizedWidth * 3);
-			free(imgResized);
+			//stbi_write_jpg("test-nn.jpg", tm.Width, tm.Height, 3, imgResized, 95);
 
-			cv::Mat m(tm.Height, tm.Width, CV_8UC3, imgNN);
+			//uint8_t* imgNN = (uint8_t*) malloc(tm.Width * tm.Height * 3);
+			//memset(imgNN, 0, tm.Width * tm.Height * 3);
+			//for (int y = 0; y < std::min(resizedHeight, tm.Height); y++)
+			//	memcpy(imgNN + y * tm.Width * 3, img + y * width * 3, resizedWidth * 3);
+			//free(imgResized);
+
+			cv::Mat m(tm.Height, tm.Width, CV_8UC3, imgResized);
 
 			QuitThreadsSignal = false;
 			std::vector<std::thread> threads;
@@ -236,6 +242,8 @@ int main(int argc, char** argv) {
 			}
 			//printf("Threads joined\n");
 
+			free(imgResized);
+
 			elapsed = SecondsSince(start);
 			if (!Benchmark && elapsed >= 3)
 				break;
@@ -244,7 +252,6 @@ int main(int argc, char** argv) {
 			fps.push_back(nReps / elapsed);
 			if (!CSV)
 				printf("\n");
-			free(imgResized);
 		}
 		if (CSV) {
 			printf("%d,", nThreads);
