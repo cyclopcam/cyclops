@@ -147,6 +147,13 @@ type MonitorOptions struct {
 
 	// If true, force NCNN to run in multithreaded mode. Used to speed up unit tests.
 	MaxSingleThreadPerformance bool
+
+	// If specified along with ModelHeight, this is the desired size of the neural network resolution.
+	// This was created for unit tests, where we'd test different resolutions.
+	ModelWidth int
+
+	// See ModelWidth for details. Either ModelWidth and ModelHeight must be zero, or both must be non-zero.
+	ModelHeight int
 }
 
 // DefaultMonitorOptions returns a new MonitorOptions object with default values
@@ -220,6 +227,11 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		nnThreadingModel = nn.ThreadingModeParallel
 	}
 	logger.Infof("Using %v NN threads, mode %v, batch size %v", nnThreads, nnThreadingModel, nnBatchSize)
+
+	if options.ModelWidth != 0 {
+		nnWidth = options.ModelWidth
+		nnHeight = options.ModelHeight
+	}
 
 	// SYNC-NN-THREAD-QUEUE-MIN-SIZE
 	nnQueueSize := nnBatchSize * nnThreads * 2

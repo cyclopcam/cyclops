@@ -108,6 +108,10 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	monitorOptions.ModelName = params.ModelName
 	monitorOptions.EnableFrameReader = false
 	monitorOptions.ModelsDir = FromTestPathToRepoRoot("models")
+	if params.NNWidth != 0 {
+		monitorOptions.ModelWidth = params.NNWidth
+		monitorOptions.ModelHeight = params.NNHeight
+	}
 
 	// MaxSingleThreadPerformance hurts performance during regular testing, when DumpTrackingVideo = false
 	//monitorOptions.MaxSingleThreadPerformance = true
@@ -251,8 +255,8 @@ func TestEventTracking(t *testing.T) {
 		{
 			ModelName:  "yolov8m",
 			NNCoverage: 1,
-			NNWidth:    320,
-			NNHeight:   256,
+			//NNWidth:    320,
+			//NNHeight:   256,
 		},
 	}
 	cases := []*EventTrackingTestCase{
