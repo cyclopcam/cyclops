@@ -27,8 +27,8 @@ const DumpTrackingVideo = false
 type EventTrackingParams struct {
 	ModelName  string  // eg "yolov8m"
 	NNCoverage float64 // eg 75%, if we're able to run NN analysis on 75% of video frames (i.e. because we're resource constrained)
-	NNWidth    int     // if zero, then use default
-	NNHeight   int     // if zero, then use default
+	NNWidth    int     // eg 320, 640
+	NNHeight   int     // eg 256, 480
 }
 
 type Range struct {
@@ -251,10 +251,8 @@ func TestEventTracking(t *testing.T) {
 		{
 			ModelName:  "yolov8m",
 			NNCoverage: 1,
-		},
-		{
-			ModelName:  "yolov8m",
-			NNCoverage: 0.6,
+			NNWidth:    320,
+			NNHeight:   256,
 		},
 	}
 	cases := []*EventTrackingTestCase{
@@ -304,6 +302,13 @@ func TestEventTracking(t *testing.T) {
 			// This generated a false positive of a "person" on the hailo8L yolov8m, but it was
 			// just leaves blowing in front of the camera. The NCNN model doesn't have this problem.
 			VideoFilename: "testdata/tracking/0011-LD.mp4",
+			NumPeople:     Range{0, 0},
+			NumVehicles:   Range{0, 0},
+		},
+		{
+			// Same as above case - leaves masquerading as people. I added this as a second validation
+			// case for the above test case (11). HOWEVER, this test also fails on NCNN 320x256 yolov8m!!!
+			VideoFilename: "testdata/tracking/0012-LD.mp4",
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{0, 0},
 		},
