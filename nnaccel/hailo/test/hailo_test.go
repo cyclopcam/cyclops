@@ -206,3 +206,34 @@ func TestObjectDetection(t *testing.T) {
 
 	//fmt.Printf("Done\n")
 }
+
+// See if we can load two models, a low quality model, and a high quality model.
+// We want the low quality for initial detection, and the high quality to prevent false positives.
+func TestMultiModel(t *testing.T) {
+	batchSizeLQ := 8
+	batchSizeHQ := 1
+
+	_, modelLQ, err := loadModel("yolov8m_640_640", batchSizeLQ)
+	require.NoError(t, err)
+
+	_, modelHQ, err := loadModel("yolov8l_640_640", batchSizeHQ)
+	require.NoError(t, err)
+
+	img, err := cimg.ReadFile(filepath.Join(repoRoot, "testdata/yard-640x640.jpg"))
+	require.NoError(t, err)
+	img = img.ToRGB()
+	batchStrideLQ, wholeBatchLQ := replicateImageIntoBatch(img, batchSizeLQ)
+	batchStrideHQ, wholeBatchHQ := replicateImageIntoBatch(img, batchSizeHQ)
+
+	// Kick off multiple jobs simultaneously to see where it breaks
+	jobLQ, err := modelLQ.Run(batchSizeLQ, batchStrideLQ, img.Width, img.Height, img.NChan(), img.Stride, unsafe.Pointer(&wholeBatchLQ[0]))
+	require.NoError(t, err)
+	jobHQ, err := modelHQ.Run(batchSizeHQ, batchStrideHQ, img.Width, img.Height, img.NChan(), img.Stride, unsafe.Pointer(&wholeBatchHQ[0]))
+	require.NoError(t, err)
+
+	require.True(t, jobLQ.Wait(time.Second))
+	require.True(t, jobHQ.Wait(time.Second))
+
+	modelLQ.Close()
+	modelHQ.Close()
+}
