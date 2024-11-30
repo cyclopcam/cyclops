@@ -33,8 +33,10 @@ typedef struct _NNAObjectDetection {
 // We could also allow each element of the batch to come in from a different pointer, but I'll make
 // that change if it becomes necessary.
 
-typedef void (*nna_model_files_func)(const char** subdir, const char** ext);
-typedef int (*nna_load_model_func)(const char* filename, const NNModelSetup* setup, void** model);
+typedef int (*nna_open_device_func)(void** device);
+typedef void (*nna_close_device_func)(void* device);
+typedef void (*nna_model_files_func)(void* device, const char** subdir, const char** ext);
+typedef int (*nna_load_model_func)(void* device, const char* filename, const NNModelSetup* setup, void** model);
 typedef void (*nna_close_model_func)(void* model);
 typedef void (*nna_model_info_func)(void* model, NNModelInfo* info);
 typedef const char* (*nna_status_str_func)(int s);

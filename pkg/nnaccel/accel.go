@@ -17,6 +17,11 @@ type Accelerator struct {
 	handle unsafe.Pointer
 }
 
+type Device struct {
+	accelerator *Accelerator
+	handle      unsafe.Pointer
+}
+
 // Load an NN accelerator.
 // At present, the only accelerator we have is "hailo"
 func Load(accelName string) (*Accelerator, error) {
@@ -56,18 +61,34 @@ func Load(accelName string) (*Accelerator, error) {
 	return nil, errors.New(strings.TrimRight(allErrors.String(), "\n"))
 }
 
-func (m *Accelerator) ModelFiles() (subdir string, ext []string) {
+// Open a new device (eg a handle to a GPU or a Hailo accelerator)
+// A device must be closed after using.
+func (m *Accelerator) OpenDevice() (*Device, error) {
+	var device unsafe.Pointer
+	err := m.StatusToErr(C.NAOpenDevice(m.handle, &device))
+	if err != nil {
+		return nil, err
+	}
+	return &Device{accelerator: m, handle: device}, nil
+}
+
+// Close a device
+func (d *Device) Close() {
+	C.NACloseDevice(d.accelerator.handle, d.handle)
+}
+
+func (d *Device) ModelFiles() (subdir string, ext []string) {
 	var cSubDir *C.char
 	var cExt *C.char
-	C.NAModelFiles(m.handle, &cSubDir, &cExt)
+	C.NAModelFiles(d.accelerator.handle, d.handle, &cSubDir, &cExt)
 	subdir = C.GoString(cSubDir)
 	ext = []string{C.GoString(cExt)}
 	return
 }
 
-func (m *Accelerator) LoadModel(filename string, setup *nn.ModelSetup) (*Model, error) {
+func (d *Device) LoadModel(filename string, setup *nn.ModelSetup) (*Model, error) {
 	model := Model{
-		accel: m,
+		device: d,
 	}
 	cFilename := C.CString(filename)
 	cSetup := C.NNModelSetup{
@@ -75,14 +96,14 @@ func (m *Accelerator) LoadModel(filename string, setup *nn.ModelSetup) (*Model, 
 		ProbabilityThreshold: C.float(setup.ProbabilityThreshold),
 		NmsIouThreshold:      C.float(setup.NmsIouThreshold),
 	}
-	err := m.StatusToErr(C.NALoadModel(m.handle, cFilename, &cSetup, &model.handle))
+	err := d.accelerator.StatusToErr(C.NALoadModel(d.accelerator.handle, d.handle, cFilename, &cSetup, &model.handle))
 	C.free(unsafe.Pointer(cFilename))
 	if err != nil {
 		return nil, err
 	}
 
 	var info C.NNModelInfo
-	C.NAModelInfo(m.handle, model.handle, &info)
+	C.NAModelInfo(d.accelerator.handle, model.handle, &info)
 	model.config.Architecture = "YOLOv8"  // ASSUMPTION
 	model.config.Classes = nn.COCOClasses // ASSUMPTION
 	model.config.Width = int(info.Width)

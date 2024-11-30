@@ -65,11 +65,10 @@ func downloadFile(srcUrl, targetFile string) error {
 	return os.Rename(tempFile, targetFile)
 }
 
-func ModelFiles(modelName string) (subdir string, ext []string) {
-	accelerator := Accelerator()
-	if accelerator != nil {
+func ModelFiles(device *nnaccel.Device, modelName string) (subdir string, ext []string) {
+	if device != nil {
 		// subdir is eg "hailo/8L", for the "8L" accelerator.
-		subdir, ext := accelerator.ModelFiles()
+		subdir, ext := device.ModelFiles()
 		return "coco/" + subdir, ext
 	} else {
 		return "coco/ncnn", []string{".param", ".bin"}
@@ -83,9 +82,9 @@ func ModelStub(modelName string, width, height int) string {
 
 // If the model files are not yet downloaded, then download them now.
 // Returns immediately if the files are already downloaded.
-func DownloadModel(logs logs.Log, modelDir, modelName string, width, height int) error {
+func DownloadModel(logs logs.Log, device *nnaccel.Device, modelDir, modelName string, width, height int) error {
 	baseUrl := "https://models.cyclopcam.org"
-	subdir, ext := ModelFiles(modelName)
+	subdir, ext := ModelFiles(device, modelName)
 	extensions := append([]string{".json"}, ext...)
 	modelStub := ModelStub(modelName, width, height)
 
@@ -107,7 +106,7 @@ func DownloadModel(logs logs.Log, modelDir, modelName string, width, height int)
 
 // LoadModel loads a neural network from disk.
 // If the model consists of several files, then modelName is the base filename, without the extensions.
-func LoadModel(logs logs.Log, modelDir, modelName string, width, height int, threadingMode nn.ThreadingMode, modelSetup *nn.ModelSetup) (nn.ObjectDetector, error) {
+func LoadModel(logs logs.Log, device *nnaccel.Device, modelDir, modelName string, width, height int, threadingMode nn.ThreadingMode, modelSetup *nn.ModelSetup) (nn.ObjectDetector, error) {
 	// modelName examples:
 	// yolov8m
 	// yolo11s   (with yolo 11 they stopped using the "v" in the name)
@@ -116,11 +115,11 @@ func LoadModel(logs logs.Log, modelDir, modelName string, width, height int, thr
 	// 320, 256
 	// 640, 480
 
-	if err := DownloadModel(logs, modelDir, modelName, width, height); err != nil {
+	if err := DownloadModel(logs, device, modelDir, modelName, width, height); err != nil {
 		return nil, fmt.Errorf("Download failed: %w", err)
 	}
 
-	modelSubDir, modelExt := ModelFiles(modelName)
+	modelSubDir, modelExt := ModelFiles(device, modelName)
 
 	// examples:
 	// modelName		yolov8s
@@ -136,19 +135,17 @@ func LoadModel(logs logs.Log, modelDir, modelName string, width, height int, thr
 		return nil, err
 	}
 
-	accelerator := Accelerator()
-
-	if accelerator != nil {
+	if device != nil {
 		fullModelFilename := fullPathBase
 		if len(modelExt) == 1 {
 			// eg  modelExt[0] = ".hef"
 			fullModelFilename += modelExt[0]
 		}
-		model, err := accelerator.LoadModel(fullModelFilename, modelSetup)
+		model, err := device.LoadModel(fullModelFilename, modelSetup)
 		if err == nil {
 			return model, nil
 		} else {
-			logs.Warnf("Failed to load Hailo accelerated NN model '%v': %v", modelName, err)
+			logs.Warnf("Failed to load accelerated NN model '%v': %v", modelName, err)
 			logs.Infof("Falling back to ncnn")
 		}
 	}

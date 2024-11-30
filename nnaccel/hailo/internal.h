@@ -43,13 +43,24 @@ public:
 	}
 };
 
-struct NNModel {
-	int                                            BatchSize = 0;
-	std::unique_ptr<hailort::VDevice>              Device;
+struct NNDevice {
+	std::unique_ptr<hailort::VDevice> VDevice;
+	std::string                       Name; // eg "8L";
+};
+
+class NNModel {
+public:
+	NNDevice*                                      Device = nullptr;
 	std::shared_ptr<hailort::InferModel>           InferModel;
 	std::shared_ptr<hailort::ConfiguredInferModel> ConfiguredInferModel;
-	//hailort::ConfiguredInferModel::Bindings        Bindings;
+	int                                            BatchSize = 0;
 
+	NNModel(NNDevice* device, std::shared_ptr<hailort::InferModel> inferModel, std::shared_ptr<hailort::ConfiguredInferModel> configuredInferModel, int batchSize) {
+		Device               = device,
+		InferModel           = inferModel;
+		ConfiguredInferModel = configuredInferModel;
+		BatchSize            = batchSize;
+	}
 	~NNModel();
 };
 

@@ -147,6 +147,7 @@ int main(int argc, char** argv) {
 	    //{"yolov8s_320_256", "yolov8", "models/coco/ncnn/yolov8s_320_256.param", "models/coco/ncnn/yolov8s_320_256.bin", 320, 256},
 	    //{"yolov8m_320_256", "yolov8", "models/coco/ncnn/yolov8m_320_256.param", "models/coco/ncnn/yolov8m_320_256.bin", 320, 256},
 	    {"yolov8m_640_480", "yolov8", "models/coco/ncnn/yolov8m_640_480.param", "models/coco/ncnn/yolov8m_640_480.bin", 640, 480},
+	    {"yolov8l_640_480", "yolov8", "models/coco/ncnn/yolov8l_640_480.param", "models/coco/ncnn/yolov8l_640_480.bin", 640, 480},
 	    //{"yolo11s_320_256", "yolo11", "models/coco/ncnn/yolo11s_320_256.param", "models/coco/ncnn/yolo11s_320_256.bin", 320, 256},
 	    //{"yolo11m_320_256", "yolo11", "models/coco/ncnn/yolo11m_320_256.param", "models/coco/ncnn/yolo11m_320_256.bin", 320, 256},
 	    //{"yolo11m_640_480", "yolo11", "models/coco/ncnn/yolo11m_640_480.param", "models/coco/ncnn/yolo11m_640_480.bin", 640, 480},

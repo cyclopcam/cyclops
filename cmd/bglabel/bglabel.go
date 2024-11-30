@@ -14,6 +14,7 @@ import (
 	"github.com/akamensky/argparse"
 	arcmodel "github.com/cyclopcam/cyclops/arc/server/model"
 	"github.com/cyclopcam/cyclops/pkg/nn"
+	"github.com/cyclopcam/cyclops/pkg/nnaccel"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/logs"
 	"github.com/cyclopcam/www"
@@ -50,7 +51,10 @@ func main() {
 		*serverUrl = (*serverUrl)[:len(*serverUrl)-1]
 	}
 
-	model, err := nnload.LoadModel(logger, filepath.Dir(*modelFilename), filepath.Base(*modelFilename), 640, 480, nn.ThreadingModeParallel, nn.NewModelSetup())
+	// nil device = NCNN
+	var device *nnaccel.Device
+
+	model, err := nnload.LoadModel(logger, device, filepath.Dir(*modelFilename), filepath.Base(*modelFilename), 640, 480, nn.ThreadingModeParallel, nn.NewModelSetup())
 	if err != nil {
 		logger.Errorf("Failed to load NN model '%v': %v", *modelFilename, err)
 		os.Exit(1)

@@ -1,7 +1,6 @@
 package hailotest
 
 import (
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,21 +14,28 @@ import (
 
 const repoRoot = "../../.."
 
-// modelName is eg "yolov8s_640_640"
-func loadModel(modelName string, batchSize int) (*nnaccel.Accelerator, *nnaccel.Model, error) {
-	device, err := nnaccel.Load("hailo")
+func openDevice() (*nnaccel.Device, error) {
+	accel, err := nnaccel.Load("hailo")
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
+	device, err := accel.OpenDevice()
+	if err != nil {
+		return nil, err
+	}
+	return device, nil
+}
 
+// modelName is eg "yolov8s_640_640"
+func loadModel(device *nnaccel.Device, modelName string, batchSize int) (*nnaccel.Model, error) {
 	setup := nn.NewModelSetup()
 	setup.BatchSize = batchSize
 	model, err := device.LoadModel(filepath.Join(repoRoot, "models/coco/hailo/8L", modelName)+".hef", setup)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return device, model, nil
+	return model, nil
 }
 
 // Replicate the same image 'batchSize' times into a giant batch image buffer.
@@ -58,7 +64,11 @@ func BenchmarkObjectDetection(b *testing.B) {
 	// 50.8 FPS with maxParallelJobs = 2
 	maxParallelJobs := 2
 
-	_, model, err := loadModel(modelName, batchSize)
+	device, err := openDevice()
+	require.NoError(b, err)
+	defer device.Close()
+
+	model, err := loadModel(device, modelName, batchSize)
 	require.NoError(b, err)
 
 	img, _ := cimg.ReadFile(filepath.Join(repoRoot, "testdata/yard-640x640.jpg"))
@@ -129,11 +139,19 @@ func BenchmarkObjectDetection(b *testing.B) {
 }
 
 func TestObjectDetection(t *testing.T) {
+	// As of 4.18.0, we need to delete and recreate the device if we want to change the batch size,
+	// otherwise we get the error:
+	// [HailoRT] [error] CHECK failed - Trying to configure a model with a batch=8 bigger than internal_queue_size=4, which is not supported. Try using a smaller batch.
+
 	for _, batchSize := range []int{1, 2, 8} {
-		_, model, err := loadModel("yolov8s_640_640", batchSize)
+		device, err := openDevice()
 		require.NoError(t, err)
 
-		fmt.Printf("cache breaker 3\n")
+		modelName := "yolov8s_640_640"
+		model, err := loadModel(device, modelName, batchSize)
+		require.NoError(t, err)
+
+		t.Logf("Testing %v with batch size %v", modelName, batchSize)
 
 		img, err := cimg.ReadFile(filepath.Join(repoRoot, "testdata/yard-640x640.jpg"))
 		require.NoError(t, err)
@@ -202,6 +220,7 @@ func TestObjectDetection(t *testing.T) {
 		*/
 
 		model.Close()
+		device.Close()
 	}
 
 	//fmt.Printf("Done\n")
@@ -213,10 +232,14 @@ func TestMultiModel(t *testing.T) {
 	batchSizeLQ := 8
 	batchSizeHQ := 1
 
-	_, modelLQ, err := loadModel("yolov8m_640_640", batchSizeLQ)
+	device, err := openDevice()
+	require.NoError(t, err)
+	defer device.Close()
+
+	modelLQ, err := loadModel(device, "yolov8m_640_640", batchSizeLQ)
 	require.NoError(t, err)
 
-	_, modelHQ, err := loadModel("yolov8l_640_640", batchSizeHQ)
+	modelHQ, err := loadModel(device, "yolov8l_640_640", batchSizeHQ)
 	require.NoError(t, err)
 
 	img, err := cimg.ReadFile(filepath.Join(repoRoot, "testdata/yard-640x640.jpg"))
@@ -230,9 +253,27 @@ func TestMultiModel(t *testing.T) {
 	require.NoError(t, err)
 	jobHQ, err := modelHQ.Run(batchSizeHQ, batchStrideHQ, img.Width, img.Height, img.NChan(), img.Stride, unsafe.Pointer(&wholeBatchHQ[0]))
 	require.NoError(t, err)
-
 	require.True(t, jobLQ.Wait(time.Second))
 	require.True(t, jobHQ.Wait(time.Second))
+
+	// Stress the system differently by simultaneously queuing up requests for both models
+	for i := 0; i < 5; i++ {
+		go func() {
+			jobLQ, err := modelLQ.Run(batchSizeLQ, batchStrideLQ, img.Width, img.Height, img.NChan(), img.Stride, unsafe.Pointer(&wholeBatchLQ[0]))
+			require.NoError(t, err)
+			require.True(t, jobLQ.Wait(time.Second))
+		}()
+		time.Sleep(time.Millisecond) // allow LQ/HQ jobs to interleave
+	}
+
+	for i := 0; i < 5; i++ {
+		go func() {
+			jobHQ, err := modelHQ.Run(batchSizeHQ, batchStrideHQ, img.Width, img.Height, img.NChan(), img.Stride, unsafe.Pointer(&wholeBatchHQ[0]))
+			require.NoError(t, err)
+			require.True(t, jobHQ.Wait(time.Second))
+		}()
+		time.Sleep(time.Millisecond) // allow LQ/HQ jobs to interleave
+	}
 
 	modelLQ.Close()
 	modelHQ.Close()

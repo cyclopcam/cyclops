@@ -13,6 +13,7 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/idgen"
 	"github.com/cyclopcam/cyclops/pkg/nn"
+	"github.com/cyclopcam/cyclops/pkg/nnaccel"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/logs"
@@ -61,7 +62,8 @@ We connect these phases with channels.
 */
 type Monitor struct {
 	Log                       logs.Log
-	detector                  nn.ObjectDetector
+	nnDevice                  *nnaccel.Device        // If nil, then we're using NCNN
+	detector                  nn.ObjectDetector      // NN object detector
 	enableFrameReader         bool                   // If false, then we don't run the frame reader
 	mustStopFrameReader       atomic.Bool            // True if stopFrameReader() has been called
 	analyzerQueue             chan analyzerQueueItem // Analyzer work queue. When closed, analyzer must exit.
@@ -148,8 +150,13 @@ type MonitorOptions struct {
 	// If true, force NCNN to run in multithreaded mode. Used to speed up unit tests.
 	MaxSingleThreadPerformance bool
 
+	// Run an additional high quality model, which is used to confirm the detection of a new object.
+	// If EnableDualModel is true, then ModelWidth and ModelHeight are ignored.
+	EnableDualModel bool
+
 	// If specified along with ModelHeight, this is the desired size of the neural network resolution.
 	// This was created for unit tests, where we'd test different resolutions.
+	// Ignored if EnableDualModel is true.
 	ModelWidth int
 
 	// See ModelWidth for details. Either ModelWidth and ModelHeight must be zero, or both must be non-zero.
@@ -241,7 +248,30 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	modelSetup := nn.NewModelSetup()
 	modelSetup.BatchSize = nnBatchSize
 
-	detector, err := nnload.LoadModel(logger, options.ModelsDir, options.ModelName, nnWidth, nnHeight, nnThreadingModel, modelSetup)
+	// Objects that are cleaned up if we fail
+	var device *nnaccel.Device
+	var detector nn.ObjectDetector
+	defer func() {
+		if detector != nil {
+			detector.Close()
+		}
+		if device != nil {
+			device.Close()
+		}
+	}()
+
+	var err error
+
+	// If device is nil, then we're using NCNN
+	accel := nnload.Accelerator()
+	if accel != nil {
+		device, err = accel.OpenDevice()
+		if err != nil {
+			logger.Infof("Failed to open NN accelerator device: %v. Falling back to NCNN", err)
+		}
+	}
+
+	detector, err = nnload.LoadModel(logger, device, options.ModelsDir, options.ModelName, nnWidth, nnHeight, nnThreadingModel, modelSetup)
 	if err != nil {
 		return nil, err
 	}
@@ -281,6 +311,7 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 
 	m := &Monitor{
 		Log:                 logger,
+		nnDevice:            device,
 		detector:            detector,
 		nnThreadQueue:       make(chan monitorQueueItem, nnQueueSize),
 		analyzerQueue:       make(chan analyzerQueueItem, analysisQueueSize),
@@ -302,6 +333,11 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		debugDumpFrames:     true,
 		hasDumpedFrame:      map[string]bool{},
 	}
+
+	// Prevent our cleanup defer func from deleting these objects
+	device = nil
+	detector = nil
+
 	//m.sendTestImageToNN()
 	for i := 0; i < m.numNNThreads; i++ {
 		go m.nnThread()

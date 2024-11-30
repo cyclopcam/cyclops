@@ -33,18 +33,18 @@ NNModel::~NNModel() {
 
 extern "C" {
 
-void nna_model_files(const char** subdir, const char** ext) {
+void nna_model_files(void* _device, const char** subdir, const char** ext) {
 	// Right now we've only tested with 8L, but if we supported other hailo architectures,
 	// then we'd return different values here. These must match the filenames on models.cyclopcam.org
 	*subdir = "hailo/8L";
 	*ext    = ".hef";
 }
 
-int nna_load_model(const char* filename, const NNModelSetup* setup, void** model) {
+int nna_open_device(void** _device) {
 	using namespace hailort;
 	using namespace std::chrono_literals;
 
-	debug_printf("hailo nna_load_model 1\n");
+	debug_printf("hailo nna_open_device 1\n");
 
 	////////////////////////////////////////////////////////////////////////////////////////////
 	// Load/Init
@@ -55,6 +55,37 @@ int nna_load_model(const char* filename, const NNModelSetup* setup, void** model
 		return _make_own_status(vdevice_exp.status());
 	}
 	std::unique_ptr<hailort::VDevice> vdevice = vdevice_exp.release();
+
+	NNDevice* device = new NNDevice();
+	device->VDevice  = std::move(vdevice);
+	device->Name     = "8L";
+	*_device         = device;
+
+	return cySTATUS_OK;
+}
+
+void nna_close_device(void* _device) {
+	NNDevice* device = (NNDevice*) _device;
+	delete device;
+}
+
+int nna_load_model(void* _device, const char* filename, const NNModelSetup* setup, void** model) {
+	using namespace hailort;
+	using namespace std::chrono_literals;
+
+	NNDevice* device = (NNDevice*) _device;
+
+	debug_printf("hailo nna_load_model 1\n");
+
+	////////////////////////////////////////////////////////////////////////////////////////////
+	// Load/Init
+	////////////////////////////////////////////////////////////////////////////////////////////
+
+	//Expected<std::unique_ptr<VDevice>> vdevice_exp = VDevice::create();
+	//if (!vdevice_exp) {
+	//	return _make_own_status(vdevice_exp.status());
+	//}
+	//std::unique_ptr<hailort::VDevice> vdevice = vdevice_exp.release();
 
 	debug_printf("hailo nna_load_model 2\n");
 
@@ -90,11 +121,11 @@ int nna_load_model(const char* filename, const NNModelSetup* setup, void** model
 	debug_printf("hailo nna_load_model fullpath = %s\n", fullpath.c_str());
 
 	// Create infer model from HEF file.
-	Expected<std::shared_ptr<InferModel>> infer_model_exp = vdevice->create_infer_model(fullpath.c_str());
+	Expected<std::shared_ptr<InferModel>> infer_model_exp = device->VDevice->create_infer_model(fullpath.c_str());
 	if (!infer_model_exp) {
 		return _make_own_status(infer_model_exp.status());
 	}
-	std::shared_ptr<hailort::InferModel> infer_model = infer_model_exp.release();
+	std::shared_ptr<InferModel> infer_model = infer_model_exp.release();
 
 	infer_model->set_hw_latency_measurement_flags(HAILO_LATENCY_MEASURE); // What's this for?
 	infer_model->set_batch_size(setup->BatchSize);
@@ -130,15 +161,8 @@ int nna_load_model(const char* filename, const NNModelSetup* setup, void** model
 	//	}
 	//}
 
-	NNModel* m              = new NNModel();
-	m->Device               = std::move(vdevice);
-	m->BatchSize            = setup->BatchSize;
-	m->InferModel           = infer_model;
-	m->ConfiguredInferModel = configured_infer_model;
-	//if (setup->BatchSize == 1) {
-	//	m->Bindings = std::move(bindings);
-	//}
-	*model = m;
+	NNModel* m = new NNModel(device, infer_model, configured_infer_model, setup->BatchSize);
+	*model     = m;
 
 	//debug_printf("Users of configured_infer_model: %d\n", (int) configured_infer_model.use_count());
 
