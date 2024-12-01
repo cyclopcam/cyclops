@@ -1,12 +1,9 @@
 package monitor
 
 import (
-	"time"
-
 	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/accel"
 	"github.com/cyclopcam/cyclops/pkg/nn"
-	"github.com/cyclopcam/cyclops/server/perfstats"
 )
 
 type ResizeQuality int
@@ -19,21 +16,21 @@ const (
 // Perform image format conversions and resizing so that we can send to our NN.
 // We should consider having the resizing done by ffmpeg.
 // Images returned are (originalRgb, nnScaledRgb)
-func (m *Monitor) prepareImageForNN(yuv *accel.YUVImage, rgbNNMemory []byte, resizeQuality ResizeQuality) (nn.ResizeTransform, *cimg.Image, *cimg.Image) {
-	start := time.Now()
-	nnConfig := m.detector.Config()
-	nnWidth := nnConfig.Width
-	nnHeight := nnConfig.Height
+func (m *Monitor) prepareImageForNN(yuv *accel.YUVImage, rgb *cimg.Image, nnWidth, nnHeight int, rgbNNMemory []byte, resizeQuality ResizeQuality) (nn.ResizeTransform, *cimg.Image, *cimg.Image) {
 	nnStride := nnWidth * 3
 
 	xform := nn.IdentityResizeTransform()
 
 	// Expensive-ish operation #1
 	// Convert YUV to RGB, and store the RGB image, so that the client can access the most recently decoded frame.
-	rgb := cimg.NewImage(yuv.Width, yuv.Height, cimg.PixelFormatRGB)
-	yuv.CopyToCImageRGB(rgb)
-	if (rgb.Width > nnWidth || rgb.Height > nnHeight) && m.hasShownResolutionWarning.CompareAndSwap(false, true) {
-		m.Log.Warnf("Camera image size %vx%v is larger than NN input size %vx%v", rgb.Width, rgb.Height, nnWidth, nnHeight)
+	// rgb is usually nil.
+	// The only case where rgb is not nil, is when we're re-running an image through the HQ model.
+	if rgb == nil {
+		rgb = cimg.NewImage(yuv.Width, yuv.Height, cimg.PixelFormatRGB)
+		yuv.CopyToCImageRGB(rgb)
+		if (rgb.Width > nnWidth || rgb.Height > nnHeight) && m.hasShownResolutionWarning.CompareAndSwap(false, true) {
+			m.Log.Warnf("Camera image size %vx%v is larger than NN input size %vx%v", rgb.Width, rgb.Height, nnWidth, nnHeight)
+		}
 	}
 
 	// This 'originalRgb' is the image straight from the camera, without any resizing.
@@ -97,6 +94,5 @@ func (m *Monitor) prepareImageForNN(yuv *accel.YUVImage, rgbNNMemory []byte, res
 			}
 		}
 	}
-	perfstats.UpdateMovingAverage(&m.avgTimeNSPerFrameNNPrep, time.Now().Sub(start).Nanoseconds())
 	return xform, originalRgb, cimg.WrapImage(nnWidth, nnHeight, cimg.PixelFormatRGB, rgbNNMemory)
 }

@@ -119,7 +119,7 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 		monitorOptions.ModelsDir = nnModelsDir
 	}
 	if nnModelName != "" {
-		monitorOptions.ModelName = nnModelName
+		monitorOptions.ModelNameLQ = nnModelName
 	}
 	monitor, err := monitor.NewMonitor(s.Log, monitorOptions)
 	if err != nil {

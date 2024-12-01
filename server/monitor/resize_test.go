@@ -41,7 +41,7 @@ func testImageResizeForNNAt(t *testing.T, rgbWidth, rgbHeight, nnWidth, nnHeight
 
 	m := Monitor{}
 	m.Log = logs.NewTestingLog(t)
-	m.detector = &dummyDetector{
+	m.nnDetectorLQ = &dummyDetector{
 		ModelConfig: nn.ModelConfig{
 			Width:  nnWidth,
 			Height: nnHeight,
@@ -64,7 +64,7 @@ func testImageResizeForNNAt(t *testing.T, rgbWidth, rgbHeight, nnWidth, nnHeight
 		}
 		nnBlock := wholeBatchImage[batchEl*batchStride : (batchEl+1)*batchStride]
 		//xformRgbToNN, rgbPure, rgbNN := m.prepareImageForNN(srcYUV, nnBlock)
-		_, rgbPure, rgbNN := m.prepareImageForNN(srcYUV, nnBlock, quality)
+		_, rgbPure, rgbNN := m.prepareImageForNN(srcYUV, nil, nnWidth, nnHeight, nnBlock, quality)
 		rgbPure.WriteJPEG(fmt.Sprintf("test-%02d-pure.jpg", batchEl), cimg.MakeCompressParams(cimg.Sampling444, 99, 0), 0644)
 		rgbNN.WriteJPEG(fmt.Sprintf("test-%02d-nn.jpg", batchEl), cimg.MakeCompressParams(cimg.Sampling444, 99, 0), 0644)
 	}

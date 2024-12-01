@@ -25,10 +25,11 @@ import (
 const DumpTrackingVideo = false
 
 type EventTrackingParams struct {
-	ModelName  string  // eg "yolov8m"
-	NNCoverage float64 // eg 75%, if we're able to run NN analysis on 75% of video frames (i.e. because we're resource constrained)
-	NNWidth    int     // eg 320, 640
-	NNHeight   int     // eg 256, 480
+	ModelNameLQ string  // eg "yolov8m"
+	ModelNameHQ string  // eg "yolov8l"
+	NNCoverage  float64 // eg 75%, if we're able to run NN analysis on 75% of video frames (i.e. because we're resource constrained)
+	NNWidth     int     // eg 320, 640
+	NNHeight    int     // eg 256, 480
 }
 
 type Range struct {
@@ -105,8 +106,10 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	}
 
 	monitorOptions := monitor.DefaultMonitorOptions()
-	monitorOptions.ModelName = params.ModelName
+	monitorOptions.ModelNameLQ = params.ModelNameLQ
+	monitorOptions.ModelNameHQ = params.ModelNameHQ
 	monitorOptions.EnableFrameReader = false
+	monitorOptions.EnableDualModel = true
 	monitorOptions.ModelsDir = FromTestPathToRepoRoot("models")
 	if params.NNWidth != 0 {
 		monitorOptions.ModelWidth = params.NNWidth
@@ -253,8 +256,9 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 func TestEventTracking(t *testing.T) {
 	paramPurmutations := []*EventTrackingParams{
 		{
-			ModelName:  "yolov8m",
-			NNCoverage: 1,
+			ModelNameLQ: "yolov8m",
+			ModelNameHQ: "yolov8l",
+			NNCoverage:  1,
 			//NNWidth:    320,
 			//NNHeight:   256,
 		},
@@ -318,7 +322,7 @@ func TestEventTracking(t *testing.T) {
 		},
 	}
 	// uncomment the following line, to test just the last case
-	onlyTestLastCase := false // DO NOT COMMIT
+	onlyTestLastCase := true // DO NOT COMMIT
 
 	if onlyTestLastCase {
 		cases = cases[len(cases)-1:]
@@ -328,7 +332,7 @@ func TestEventTracking(t *testing.T) {
 	nnload.LoadAccelerators(logs.NewTestingLog(t), true)
 
 	for iparams, params := range paramPurmutations {
-		t.Logf("Testing parameter permutation %v/%v (%v, %v)", iparams, len(paramPurmutations), params.ModelName, params.NNCoverage)
+		t.Logf("Testing parameter permutation %v/%v (%v, %v, %v)", iparams, len(paramPurmutations), params.ModelNameLQ, params.ModelNameHQ, params.NNCoverage)
 		for _, tcase := range cases {
 			t.Logf("Testing case %v", tcase.VideoFilename)
 			testEventTrackingCase(t, params, tcase)

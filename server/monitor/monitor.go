@@ -63,19 +63,22 @@ We connect these phases with channels.
 type Monitor struct {
 	Log                       logs.Log
 	nnDevice                  *nnaccel.Device        // If nil, then we're using NCNN
-	detector                  nn.ObjectDetector      // NN object detector
+	nnDetectorLQ              nn.ObjectDetector      // Low Quality NN object detector
+	nnDetectorHQ              nn.ObjectDetector      // High Quality NN object detector
 	enableFrameReader         bool                   // If false, then we don't run the frame reader
 	mustStopFrameReader       atomic.Bool            // True if stopFrameReader() has been called
 	analyzerQueue             chan analyzerQueueItem // Analyzer work queue. When closed, analyzer must exit.
 	analyzerStopped           chan bool              // Analyzer thread has exited
 	numNNThreads              int                    // Number of NN threads
-	nnBatchSize               int                    // Batch size for NN
-	nnModelSetup              *nn.ModelSetup         // Configuration of NN models
+	nnBatchSizeLQ             int                    // Batch size for low quality NN
+	nnBatchSizeHQ             int                    // Batch size for high quality NN
+	nnModelSetupLQ            *nn.ModelSetup         // Configuration of low quality NN models
+	nnModelSetupHQ            *nn.ModelSetup         // Configuration of high quality NN models
 	nnThreadStopWG            sync.WaitGroup         // Wait for all NN threads to exit
 	frameReaderStopped        chan bool              // When frameReaderStopped channel is closed, then the frame reader has stopped
-	nnThreadQueue             chan monitorQueueItem  // Queue of images to be processed by the neural network
-	avgTimeNSPerFrameNNPrep   atomic.Int64           // Average time (ns) per frame, for prep of an image before it hits the NN
-	avgTimeNSPerFrameNNDet    atomic.Int64           // Average time (ns) per frame, for just the neural network (time inside a thread)
+	nnThreadQueue             chan monitorQueueItem  // Queue of images to be processed by neural network(s)
+	nnPerfStatsLQ             nnPerfStats            // Performance statistics for the low quality NN
+	nnPerfStatsHQ             nnPerfStats            // Performance statistics for the high quality NN
 	hasShownResolutionWarning atomic.Bool            // True if we've shown a warning about camera resolution vs NN resolution
 	nnClassList               []string               // All the classes that the NN emits (in their native order)
 	nnClassMap                map[string]int         // Map from class name to class index
@@ -126,14 +129,19 @@ type monitorCamera struct {
 }
 
 type monitorQueueItem struct {
-	monCam   *monitorCamera
-	image    *accel.YUVImage
-	framePTS time.Time
+	isHQ     bool            // True if this is a high quality NN detection request
+	monCam   *monitorCamera  // Camera that this image came from
+	yuv      *accel.YUVImage // Never nil
+	rgb      *cimg.Image     // Can be nil (in fact, this is always nil for a new image, but non-nil when reprocessing by HQ model)
+	framePTS time.Time       // Frame wall time
 }
 
 type analyzerQueueItem struct {
-	monCam    *monitorCamera
-	detection *nn.DetectionResult
+	isHQ      bool                // True if this is a high quality NN detection result
+	monCam    *monitorCamera      // Camera that this image came from
+	yuv       *accel.YUVImage     // Original image that was used to generate the objects
+	rgb       *cimg.Image         // Original image that was used to generate the objects
+	detection *nn.DetectionResult // Detection result
 }
 
 type MonitorOptions struct {
@@ -141,8 +149,11 @@ type MonitorOptions struct {
 	// frames directly, without having the monitor pull frames from the cameras.
 	EnableFrameReader bool
 
-	// ModelName is the NN model name, such as "yolov8m"
-	ModelName string
+	// ModelNameLQ is the low quality NN model name, such as "yolov8m"
+	ModelNameLQ string
+
+	// ModelName is the high quality NN model name, such as "yolov8l"
+	ModelNameHQ string
 
 	// ModelsDir is the directory where we store NN models
 	ModelsDir string
@@ -167,9 +178,11 @@ type MonitorOptions struct {
 func DefaultMonitorOptions() *MonitorOptions {
 	return &MonitorOptions{
 		EnableFrameReader:          true,
-		ModelName:                  "yolov8m",
+		ModelNameLQ:                "yolov8m",
+		ModelNameHQ:                "yolov8l",
 		ModelsDir:                  "/var/lib/cyclops/models",
 		MaxSingleThreadPerformance: false,
+		EnableDualModel:            true,
 	}
 }
 
@@ -205,7 +218,8 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	// using OpenMP and whatever other threading mechanisms NCNN uses internally.
 	numCPU := runtime.NumCPU()
 	nnThreads := numCPU
-	nnBatchSize := 1
+	nnBatchSizeLQ := 1
+	nnBatchSizeHQ := 1
 	if nnload.HaveAccelerator() {
 		// If we can do model parallelism with NN accelerators, then we'll probably
 		// use some kind of queue issued by a single CPU thread, instead of having
@@ -217,7 +231,7 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		nnWidth, nnHeight = 640, 640
 		// 8 is a decent batch size for Hailo 8L, and it's likely to be a good number for other accelerators too.
 		// On Hailo 8L YOLOv8m, a batch size of 10 gives milder better perf (50 vs 48 fps), but 8 just feels right.
-		nnBatchSize = 8
+		nnBatchSizeLQ = 8
 	} else if options.MaxSingleThreadPerformance {
 		nnThreads = 1
 	} else if numCPU > 4 {
@@ -233,7 +247,7 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		// many cores it can.
 		nnThreadingModel = nn.ThreadingModeParallel
 	}
-	logger.Infof("Using %v NN threads, mode %v, batch size %v", nnThreads, nnThreadingModel, nnBatchSize)
+	logger.Infof("Using %v NN threads, mode %v, batch size %v", nnThreads, nnThreadingModel, nnBatchSizeLQ)
 
 	if options.ModelWidth != 0 {
 		nnWidth = options.ModelWidth
@@ -241,19 +255,25 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	}
 
 	// SYNC-NN-THREAD-QUEUE-MIN-SIZE
-	nnQueueSize := nnBatchSize * nnThreads * 2
+	nnQueueSize := nnBatchSizeLQ * nnThreads * 2
 
-	logger.Infof("Loading NN model '%v' %v x %v", options.ModelName, nnWidth, nnHeight)
+	logger.Infof("Loading NN models LQ: %v, HQ: %v, resolution %v x %v", options.ModelNameLQ, options.ModelNameHQ, nnWidth, nnHeight)
 
-	modelSetup := nn.NewModelSetup()
-	modelSetup.BatchSize = nnBatchSize
+	modelSetupLQ := nn.NewModelSetup()
+	modelSetupLQ.BatchSize = nnBatchSizeLQ
+	modelSetupHQ := nn.NewModelSetup()
+	modelSetupHQ.BatchSize = nnBatchSizeHQ
 
 	// Objects that are cleaned up if we fail
 	var device *nnaccel.Device
-	var detector nn.ObjectDetector
+	var detectorLQ nn.ObjectDetector
+	var detectorHQ nn.ObjectDetector
 	defer func() {
-		if detector != nil {
-			detector.Close()
+		if detectorLQ != nil {
+			detectorLQ.Close()
+		}
+		if detectorHQ != nil {
+			detectorHQ.Close()
 		}
 		if device != nil {
 			device.Close()
@@ -271,14 +291,17 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		}
 	}
 
-	detector, err = nnload.LoadModel(logger, device, options.ModelsDir, options.ModelName, nnWidth, nnHeight, nnThreadingModel, modelSetup)
+	detectorLQ, err = nnload.LoadModel(logger, device, options.ModelsDir, options.ModelNameLQ, nnWidth, nnHeight, nnThreadingModel, modelSetupLQ)
+	if err != nil {
+		return nil, err
+	}
+	detectorHQ, err = nnload.LoadModel(logger, device, options.ModelsDir, options.ModelNameHQ, nnWidth, nnHeight, nnThreadingModel, modelSetupHQ)
 	if err != nil {
 		return nil, err
 	}
 
-	logger.Infof("NN resolution is %v x %v", detector.Config().Width, detector.Config().Height)
-	logger.Infof("NN batch size %v", modelSetup.BatchSize)
-	logger.Infof("NN prob threshold %.2f, NMS IoU threshold %.2f", modelSetup.ProbabilityThreshold, modelSetup.NmsIouThreshold)
+	logger.Infof("LQ NN %v x %v, batch %v, prob threshold %.2f, NMS IoU thresold: %.2f", detectorLQ.Config().Width, detectorLQ.Config().Height, modelSetupLQ.BatchSize, modelSetupLQ.ProbabilityThreshold, modelSetupLQ.NmsIouThreshold)
+	logger.Infof("HQ NN %v x %v, batch %v, prob threshold %.2f, NMS IoU thresold: %.2f", detectorHQ.Config().Width, detectorHQ.Config().Height, modelSetupHQ.BatchSize, modelSetupHQ.ProbabilityThreshold, modelSetupHQ.NmsIouThreshold)
 
 	classFilterList := defaultClassFilterList
 	logger.Infof("Paying attention to the following classes: %v", strings.Join(classFilterList, ","))
@@ -290,7 +313,7 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	// been emitted by the NN.
 	analysisQueueSize := 20
 
-	classList := detector.Config().Classes
+	classList := detectorLQ.Config().Classes
 	seenAbstract := map[string]bool{}
 	for _, v := range abstractClasses {
 		if !seenAbstract[v] {
@@ -312,13 +335,16 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	m := &Monitor{
 		Log:                 logger,
 		nnDevice:            device,
-		detector:            detector,
+		nnDetectorLQ:        detectorLQ,
+		nnDetectorHQ:        detectorHQ,
 		nnThreadQueue:       make(chan monitorQueueItem, nnQueueSize),
 		analyzerQueue:       make(chan analyzerQueueItem, analysisQueueSize),
 		analyzerStopped:     make(chan bool),
-		nnModelSetup:        modelSetup,
+		nnModelSetupLQ:      modelSetupLQ,
+		nnModelSetupHQ:      modelSetupHQ,
 		numNNThreads:        nnThreads,
-		nnBatchSize:         nnBatchSize,
+		nnBatchSizeLQ:       nnBatchSizeLQ,
+		nnBatchSizeHQ:       nnBatchSizeHQ,
 		nnClassList:         classList,
 		nnClassMap:          classMap,
 		nnClassFilterSet:    makeClassFilter(classFilterList),
@@ -336,11 +362,13 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 
 	// Prevent our cleanup defer func from deleting these objects
 	device = nil
-	detector = nil
+	detectorLQ = nil
+	detectorHQ = nil
 
 	//m.sendTestImageToNN()
 	for i := 0; i < m.numNNThreads; i++ {
-		go m.nnThread()
+		thread := &nnThread{}
+		go thread.run(m)
 	}
 	if m.enableFrameReader {
 		m.startFrameReader()
@@ -374,8 +402,12 @@ func (m *Monitor) Close() {
 	m.Log.Infof("Monitor waiting for analyzer")
 	close(m.analyzerQueue)
 
-	// Close the C++ NN object
-	m.detector.Close()
+	// Close the C++ NN objects
+	m.nnDetectorLQ.Close()
+	m.nnDetectorHQ.Close()
+	if m.nnDevice != nil {
+		m.nnDevice.Close()
+	}
 
 	m.Log.Infof("Monitor is closed")
 }
@@ -402,11 +434,6 @@ func (m *Monitor) ClassToIdx(cls string) int {
 // Returns the class index of the special "class unrecognized" class
 func (m *Monitor) UnrecognizedClassIdx() int {
 	return m.nnUnrecognizedClass
-}
-
-// Returns the number of items awaiting processing in the NN queue
-func (m *Monitor) NNThreadQueueLength() int {
-	return len(m.nnThreadQueue)
 }
 
 // Return the most recent frame and detection result for a camera

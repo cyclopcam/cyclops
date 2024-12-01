@@ -36,7 +36,7 @@ func (m *Monitor) InjectTestFrame(cameraIndex int, pts time.Time, img *accel.YUV
 
 	qitem := monitorQueueItem{
 		monCam:   camera,
-		image:    img,
+		yuv:      img,
 		framePTS: pts,
 	}
 	m.nnThreadQueue <- qitem

@@ -14,124 +14,97 @@ import (
 	"github.com/cyclopcam/cyclops/server/perfstats"
 )
 
-// An NN processing thread
-func (m *Monitor) nnThread() {
-	lastErrAt := time.Time{}
+// State of a single thread that performs NN detections
+// When running on desktop CPUs, there are typically a handful of these (eg the number of physical cores)
+// When running with an NN accelerator (eg Hailo), we create just one NN thread.
+// Crucially, all of state inside here is owned by a single thread, so there's no
+// need to coordinate access to it.
+type nnThread struct {
+	lastErrAt  time.Time
+	detectorLQ nnDetectorState
+	detectorHQ nnDetectorState
+}
 
-	// I was originally tempted to reuse the same RGB image across iterations
-	// of the loop (the 'rgb' variable). However, this doesn't actually help
-	// performance at all, since we need to store a unique lastImg inside the
-	// monitorCamera object.
-	// I mean.. it did perhaps help performance a tiny bit, but it introduced
-	// the bug of returning the incorrect lastImg for a camera (all cameras
-	// would share the same lastImg).
+// State of an NN detector (each NN thread has two of these: LQ and HQ)
+type nnDetectorState struct {
+	detectionParams *nn.DetectionParams
+	detector        nn.ObjectDetection
+	nnWidth         int // NN input image width
+	nnHeight        int // NN input image height
+	batchSize       int // Number of items in batch (typically 1 or 8)
+	batchStride     int // Bytes between each image in a batch
+	wholeBatchImage []byte
+	resizeQuality   ResizeQuality
+	batch           []nnBatchItem
+}
 
-	// Resizing image for NN inference:
-	// When implementing support for the Hailo8L on Raspberry Pi5, the easiest
-	// thing to do was to use the pretrained YOLOv8 model, which has an input
-	// size of 640x640. Our cameras are typically setup to emit 2nd stream
-	// images as a lower resolution (eg 320 x 256). Until this time, my NCNN
-	// YOLOv8 used an input resolution of 320 x 256, so it perfectly matched
-	// the camera 2nd streams. So my decision at the time of implementing
-	// support for the Hailo8L was to simply add black padding around the
-	// 320x256 images, to make them 640x640. This is not ideal. We should
-	// either be using larger 2nd stream images from the camera, or creating
-	// a custom Hailo8L YOLOv8 model with a smaller input resolution.
-	// But now you know why we do it this way. It's not the best, just the
-	// easiest, an good enough for now.
-	// UPDATE: Since writing that, we now resize our images before sending
-	// them to the NN. You take too much of an NN accuracy hit if you do
-	// anything else.
+// An image that has been loaded into a batch (eg 1 of 8)
+type nnBatchItem struct {
+	monCam       *monitorCamera
+	yuv          *accel.YUVImage
+	rgb          *cimg.Image // rgb image directly converted from yuv (i.e. same resolution, etc).
+	framePTS     time.Time
+	xformRgbToNN nn.ResizeTransform
+}
 
-	// For Hailo/Accelerators, these parameters are defined at model setup time,
-	// but for NCNN, we control them with each detection. We should probably get
-	// rid of the per-detection mechanism with NCNN so that it all goes in through
-	// the same path.
-	detectionParams := nn.NewDetectionParams()
-	detectionParams.ProbabilityThreshold = m.nnModelSetup.ProbabilityThreshold
-	detectionParams.NmsIouThreshold = m.nnModelSetup.NmsIouThreshold
+// Run a neural network processing thread
+func (t *nnThread) run(m *Monitor) {
+	t.lastErrAt = time.Time{}
 
-	// Allocate one big block of memory that will hold all of the images in one batch.
-	// I tried at first to use individual blocks of memory (one for each image), but this
-	// gets nasty when you try to send these pointers via cgo, because Go's rules
-	// prohibit sending a void**.
-	// An additional complexity wrinkle here is that the Hailo accelerators want
-	// each image to be page aligned, so we need to take that into consideration.
-	// One big block of memory feels like the right solution. I'm hoping it might
-	// also make things simpler if we want to support CUDA. The most salient
-	// principle is that you're not in control of your image memory when working
-	// with accelerators, so might as well get used to that.
-
-	// batchStride = distance between images in our big memory block.
-	// Each image must start on a page boundary, and be a multiple of a whole page size.
-	nnWidth := m.detector.Config().Width
-	nnHeight := m.detector.Config().Height
-	batchStride := nnBatchImageStride(nnWidth, nnHeight)
-
-	// A typical size here will be:
-	// 640x640x3 * 8 = 12MB
-	wholeBatchImage := nnaccel.PageAlignedAlloc(m.nnBatchSize * batchStride)
-
-	// We might want to make this decision based on the load of the system, or it's
-	// static performance. For example, on a desktop class CPU, it's probably worthwhile
-	// to do higher quality resampling, but on a Pi maybe not. Ideally we should be
-	// using the GPU on the Pi, but that's for another day.
-	// Hmm.. after looking at this more, I'm leaning towards always using the "low quality"
-	// filter, because it's the sharpest. My guess is that the effect on the NN performance
-	// is so small that it's probably worth using the sharpest, fastest filter all the time.
-	resizeQuality := ResizeQualityLow
-
-	type batchItem struct {
-		monCam       *monitorCamera
-		yuv          *accel.YUVImage
-		framePTS     time.Time
-		xformRgbToNN nn.ResizeTransform
-		rgbPure      *cimg.Image
-	}
-
-	// Save up enough images until we have a full batch
-	batch := []batchItem{}
+	t.detectorLQ.init(m.nnModelSetupLQ, m.nnDetectorLQ)
+	t.detectorHQ.init(m.nnModelSetupHQ, m.nnDetectorHQ)
 
 	for frameCount := 0; true; frameCount++ {
 		// Read the next item from the queue.
-		// We scope the variables in here to ensure that they don't leak out, and we mistakenly
-		// process just this one item instead of an item from the batch.
+		var d *nnDetectorState
+		var perf *nnPerfStats
+		// We scope the variables in here to ensure that they don't leak out, and mistakenly
+		// process just this latest item, instead of an item from the batch.
 		{
 			item, ok := <-m.nnThreadQueue
 			if !ok {
 				break
 			}
-			yuv := item.image
-			batchEl := len(batch)
-			nnBlock := wholeBatchImage[batchEl*batchStride : (batchEl+1)*batchStride]
-			xformRgbToNN, rgbPure, rgbNN := m.prepareImageForNN(yuv, nnBlock, resizeQuality)
+			if item.isHQ {
+				d = &t.detectorHQ
+				perf = &m.nnPerfStatsHQ
+			} else {
+				d = &t.detectorLQ
+				perf = &m.nnPerfStatsLQ
+			}
+			batchEl := len(d.batch)
+			nnBlock := d.wholeBatchImage[batchEl*d.batchStride : (batchEl+1)*d.batchStride]
+			start := time.Now()
+			xformRgbToNN, rgbPure, rgbNN := m.prepareImageForNN(item.yuv, item.rgb, d.nnWidth, d.nnHeight, nnBlock, d.resizeQuality)
+			// Note that rgbNN is actually a window into wholeBatchImage, which is why we don't need to store it.
+			perfstats.UpdateMovingAverage(&perf.avgTimeNSPerFrameNNPrep, time.Now().Sub(start).Nanoseconds())
 			if m.debugDumpFrames {
 				m.dumpFrame(rgbPure, item.monCam.camera, "rgb")
 				m.dumpFrame(rgbNN, item.monCam.camera, "nn")
 			}
-			batch = append(batch, batchItem{
+			d.batch = append(d.batch, nnBatchItem{
 				monCam:       item.monCam,
-				yuv:          yuv,
+				yuv:          item.yuv,
+				rgb:          rgbPure,
 				framePTS:     item.framePTS,
 				xformRgbToNN: xformRgbToNN,
-				rgbPure:      rgbPure,
 			})
 		}
-		if len(batch) < m.nnBatchSize {
+		if len(d.batch) < d.batchSize {
 			continue
 		}
-		imageBatch := nn.MakeImageBatch(m.nnBatchSize, batchStride, nnWidth, nnHeight, 3, nnWidth*3, wholeBatchImage)
+		imageBatch := nn.MakeImageBatch(d.batchSize, d.batchStride, d.nnWidth, d.nnHeight, 3, d.nnWidth*3, d.wholeBatchImage)
 		start := time.Now()
-		batchResult, err := m.detector.DetectObjects(imageBatch, detectionParams)
-		perfstats.UpdateMovingAverage(&m.avgTimeNSPerFrameNNDet, time.Now().Sub(start).Nanoseconds())
+		batchResult, err := m.nnDetectorLQ.DetectObjects(imageBatch, d.detectionParams)
+		perfstats.UpdateMovingAverage(&perf.avgTimeNSPerFrameNNDet, time.Now().Sub(start).Nanoseconds())
 		if err != nil {
-			if time.Now().Sub(lastErrAt) > 15*time.Second {
+			if time.Now().Sub(t.lastErrAt) > 15*time.Second {
 				m.Log.Errorf("Error detecting objects: %v", err)
-				lastErrAt = time.Now()
+				t.lastErrAt = time.Now()
 			}
 		} else {
-			for i := 0; i < len(batch); i++ {
-				input := &batch[i]
+			for i := 0; i < len(d.batch); i++ {
+				input := &d.batch[i]
 				objects := batchResult[i]
 				input.xformRgbToNN.ApplyBackward(objects)
 				//m.Log.Infof("Camera %v detected %v objects", mcam.camera.ID, len(objects))
@@ -144,7 +117,7 @@ func (m *Monitor) nnThread() {
 				}
 				input.monCam.lock.Lock()
 				input.monCam.lastDetection = result
-				input.monCam.lastImg = input.rgbPure
+				input.monCam.lastImg = input.rgb
 				input.monCam.lock.Unlock()
 
 				if len(m.analyzerQueue) >= cap(m.analyzerQueue)*9/10 {
@@ -152,16 +125,60 @@ func (m *Monitor) nnThread() {
 					m.Log.Warnf("NN analyzer queue is falling behind - dropping frames")
 				} else {
 					m.analyzerQueue <- analyzerQueueItem{
+						isHQ:      d == &t.detectorHQ,
 						monCam:    input.monCam,
+						yuv:       input.yuv,
+						rgb:       input.rgb,
 						detection: result,
 					}
 				}
 			}
 		}
-		batch = batch[:0]
+		d.batch = d.batch[:0]
 	}
 
 	m.nnThreadStopWG.Done()
+}
+
+func (d *nnDetectorState) init(setup *nn.ModelSetup, detector nn.ObjectDetector) {
+	// For Hailo/Accelerators, these parameters are defined at model setup time,
+	// but for NCNN, we control them with each detection. We should probably get
+	// rid of the per-detection mechanism with NCNN so that it all goes in through
+	// the same path.
+	d.detectionParams = nn.NewDetectionParams()
+	d.detectionParams.ProbabilityThreshold = setup.ProbabilityThreshold
+	d.detectionParams.NmsIouThreshold = setup.NmsIouThreshold
+
+	// batchStride = distance between images in our big memory block.
+	// Each image must start on a page boundary, and be a multiple of a whole page size.
+	d.nnWidth = detector.Config().Width
+	d.nnHeight = detector.Config().Height
+	d.batchStride = nnBatchImageStride(d.nnWidth, d.nnHeight)
+
+	// Allocate one big block of memory that will hold all of the images in one batch.
+	// I tried at first to use individual blocks of memory (one for each image), but this
+	// gets nasty when you try to send these pointers via cgo, because Go's rules
+	// prohibit sending a void**.
+	// An additional complexity wrinkle here is that the Hailo accelerators want
+	// each image to be page aligned, so we need to take that into consideration.
+	// One big block of memory feels like the right solution. I'm hoping it might
+	// also make things simpler if we want to support CUDA. The most salient
+	// principle is that you're not in control of your image memory when working
+	// with accelerators, so might as well get used to that.
+
+	// A typical size here will be:
+	// 640x640x3 * 8 = 12MB
+	d.wholeBatchImage = nnaccel.PageAlignedAlloc(d.batchStride * d.batchStride)
+
+	// We might want to make this decision based on the load of the system, or it's
+	// static performance. For example, on a desktop class CPU, it's probably worthwhile
+	// to do higher quality resampling, but on a Pi maybe not. Ideally we should be
+	// using the GPU on the Pi, but that's for another day.
+	// Hmm.. after looking at this more, I'm leaning towards always using the "low quality"
+	// filter, because it's the sharpest. My guess is that the effect on the NN performance
+	// is so small that it's probably worth using the sharpest, fastest filter all the time.
+	d.resizeQuality = ResizeQualityLow
+
 }
 
 func (m *Monitor) dumpFrame(rgb *cimg.Image, cam *camera.Camera, variant string) {

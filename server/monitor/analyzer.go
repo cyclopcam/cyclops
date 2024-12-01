@@ -9,27 +9,6 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/nn"
 )
 
-/*
-YOLOv7-tiny will often produce two overlapping boxes for a single thing.
-We don't make any attempt to filter that out, but hope instead that we can
-move toward larger models.
-
-AutoRecorder:
-The job of the auto recorder is to record video samples of interesting events.
-An interest event includes an item of interest (primarily a person, but perhaps
-also a car or bicycle). That item of interest has a certain trajectory through
-the frame. The trajectory is simply a 2D path. We don't need too many instances
-of similar trajectories, so once we have a few samples of a given kind, we can
-stop collecting more of the same.
-But this makes me wonder if this approach really works. Most people don't actually
-want to simulate breaking into their own yards. It's a big thing to ask of some
-people, and even the athletic ones might not cover cases, especially unpleasant ones,
-that involve damaging their walls, plants, or are dangerous.
-I'm looking at my own cameras, and thinking that good old polygon zones are probably
-the right solution.
-
-*/
-
 // If true, then alert on all classes in the COCO set
 // If false, then only alert on the classes in defaultNNClassFilter()
 const includeAllClasses = false
@@ -83,6 +62,16 @@ type timeAndPosition struct {
 	detection nn.ProcessedObject
 }
 
+// Track whether we have run a frame through the high quality neural network, and what the result was
+type validationStatus int
+
+const (
+	validationStatusNone    validationStatus = iota // We have not run a high quality NN to verify this object yet
+	validationStatusWaiting                         // We are waiting for the HQ network to process a frame containing this object
+	validationStatusValid                           // The HQ network has verified this object
+	validationStatusInvalid                         // The HQ network did not identify this object
+)
+
 // Internal state of an object that we're tracking
 type trackedObject struct {
 	id             uint32 // every new tracked object gets a unique id
@@ -93,14 +82,16 @@ type trackedObject struct {
 	history        ringbuffer.RingP[timeAndPosition] // unfiltered ring buffer of recent detections
 	totalSightings int                               // Total number of times we've seen this object
 	genuine        int                               // Number of frames for which we've considered this object genuine. 0 = not yet, 1 = first time, 2 = second time, etc.
+	validation     validationStatus                  // HQ network validation
 }
 
 // Internal state of the analyzer for a single camera
 type analyzerCameraState struct {
-	cameraID int64
-	monCam   *monitorCamera
-	tracked  []*trackedObject
-	lastSeen time.Time
+	cameraID    int64
+	monCam      *monitorCamera
+	tracked     []*trackedObject
+	lastHQFrame time.Time
+	lastSeen    time.Time
 }
 
 // SYNC-TIME-AND-POSITION
@@ -237,9 +228,26 @@ func (m *Monitor) createAbstractObjects(objects []nn.ObjectDetection) []nn.Proce
 	return processed
 }
 
+// Send a frame to the HQ model
+func (m *Monitor) sendFrameForValidation(cam *analyzerCameraState, item analyzerQueueItem) {
+	m.nnThreadQueue <- monitorQueueItem{
+		isHQ:     true,
+		monCam:   cam.monCam,
+		yuv:      item.yuv,
+		rgb:      item.rgb,
+		framePTS: item.detection.FramePTS,
+	}
+}
+
 func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem) {
+	// If an object is determined by the HQ network to be a false positive, but we keep
+	// seeing it in the LQ network, then re-run the HQ analysis every X seconds, to make
+	// sure we haven't missed a genuine object.
+	revalidateInterval := 2 * time.Second
+
 	settings := &m.analyzerSettings
 	framePTS := item.detection.FramePTS
+	now := time.Now()
 
 	// Create abstract objects before merging, because this tends to create duplicates.
 	// For example, you'll often get a car and a truck detection of the same object.
@@ -285,9 +293,9 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 
 	// Map every detected/processed object to an existing tracked object.
 	// If there is no match, then create a new tracked object.
-	m.trackDetectedObjects(cam, processed, item.detection.ImageWidth, item.detection.ImageHeight, framePTS)
+	m.trackDetectedObjects(cam, processed, item.isHQ, item.detection.ImageWidth, item.detection.ImageHeight, framePTS)
 
-	//newGenuine := map[uint32]bool{}
+	sendFrameForValidation := false
 
 	// Figure out if any of our tracked objects are genuine, and increment the genuine counter for those that are
 	for _, tracked := range cam.tracked {
@@ -295,22 +303,54 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 		if tracked.genuine == 0 &&
 			tracked.distanceFromOrigin() >= float32(settings.minDistanceForClass(cls)) &&
 			tracked.totalSightings >= settings.minSightingsForClass(cls) {
-			if m.analyzerSettings.verbose {
-				center := tracked.mostRecent().detection.Raw.Box.Center()
-				m.Log.Infof("Analyzer (cam %v): Genuine '%v' at %v,%v (%.1f px, %v positions)", cam.cameraID, cls,
-					center.X, center.Y, tracked.distanceFromOrigin(), tracked.numDiscreetPositions())
+			// Decide whether this object is genuine, or if we should run validation, etc
+			makeGenuine := false
+			if m.nnDetectorHQ == nil {
+				// There is no HQ detector, so this object becomes genuine
+				makeGenuine = true
+			} else if item.isHQ {
+				if tracked.validation == validationStatusValid {
+					makeGenuine = true
+				}
+			} else {
+				// LQ observation of object
+				if tracked.validation == validationStatusInvalid && now.Sub(cam.lastHQFrame) > revalidateInterval {
+					// Reset validation status, because this object seems to be sticky
+					tracked.validation = validationStatusNone
+				}
+				switch tracked.validation {
+				case validationStatusNone:
+					sendFrameForValidation = true
+					tracked.validation = validationStatusWaiting
+				case validationStatusWaiting:
+					// do nothing
+					// validationStatusInvalid is dealt with above
+					// validationStatusValid should be impossible to reach here, because once it's valid, it becomes genuine.
+				}
 			}
-			tracked.genuine = 1
-			//newGenuine[tracked.id] = true
+			if makeGenuine {
+				if m.analyzerSettings.verbose {
+					center := tracked.mostRecent().detection.Raw.Box.Center()
+					m.Log.Infof("Analyzer (cam %v): Genuine '%v' at %v,%v (%.1f px, %v positions)", cam.cameraID, cls,
+						center.X, center.Y, tracked.distanceFromOrigin(), tracked.numDiscreetPositions())
+				}
+				tracked.genuine = 1
+			}
 		} else if tracked.genuine > 0 {
 			tracked.genuine++
 		}
 	}
 
+	if sendFrameForValidation {
+		m.sendFrameForValidation(cam, item)
+	}
+
 	// Handle objects that have disappeared
 	remaining := []*trackedObject{}
 	for _, tracked := range cam.tracked {
-		if framePTS.Sub(tracked.mostRecent().time) > settings.objectForgetTime {
+		elapsed := framePTS.Sub(tracked.mostRecent().time)
+		if elapsed > settings.objectForgetTime &&
+			(tracked.validation != validationStatusWaiting || elapsed > time.Minute) {
 			m.analyzeDisappearedObject(cam, tracked)
 		} else {
 			remaining = append(remaining, tracked)

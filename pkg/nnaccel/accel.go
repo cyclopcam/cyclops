@@ -26,7 +26,7 @@ type Device struct {
 // At present, the only accelerator we have is "hailo"
 func Load(accelName string) (*Accelerator, error) {
 	cwd, _ := os.Getwd()
-	//fmt.Printf("cwd = %v\n", cwd)
+	//fmt.Printf("nnaccel.Load cwd = %v\n", cwd)
 
 	// relative path from the source code root
 	srcCodeRelPath := "nnaccel/hailo/bin"
@@ -34,6 +34,9 @@ func Load(accelName string) (*Accelerator, error) {
 	if strings.HasSuffix(cwd, "/nnaccel/hailo/test") {
 		// We're being run as a Go unit test inside nnaccel/hailo/test
 		srcCodeRelPath = "../bin"
+	} else if strings.HasSuffix(cwd, "/server/test") {
+		// We're being run as a Go unit test inside server/test
+		srcCodeRelPath = "../../nnaccel/hailo/bin"
 	}
 
 	tryPaths := []string{

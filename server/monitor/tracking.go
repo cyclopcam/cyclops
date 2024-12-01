@@ -9,8 +9,8 @@ import (
 )
 
 // Process incoming objects, and track them spatially.
-// objects is the list of detected objects
-func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.ProcessedObject, frameWidth, frameHeight int, framePTS time.Time) {
+// objects is the list of objects detected in the current frame.
+func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.ProcessedObject, isHQ bool, frameWidth, frameHeight int, framePTS time.Time) {
 	positionHistorySize := nextPowerOf2(m.analyzerSettings.positionHistorySize)
 
 	// Create spatial index on the currently tracked objects (cam.tracked)
@@ -95,6 +95,9 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 	// of 3 sightings.
 	// NOTE: I'm not convinced that this 2nd phase is the correct thing to do.
 	// It feels wrong, but I can't think of a cleaner solution.
+	// In principle the best solution is to ensure you have enough NN FPS to cover
+	// fast motion, so that subsequent boxes have a decent overlap, but our job
+	// is to do the best we can with whatever hardware we get given.
 
 	// Prune the list of existing tracked objects so that we only consider objects
 	// that didn't get any matches in the first phase.
@@ -112,6 +115,9 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 		}
 		findClosestObjectFromList(i, unmatched)
 	}
+
+	// Final list of all objects in cam.tracked which were found in this frame
+	trackedAndFound := make([]bool, len(cam.tracked))
 
 	// Update existing objects, and create new objects
 	for i := range objects {
@@ -139,5 +145,18 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 			time:      framePTS,
 			detection: *newObj,
 		})
+		trackedAndFound[bestJ] = true
+	}
+
+	if isHQ {
+		// Update validation status to either "valid" or "invalid"
+		cam.lastHQFrame = time.Now()
+		for i := range cam.tracked {
+			if trackedAndFound[i] {
+				cam.tracked[i].validation = validationStatusValid
+			} else {
+				cam.tracked[i].validation = validationStatusInvalid
+			}
+		}
 	}
 }

@@ -2,8 +2,14 @@ package monitor
 
 import (
 	"math"
+	"sync/atomic"
 	"time"
 )
+
+type nnPerfStats struct {
+	avgTimeNSPerFrameNNPrep atomic.Int64 // Average time (ns) per frame, for prep of an image before it hits the NN
+	avgTimeNSPerFrameNNDet  atomic.Int64 // Average time (ns) per frame, for just the neural network (time inside a thread)
+}
 
 // State internal to the NN frame reader, for each camera
 type frameReaderCameraState struct {
@@ -79,8 +85,10 @@ func (m *Monitor) readFrames() {
 				camState.lastFrameID = imgID
 				idle = false
 				m.nnThreadQueue <- monitorQueueItem{
+					isHQ:     false,
 					monCam:   mcam,
-					image:    img,
+					yuv:      img,
+					rgb:      nil,
 					framePTS: imgPTS,
 				}
 			}
@@ -98,12 +106,15 @@ func (m *Monitor) readFrames() {
 		if time.Now().Sub(lastStats) > time.Duration(interval)*time.Second {
 			nStats++
 			totalFrames, totalProcessed := frameReaderStats(looperCameras)
-			m.Log.Infof("%.0f%% frames analyzed by NN. %v Threads. Times per frame: (%.1f ms Prep, %.1f ms NN)",
+			lq := &m.nnPerfStatsLQ
+			hq := &m.nnPerfStatsLQ
+			m.Log.Infof("%.0f%% frames analyzed by LQ NN. %v Threads. Times per frame: (%.1f ms Prep, %.1f ms NN)",
 				100*float64(totalProcessed)/float64(totalFrames),
 				m.numNNThreads,
-				float64(m.avgTimeNSPerFrameNNPrep.Load())/1e6,
-				float64(m.avgTimeNSPerFrameNNDet.Load())/1e6,
+				float64(lq.avgTimeNSPerFrameNNPrep.Load())/1e6,
+				float64(lq.avgTimeNSPerFrameNNDet.Load())/1e6,
 			)
+			m.Log.Infof("HQ validation network: %.1f ms Prep, %.1f ms NN", float64(hq.avgTimeNSPerFrameNNPrep.Load())/1e6, float64(hq.avgTimeNSPerFrameNNDet.Load())/1e6)
 			lastStats = time.Now()
 		}
 	}
