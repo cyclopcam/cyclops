@@ -13,20 +13,20 @@ import (
 import "C"
 
 type Model struct {
-	accel  *Accelerator   // The accelerator that created this model
+	device *Device        // The device that created this model
 	handle unsafe.Pointer // Handle to the model
 	config nn.ModelConfig
 }
 
 func (m *Model) Close() {
-	C.NACloseModel(m.accel.handle, m.handle)
+	C.NACloseModel(m.device.accelerator.handle, m.handle)
 }
 
 func (m *Model) Run(batchSize, batchStride, width, height, nchan int, stride int, images unsafe.Pointer) (*AsyncJob, error) {
 	job := &AsyncJob{
-		accel: m.accel,
+		accel: m.device.accelerator,
 	}
-	err := m.accel.StatusToErr(C.NARunModel(m.accel.handle, m.handle, C.int(batchSize), C.int(batchStride), C.int(width), C.int(height), C.int(nchan), C.int(stride), images, &job.handle))
+	err := m.device.accelerator.StatusToErr(C.NARunModel(m.device.accelerator.handle, m.handle, C.int(batchSize), C.int(batchStride), C.int(width), C.int(height), C.int(nchan), C.int(stride), images, &job.handle))
 	if err != nil {
 		return nil, err
 	}

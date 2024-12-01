@@ -6,6 +6,8 @@
 // An NN accelerator module that has been loaded dynamically from a shared library
 typedef struct _NNAccel {
 	void*                          DLHandle;
+	nna_open_device_func           open_device;
+	nna_close_device_func          close_device;
 	nna_model_files_func           model_files;
 	nna_load_model_func            load_model;
 	nna_close_model_func           close_model;
@@ -27,6 +29,8 @@ char* LoadNNAccel(const char* filename, void** module) {
 
 	NNAccel m;
 	m.DLHandle              = lib;
+	m.open_device           = (nna_open_device_func) dlsym(lib, "nna_open_device");
+	m.close_device          = (nna_close_device_func) dlsym(lib, "nna_close_device");
 	m.model_files           = (nna_model_files_func) dlsym(lib, "nna_model_files");
 	m.load_model            = (nna_load_model_func) dlsym(lib, "nna_load_model");
 	m.close_model           = (nna_close_model_func) dlsym(lib, "nna_close_model");
@@ -39,7 +43,11 @@ char* LoadNNAccel(const char* filename, void** module) {
 
 	char* err = nullptr;
 
-	if (!m.model_files)
+	if (!m.open_device)
+		err = strdup("Failed to find nna_open_device in dynamic library");
+	else if (!m.close_device)
+		err = strdup("Failed to find nna_close_device in dynamic library");
+	else if (!m.model_files)
 		err = strdup("Failed to find nna_model_files in dynamic library");
 	else if (!m.load_model)
 		err = strdup("Failed to find nna_load_model in dynamic library");
@@ -69,15 +77,25 @@ char* LoadNNAccel(const char* filename, void** module) {
 	return nullptr;
 }
 
-void NAModelFiles(void* nnModule, const char** subdir, const char** ext) {
+int NAOpenDevice(void* nnModule, void** device) {
 	NNAccel* m = (NNAccel*) nnModule;
-	m->model_files(subdir, ext);
+	return m->open_device(device);
 }
 
-int NALoadModel(void* nnModule, const char* filename, const NNModelSetup* setup, void** model) {
+void NACloseDevice(void* nnModule, void* device) {
+	NNAccel* m = (NNAccel*) nnModule;
+	m->close_device(device);
+}
+
+void NAModelFiles(void* nnModule, void* device, const char** subdir, const char** ext) {
+	NNAccel* m = (NNAccel*) nnModule;
+	m->model_files(device, subdir, ext);
+}
+
+int NALoadModel(void* nnModule, void* device, const char* filename, const NNModelSetup* setup, void** model) {
 	NNAccel* m = (NNAccel*) nnModule;
 	//printf("NALoadModel %p\n", m->load_model);
-	return m->load_model(filename, setup, model);
+	return m->load_model(device, filename, setup, model);
 }
 
 void NACloseModel(void* nnModule, void* model) {

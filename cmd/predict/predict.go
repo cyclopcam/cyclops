@@ -9,6 +9,7 @@ import (
 
 	"github.com/akamensky/argparse"
 	"github.com/cyclopcam/cyclops/pkg/nn"
+	"github.com/cyclopcam/cyclops/pkg/nnaccel"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/logs"
 )
@@ -46,7 +47,10 @@ func main() {
 		StdOutProgress: true,
 	}
 
-	model, err := nnload.LoadModel(logger, filepath.Dir(*modelFile), filepath.Base(*modelFile), 640, 480, nn.ThreadingModeParallel, nn.NewModelSetup())
+	// nil device = NCNN
+	var device *nnaccel.Device
+
+	model, err := nnload.LoadModel(logger, device, filepath.Dir(*modelFile), filepath.Base(*modelFile), 640, 480, nn.ThreadingModeParallel, nn.NewModelSetup())
 	check(err)
 
 	videoLabels, err := nn.RunInferenceOnVideoFile(model, *input, options)

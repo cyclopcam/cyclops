@@ -13,8 +13,10 @@ char* LoadNNAccel(const char* filename, void** nnModule);
 // It might be possible to expose the dynamically loaded C function pointers into Go,
 // but I find it much easier to provide these wrappers here, which can be used easily from cgo.
 
-void        NAModelFiles(void* nnModule, const char** subdir, const char** ext);
-int         NALoadModel(void* nnModule, const char* filename, const NNModelSetup* setup, void** model);
+int         NAOpenDevice(void* nnModule, void** device);
+void        NACloseDevice(void* nnModule, void* device);
+void        NAModelFiles(void* nnModule, void* device, const char** subdir, const char** ext);
+int         NALoadModel(void* nnModule, void* device, const char* filename, const NNModelSetup* setup, void** model);
 void        NACloseModel(void* nnModule, void* model);
 void        NAModelInfo(void* nnModule, void* model, NNModelInfo* info);
 const char* NAStatusStr(void* nnModule, int s);

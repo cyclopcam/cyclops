@@ -5,8 +5,7 @@ Tested on the following platforms:
 -   Ubuntu 22.04, 23.10, 24.04
 -   Raspberry Pi OS 64-bit
 
-> sudo apt install libavformat-dev libswscale-dev ffmpeg cmake gcc g++
-> pkg-config libturbojpeg0-dev wireguard wireguard-tools
+> sudo apt install libavformat-dev libswscale-dev ffmpeg cmake gcc g++ pkg-config libturbojpeg0-dev wireguard wireguard-tools
 
 ## Dev environment
 
