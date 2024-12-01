@@ -176,6 +176,9 @@ type MonitorOptions struct {
 
 	// Emit extra log messsages about HQ validation
 	DebugValidation bool
+
+	// Force batch size to 1 for all neural network models. Used by unit tests to validate frame by frame.
+	ForceBatchSizeOne bool
 }
 
 // DefaultMonitorOptions returns a new MonitorOptions object with default values
@@ -250,7 +253,13 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		// many cores it can.
 		nnThreadingModel = nn.ThreadingModeParallel
 	}
-	logger.Infof("Using %v NN threads, mode %v, batch size %v", nnThreads, nnThreadingModel, nnBatchSizeLQ)
+	logger.Infof("Using %v NN threads, mode %v", nnThreads, nnThreadingModel)
+
+	if options.ForceBatchSizeOne {
+		logger.Infof("Forcing batch size = 1")
+		nnBatchSizeHQ = 1
+		nnBatchSizeLQ = 1
+	}
 
 	if options.ModelWidth != 0 {
 		nnWidth = options.ModelWidth

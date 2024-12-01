@@ -74,15 +74,16 @@ const (
 
 // Internal state of an object that we're tracking
 type trackedObject struct {
-	id             uint32 // every new tracked object gets a unique id
-	firstDetection nn.ProcessedObject
-	cameraWidth    int
-	cameraHeight   int
-	lastPosition   nn.Rect                           // equivalent to mostRecent().detection.Box, but kept here for convenience/lookup speed
-	history        ringbuffer.RingP[timeAndPosition] // unfiltered ring buffer of recent detections
-	totalSightings int                               // Total number of times we've seen this object
-	genuine        int                               // Number of frames for which we've considered this object genuine. 0 = not yet, 1 = first time, 2 = second time, etc.
-	validation     validationStatus                  // HQ network validation
+	id                    uint32 // every new tracked object gets a unique id
+	firstDetection        nn.ProcessedObject
+	cameraWidth           int
+	cameraHeight          int
+	lastPosition          nn.Rect                           // equivalent to mostRecent().detection.Box, but kept here for convenience/lookup speed
+	history               ringbuffer.RingP[timeAndPosition] // unfiltered ring buffer of recent detections
+	totalSightings        int                               // Total number of times we've seen this object
+	genuine               int                               // Number of frames for which we've considered this object genuine. 0 = not yet, 1 = first time, 2 = second time, etc.
+	validation            validationStatus                  // HQ network validation
+	sightingsAtValidation int                               // The value of totalSightings when we last ran validation on this object
 }
 
 // Internal state of the analyzer for a single camera
@@ -318,7 +319,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 				}
 			} else {
 				// LQ observation of object
-				if tracked.validation == validationStatusInvalid && now.Sub(cam.lastHQFrame) > revalidateInterval {
+				if tracked.validation == validationStatusInvalid && now.Sub(cam.lastHQFrame) > revalidateInterval && tracked.totalSightings > tracked.sightingsAtValidation {
 					// Reset validation status, because this object seems to be sticky
 					tracked.validation = validationStatusNone
 				}
@@ -326,6 +327,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 				case validationStatusNone:
 					sendFrameForValidation = true
 					tracked.validation = validationStatusWaiting
+					tracked.sightingsAtValidation = tracked.totalSightings
 				case validationStatusWaiting:
 					// do nothing
 					// validationStatusInvalid is dealt with above

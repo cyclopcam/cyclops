@@ -25,7 +25,7 @@ import (
 const DumpTrackingVideo = false
 
 // If true, then render a still image with annotation of the first violating detection
-const DumpFirstFalsePositive = true
+const DumpFirstFalsePositive = false
 
 type EventTrackingParams struct {
 	ModelNameLQ string  // eg "yolov8m"
@@ -124,6 +124,12 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	}
 	if params.NNThreads != 0 {
 		monitorOptions.NNThreads = params.NNThreads
+	}
+	if DumpTrackingVideo || DumpFirstFalsePositive {
+		// In order to produce our videos/image dumps, we send one frame, then wait for it to be processed.
+		// This gets extremely complicated with batch sizes greater than 1, especially when considering
+		// the validation network running. So that's why we reduce batch size to 1 when producing these dumps.
+		monitorOptions.ForceBatchSizeOne = true
 	}
 
 	mon, err := monitor.NewMonitor(logger, monitorOptions)
@@ -293,8 +299,9 @@ func TestEventTracking(t *testing.T) {
 		defaultNNHeight = 640
 	} else {
 		// ncnn
-		defaultNNWidth = 640
-		defaultNNHeight = 480
+		// If we omit any explicit config, we'll get 320x256
+		//defaultNNWidth = 640
+		//defaultNNHeight = 480
 	}
 
 	paramPurmutations := []*EventTrackingParams{
@@ -315,7 +322,7 @@ func TestEventTracking(t *testing.T) {
 		},
 		{
 			VideoFilename: "testdata/tracking/0003-LD.mp4",
-			NumPeople:     Range{1, 1},
+			NumPeople:     Range{0, 1}, // The guy on the back of the trailer is not detected by the 640x480 NCNN model.
 			NumVehicles:   Range{1, 2}, // sometimes the trailer is detected as a 2nd vehicle. This is reasonable.
 		},
 		{
@@ -374,7 +381,7 @@ func TestEventTracking(t *testing.T) {
 		},
 	}
 	// uncomment the following line, to test just the last case
-	onlyTestLastCase := true // DO NOT COMMIT
+	onlyTestLastCase := false // DO NOT COMMIT
 
 	if onlyTestLastCase {
 		cases = cases[len(cases)-1:]
