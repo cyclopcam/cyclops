@@ -21,7 +21,7 @@ func check(err error) {
 }
 
 func main() {
-	parser := argparse.NewParser("predict", "Label a video stream")
+	parser := argparse.NewParser("labelvideo", "Label a video")
 	input := parser.String("i", "input", &argparse.Options{Help: "Input video file", Required: true})
 	output := parser.File("o", "output", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0664, &argparse.Options{Help: "Output label file", Required: true})
 	minSize := parser.Int("m", "minsize", &argparse.Options{Help: "Minimum size of object, in pixels", Required: true})
