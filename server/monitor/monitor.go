@@ -69,6 +69,7 @@ type Monitor struct {
 	mustStopFrameReader       atomic.Bool            // True if stopFrameReader() has been called
 	analyzerQueue             chan analyzerQueueItem // Analyzer work queue. When closed, analyzer must exit.
 	analyzerStopped           chan bool              // Analyzer thread has exited
+	debugValidation           bool                   // Emit detailed log messages about HQ validation
 	numNNThreads              int                    // Number of NN threads
 	nnBatchSizeLQ             int                    // Batch size for low quality NN
 	nnBatchSizeHQ             int                    // Batch size for high quality NN
@@ -158,8 +159,8 @@ type MonitorOptions struct {
 	// ModelsDir is the directory where we store NN models
 	ModelsDir string
 
-	// If true, force NCNN to run in multithreaded mode. Used to speed up unit tests.
-	MaxSingleThreadPerformance bool
+	// If not zero, override the default number of NN threads
+	NNThreads int
 
 	// Run an additional high quality model, which is used to confirm the detection of a new object.
 	// If EnableDualModel is true, then ModelWidth and ModelHeight are ignored.
@@ -172,17 +173,19 @@ type MonitorOptions struct {
 
 	// See ModelWidth for details. Either ModelWidth and ModelHeight must be zero, or both must be non-zero.
 	ModelHeight int
+
+	// Emit extra log messsages about HQ validation
+	DebugValidation bool
 }
 
 // DefaultMonitorOptions returns a new MonitorOptions object with default values
 func DefaultMonitorOptions() *MonitorOptions {
 	return &MonitorOptions{
-		EnableFrameReader:          true,
-		ModelNameLQ:                "yolov8m",
-		ModelNameHQ:                "yolov8l",
-		ModelsDir:                  "/var/lib/cyclops/models",
-		MaxSingleThreadPerformance: false,
-		EnableDualModel:            true,
+		EnableFrameReader: true,
+		ModelNameLQ:       "yolov8m",
+		ModelNameHQ:       "yolov8l",
+		ModelsDir:         "/var/lib/cyclops/models",
+		EnableDualModel:   true,
 	}
 }
 
@@ -232,8 +235,8 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		// 8 is a decent batch size for Hailo 8L, and it's likely to be a good number for other accelerators too.
 		// On Hailo 8L YOLOv8m, a batch size of 10 gives milder better perf (50 vs 48 fps), but 8 just feels right.
 		nnBatchSizeLQ = 8
-	} else if options.MaxSingleThreadPerformance {
-		nnThreads = 1
+	} else if options.NNThreads != 0 {
+		nnThreads = options.NNThreads
 	} else if numCPU > 4 {
 		// Vague empirical fudge value for my Ryzen 5900X with hyperthreading enabled
 		nnThreads = numCPU / 2
@@ -340,6 +343,7 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		nnThreadQueue:       make(chan monitorQueueItem, nnQueueSize),
 		analyzerQueue:       make(chan analyzerQueueItem, analysisQueueSize),
 		analyzerStopped:     make(chan bool),
+		debugValidation:     options.DebugValidation,
 		nnModelSetupLQ:      modelSetupLQ,
 		nnModelSetupHQ:      modelSetupHQ,
 		numNNThreads:        nnThreads,

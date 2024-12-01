@@ -33,6 +33,7 @@ type EventTrackingParams struct {
 	NNCoverage  float64 // eg 75%, if we're able to run NN analysis on 75% of video frames (i.e. because we're resource constrained)
 	NNWidth     int     // eg 320, 640
 	NNHeight    int     // eg 256, 480
+	NNThreads   int     // 0 = default
 }
 
 type Range struct {
@@ -115,14 +116,15 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	monitorOptions.ModelNameHQ = params.ModelNameHQ
 	monitorOptions.EnableFrameReader = false
 	monitorOptions.EnableDualModel = true
+	monitorOptions.DebugValidation = true
 	monitorOptions.ModelsDir = FromTestPathToRepoRoot("models")
 	if params.NNWidth != 0 {
 		monitorOptions.ModelWidth = params.NNWidth
 		monitorOptions.ModelHeight = params.NNHeight
 	}
-
-	// MaxSingleThreadPerformance hurts performance during regular testing, when DumpTrackingVideo = false
-	//monitorOptions.MaxSingleThreadPerformance = true
+	if params.NNThreads != 0 {
+		monitorOptions.NNThreads = params.NNThreads
+	}
 
 	mon, err := monitor.NewMonitor(logger, monitorOptions)
 	require.NoError(t, err)
@@ -250,7 +252,8 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 					drawTrackedObjects(debugDraw, trackedObjects)
 					im, err := cimg.FromImage(debugDraw.Image(), true)
 					require.NoError(t, err)
-					im.WriteJPEG("first_false_positive.jpg", cimg.MakeCompressParams(cimg.Sampling444, 95, 0), 0644)
+					frame.Image.ToCImageRGB().WriteJPEG("false-positive-first-raw.jpg", cimg.MakeCompressParams(cimg.Sampling444, 99, 0), 0644)
+					im.WriteJPEG("false-positive-first-box.jpg", cimg.MakeCompressParams(cimg.Sampling444, 95, 0), 0644)
 				}
 			}
 		}
@@ -282,13 +285,26 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 // Test NN object detection, and our interpretation of what is a 'new' object,
 // vs an existing object that has moved.
 func TestEventTracking(t *testing.T) {
+	defaultNNWidth := 0
+	defaultNNHeight := 0
+	if nnload.HaveAccelerator() {
+		// hailo
+		defaultNNWidth = 640
+		defaultNNHeight = 640
+	} else {
+		// ncnn
+		defaultNNWidth = 640
+		defaultNNHeight = 480
+	}
+
 	paramPurmutations := []*EventTrackingParams{
 		{
 			ModelNameLQ: "yolov8m",
 			ModelNameHQ: "yolov8l",
 			NNCoverage:  1,
-			//NNWidth:    320,
-			//NNHeight:   256,
+			NNWidth:     defaultNNWidth,
+			NNHeight:    defaultNNHeight,
+			NNThreads:   1, // Setting this to 1 can aid debugging
 		},
 	}
 	cases := []*EventTrackingTestCase{

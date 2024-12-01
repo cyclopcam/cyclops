@@ -138,14 +138,17 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 			if m.analyzerSettings.verbose {
 				m.Log.Infof("Analyzer (cam %v): New '%v' at %v,%v", cam.cameraID, m.nnClassList[newObj.Class], newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y)
 			}
+			trackedAndFound = append(trackedAndFound, true)
+		} else {
+			trackedAndFound[bestJ] = true
 		}
+
 		cam.tracked[bestJ].totalSightings++
 		cam.tracked[bestJ].lastPosition = newObj.Raw.Box
 		cam.tracked[bestJ].history.Add(timeAndPosition{
 			time:      framePTS,
 			detection: *newObj,
 		})
-		trackedAndFound[bestJ] = true
 	}
 
 	if isHQ {
@@ -156,6 +159,15 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 				cam.tracked[i].validation = validationStatusValid
 			} else {
 				cam.tracked[i].validation = validationStatusInvalid
+			}
+
+			if m.debugValidation {
+				msg := "True Positive"
+				obj := cam.tracked[i]
+				if obj.validation == validationStatusInvalid {
+					msg = "False Positive"
+				}
+				m.Log.Infof("Analyzer (cam %v): %v '%v' at %v,%v", cam.cameraID, msg, m.nnClassList[obj.firstDetection.Class], obj.lastPosition.Center().X, obj.lastPosition.Center().Y)
 			}
 		}
 	}

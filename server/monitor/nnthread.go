@@ -28,7 +28,7 @@ type nnThread struct {
 // State of an NN detector (each NN thread has two of these: LQ and HQ)
 type nnDetectorState struct {
 	detectionParams *nn.DetectionParams
-	detector        nn.ObjectDetection
+	detector        nn.ObjectDetector
 	nnWidth         int // NN input image width
 	nnHeight        int // NN input image height
 	batchSize       int // Number of items in batch (typically 1 or 8)
@@ -95,7 +95,7 @@ func (t *nnThread) run(m *Monitor) {
 		}
 		imageBatch := nn.MakeImageBatch(d.batchSize, d.batchStride, d.nnWidth, d.nnHeight, 3, d.nnWidth*3, d.wholeBatchImage)
 		start := time.Now()
-		batchResult, err := m.nnDetectorLQ.DetectObjects(imageBatch, d.detectionParams)
+		batchResult, err := d.detector.DetectObjects(imageBatch, d.detectionParams)
 		perfstats.UpdateMovingAverage(&perf.avgTimeNSPerFrameNNDet, time.Now().Sub(start).Nanoseconds())
 		if err != nil {
 			if time.Now().Sub(t.lastErrAt) > 15*time.Second {
@@ -153,6 +153,7 @@ func (d *nnDetectorState) init(setup *nn.ModelSetup, detector nn.ObjectDetector)
 	// Each image must start on a page boundary, and be a multiple of a whole page size.
 	d.nnWidth = detector.Config().Width
 	d.nnHeight = detector.Config().Height
+	d.batchSize = setup.BatchSize
 	d.batchStride = nnBatchImageStride(d.nnWidth, d.nnHeight)
 
 	// Allocate one big block of memory that will hold all of the images in one batch.
@@ -168,7 +169,7 @@ func (d *nnDetectorState) init(setup *nn.ModelSetup, detector nn.ObjectDetector)
 
 	// A typical size here will be:
 	// 640x640x3 * 8 = 12MB
-	d.wholeBatchImage = nnaccel.PageAlignedAlloc(d.batchStride * d.batchStride)
+	d.wholeBatchImage = nnaccel.PageAlignedAlloc(d.batchSize * d.batchStride)
 
 	// We might want to make this decision based on the load of the system, or it's
 	// static performance. For example, on a desktop class CPU, it's probably worthwhile
@@ -179,6 +180,7 @@ func (d *nnDetectorState) init(setup *nn.ModelSetup, detector nn.ObjectDetector)
 	// is so small that it's probably worth using the sharpest, fastest filter all the time.
 	d.resizeQuality = ResizeQualityLow
 
+	d.detector = detector
 }
 
 func (m *Monitor) dumpFrame(rgb *cimg.Image, cam *camera.Camera, variant string) {

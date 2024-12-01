@@ -230,6 +230,9 @@ func (m *Monitor) createAbstractObjects(objects []nn.ObjectDetection) []nn.Proce
 
 // Send a frame to the HQ model
 func (m *Monitor) sendFrameForValidation(cam *analyzerCameraState, item analyzerQueueItem) {
+	if m.debugValidation {
+		m.Log.Infof("Analyzer (cam %v): Sending frame for validation", cam.cameraID)
+	}
 	m.nnThreadQueue <- monitorQueueItem{
 		isHQ:     true,
 		monCam:   cam.monCam,
@@ -311,6 +314,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 			} else if item.isHQ {
 				if tracked.validation == validationStatusValid {
 					makeGenuine = true
+					//item.rgb.WriteJPEG("false-positive-culprit.jpg", cimg.MakeCompressParams(cimg.Sampling444, 99, 0), 0644) // If you need to analyze the frame where it all went wrong
 				}
 			} else {
 				// LQ observation of object
