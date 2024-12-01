@@ -21,10 +21,16 @@ type analyzerSettings struct {
 	minSightings              map[string]int // Minimum number of sightings that an object must have to be considered a true detection
 	minSightingsDefault       int            // Default, if no class override
 	objectForgetTime          time.Duration  // After this amount of time of not seeing an object, we believe it has left the frame, or was a false detection
-	verbose                   bool           // Print out debug information
+
+	// If an object is determined by the HQ network to be a false positive, but we keep
+	// seeing it in the LQ network, then re-run the HQ analysis every X seconds, to make
+	// sure we haven't missed a genuine object.
+	revalidateInterval time.Duration
+
+	verbose bool // Print out debug information
 }
 
-func newAnalyzerSettings() *analyzerSettings {
+func newAnalyzerSettings(verbose bool) *analyzerSettings {
 	return &analyzerSettings{
 		positionHistorySize:       30,  // at 10 fps, 30 frames = 3 seconds
 		maxAnalyzeObjectsPerFrame: 100, // This is just a sanity thing, but perhaps we shouldn't have any limit
@@ -37,8 +43,9 @@ func newAnalyzerSettings() *analyzerSettings {
 		minSightings: map[string]int{
 			"person": 3, // People are almost always alarmable events, so we need a super low false positive rate
 		},
-		objectForgetTime: 5 * time.Second,
-		verbose:          false,
+		objectForgetTime:   5 * time.Second,
+		revalidateInterval: 2 * time.Second,
+		verbose:            verbose,
 	}
 }
 
@@ -84,6 +91,7 @@ type trackedObject struct {
 	genuine               int                               // Number of frames for which we've considered this object genuine. 0 = not yet, 1 = first time, 2 = second time, etc.
 	validation            validationStatus                  // HQ network validation
 	sightingsAtValidation int                               // The value of totalSightings when we last ran validation on this object
+	validationPosition    nn.Rect                           // Position where object was found by the LQ network, and we want to find the object in the same position in the HQ network
 }
 
 // Internal state of the analyzer for a single camera
@@ -231,7 +239,7 @@ func (m *Monitor) createAbstractObjects(objects []nn.ObjectDetection) []nn.Proce
 
 // Send a frame to the HQ model
 func (m *Monitor) sendFrameForValidation(cam *analyzerCameraState, item analyzerQueueItem) {
-	if m.debugValidation {
+	if m.analyzerSettings.verbose {
 		m.Log.Infof("Analyzer (cam %v): Sending frame for validation", cam.cameraID)
 	}
 	m.nnThreadQueue <- monitorQueueItem{
@@ -244,11 +252,6 @@ func (m *Monitor) sendFrameForValidation(cam *analyzerCameraState, item analyzer
 }
 
 func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem) {
-	// If an object is determined by the HQ network to be a false positive, but we keep
-	// seeing it in the LQ network, then re-run the HQ analysis every X seconds, to make
-	// sure we haven't missed a genuine object.
-	revalidateInterval := 2 * time.Second
-
 	settings := &m.analyzerSettings
 	framePTS := item.detection.FramePTS
 	now := time.Now()
@@ -299,57 +302,9 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	// If there is no match, then create a new tracked object.
 	m.trackDetectedObjects(cam, processed, item.isHQ, item.detection.ImageWidth, item.detection.ImageHeight, framePTS)
 
-	sendFrameForValidation := false
-
-	// Figure out if any of our tracked objects are genuine, and increment the genuine counter for those that are
-	for _, tracked := range cam.tracked {
-		cls := m.nnClassList[tracked.firstDetection.Class]
-		if tracked.genuine == 0 &&
-			tracked.distanceFromOrigin() >= float32(settings.minDistanceForClass(cls)) &&
-			tracked.totalSightings >= settings.minSightingsForClass(cls) {
-			// Decide whether this object is genuine, or if we should run validation, etc
-			makeGenuine := false
-			if m.nnDetectorHQ == nil {
-				// There is no HQ detector, so this object becomes genuine
-				makeGenuine = true
-			} else if item.isHQ {
-				if tracked.validation == validationStatusValid {
-					makeGenuine = true
-					//item.rgb.WriteJPEG("false-positive-culprit.jpg", cimg.MakeCompressParams(cimg.Sampling444, 99, 0), 0644) // If you need to analyze the frame where it all went wrong
-				}
-			} else {
-				// LQ observation of object
-				if tracked.validation == validationStatusInvalid && now.Sub(cam.lastHQFrame) > revalidateInterval && tracked.totalSightings > tracked.sightingsAtValidation {
-					// Reset validation status, because this object seems to be sticky
-					tracked.validation = validationStatusNone
-				}
-				switch tracked.validation {
-				case validationStatusNone:
-					sendFrameForValidation = true
-					tracked.validation = validationStatusWaiting
-					tracked.sightingsAtValidation = tracked.totalSightings
-				case validationStatusWaiting:
-					// do nothing
-					// validationStatusInvalid is dealt with above
-					// validationStatusValid should be impossible to reach here, because once it's valid, it becomes genuine.
-				}
-			}
-			if makeGenuine {
-				if m.analyzerSettings.verbose {
-					center := tracked.mostRecent().detection.Raw.Box.Center()
-					m.Log.Infof("Analyzer (cam %v): Genuine '%v' at %v,%v (%.1f px, %v positions)", cam.cameraID, cls,
-						center.X, center.Y, tracked.distanceFromOrigin(), tracked.numDiscreetPositions())
-				}
-				tracked.genuine = 1
-			}
-		} else if tracked.genuine > 0 {
-			tracked.genuine++
-		}
-	}
-
-	if sendFrameForValidation {
-		m.sendFrameForValidation(cam, item)
-	}
+	// Upgrade objects from genuine = 0 to genuine = 1, if sufficient criteria is met.
+	// If necessary, schedule this frame for further analysis by the HQ network.
+	m.investigateGenuineness(cam, item, now)
 
 	// Handle objects that have disappeared
 	remaining := []*trackedObject{}

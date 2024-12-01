@@ -69,7 +69,6 @@ type Monitor struct {
 	mustStopFrameReader       atomic.Bool            // True if stopFrameReader() has been called
 	analyzerQueue             chan analyzerQueueItem // Analyzer work queue. When closed, analyzer must exit.
 	analyzerStopped           chan bool              // Analyzer thread has exited
-	debugValidation           bool                   // Emit detailed log messages about HQ validation
 	numNNThreads              int                    // Number of NN threads
 	nnBatchSizeLQ             int                    // Batch size for low quality NN
 	nnBatchSizeHQ             int                    // Batch size for high quality NN
@@ -174,8 +173,8 @@ type MonitorOptions struct {
 	// See ModelWidth for details. Either ModelWidth and ModelHeight must be zero, or both must be non-zero.
 	ModelHeight int
 
-	// Emit extra log messsages about HQ validation
-	DebugValidation bool
+	// Emit verbose log messsages about object tracking
+	DebugTracking bool
 
 	// Force batch size to 1 for all neural network models. Used by unit tests to validate frame by frame.
 	ForceBatchSizeOne bool
@@ -352,7 +351,6 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		nnThreadQueue:       make(chan monitorQueueItem, nnQueueSize),
 		analyzerQueue:       make(chan analyzerQueueItem, analysisQueueSize),
 		analyzerStopped:     make(chan bool),
-		debugValidation:     options.DebugValidation,
 		nnModelSetupLQ:      modelSetupLQ,
 		nnModelSetupHQ:      modelSetupHQ,
 		numNNThreads:        nnThreads,
@@ -365,7 +363,7 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		nnClassBoxMerge:     boxMergeClasses,
 		nnAbstractClassSet:  makeAbstractClassSet(abstractClasses, classMap),
 		nnUnrecognizedClass: unrecognizedIdx,
-		analyzerSettings:    *newAnalyzerSettings(),
+		analyzerSettings:    *newAnalyzerSettings(options.DebugTracking),
 		watchers:            map[int64][]chan *AnalysisState{},
 		watchersAllCameras:  []chan *AnalysisState{},
 		enableFrameReader:   options.EnableFrameReader,
