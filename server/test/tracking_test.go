@@ -24,6 +24,9 @@ import (
 // This makes the process MUCH slower, because we wait extra long for each NN frame.
 const DumpTrackingVideo = false
 
+// If true, then render a still image with annotation of the first violating detection
+const DumpFirstFalsePositive = true
+
 type EventTrackingParams struct {
 	ModelName  string  // eg "yolov8m"
 	NNCoverage float64 // eg 75%, if we're able to run NN analysis on 75% of video frames (i.e. because we're resource constrained)
@@ -101,6 +104,8 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	if DumpTrackingVideo {
 		debugVideo, err = videox.NewVideoEncoder("h264", "mp4", "debug.mp4", decoder.Width(), decoder.Height(), videox.AVPixelFormatRGB24, videox.AVPixelFormatYUV420P, videox.VideoEncoderTypeImageFrames, 10)
 		require.NoError(t, err)
+	}
+	if DumpTrackingVideo || DumpFirstFalsePositive {
 		debugDraw = gg.NewContext(decoder.Width(), decoder.Height())
 	}
 
@@ -121,6 +126,19 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	defer mon.Close()
 
 	trackedObjects := []*EventTrackingObject{}
+
+	countTrackedObjects := func() (person, vehicle int) {
+		nPerson := 0
+		nVehicle := 0
+		for _, obj := range trackedObjects {
+			if obj.Class == "person" {
+				nPerson++
+			} else if obj.Class == "vehicle" {
+				nVehicle++
+			}
+		}
+		return nPerson, nVehicle
+	}
 
 	// Ignore all concrete classes which map to "vehicle"
 	ignoreClasses := map[string]bool{
@@ -159,6 +177,7 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 					continue
 				}
 				found := false
+				confidence := obj.LastFrame().Confidence
 				for _, existing := range trackedObjects {
 					if existing.ID == obj.ID {
 						found = true
@@ -170,7 +189,7 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 				}
 				if !found {
 					className := mon.AllClasses()[obj.Class]
-					t.Logf("Found new object: %v at %v", className, obj.LastFrame().Box)
+					t.Logf("Found new object: %v (%.2f) at %v", className, confidence, obj.LastFrame().Box)
 					trackedObjects = append(trackedObjects, &EventTrackingObject{
 						ID:            obj.ID,
 						NumDetections: 1,
@@ -185,6 +204,8 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 
 	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	mon.InjectTestCamera() // cameraIndex = 0
+
+	haveDumpedFalsePositive := false
 
 	// Probability of including frame
 	inclusionProbability := 0.0
@@ -214,6 +235,21 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 				drawTrackedObjects(debugDraw, trackedObjects)
 				drawImageToVideo(t, debugVideo, debugDraw, decoder.FrameTimeToDuration(frame.PTS))
 			}
+			if DumpFirstFalsePositive && !haveDumpedFalsePositive {
+				waitForNFramesAnalyzed(nFramesInjected)
+				nPerson, nVehicle := countTrackedObjects()
+				dump := nPerson > 0 && tcase.NumPeople.Max == 0 ||
+					nVehicle > 0 && tcase.NumVehicles.Max == 0
+				if dump {
+					img, err := frame.Image.ToCImageRGB().ToImage()
+					require.NoError(t, err)
+					debugDraw.DrawImage(img, 0, 0)
+					drawTrackedObjects(debugDraw, trackedObjects)
+					im, err := cimg.FromImage(debugDraw.Image(), true)
+					require.NoError(t, err)
+					im.WriteJPEG("first_false_positive.jpg", cimg.MakeCompressParams(cimg.Sampling444, 95, 0), 0644)
+				}
+			}
 		}
 	}
 	t.Logf("Injected %v frames. Waiting for NN to finish processing", nFramesInjected)
@@ -224,15 +260,7 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	monChan <- nil
 	<-trackerExited
 
-	nPerson := 0
-	nVehicle := 0
-	for _, obj := range trackedObjects {
-		if obj.Class == "person" {
-			nPerson++
-		} else if obj.Class == "vehicle" {
-			nVehicle++
-		}
-	}
+	nPerson, nVehicle := countTrackedObjects()
 
 	if DumpTrackingVideo {
 		debugVideo.WriteTrailer()
@@ -253,7 +281,7 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 func TestEventTracking(t *testing.T) {
 	paramPurmutations := []*EventTrackingParams{
 		{
-			ModelName:  "yolov8m",
+			ModelName:  "yolov8s",
 			NNCoverage: 1,
 			//NNWidth:    320,
 			//NNHeight:   256,
@@ -311,14 +339,22 @@ func TestEventTracking(t *testing.T) {
 		},
 		{
 			// Same as above case - leaves masquerading as people. I added this as a second validation
-			// case for the above test case (11). HOWEVER, this test also fails on NCNN 320x256 yolov8m!!!
+			// case for the above test case (11).
+			// HOWEVER!!!
+			// This test also fails on various other NN architectures.
+			// Models that pass/fail this test:
+			// hailo yolov8m 640x640   fail
+			// ncnn  yolov8s 320x256   pass
+			// ncnn  yolov8m 320x256   fail
+			// ncnn  yolov8m 640x480   fail
+			// ncnn  yolov8l 640x480   pass
 			VideoFilename: "testdata/tracking/0012-LD.mp4",
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{0, 0},
 		},
 	}
 	// uncomment the following line, to test just the last case
-	onlyTestLastCase := false // DO NOT COMMIT
+	onlyTestLastCase := true // DO NOT COMMIT
 
 	if onlyTestLastCase {
 		cases = cases[len(cases)-1:]
