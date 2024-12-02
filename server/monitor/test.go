@@ -29,14 +29,17 @@ func (m *Monitor) InjectTestCamera() {
 }
 
 // Inject a frame for NN analysis, for use by unit tests
-func (m *Monitor) InjectTestFrame(cameraIndex int, pts time.Time, img *accel.YUVImage) {
+func (m *Monitor) InjectTestFrame(cameraIndex int, imgID int64, pts time.Time, img *accel.YUVImage) {
 	m.camerasLock.Lock()
 	camera := m.cameras[cameraIndex]
 	m.camerasLock.Unlock()
 
 	qitem := monitorQueueItem{
+		isHQ:     false,
+		imgID:    imgID,
 		monCam:   camera,
 		yuv:      img,
+		rgb:      nil,
 		framePTS: pts,
 	}
 	m.nnThreadQueue <- qitem

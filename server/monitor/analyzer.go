@@ -36,8 +36,16 @@ func newAnalyzerSettings(verbose bool) *analyzerSettings {
 		maxAnalyzeObjectsPerFrame: 100, // This is just a sanity thing, but perhaps we shouldn't have any limit
 		minDistanceDefault:        5,   // 5 pixels
 		minDistance: map[string]int{
-			"person":  5, // People must be moving to be considered genuine
-			"vehicle": 0, // Vehicles can be stationary
+			"person": 5, // People must be moving to be considered genuine
+			// NOTE: You want the abstract classes all to have the same thresholds, otherwise you end up with
+			// pointless HQ validation work that gets triggered as the concrete class triggers at a different
+			// time to the abstract class.
+			// SYNC-ABSTRACT-CLASSES
+			"car":        0, // Vehicles can be stationary
+			"motorcycle": 0, // Vehicles can be stationary
+			"truck":      0, // Vehicles can be stationary
+			"bus":        0, // Vehicles can be stationary
+			"vehicle":    0, // Vehicles can be stationary
 		},
 		minSightingsDefault: 2,
 		minSightings: map[string]int{
@@ -240,10 +248,11 @@ func (m *Monitor) createAbstractObjects(objects []nn.ObjectDetection) []nn.Proce
 // Send a frame to the HQ model
 func (m *Monitor) sendFrameForValidation(cam *analyzerCameraState, item analyzerQueueItem) {
 	if m.analyzerSettings.verbose {
-		m.Log.Infof("Analyzer (cam %v): Sending frame for validation", cam.cameraID)
+		m.Log.Infof("Analyzer (cam %v): Sending frame %v for validation", cam.cameraID, item.imgID)
 	}
 	m.nnThreadQueue <- monitorQueueItem{
 		isHQ:     true,
+		imgID:    item.imgID,
 		monCam:   cam.monCam,
 		yuv:      item.yuv,
 		rgb:      item.rgb,
@@ -300,7 +309,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 
 	// Map every detected/processed object to an existing tracked object.
 	// If there is no match, then create a new tracked object.
-	m.trackDetectedObjects(cam, processed, item.isHQ, item.detection.ImageWidth, item.detection.ImageHeight, framePTS)
+	m.trackDetectedObjects(cam, processed, item.isHQ, item.imgID, item.detection.ImageWidth, item.detection.ImageHeight, framePTS)
 
 	// Upgrade objects from genuine = 0 to genuine = 1, if sufficient criteria is met.
 	// If necessary, schedule this frame for further analysis by the HQ network.

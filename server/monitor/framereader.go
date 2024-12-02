@@ -86,6 +86,7 @@ func (m *Monitor) readFrames() {
 				idle = false
 				m.nnThreadQueue <- monitorQueueItem{
 					isHQ:     false,
+					imgID:    imgID,
 					monCam:   mcam,
 					yuv:      img,
 					rgb:      nil,

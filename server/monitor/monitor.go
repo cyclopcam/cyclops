@@ -30,6 +30,7 @@ var defaultClassFilterList = []string{
 	nn.COCOClasses[nn.COCOMotorcycle],
 	nn.COCOClasses[nn.COCOTruck],
 	// abstract classes
+	// SYNC-ABSTRACT-CLASSES
 	"vehicle",
 }
 
@@ -43,6 +44,7 @@ var boxMergeClasses = map[string]string{
 
 // Class map from concrete to abstract (eg car -> vehicle, truck -> vehicle)
 // NOTE: If you add new mappings here, also add them to defaultClassFilterList
+// SYNC-ABSTRACT-CLASSES
 var abstractClasses = map[string]string{
 	"car":        "vehicle",
 	"motorcycle": "vehicle",
@@ -77,6 +79,7 @@ type Monitor struct {
 	nnThreadStopWG            sync.WaitGroup         // Wait for all NN threads to exit
 	frameReaderStopped        chan bool              // When frameReaderStopped channel is closed, then the frame reader has stopped
 	nnThreadQueue             chan monitorQueueItem  // Queue of images to be processed by neural network(s)
+	nnThreadState             []NNThreadState        // State for each NN thread
 	nnPerfStatsLQ             nnPerfStats            // Performance statistics for the low quality NN
 	nnPerfStatsHQ             nnPerfStats            // Performance statistics for the high quality NN
 	hasShownResolutionWarning atomic.Bool            // True if we've shown a warning about camera resolution vs NN resolution
@@ -130,6 +133,7 @@ type monitorCamera struct {
 
 type monitorQueueItem struct {
 	isHQ     bool            // True if this is a high quality NN detection request
+	imgID    int64           // ID of frame
 	monCam   *monitorCamera  // Camera that this image came from
 	yuv      *accel.YUVImage // Never nil
 	rgb      *cimg.Image     // Can be nil (in fact, this is always nil for a new image, but non-nil when reprocessing by HQ model)
@@ -138,6 +142,7 @@ type monitorQueueItem struct {
 
 type analyzerQueueItem struct {
 	isHQ      bool                // True if this is a high quality NN detection result
+	imgID     int64               // ID of frame
 	monCam    *monitorCamera      // Camera that this image came from
 	yuv       *accel.YUVImage     // Original image that was used to generate the objects
 	rgb       *cimg.Image         // Original image that was used to generate the objects
@@ -349,6 +354,7 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		nnDetectorLQ:        detectorLQ,
 		nnDetectorHQ:        detectorHQ,
 		nnThreadQueue:       make(chan monitorQueueItem, nnQueueSize),
+		nnThreadState:       make([]NNThreadState, nnThreads),
 		analyzerQueue:       make(chan analyzerQueueItem, analysisQueueSize),
 		analyzerStopped:     make(chan bool),
 		nnModelSetupLQ:      modelSetupLQ,
@@ -379,7 +385,8 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 	//m.sendTestImageToNN()
 	for i := 0; i < m.numNNThreads; i++ {
 		thread := &nnThread{}
-		go thread.run(m)
+		m.nnThreadState[i] = NNThreadStateIdle
+		go thread.run(m, i)
 	}
 	if m.enableFrameReader {
 		m.startFrameReader()
@@ -445,6 +452,22 @@ func (m *Monitor) ClassToIdx(cls string) int {
 // Returns the class index of the special "class unrecognized" class
 func (m *Monitor) UnrecognizedClassIdx() int {
 	return m.nnUnrecognizedClass
+}
+
+// Returns the number of items in the NN queue
+func (m *Monitor) NNQueueLength() int {
+	return len(m.nnThreadQueue)
+}
+
+// Returns the number of NN threads that are busy with work
+func (m *Monitor) NumNNThreadsActive() int {
+	count := 0
+	for _, state := range m.nnThreadState {
+		if state == NNThreadStateRunning {
+			count++
+		}
+	}
+	return count
 }
 
 // Return the most recent frame and detection result for a camera

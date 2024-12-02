@@ -14,6 +14,13 @@ import (
 	"github.com/cyclopcam/cyclops/server/perfstats"
 )
 
+type NNThreadState int
+
+const (
+	NNThreadStateIdle NNThreadState = iota
+	NNThreadStateRunning
+)
+
 // State of a single thread that performs NN detections
 // When running on desktop CPUs, there are typically a handful of these (eg the number of physical cores)
 // When running with an NN accelerator (eg Hailo), we create just one NN thread.
@@ -41,6 +48,7 @@ type nnDetectorState struct {
 // An image that has been loaded into a batch (eg 1 of 8)
 type nnBatchItem struct {
 	monCam       *monitorCamera
+	imgID        int64
 	yuv          *accel.YUVImage
 	rgb          *cimg.Image // rgb image directly converted from yuv (i.e. same resolution, etc).
 	framePTS     time.Time
@@ -48,7 +56,8 @@ type nnBatchItem struct {
 }
 
 // Run a neural network processing thread
-func (t *nnThread) run(m *Monitor) {
+// threadIdx is a zero-based index into Monitor.nnThreadState
+func (t *nnThread) run(m *Monitor, threadIdx int) {
 	t.lastErrAt = time.Time{}
 
 	t.detectorLQ.init(m.nnModelSetupLQ, m.nnDetectorLQ)
@@ -61,10 +70,15 @@ func (t *nnThread) run(m *Monitor) {
 		// We scope the variables in here to ensure that they don't leak out, and mistakenly
 		// process just this latest item, instead of an item from the batch.
 		{
+			// This thread state idle/running is obviously a sloppy synchronization mechanism, because we've got
+			// gaps in between our channel read and our toggling of this state. But it was created for
+			// unit tests to know when the NN threads are quiescent. Please don't try using it for stricter things.
+			m.nnThreadState[threadIdx] = NNThreadStateIdle
 			item, ok := <-m.nnThreadQueue
 			if !ok {
 				break
 			}
+			m.nnThreadState[threadIdx] = NNThreadStateRunning
 			if item.isHQ {
 				d = &t.detectorHQ
 				perf = &m.nnPerfStatsHQ
@@ -84,6 +98,7 @@ func (t *nnThread) run(m *Monitor) {
 			}
 			d.batch = append(d.batch, nnBatchItem{
 				monCam:       item.monCam,
+				imgID:        item.imgID,
 				yuv:          item.yuv,
 				rgb:          rgbPure,
 				framePTS:     item.framePTS,
@@ -126,6 +141,7 @@ func (t *nnThread) run(m *Monitor) {
 				} else {
 					m.analyzerQueue <- analyzerQueueItem{
 						isHQ:      d == &t.detectorHQ,
+						imgID:     input.imgID,
 						monCam:    input.monCam,
 						yuv:       input.yuv,
 						rgb:       input.rgb,

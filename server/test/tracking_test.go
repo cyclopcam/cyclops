@@ -177,9 +177,16 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	nAnalysisReceived := atomic.Int32{}
 	trackerExited := make(chan bool)
 
-	// Wait until nFrames frames have been sent by the analyzer
-	waitForNFramesAnalyzed := func(nFrames int) {
-		for nAnalysisReceived.Load() < int32(nFrames) {
+	// Wait for the monitor to be done processing whatever frames we've given it
+	waitForMonitorToProcessFrames := func() {
+		lastActivity := time.Now()
+		for true {
+			if mon.NNQueueLength() != 0 || mon.NumNNThreadsActive() != 0 {
+				lastActivity = time.Now()
+			}
+			if time.Since(lastActivity) > 5*time.Millisecond {
+				break
+			}
 			time.Sleep(5 * time.Millisecond)
 		}
 	}
@@ -233,6 +240,7 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	// Probability of including frame
 	inclusionProbability := 0.0
 	nFramesInjected := 0
+	imgID := int64(0)
 	var lastFrame *videox.Frame
 
 	for i := 0; true; i++ {
@@ -242,16 +250,17 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 		}
 		lastFrame = frame
 		require.NoError(t, err)
+		imgID++
 		inclusionProbability += params.NNCoverage
 		if inclusionProbability >= 1 {
 			inclusionProbability -= 1
-			mon.InjectTestFrame(0, baseTime.Add(decoder.FrameTimeToDuration(frame.PTS)), frame.Image)
+			mon.InjectTestFrame(0, imgID, baseTime.Add(decoder.FrameTimeToDuration(frame.PTS)), frame.Image)
 			nFramesInjected++
 
 			if DumpTrackingVideo {
 				// Wait for the NN thread to drain so that we can draw detections on top of this frame (for debug viewing)
 				//t.Logf("wait")
-				waitForNFramesAnalyzed(nFramesInjected)
+				waitForMonitorToProcessFrames()
 				//t.Logf("done")
 
 				img, err := frame.Image.ToCImageRGB().ToImage()
@@ -261,7 +270,7 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 				drawImageToVideo(t, debugVideo, debugDraw, decoder.FrameTimeToDuration(frame.PTS))
 			}
 			if DumpFirstFalsePositive && !haveDumpedFalsePositive {
-				waitForNFramesAnalyzed(nFramesInjected)
+				waitForMonitorToProcessFrames()
 				nPerson, nVehicle := countTrackedObjects()
 				dump := nPerson > 0 && tcase.NumPeople.Max == 0 ||
 					nVehicle > 0 && tcase.NumVehicles.Max == 0
@@ -282,11 +291,12 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	nFake := 7
 	t.Logf("Injected %v real frames. Injecting %v fake frames to ensure batches are flushed", nFramesInjected, nFake)
 	for i := 0; i < nFake; i++ {
-		mon.InjectTestFrame(0, baseTime.Add(decoder.FrameTimeToDuration(lastFrame.PTS)), lastFrame.Image)
+		imgID++
+		mon.InjectTestFrame(0, imgID, baseTime.Add(decoder.FrameTimeToDuration(lastFrame.PTS)), lastFrame.Image)
 	}
 
 	t.Logf("Injected %v frames. Waiting for NN to finish processing", nFramesInjected)
-	waitForNFramesAnalyzed(nFramesInjected)
+	waitForMonitorToProcessFrames()
 
 	// Signal our watcher function to exit
 	t.Logf("Waiting for tracker to exit")
@@ -323,8 +333,8 @@ func TestEventTracking(t *testing.T) {
 	} else {
 		// ncnn
 		// If we omit any explicit config, we'll get 320x256
-		//defaultNNWidth = 640
-		//defaultNNHeight = 480
+		defaultNNWidth = 640
+		defaultNNHeight = 480
 	}
 
 	paramPurmutations := []*EventTrackingParams{
@@ -405,10 +415,16 @@ func TestEventTracking(t *testing.T) {
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{0, 0},
 		},
+		{
+			// This generated a false positive of a vehicle on the hailo8L yolov8m
+			VideoFilename: "testdata/tracking/0013-LD.mp4",
+			NumPeople:     Range{0, 0},
+			NumVehicles:   Range{0, 0},
+		},
 	}
 	// uncomment the following line, to test just the last case
 	onlyTestLastCase := false // DO NOT COMMIT
-	//cases = cases[3:4]
+	//cases = cases[0:1]
 
 	if onlyTestLastCase {
 		cases = cases[len(cases)-1:]

@@ -15,7 +15,7 @@ import (
 // However, when performing tracking on the HQ network, we're analyzing the exact
 // same frame twice. First on the LQ network, and then on the HQ network. So in this case
 // we impose reasonably strict spatial matching criteria.
-func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.ProcessedObject, isHQ bool, frameWidth, frameHeight int, framePTS time.Time) {
+func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.ProcessedObject, isHQ bool, imgID int64, frameWidth, frameHeight int, framePTS time.Time) {
 	positionHistorySize := nextPowerOf2(m.analyzerSettings.positionHistorySize)
 
 	// Create spatial index on the currently tracked objects (cam.tracked)
@@ -158,12 +158,12 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 				totalSightings: 0,
 			})
 			if m.analyzerSettings.verbose {
-				m.Log.Infof("Analyzer (cam %v): New '%v' at %v,%v", cam.cameraID, m.nnClassList[newObj.Class], newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y)
+				m.Log.Infof("Analyzer (cam %v): New '%v' frame %v at %v,%v", cam.cameraID, m.nnClassList[newObj.Class], imgID, newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y)
 			}
 			trackedAndFound = append(trackedAndFound, true)
 		} else {
 			if m.analyzerSettings.verbose {
-				m.Log.Infof("Analyzer (cam %v): Existing '%v' at %v,%v", cam.cameraID, m.nnClassList[newObj.Class], newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y)
+				m.Log.Infof("Analyzer (cam %v): Existing '%v' frame %v at %v,%v", cam.cameraID, m.nnClassList[newObj.Class], imgID, newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y)
 			}
 			trackedAndFound[bestJ] = true
 		}
@@ -181,25 +181,29 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 		cam.lastHQFrame = time.Now()
 		for i := range cam.tracked {
 			obj := cam.tracked[i]
+			newState := validationStatusNone
 			if trackedAndFound[i] {
-				obj.validation = validationStatusValid
+				newState = validationStatusValid
 			} else {
-				obj.validation = validationStatusInvalid
+				newState = validationStatusInvalid
 			}
 
-			if m.analyzerSettings.verbose {
-				iou := float32(-1)
-				if i < len(trackedIoU) {
-					// I fully expect i < len(trackedIoU), but this is just defensive coding because I keep letting these arrays get out of sync.
-					iou = trackedIoU[i]
+			if obj.validation != newState {
+				obj.validation = newState
+
+				if m.analyzerSettings.verbose {
+					iou := float32(-1)
+					if i < len(trackedIoU) {
+						// I fully expect i < len(trackedIoU), but this is just defensive coding because I keep letting these arrays get out of sync.
+						iou = trackedIoU[i]
+					}
+					cls := m.nnClassList[obj.firstDetection.Class]
+					if obj.validation == validationStatusInvalid {
+						m.Log.Infof("Analyzer (cam %v): False Positive '%v' frame %v at %v", cam.cameraID, cls, imgID, obj.validationPosition)
+					} else {
+						m.Log.Infof("Analyzer (cam %v): True Positive '%v' frame %v at (IoU %.2f, %v -> %v)", cam.cameraID, cls, imgID, iou, obj.validationPosition, obj.lastPosition)
+					}
 				}
-				msg := "True Positive"
-				if obj.validation == validationStatusInvalid {
-					msg = "False Positive"
-				}
-				m.Log.Infof("Analyzer (cam %v): %v '%v' at %v,%v (IoU %.2f, %v -> %v)",
-					cam.cameraID, msg, m.nnClassList[obj.firstDetection.Class], obj.lastPosition.Center().X, obj.lastPosition.Center().Y,
-					iou, obj.validationPosition, obj.lastPosition)
 			}
 		}
 	}
@@ -278,6 +282,10 @@ func (m *Monitor) investigateIfObjectIsGenuine(cam *analyzerCameraState, item an
 				m.Log.Errorf("This code in investigateIfObjectIsGenuine should be unreachable")
 			}
 		}
+	}
+
+	if sendFrameForValidation && settings.verbose {
+		m.Log.Infof("Analyzer (cam %v): Requesting validation of '%v' frame %v at %v", cam.cameraID, cls, item.imgID, tracked.validationPosition)
 	}
 
 	return
