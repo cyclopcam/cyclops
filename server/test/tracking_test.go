@@ -31,8 +31,6 @@ type EventTrackingParams struct {
 	ModelNameLQ string  // eg "yolov8m"
 	ModelNameHQ string  // eg "yolov8l"
 	NNCoverage  float64 // eg 75%, if we're able to run NN analysis on 75% of video frames (i.e. because we're resource constrained)
-	NNWidth     int     // eg 320, 640
-	NNHeight    int     // eg 256, 480
 	NNThreads   int     // 0 = default
 }
 
@@ -45,7 +43,7 @@ type EventTrackingTestCase struct {
 	VideoFilename string // eg "tracking/0001-LD.mp4"
 	NumPeople     Range  // Expected number of people
 	NumVehicles   Range  // Expected number of vehicles
-	SkipHighRes   bool   // Don't run this test on high res models, because this footage was recorded in low resolution
+	LowRes        bool   // True if this was intended to be used on a 320x256 NN model
 }
 
 type EventTrackingObject struct {
@@ -99,13 +97,21 @@ func drawImageToVideo(t *testing.T, video *videox.VideoEncoder, d *gg.Context, p
 	require.NoError(t, err)
 }
 
-func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *EventTrackingTestCase) {
+func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *EventTrackingTestCase, nnWidth, nnHeight int) {
 	absPath := FromTestPathToRepoRoot(tcase.VideoFilename)
 	decoder, err := videox.NewVideoFileDecoder(absPath)
 	require.NoError(t, err)
 	defer decoder.Close()
 
 	logger := logs.NewTestingLog(t)
+
+	// concrete classes which map to "vehicle"
+	vehicleClasses := map[string]bool{
+		"car":        true,
+		"motorcycle": true,
+		"truck":      true,
+		"bus":        true,
+	}
 
 	t.Logf("Video is %v x %v", decoder.Width(), decoder.Height())
 	var debugVideo *videox.VideoEncoder
@@ -125,10 +131,8 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	monitorOptions.EnableDualModel = true
 	monitorOptions.DebugTracking = true
 	monitorOptions.ModelsDir = FromTestPathToRepoRoot("models")
-	if params.NNWidth != 0 {
-		monitorOptions.ModelWidth = params.NNWidth
-		monitorOptions.ModelHeight = params.NNHeight
-	}
+	monitorOptions.ModelWidth = nnWidth
+	monitorOptions.ModelHeight = nnHeight
 	if params.NNThreads != 0 {
 		monitorOptions.NNThreads = params.NNThreads
 	}
@@ -156,19 +160,11 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 			}
 			if obj.Class == "person" {
 				nPerson++
-			} else if obj.Class == "vehicle" {
+			} else if obj.Class == "vehicle" || vehicleClasses[obj.Class] {
 				nVehicle++
 			}
 		}
 		return nPerson, nVehicle
-	}
-
-	// Ignore all concrete classes which map to "vehicle"
-	ignoreClasses := map[string]bool{
-		"car":        true,
-		"motorcycle": true,
-		"truck":      true,
-		"bus":        true,
 	}
 
 	// Create a function that watches for incoming monitor messages.
@@ -201,9 +197,9 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 			nAnalysisReceived.Add(1)
 			for _, obj := range msg.Objects {
 				className := mon.AllClasses()[obj.Class]
-				if ignoreClasses[className] {
-					continue
-				}
+				//if vehicleClasses[className] {
+				//	continue
+				//}
 				found := false
 				confidence := obj.LastFrame().Confidence
 				for _, existing := range trackedObjects {
@@ -218,7 +214,7 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 					}
 				}
 				if !found {
-					t.Logf("Found new object: %v (%.2f) at %v (genuine %v)", className, confidence, obj.LastFrame().Box, obj.Genuine)
+					t.Logf("New object: %v (%.2f) at %v (genuine %v)", className, confidence, obj.LastFrame().Box, obj.Genuine)
 					trackedObjects = append(trackedObjects, &EventTrackingObject{
 						ID:            obj.ID,
 						NumDetections: 1,
@@ -337,14 +333,14 @@ func TestEventTracking(t *testing.T) {
 		defaultNNHeight = 480
 	}
 
-	paramPurmutations := []*EventTrackingParams{
+	paramPurmutations := []EventTrackingParams{
 		{
 			ModelNameLQ: "yolov8m",
 			ModelNameHQ: "yolov8l",
 			NNCoverage:  1,
-			NNWidth:     defaultNNWidth,
-			NNHeight:    defaultNNHeight,
-			NNThreads:   1, // Setting this to 1 can aid debugging
+			//NNWidth:     defaultNNWidth,
+			//NNHeight:    defaultNNHeight,
+			NNThreads: 1, // Setting this to 1 can aid debugging
 		},
 	}
 	cases := []*EventTrackingTestCase{
@@ -352,39 +348,43 @@ func TestEventTracking(t *testing.T) {
 			VideoFilename: "testdata/tracking/0001-LD.mp4",
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{1, 1},
+			LowRes:        true,
 		},
 		{
 			VideoFilename: "testdata/tracking/0003-LD.mp4",
 			NumPeople:     Range{0, 1}, // The guy on the back of the trailer is not detected by the 640x480 NCNN model.
 			NumVehicles:   Range{1, 2}, // sometimes the trailer is detected as a 2nd vehicle. This is reasonable.
-			SkipHighRes:   true,
+			LowRes:        true,
 		},
 		{
 			VideoFilename: "testdata/tracking/0004-LD.mp4",
 			NumPeople:     Range{1, 2}, // yolov8l finds both people. yolov8m only finds 1.
 			NumVehicles:   Range{0, 0},
-			SkipHighRes:   true, // Fails to find people on hailo8L yolov8m 640x640
+			LowRes:        true, // Fails to find people on hailo8L yolov8m 640x640
 		},
 		{
 			VideoFilename: "testdata/tracking/0005-LD.mp4",
 			NumPeople:     Range{1, 1},
 			NumVehicles:   Range{0, 0},
+			LowRes:        true,
 		},
 		{
 			VideoFilename: "testdata/tracking/0007-LD.mp4",
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{0, 0},
+			LowRes:        true,
 		},
 		{
 			VideoFilename: "testdata/tracking/0008-LD.mp4",
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{0, 0},
+			LowRes:        true,
 		},
 		{
 			VideoFilename: "testdata/tracking/0009-LD.mp4",
 			NumPeople:     Range{1, 1},
 			NumVehicles:   Range{0, 0},
-			SkipHighRes:   true,
+			LowRes:        true,
 		},
 		{
 			// This generated a false positive of a "person" on the hailo8L yolov8m, but it was
@@ -392,10 +392,12 @@ func TestEventTracking(t *testing.T) {
 			VideoFilename: "testdata/tracking/0010-LD.mp4",
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{0, 0},
+			LowRes:        true,
 		},
 		{
 			// This generated a false positive of a "person" on the hailo8L yolov8m, but it was
 			// just leaves blowing in front of the camera. The NCNN model doesn't have this problem.
+			// Grrrrr.... NCNN yolov8l at 640x480 still has the false positive here.
 			VideoFilename: "testdata/tracking/0011-LD.mp4",
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{0, 0},
@@ -416,31 +418,37 @@ func TestEventTracking(t *testing.T) {
 			NumVehicles:   Range{0, 0},
 		},
 		{
-			// This generated a false positive of a vehicle on the hailo8L yolov8m
+			// This generated a false positive of a vehicle (just a water tank) on the hailo8L yolov8m
 			VideoFilename: "testdata/tracking/0013-LD.mp4",
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{0, 0},
 		},
+		{
+			// This generated a false positive of a person (actually a cat at night) on the hailo8L yolov8m
+			VideoFilename: "testdata/tracking/0014-LD.mp4",
+			NumPeople:     Range{0, 0},
+			NumVehicles:   Range{0, 0},
+		},
 	}
-	// uncomment the following line, to test just the last case
-	onlyTestLastCase := false // DO NOT COMMIT
-	//cases = cases[0:1]
-
-	if onlyTestLastCase {
-		cases = cases[len(cases)-1:]
-		t.Logf("WARNING! Only testing the LAST case") // just in case you forget and commit "onlyTestLastCase := true"
-	}
+	//cases = cases[len(cases)-1:]
+	//cases = cases[8:9]
 
 	for iparams, params := range paramPurmutations {
 		t.Logf("Testing parameter permutation %v/%v (%v, %v, %v)", iparams, len(paramPurmutations), params.ModelNameLQ, params.ModelNameHQ, params.NNCoverage)
 		for _, tcase := range cases {
-			if tcase.SkipHighRes && params.NNWidth >= 640 {
+			if tcase.LowRes && nnload.HaveAccelerator() {
+				// For Hailo we only publish 640x640
 				t.Logf("Testing case %v (skipping because footage is low res, and NN is high res)", tcase.VideoFilename)
 				continue
 			}
+			nnWidth := defaultNNWidth
+			nnHeight := defaultNNHeight
+			if tcase.LowRes {
+				nnWidth = 320
+				nnHeight = 256
+			}
 			t.Logf("Testing case %v", tcase.VideoFilename)
-			testEventTrackingCase(t, params, tcase)
+			testEventTrackingCase(t, &params, tcase, nnWidth, nnHeight)
 		}
-		//break
 	}
 }

@@ -7,12 +7,12 @@ import (
 // Scan all pairs of objects in 'input', and if they have a high IoU, and their classes are specified in 'mergeMap',
 // then merge them into a single object.
 // Returns the list of objects that should be retained.
-func MergeSimilarObjects(input []ObjectDetection, mergeMap map[string]string, classes []string, minIoU float32) []int {
+func MergeSimilarObjects(input []ProcessedObject, mergeMap map[string]string, classes []string, minIoU float32) []int {
 	// Create spatial index to avoid O(N^2) comparisons
 	fb := flatbush.NewFlatbush[int32]()
 	fb.Reserve(len(input))
 	for _, b := range input {
-		fb.Add(b.Box.X, b.Box.Y, b.Box.X2(), b.Box.Y2())
+		fb.Add(b.Raw.Box.X, b.Raw.Box.Y, b.Raw.Box.X2(), b.Raw.Box.Y2())
 	}
 	fb.Finish()
 
@@ -30,7 +30,7 @@ func MergeSimilarObjects(input []ObjectDetection, mergeMap map[string]string, cl
 			if !ok {
 				continue
 			}
-			for j := range fb.Search(in.Box.X, in.Box.Y, in.Box.X2(), in.Box.Y2()) {
+			for j := range fb.Search(in.Raw.Box.X, in.Raw.Box.Y, in.Raw.Box.X2(), in.Raw.Box.Y2()) {
 				if i == j {
 					continue
 				}
@@ -40,7 +40,7 @@ func MergeSimilarObjects(input []ObjectDetection, mergeMap map[string]string, cl
 				if classes[input[j].Class] != expectOtherClass {
 					continue
 				}
-				if in.Box.IOU(input[j].Box) >= minIoU {
+				if in.Raw.Box.IOU(input[j].Raw.Box) >= minIoU {
 					// Delete the class on the 'left' of the map. So if the map says {"truck": "car"},
 					// then we delete 'truck' and keep 'car'.
 					//fmt.Printf("Deleting %v, and keeping %v\n", classes[in.Class], expectOtherClass)

@@ -87,6 +87,7 @@ type Monitor struct {
 	nnClassMap                map[string]int         // Map from class name to class index
 	nnClassFilterSet          map[string]bool        // NN classes that we're interested in (eg person, car)
 	nnClassBoxMerge           map[string]string      // Merge overlapping boxes eg car/truck -> car
+	nnClassMergePairs         map[uint64]bool        // Pairs of objects that can be merged (eg truck+car). Just another representation of nnClassBoxMerge
 	nnClassAbstract           map[string]string      // Remap classes to a more abstract class (eg car -> vehicle, truck -> vehicle)
 	nnAbstractClassSet        map[int]bool           // Set of abstract class indices
 	nnUnrecognizedClass       int                    // Special index for the "class unrecognized" class
@@ -367,6 +368,7 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		nnClassFilterSet:    makeClassFilter(classFilterList),
 		nnClassAbstract:     abstractClasses,
 		nnClassBoxMerge:     boxMergeClasses,
+		nnClassMergePairs:   buildMergePairs(classMap, boxMergeClasses),
 		nnAbstractClassSet:  makeAbstractClassSet(abstractClasses, classMap),
 		nnUnrecognizedClass: unrecognizedIdx,
 		analyzerSettings:    *newAnalyzerSettings(options.DebugTracking),

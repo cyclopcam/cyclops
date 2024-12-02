@@ -22,6 +22,7 @@ import (
 
 // If not nil, then we have successfully loaded the Hailo AI accelerator module
 var hailoAccel *nnaccel.Accelerator
+var isLoaded bool
 
 // Return true if we are using a hardware NN accelerator
 func HaveAccelerator() bool {
@@ -162,6 +163,11 @@ func LoadModel(logs logs.Log, device *nnaccel.Device, modelDir, modelName string
 }
 
 func LoadAccelerators(logs logs.Log, enableHailo bool) {
+	if isLoaded {
+		logs.Warnf("Accelerators already loaded")
+		return
+	}
+	isLoaded = true
 	logs.Infof("Loading NN accelerators")
 	var err error
 	if enableHailo {

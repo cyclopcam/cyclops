@@ -23,6 +23,8 @@ func main() {
 	input := parser.String("i", "input", &argparse.Options{Help: "Input image file", Required: true})
 	modelName := parser.String("m", "model", &argparse.Options{Help: "Model name (eg yolov8m)", Required: true})
 	enableAccel := parser.Flag("", "accel", &argparse.Options{Help: "Enable hardware accelerators (eg hailo)", Required: false, Default: true})
+	nnWidth := parser.Int("", "width", &argparse.Options{Help: "NN width", Required: false, Default: 640})
+	nnHeight := parser.Int("", "height", &argparse.Options{Help: "NN height", Required: false, Default: 480})
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
@@ -34,12 +36,9 @@ func main() {
 	var device *nnaccel.Device
 	nnload.LoadAccelerators(logger, true)
 	accel := nnload.Accelerator()
-	nnWidth := 640
-	nnHeight := 480
 	if accel != nil && *enableAccel {
 		device, err = accel.OpenDevice()
 		check(err)
-		nnHeight = 640
 		defer device.Close()
 	}
 
@@ -47,7 +46,7 @@ func main() {
 	modelSetup.BatchSize = 1
 	params := nn.NewDetectionParams()
 
-	model, err := nnload.LoadModel(logger, device, "models", *modelName, nnWidth, nnHeight, nn.ThreadingModeParallel, modelSetup)
+	model, err := nnload.LoadModel(logger, device, "models", *modelName, *nnWidth, *nnHeight, nn.ThreadingModeParallel, modelSetup)
 	check(err)
 
 	img, err := cimg.ReadFile(*input)

@@ -124,6 +124,12 @@ type TrackedObject struct {
 	ID    uint32 `json:"id"`
 	Class int    `json:"class"`
 
+	// Number of times we've seen each class.
+	// For example: {car: 2, truck: 8}.
+	// This is only applicable to objects that are ambiguous - specifically vehicles which will often flop between car and
+	// truck as different parts of the vehicle come into view.
+	ClassCount map[int]int `json:"classCount"`
+
 	// Number of frames that we have considered this object genuine.
 	// If Genuine = 0, then we still don't consider it genuine.
 	// If Genuine = 1, then this is the first time we consider it genuine.
@@ -265,21 +271,41 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	framePTS := item.detection.FramePTS
 	now := time.Now()
 
-	// Create abstract objects before merging, because this tends to create duplicates.
-	// For example, you'll often get a car and a truck detection of the same object.
-	processed := m.createAbstractObjects(item.detection.Objects)
+	// New abstract class strategy:
+	// Delay processing of abstract classes until later
+	processed := make([]nn.ProcessedObject, len(item.detection.Objects))
+	for i := 0; i < len(item.detection.Objects); i++ {
+		processed[i] = nn.ProcessedObject{
+			Raw:   item.detection.Objects[i],
+			Class: item.detection.Objects[i].Class,
+		}
+	}
 
-	// If a small pickup ends up producing a car and a truck with very similar boxes, and we create two
-	// abstract vehicle objects out of those, then delete one of those vehicles, so that we only
-	// end up with one vehicle.
-	// MergeSimilarObjects() was my first stab at this, but that was before introducing the concept
-	// of abstract classes.
-	keepDetections := nn.MergeSimilarAbstractObjects(processed, m.nnAbstractClassSet, 0.9)
+	// Keep all
+	//keepDetections := make([]int, len(item.detection.Objects))
+	//for i := 0; i < len(item.detection.Objects); i++ {
+	//	keepDetections[i] = i
+	//}
 
-	// Merge objects together such as 'car' and 'truck' if they have tight overlap
-	// NOTE: I've removed this after implementing abstract classes.
-	// Abstract classes seem like a more robust approach.
-	//keepDetections := nn.MergeSimilarObjects(objects, m.nnClassBoxMerge, m.nnClassList, 0.9)
+	keepDetections := nn.MergeSimilarObjects(processed, m.nnClassBoxMerge, m.nnClassList, 0.9)
+
+	/*
+		// Create abstract objects before merging, because this tends to create duplicates.
+		// For example, you'll often get a car and a truck detection of the same object.
+		processed := m.createAbstractObjects(item.detection.Objects)
+
+		// If a small pickup ends up producing a car and a truck with very similar boxes, and we create two
+		// abstract vehicle objects out of those, then delete one of those vehicles, so that we only
+		// end up with one vehicle.
+		// MergeSimilarObjects() was my first stab at this, but that was before introducing the concept
+		// of abstract classes.
+		keepDetections := nn.MergeSimilarAbstractObjects(processed, m.nnAbstractClassSet, 0.9)
+
+		// Merge objects together such as 'car' and 'truck' if they have tight overlap
+		// NOTE: I've removed this after implementing abstract classes.
+		// Abstract classes seem like a more robust approach.
+		//keepDetections := nn.MergeSimilarObjects(objects, m.nnClassBoxMerge, m.nnClassList, 0.9)
+	*/
 
 	// Discard detections of classes that we're not interested in
 	shortList := make([]int, 0, 100)

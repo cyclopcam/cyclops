@@ -8,6 +8,30 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/nn"
 )
 
+// For debugging
+var totalValidationFrames int
+
+// Details of the effort to match incoming objects to this one existing object.
+// 1:1 with cam.tracked
+type matchExisting struct {
+	incomingMatch int
+	bestIoU       float32 // IoU of the closest match
+}
+
+func (m *matchExisting) hasMatch() bool {
+	return m.incomingMatch != -1
+}
+
+// Details pertaining to an incoming object
+type matchNew struct {
+	existingMatch int
+	bestIoU       float32 // IoU of the closest match. This is useful for debug messages, but we don't use it for anything else
+}
+
+func (m *matchNew) hasMatch() bool {
+	return m.existingMatch != -1
+}
+
 // Process incoming objects, and track them spatially.
 // objects is the list of objects detected in the current frame.
 // When performing tracking on the LQ network, we're very lenient. This is because objects
@@ -30,21 +54,33 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 	minSearchBuffer := int32(0.05 * float64(frameWidth))
 
 	// Map from objects[i] to tracked[j]
-	newToTracked := make([]int, len(objects))
-	for i := 0; i < len(objects); i++ {
-		newToTracked[i] = -1
+	//newState := make([]int, len(objects))
+	//for i := 0; i < len(objects); i++ {
+	//	newState[i] = -1
+	//}
+	newState := make([]matchNew, len(objects))
+	for i := 0; i < len(newState); i++ {
+		newState[i].existingMatch = -1
+		newState[i].bestIoU = -1
+	}
+
+	existingState := make([]matchExisting, len(cam.tracked))
+	for i := 0; i < len(existingState); i++ {
+		existingState[i].incomingMatch = -1
+		existingState[i].bestIoU = -1
 	}
 
 	// trackedHasMatch[j] is true if cam.tracked[j] has been matched to a new object
-	trackedHasMatch := make([]bool, len(cam.tracked))
-	trackedIoU := make([]float32, len(cam.tracked))
+	//trackedHasMatch := make([]bool, len(cam.tracked))
+	//trackedIoU := make([]float32, len(cam.tracked))
 
 	// Search among cam.tracked (but only the indices in existingList), and find the
 	// closest object to 'newObj', which has the same class.
 	// Skip over objects that already have a match in trackedHasMatch.
 	// Once the closest object is found, populate trackedHasMatch, and newToTracked.
 	// Returns the index in cam.tracked of the best match.
-	findClosestObjectFromList := func(newIndex int, existingList []int) int {
+	// If allowMerge is true, then we allow truck to match to car, and vice versa.
+	findClosestObjectFromList := func(newIndex int, existingList []int, allowMerge bool) int {
 		newObj := &objects[newIndex]
 		bestJ := -1
 		bestIOU := float32(0)
@@ -57,11 +93,17 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 			bestIOU = 0.2
 		}
 		for _, j := range existingList {
-			if trackedHasMatch[j] {
+			if existingState[j].hasMatch() {
 				continue
 			}
 			oldObj := cam.tracked[j]
-			if oldObj.firstDetection.Class != newObj.Class {
+			classMatch := oldObj.firstDetection.Class == newObj.Class
+			if allowMerge && !classMatch {
+				if m.nnClassMergePairs[m.makeMergePairKey(oldObj.firstDetection.Class, newObj.Class)] {
+					classMatch = true
+				}
+			}
+			if !classMatch {
 				continue
 			}
 			oldPosition := oldObj.lastPosition
@@ -70,6 +112,12 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 			}
 			iou := newObj.Raw.Box.IOU(oldPosition)
 			distance := newObj.Raw.Box.Center().Distance(oldPosition.Center())
+
+			// Store best IoU of incoming object, for verbose debug messages
+			if iou > newState[newIndex].bestIoU {
+				newState[newIndex].bestIoU = iou
+			}
+
 			// For LQ match:
 			// We allow objects to have zero overlap, because our effective framerate (i.e. NN framerate)
 			// is often low enough that an object can move a significant distance between frames, so much
@@ -84,9 +132,9 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 			}
 		}
 		if bestJ != -1 {
-			trackedHasMatch[bestJ] = true
-			trackedIoU[bestJ] = bestIOU
-			newToTracked[newIndex] = bestJ
+			existingState[bestJ].incomingMatch = newIndex
+			existingState[bestJ].bestIoU = bestIOU
+			newState[newIndex].existingMatch = bestJ
 		}
 		return bestJ
 	}
@@ -96,10 +144,15 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 	nearbyIdx := []int{}
 	for i := range objects {
 		newObj := &objects[i]
-		searchBufferX := max(minSearchBuffer, int32(0.8*float64(newObj.Raw.Box.Width)))
-		searchBufferY := max(minSearchBuffer, int32(0.8*float64(newObj.Raw.Box.Height)))
+		searchBufferX := max(minSearchBuffer, int32(0.9*float64(newObj.Raw.Box.Width)))
+		searchBufferY := max(minSearchBuffer, int32(0.9*float64(newObj.Raw.Box.Height)))
 		nearbyIdx = fb.SearchFast(newObj.Raw.Box.X-searchBufferX, newObj.Raw.Box.Y-searchBufferY, newObj.Raw.Box.X2()+searchBufferX, newObj.Raw.Box.Y2()+searchBufferY, nearbyIdx)
-		findClosestObjectFromList(i, nearbyIdx)
+		// Try first with exact class match (eg truck -> truck)
+		bestJ := findClosestObjectFromList(i, nearbyIdx, false)
+		if bestJ == -1 {
+			// Try second with class merge (eg truck -> car)
+			findClosestObjectFromList(i, nearbyIdx, true)
+		}
 	}
 
 	// Phase 2:
@@ -122,7 +175,7 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 	// that didn't get any matches in the first phase.
 	unmatched := []int{}
 	for i := 0; i < len(cam.tracked); i++ {
-		if !trackedHasMatch[i] {
+		if !existingState[i].hasMatch() {
 			unmatched = append(unmatched, i)
 		}
 	}
@@ -131,21 +184,22 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 	// We only run this brute force match on the LQ network.
 	if !isHQ {
 		for i := range objects {
-			if newToTracked[i] != -1 {
+			if newState[i].hasMatch() {
 				continue
 			}
-			findClosestObjectFromList(i, unmatched)
+			findClosestObjectFromList(i, unmatched, true)
 		}
 	}
 
 	// Final list of all objects in cam.tracked which were found in this frame
 	trackedAndFound := make([]bool, len(cam.tracked))
 
-	// Update existing objects, and create new objects
+	// Update existing objects, and create new objects.
+	// Don't create new objects during validation. The logic flow for this is too unclear. What do we do with the new object?
 	for i := range objects {
 		newObj := &objects[i]
-		bestJ := newToTracked[i]
-		if bestJ == -1 {
+		bestJ := newState[i].existingMatch
+		if bestJ == -1 && !isHQ {
 			// Create a new object
 			bestJ = len(cam.tracked)
 			objectID := m.nextTrackedObjectID.Next()
@@ -158,22 +212,24 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 				totalSightings: 0,
 			})
 			if m.analyzerSettings.verbose {
-				m.Log.Infof("Analyzer (cam %v): New '%v' frame %v at %v,%v", cam.cameraID, m.nnClassList[newObj.Class], imgID, newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y)
+				m.Log.Infof("Analyzer (cam %v): New '%v' frame %v at %v,%v (bestIoU %.2f)", cam.cameraID, m.nnClassList[newObj.Class], imgID, newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y, newState[i].bestIoU)
 			}
 			trackedAndFound = append(trackedAndFound, true)
-		} else {
+		} else if bestJ != -1 {
 			if m.analyzerSettings.verbose {
-				m.Log.Infof("Analyzer (cam %v): Existing '%v' frame %v at %v,%v", cam.cameraID, m.nnClassList[newObj.Class], imgID, newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y)
+				m.Log.Infof("Analyzer (cam %v): Existing '%v' frame %v at %v,%v (IoU %.2f)", cam.cameraID, m.nnClassList[newObj.Class], imgID, newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y, newState[i].bestIoU)
 			}
 			trackedAndFound[bestJ] = true
 		}
 
-		cam.tracked[bestJ].totalSightings++
-		cam.tracked[bestJ].lastPosition = newObj.Raw.Box
-		cam.tracked[bestJ].history.Add(timeAndPosition{
-			time:      framePTS,
-			detection: *newObj,
-		})
+		if !isHQ {
+			cam.tracked[bestJ].totalSightings++
+			cam.tracked[bestJ].lastPosition = newObj.Raw.Box
+			cam.tracked[bestJ].history.Add(timeAndPosition{
+				time:      framePTS,
+				detection: *newObj,
+			})
+		}
 	}
 
 	if isHQ {
@@ -184,7 +240,7 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 			newState := validationStatusNone
 			if trackedAndFound[i] {
 				newState = validationStatusValid
-			} else {
+			} else if obj.validation == validationStatusWaiting {
 				newState = validationStatusInvalid
 			}
 
@@ -193,13 +249,12 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 
 				if m.analyzerSettings.verbose {
 					iou := float32(-1)
-					if i < len(trackedIoU) {
-						// I fully expect i < len(trackedIoU), but this is just defensive coding because I keep letting these arrays get out of sync.
-						iou = trackedIoU[i]
+					if i < len(existingState) {
+						iou = existingState[i].bestIoU
 					}
 					cls := m.nnClassList[obj.firstDetection.Class]
 					if obj.validation == validationStatusInvalid {
-						m.Log.Infof("Analyzer (cam %v): False Positive '%v' frame %v at %v", cam.cameraID, cls, imgID, obj.validationPosition)
+						m.Log.Infof("Analyzer (cam %v): False Positive '%v' frame %v at %v (bestIoU %.2f)", cam.cameraID, cls, imgID, obj.validationPosition, iou)
 					} else {
 						m.Log.Infof("Analyzer (cam %v): True Positive '%v' frame %v at (IoU %.2f, %v -> %v)", cam.cameraID, cls, imgID, iou, obj.validationPosition, obj.lastPosition)
 					}
@@ -286,6 +341,8 @@ func (m *Monitor) investigateIfObjectIsGenuine(cam *analyzerCameraState, item an
 
 	if sendFrameForValidation && settings.verbose {
 		m.Log.Infof("Analyzer (cam %v): Requesting validation of '%v' frame %v at %v", cam.cameraID, cls, item.imgID, tracked.validationPosition)
+		//totalValidationFrames++
+		//item.rgb.WriteJPEG(fmt.Sprintf("validation-frame-%v.jpg", totalValidationFrames), cimg.MakeCompressParams(cimg.Sampling444, 99, 0), 0644)
 	}
 
 	return
