@@ -217,6 +217,7 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 			trackedAndFound = append(trackedAndFound, true)
 		} else if bestJ != -1 {
 			if m.analyzerSettings.verbose {
+				// Sometimes I comment out this line, because it's by far the most spammy of the log messages.
 				m.Log.Infof("Analyzer (cam %v): Existing '%v' frame %v at %v,%v (IoU %.2f)", cam.cameraID, m.nnClassList[newObj.Class], imgID, newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y, newState[i].bestIoU)
 			}
 			trackedAndFound[bestJ] = true

@@ -188,6 +188,8 @@ func (c *ConfigDB) GetUserID(r *http.Request) int64 {
 				}
 			}
 		}
+	} else if len(authorization) > 6 && strings.EqualFold(authorization[:6], "Basic ") {
+		c.Log.Warnf("Basic authentication is not allowed from a VPN IP address")
 	}
 
 	return 0

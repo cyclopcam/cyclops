@@ -154,6 +154,7 @@ export class SeekBarContext {
 				this.renderTile(cx, tile, canvasWidth, pixelsPerSecond, videoStartTime);
 			}
 		}
+		//console.log(`Render ${endTileIdx - startTileIdx} tiles at level ${bestLevel}`);
 
 		// Render seek bar
 		if (this.desiredSeekPosMS !== 0) {
@@ -344,6 +345,8 @@ export class SeekBarContext {
 		let bitWindowCount = new Uint8Array(BitsPerTile);
 		let startBit = 0;
 		let startX = tx1;
+		//let totalRenderedBlocks = 0;
+		//let totalRenderedWidth = 0;
 		if (videoStartTime) {
 			// Don't render bits for events that occurred so long ago that the video has already been erased.
 			// This is especially relevant for the zoomed-out high level tiles.
@@ -372,6 +375,8 @@ export class SeekBarContext {
 								width += boostWidth;
 							}
 							cx.fillRect(rx1, y, width, lineHeight);
+							//totalRenderedBlocks++;
+							//totalRenderedWidth += width;
 						}
 						state = state ? 0 : 1;
 						x1 = x2;
@@ -389,6 +394,7 @@ export class SeekBarContext {
 			cx.textAlign = "left";
 			cx.textBaseline = "top";
 			cx.fillText(`${tile.level}:${tile.tileIdx}`, tx1 + 4, 10);
+			//console.log(`renderTile. rendered blocks = ${totalRenderedBlocks}, width = ${totalRenderedWidth}`);
 		}
 	}
 

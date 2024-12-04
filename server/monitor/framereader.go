@@ -108,7 +108,7 @@ func (m *Monitor) readFrames() {
 			nStats++
 			totalFrames, totalProcessed := frameReaderStats(looperCameras)
 			lq := &m.nnPerfStatsLQ
-			hq := &m.nnPerfStatsLQ
+			hq := &m.nnPerfStatsHQ
 			m.Log.Infof("%.0f%% frames analyzed by LQ NN. %v Threads. Times per frame: (%.1f ms Prep, %.1f ms NN)",
 				100*float64(totalProcessed)/float64(totalFrames),
 				m.numNNThreads,

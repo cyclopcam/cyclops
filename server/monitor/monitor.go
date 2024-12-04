@@ -194,6 +194,7 @@ func DefaultMonitorOptions() *MonitorOptions {
 		ModelNameHQ:       "yolov8l",
 		ModelsDir:         "/var/lib/cyclops/models",
 		EnableDualModel:   true,
+		DebugTracking:     false,
 	}
 }
 
