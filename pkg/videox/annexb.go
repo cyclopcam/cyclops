@@ -9,10 +9,6 @@ import (
 	"unsafe"
 )
 
-// This is the prefix that we add whenever we need to encode into AnnexB
-// This must remain in sync with the behaviour inside EncodeAnnexB()
-//var NALUPrefix = []byte{0x00, 0x00, 0x01}
-
 // Flags that control how EncodeAnnexB works
 type AnnexBEncodeFlags int
 

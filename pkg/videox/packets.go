@@ -146,11 +146,7 @@ func (n *NALU) AsAnnexB() NALU {
 				PayloadNoEscapes: n.PayloadNoEscapes,
 			}
 		} else {
-			return NALU{
-				Payload:          n.Payload,
-				PayloadIsAnnexB:  true,
-				PayloadNoEscapes: n.PayloadNoEscapes,
-			}
+			return *n
 		}
 	} else {
 		// Encode to AnnexB

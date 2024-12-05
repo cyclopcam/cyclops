@@ -75,6 +75,7 @@ if [ $SKIP_SIMD -eq 0 ]; then
 	cd Simd && mkdir -p build && cd build && cmake -DSIMD_TEST=OFF ../prj/cmake && make -j4 && cd ../..
 fi
 
+echo "Building cyclops server (Go)"
 go build -o bin/cyclops cmd/cyclops/*.go
 
 if [ -f /etc/systemd/system/cyclops.service ]; then
