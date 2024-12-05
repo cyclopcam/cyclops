@@ -5,6 +5,7 @@ export class CachedEventTile {
 	tile: EventTile;
 	lastUsedMS: number; // Used for cache eviction of least recently used
 	fetchedAtMS: number; // Used to detect stale contemporary tiles (i.e. tiles that were still being created when they were fetched)
+	failed: boolean; // If true, then this tile failed to fetch
 
 	constructor(cameraID: number, tile: EventTile) {
 		this.cameraID = cameraID;
@@ -12,6 +13,7 @@ export class CachedEventTile {
 		let nowMS = new Date().getTime();
 		this.lastUsedMS = nowMS;
 		this.fetchedAtMS = nowMS;
+		this.failed = false;
 	}
 
 	get key(): string {
@@ -23,7 +25,8 @@ export class CachedEventTile {
 	}
 }
 
-export type FetchCallback = (tile: CachedEventTile) => void;
+// If the tile is not found on the server, then the 'tile' parameter to the callback is undefined
+export type FetchCallback = (tile: CachedEventTile | undefined) => void;
 
 export class EventTileCache {
 	// Let's say average tile has 10 classes, and each class is 128 bytes (1024 bits).
@@ -73,24 +76,45 @@ export class EventTileCache {
 	}
 
 	async fetchTile(cameraID: number, level: number, tileIdx: number) {
+		// We must insert something into the cache regardless of whether we succeeded or failed,
+		// otherwise seekBarContext will keep trying to re-render, thinking that it needs to
+		// fetch more tiles.
 		let key = CachedEventTile.makeKey(cameraID, level, tileIdx);
 		try {
 			// Set the fetch time to BEFORE we emit the request
+			let callbacks = this.fetching.get(key) || [];
 			let fetchedAtMS = new Date().getTime();
-			let fetchResult = await EventTile.fetchTiles(cameraID, level, tileIdx, tileIdx + 1);
-			this.cameraVideoStartTime[cameraID] = fetchResult.videoStartTime;
-			if (fetchResult.tiles.length !== 0) {
-				let cachedTile = this.insertTile(cameraID, fetchResult.tiles[0]);
-				cachedTile.fetchedAtMS = fetchedAtMS;
-				this.fetchCount++;
-				for (let callback of (this.fetching.get(key) || [])) {
-					callback(cachedTile);
+			let cachedTile: CachedEventTile | undefined;
+			try {
+				let fetchResult = await EventTile.fetchTiles(cameraID, level, tileIdx, tileIdx + 1);
+				this.cameraVideoStartTime[cameraID] = fetchResult.videoStartTime;
+				if (fetchResult.tiles.length !== 0) {
+					// Success, and a non-empty tile
+					cachedTile = this.insertTile(cameraID, fetchResult.tiles[0]);
+				} else {
+					// This is not a failed request. The tile simply doesn't exist, because there was no activity
+					cachedTile = this.insertTile(cameraID, new EventTile(level, tileIdx));
 				}
+			} catch (e) {
+				// Network failure
+				cachedTile = this.insertTile(cameraID, new EventTile(level, tileIdx));
+				cachedTile.failed = true;
+				console.error(`Failed to fetch tile ${key}: ${e}`);
+			}
+			cachedTile.fetchedAtMS = fetchedAtMS;
+			this.fetchCount++;
+			this.fetching.delete(key);
+			for (let callback of callbacks) {
+				callback(cachedTile);
 			}
 		} catch (e) {
 			console.error(`Failed to fetch tile ${key}: ${e}`);
 		}
-		this.fetching.delete(key);
+	}
+
+	isFetching(cameraID: number, level: number, tileIdx: number): boolean {
+		let key = CachedEventTile.makeKey(cameraID, level, tileIdx);
+		return this.fetching.has(key);
 	}
 
 	// Return true if the tile is stale (i.e. new events have possibly been recorded since we last fetched this tile)

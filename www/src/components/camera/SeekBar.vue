@@ -216,12 +216,18 @@ function onPointerMoveSeek(e: PointerEvent) {
 	// wanted to do was scroll the entire monitor screen vertically, to get
 	// to another camera.
 	let minDeltaCssPx = 5;
+	// In addition to requiring significant absolute horizontal movement, we also
+	// require that the movement is more horizontal than vertical, by requiring a certain
+	// aspect ratio of the movement.
+	let minDeltaAspectRatio = 2;
 	// We disable this behaviour for a mouse, because a mouse movement can't invoke a vertical scroll.
 	if (e.pointerType === "mouse") {
 		minDeltaCssPx = 0;
+		minDeltaAspectRatio = 0;
 	}
 	let cssDeltaX = Math.abs(e.offsetX - points[0].offsetX1);
-	if (state === States.Neutral && cssDeltaX >= minDeltaCssPx) {
+	let cssDeltaY = Math.abs(e.offsetY - points[0].offsetY1);
+	if (state === States.Neutral && cssDeltaX >= minDeltaCssPx && cssDeltaX > cssDeltaY * minDeltaAspectRatio) {
 		state = States.Seek;
 		if (enableOneFingerZoom && e.pointerType !== "mouse") {
 			setTimeout(oneFingerZoomTimer, 20);

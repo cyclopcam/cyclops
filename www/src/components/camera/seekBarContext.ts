@@ -1,8 +1,8 @@
 
 import { spanIntersection } from "@/util/geom";
-import { EventTile } from "./eventTile";
+import { EventTile, tileEndTimeMS, tileStartTimeMS } from "./eventTile";
 import { CachedEventTile, globalTileCache } from "./eventTileCache";
-import { clamp, dateTime, monthNamesShort, zeroPad } from "@/util/util";
+import { clamp, monthNamesShort, zeroPad } from "@/util/util";
 
 import { BitsPerTile, BaseSecondsPerTile, MaxTileLevel } from "./eventTile";
 
@@ -21,8 +21,8 @@ export class SeekBarContext {
 	panTimeEndIsNow = false; // If our last seek call was seekToNow()
 	zoomLevel = 3; // 2^zoom seconds per pixel. This can be an arbitrary real number. Higher zoom level = more zoomed out
 	desiredSeekPosMS = 0; // Unix milliseconds of the desired video seek position, or 0 if no explicit seek (i.e. seek to now)
-	actualSeekPosMS = 0; // Unix milliseconds of the actual playback position (TODO)
 	needsRender = false;
+	snapToEvents = true;
 
 	constructor(cameraID = 0) {
 		this.cameraID = cameraID;
@@ -71,8 +71,8 @@ export class SeekBarContext {
 				this.render(canvas);
 			}
 		}
-		// This gets called when a tile is loaded
-		let onTileFetched = (tile: CachedEventTile) => {
+		// This gets called when a tile is loaded (or the server says it has no tile for this time)
+		let onTileFetched = (tile: CachedEventTile | undefined) => {
 			this.needsRender = true;
 			requestAnimationFrame(reRender);
 		}
@@ -83,7 +83,7 @@ export class SeekBarContext {
 		let dpr = window.devicePixelRatio;
 		canvas.width = canvas.clientWidth * dpr;
 		canvas.height = canvas.clientHeight * dpr;
-		//console.log(`canvas size = ${canvas.width}x${canvas.height}`);
+		//console.log(`canvas size = ${canvas.clientWidth * dpr} x ${canvas.clientHeight * dpr} -> ${canvas.width} x ${canvas.height}`);
 		let cx = canvas.getContext("2d");
 		if (!cx) {
 			return;
@@ -100,7 +100,8 @@ export class SeekBarContext {
 		let startTimeMS = this.pixelToTimeMS(0, canvasWidth, secondsPerPixel);
 
 		// Render the future in a different color
-		cx.fillStyle = "#555";
+		let futureColor = "#555"
+		cx.fillStyle = futureColor;
 		let futureX = this.timeMSToPixel(new Date().getTime(), canvasWidth, pixelsPerSecond);
 		cx.fillRect(futureX, 0, canvasWidth - futureX + 1, canvasHeight);
 
@@ -115,11 +116,13 @@ export class SeekBarContext {
 		// Note that trying levels much higher than our current level is not a big penalty, because
 		// the tiles get larger and larger, and thus the number of tiles that we need to investigate/fetch
 		// become smaller and smaller (until it's usually just 1 or 2 tiles).
+		// We try for tile levels very high up (eg +5), because it's an awful experience to zoom in
+		// and then have your event disappear.
 		let idealLevel = Math.floor(this.zoomLevel);
 		idealLevel = clamp(idealLevel, 0, MaxTileLevel);
 		let bestCoverage = 0;
 		let bestLevel = idealLevel;
-		for (let tileLevel = idealLevel - 2; tileLevel < idealLevel + 3; tileLevel++) {
+		for (let tileLevel = idealLevel - 2; tileLevel < idealLevel + 5; tileLevel++) {
 			let coverage = this.cachedTileCoverage(startTimeMS, this.panTimeEndMS, canvasWidth, pixelsPerSecond, tileLevel);
 			if (coverage > bestCoverage) {
 				bestCoverage = coverage;
@@ -131,6 +134,7 @@ export class SeekBarContext {
 				}
 			}
 		}
+
 
 		//console.log(`zoomLevel = ${this.zoomLevel}, idealLevel = ${idealLevel}, bestLevel = ${bestLevel}, bestCoverage = ${bestCoverage}`);
 
@@ -152,6 +156,12 @@ export class SeekBarContext {
 			let tile = globalTileCache.getTile(this.cameraID, bestLevel, tileIdx);
 			if (tile) {
 				this.renderTile(cx, tile, canvasWidth, pixelsPerSecond, videoStartTime);
+			} else if (globalTileCache.isFetching(this.cameraID, bestLevel, tileIdx)) {
+				// Render a grey rectangle to show that data is busy loading.
+				let x1 = this.timeMSToPixel(tileStartTimeMS(bestLevel, tileIdx), canvasWidth, pixelsPerSecond);
+				let x2 = this.timeMSToPixel(tileEndTimeMS(bestLevel, tileIdx), canvasWidth, pixelsPerSecond);
+				cx.fillStyle = futureColor;
+				cx.fillRect(x1, 0, x2 - x1, 20);
 			}
 		}
 		//console.log(`Render ${endTileIdx - startTileIdx} tiles at level ${bestLevel}`);
@@ -345,13 +355,12 @@ export class SeekBarContext {
 		let bitWindowCount = new Uint8Array(BitsPerTile);
 		let startBit = 0;
 		let startX = tx1;
-		//let totalRenderedBlocks = 0;
-		//let totalRenderedWidth = 0;
 		if (videoStartTime) {
 			// Don't render bits for events that occurred so long ago that the video has already been erased.
 			// This is especially relevant for the zoomed-out high level tiles.
 			let newStartX = this.timeMSToPixel(videoStartTime.getTime(), canvasWidth, pixelsPerSecond);
 			startBit = Math.floor((newStartX - tx1) / bitWidth);
+			startBit = Math.max(0, startBit);
 			startX = tx1 + startBit * bitWidth;
 		}
 		for (let icls = 0; icls < classes.length; icls++) {
@@ -375,8 +384,6 @@ export class SeekBarContext {
 								width += boostWidth;
 							}
 							cx.fillRect(rx1, y, width, lineHeight);
-							//totalRenderedBlocks++;
-							//totalRenderedWidth += width;
 						}
 						state = state ? 0 : 1;
 						x1 = x2;
@@ -394,7 +401,6 @@ export class SeekBarContext {
 			cx.textAlign = "left";
 			cx.textBaseline = "top";
 			cx.fillText(`${tile.level}:${tile.tileIdx}`, tx1 + 4, 10);
-			//console.log(`renderTile. rendered blocks = ${totalRenderedBlocks}, width = ${totalRenderedWidth}`);
 		}
 	}
 

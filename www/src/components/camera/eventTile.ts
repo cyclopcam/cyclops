@@ -8,6 +8,14 @@ export const BitsPerTile = 1024;
 // SYNC-MAX-TILE-LEVEL
 export const MaxTileLevel = 13;
 
+export function tileStartTimeMS(level: number, tileIdx: number): number {
+	return tileIdx * ((1000 * BaseSecondsPerTile) << level);
+}
+
+export function tileEndTimeMS(level: number, tileIdx: number): number {
+	return (tileIdx + 1) * ((1000 * BaseSecondsPerTile) << level);
+}
+
 export class BinaryDecoder {
 	buffer: Uint8Array;
 	pos = 0;
@@ -74,17 +82,22 @@ export class EventTile {
 	// represents the presence of that object at that particular time point.
 	classes: { [key: string]: Uint8Array } = {};
 
+	constructor(level: number, tileIdx: number) {
+		this.level = level;
+		this.tileIdx = tileIdx;
+	}
+
 	// Uniquely identifying key for this tile
 	get key(): string {
 		return `${this.level}-${this.tileIdx}`;
 	}
 
 	get startTimeMS(): number {
-		return this.tileIdx * ((1000 * BaseSecondsPerTile) << this.level);
+		return tileStartTimeMS(this.level, this.tileIdx);
 	}
 
 	get endTimeMS(): number {
-		return (this.tileIdx + 1) * ((1000 * BaseSecondsPerTile) << this.level);
+		return tileEndTimeMS(this.level, this.tileIdx);
 	}
 
 	static getBit(bitmap: Uint8Array, bit: number): number {
@@ -112,18 +125,14 @@ export class EventTile {
 	}
 
 	static fromJSON(tj: EventTileJSON, idToString: { [key: number]: string }): EventTile {
-		let tile = new EventTile();
-		tile.level = tj.level;
-		tile.tileIdx = tj.start;
+		let tile = new EventTile(tj.level, tj.start);
 		let buffer = new Uint8Array(base64.decode(tj.tile));
 		return EventTile.decode(tile.level, tile.tileIdx, buffer, idToString);
 	}
 
 	static decode(level: number, tileIdx: number, buffer: Uint8Array, idToString: { [key: number]: string }): EventTile {
 		let raw = EventTile.decodeRaw(buffer);
-		let t = new EventTile();
-		t.level = level;
-		t.tileIdx = tileIdx;
+		let t = new EventTile(level, tileIdx);
 		for (let classID in raw) {
 			let className = idToString[parseInt(classID)];
 			if (className === undefined) {
