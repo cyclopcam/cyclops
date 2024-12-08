@@ -154,7 +154,7 @@ func (c ImageCrop) Crop(x1, y1, x2, y2 int) ImageCrop {
 // Return an ImageBatch containing this image
 func (c ImageCrop) ToBatch() ImageBatch {
 	p1 := c.CropY*c.Stride() + c.CropX*c.NChan
-	p2 := (c.CropY+c.CropHeight)*c.Stride() + (c.CropX+c.CropWidth)*c.NChan
+	p2 := p1 + c.CropHeight*c.Stride()
 	return MakeImageBatchSingle(c.CropWidth, c.CropHeight, c.NChan, c.Stride(), c.Pixels[p1:p2])
 }
 

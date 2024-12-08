@@ -81,6 +81,9 @@ func (r *VideoRecorder) recordFunc(includeHistory time.Duration) {
 	for waitingForIDR {
 		maxWaitPower := min(nAttempts, 7) // 6 = pause of 2.2 seconds, 7 = 3.4 seconds.
 		pause := time.Millisecond * 200 * time.Duration(math.Pow(1.5, float64(maxWaitPower)))
+		if nAttempts == 0 {
+			pause = 0
+		}
 		select {
 		case <-r.stop:
 			r.Log.Infof("Recorder stopped (before it started)")
@@ -106,9 +109,13 @@ func (r *VideoRecorder) recordFunc(includeHistory time.Duration) {
 			r.ringBuffer.BufferLock.Unlock()
 			// --- Unlock ---
 
-			// Write our packets outside of the lock
+			// Write our packets outside of the lock.
 			if !waitingForIDR {
+				// For an HD stream, it's likely that this backlog contains a lot of data. Enough data to
+				// fill up the write buffer of Archive. This is why immediately after writing our backlog,
+				// we trigger a flush of the write buffer.
 				r.writePackets(history.Packets)
+				r.archive.TriggerWriterBufferFlush()
 			}
 		}
 	}

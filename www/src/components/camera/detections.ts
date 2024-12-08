@@ -6,6 +6,7 @@ export function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingC
 		return;
 	let sx = can.width / detection.input.imageWidth;
 	let sy = can.height / detection.input.imageHeight;
+	let dpr = window.devicePixelRatio;
 	for (let d of detection.objects) {
 		let cls = globals.objectClasses[d.class];
 		// UPDATE: I've decided to move 'abstract class' processing to later in the pipeline,
@@ -22,11 +23,11 @@ export function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingC
 		//	continue;
 		//}
 		if (d.genuine) {
-			cx.lineWidth = 2;
+			cx.lineWidth = 2 * dpr;
 			cx.strokeStyle = "#f00";
 			cx.font = 'bold 18px sans-serif';
 		} else {
-			cx.lineWidth = 2;
+			cx.lineWidth = 2 * dpr;
 			cx.strokeStyle = "#fc0";
 			cx.font = '18px sans-serif';
 		}
@@ -34,7 +35,9 @@ export function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingC
 		cx.fillStyle = '#fff';
 		cx.textAlign = 'left';
 		cx.textBaseline = 'bottom';
-		cx.fillText(cls + ' ' + d.id, d.box.x * sx, d.box.y * sy);
+		//cx.fillText(cls + ' ' + d.id, d.box.x * sx, d.box.y * sy);
+		let confidence = Math.round(d.confidence * 100);
+		cx.fillText(confidence + "%", d.box.x * sx, d.box.y * sy);
 	}
 }
 

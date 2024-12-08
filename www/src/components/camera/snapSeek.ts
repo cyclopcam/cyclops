@@ -34,8 +34,8 @@ export class SnapSeek {
 	}
 
 	// Returns true if we found an event to snap to.
-	seekTo(seekTimeMS: number, maxSnapDistanceMS: number): boolean {
-		let events = globalEventCache.fetchEvents(this.camera.id, seekTimeMS - maxSnapDistanceMS, seekTimeMS + maxSnapDistanceMS);
+	snapSeekTo(seekTimeMS: number, maxSnapDistanceMS: number, allowFetch: boolean, onFetch?: () => void): boolean {
+		let events = globalEventCache.fetchEvents(this.camera.id, seekTimeMS - maxSnapDistanceMS, seekTimeMS + maxSnapDistanceMS, allowFetch, onFetch);
 		this.state.posMS = 0;
 		this.state.detectedClass = "";
 
@@ -54,7 +54,7 @@ export class SnapSeek {
 				}
 			}
 		}
-		console.log("snap", this.state.posMS, this.state.detectedClass);
+		//console.log("snap", this.state.posMS, this.state.detectedClass);
 
 		return success;
 	}

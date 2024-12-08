@@ -5,6 +5,7 @@ import { VideoStreamer } from "./videoDecode";
 import SeekBar from "./SeekBar.vue";
 import { SeekBarContext } from "./seekBarContext";
 import { SnapSeek } from "./snapSeek";
+import { debounce } from "@/util/util";
 
 // See videoDecode.ts for an explanation of how this works
 
@@ -26,9 +27,12 @@ let seekBar = reactive(new SeekBarContext(props.camera.id));
 let seekBarRenderKick = ref(0);
 let seekDebounceTimer = 0;
 let lastSeekAt = 0;
-let lastSeekTo = 0;
+let lastSeekToOuter = 0;
+let lastSeekToInner = 0;
 let lastSeekFetchAt = 0;
 let snapSeek = new SnapSeek(props.camera, seekBar.snap);
+let seekCount = 0;
+let lastSnapEventLoad = 0;
 
 // This is only useful if the camera is not showing anything (i.e. we can't connect to it),
 // but how to detect that? I guess we need an API for that.
@@ -135,12 +139,12 @@ function seekDebounce(desiredMS: number, snappedMS: number) {
 	// based on how fast the bar is moving.
 	let nowMS = (new Date()).getTime();
 	let sinceLastSeek = nowMS - lastSeekAt;
-	let distanceSinceLastSeek = Math.abs(desiredMS - lastSeekTo);
+	let distanceSinceLastSeek = Math.abs(desiredMS - lastSeekToInner);
 
 	// seekSpeed is how fast the user is seeking around, in ms per ms (i.e. NOT pixels, which we probably also want to use)
 	let seekSpeed = distanceSinceLastSeek / sinceLastSeek;
 	lastSeekAt = nowMS;
-	lastSeekTo = desiredMS;
+	lastSeekToInner = desiredMS;
 
 	// secondsPerPixel is the seek bar's zoom level
 	let secondsPerPixel = seekBar.secondsPerPixel();
@@ -196,8 +200,16 @@ function seekDebounce(desiredMS: number, snappedMS: number) {
 	}
 }
 
-// This is how we notice that the user wants to seek to a new position
 watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
+	onSeek(newVal, oldVal);
+})
+
+// This is how we notice that the user wants to seek to a new position
+function onSeek(newVal: number, oldVal: number) {
+	lastSeekToOuter = newVal;
+	if (newVal !== oldVal) {
+		seekCount++;
+	}
 	if (newVal === 0) {
 		// Seek to now, so basically disable seek and go back to displaying latest frame,
 		// or possibly a return to live stream.
@@ -212,8 +224,30 @@ watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
 	if (seekBar.allowSnap()) {
 		let maxSnapCssPx = 30;
 		let maxSnapMS = 1000 * maxSnapCssPx * window.devicePixelRatio * seekBar.secondsPerPixel();
-		//console.log("maxSnapMS", maxSnapMS);
-		if (snapSeek.seekTo(newVal, maxSnapMS)) {
+		// Limit max event span to 20 minutes, otherwise we end up kicking off thousands of requests.
+		maxSnapMS = Math.min(maxSnapMS, 1000 * 60 * 20);
+		let now = (new Date()).getTime();
+		let lastSeekCount = seekCount;
+		// debounce the network fetching, so that we don't get 100 requests flooding out while the finger
+		// is scanning across black space (no events).
+		let maxFetchIntervalMS = 50;
+		let allowFetch = now - lastSnapEventLoad > maxFetchIntervalMS;
+		if (allowFetch) {
+			lastSnapEventLoad = now;
+		} else {
+			setTimeout(() => {
+				if (seekCount === lastSeekCount) {
+					onSeek(newVal, newVal);
+				}
+			}, maxFetchIntervalMS);
+		}
+		let onFetchSnap = () => {
+			if (seekCount === lastSeekCount) {
+				seekBarRenderKick.value++;
+				onSeek(newVal, newVal);
+			}
+		};
+		if (snapSeek.snapSeekTo(newVal, maxSnapMS, allowFetch, onFetchSnap)) {
 			snappedMS = snapSeek.state.posMS;
 		}
 	} else {
@@ -228,7 +262,7 @@ watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
 	} else {
 		seekDebounce(desiredMS, snappedMS);
 	}
-})
+}
 
 onUnmounted(() => {
 	clearTimeout(seekDebounceTimer);

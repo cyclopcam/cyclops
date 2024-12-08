@@ -34,13 +34,15 @@ class EventCacheBucket {
 // We break time down into discreet sections, and when fetching, we fetch those
 // discreet buckets.
 export class EventCache {
-	bucketWidthMS = 5 * 60 * 1000; // Each bucket is 5 minutes
+	// Each bucket is 10 minutes
+	// 10 seems like the right number
+	bucketWidthMS = 10 * 60 * 1000;
 	maxBucketsInCache = 200;
 	buckets: { [key: string]: EventCacheBucket } = {};
 	busyFetching: { [key: string]: EventCacheBucket } = {};
 
 	// Fetch all events in the given timespan
-	fetchEvents(cameraID: number, startTimeMS: number, endTimeMS: number, onFetch?: fetchCallback): CameraEvent[] {
+	fetchEvents(cameraID: number, startTimeMS: number, endTimeMS: number, allowFetch: boolean, onFetch?: fetchCallback): CameraEvent[] {
 		let startBucket = Math.floor(startTimeMS / this.bucketWidthMS);
 		let endBucket = Math.ceil(endTimeMS / this.bucketWidthMS);
 		let outEvents: CameraEvent[] = [];
@@ -53,7 +55,7 @@ export class EventCache {
 					if (onFetch) {
 						busy.onLoad.push(onFetch);
 					}
-				} else {
+				} else if (allowFetch) {
 					this.fetchBucket(cameraID, bucketIdx, onFetch);
 				}
 				continue;

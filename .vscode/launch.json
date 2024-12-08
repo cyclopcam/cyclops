@@ -299,6 +299,26 @@
 			]
 		},
 		{
+			"name": "labelvideo.go",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+			"program": "cmd/labelvideo/labelvideo.go",
+			"cwd": "${workspaceFolder}",
+			"args": [
+				"-i",
+				"${workspaceFolder}/testdata/tracking/0015-LD.mp4",
+				"-o",
+				"test.json",
+				"-c",
+				"person",
+				"-m",
+				"20",
+				"-n",
+				"yolov8m"
+			]
+		},
+		{
 			"name": "predict.go",
 			"type": "go",
 			"request": "launch",
@@ -307,21 +327,7 @@
 			"cwd": "${workspaceFolder}",
 			"args": [
 				"-i",
-				"/home/ben/tmp/mediumRes/swing/highRes.mp4",
-				"-o",
-				"foo.json",
-				"--minsize",
-				"75",
-				"--classes",
-				"person",
-				"--model",
-				"models/yolov8l",
-				"--vheight",
-				"1200",
-				"--startframe",
-				"45",
-				"--endframe",
-				"55"
+				"something.jpg",
 			]
 		},
 		{

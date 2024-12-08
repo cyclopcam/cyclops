@@ -107,6 +107,7 @@ func DownloadModel(logs logs.Log, device *nnaccel.Device, modelDir, modelName st
 
 // LoadModel loads a neural network from disk.
 // If the model consists of several files, then modelName is the base filename, without the extensions.
+// modelName example is "yolov8m"
 func LoadModel(logs logs.Log, device *nnaccel.Device, modelDir, modelName string, width, height int, threadingMode nn.ThreadingMode, modelSetup *nn.ModelSetup) (nn.ObjectDetector, error) {
 	// modelName examples:
 	// yolov8m

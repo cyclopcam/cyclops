@@ -135,6 +135,7 @@ type Archive struct {
 	bufferWriterStopped  chan bool      // Buffer writer thread closes this when it exits
 	sweepStop            chan bool      // Tell the sweeper to stop
 	sweeperStopped       chan bool      // Sweeper closes this once it has stopped
+	kickWriteBufferFlush chan bool      // Used to wake up the write buffer flush thread
 	recentWriteMaxQueue  int            // Max number of NALU headers we'll store in videoStream.recentWrite
 	staticSettings       StaticSettings // Initialization settings (can't be changed while Open)
 
@@ -186,7 +187,7 @@ func DefaultStaticSettings() StaticSettings {
 		MaxBytesPerRead:               256 * 1024 * 1024, // 256MB
 		SweepInterval:                 time.Minute,
 		MaxWriteBufferSize:            1024 * 1024,
-		MaxWriteBufferDiscardMultiple: 32, // MaxWriteBufferDiscardMultiple * MaxWriteBufferSize = total RAM per buffer
+		MaxWriteBufferDiscardMultiple: 32, // MaxWriteBufferDiscardMultiple * MaxWriteBufferSize = max RAM per buffer
 		MaxWriteBufferTime:            5 * time.Second,
 		//AsyncWrites:             true,
 	}
@@ -224,6 +225,8 @@ func Open(logger logs.Log, baseDir string, formats []VideoFormat, initSettings S
 	archive := &Archive{
 		log:                  logs.NewPrefixLogger(logger, "Archive:"),
 		shutdown:             make(chan bool),
+		bufferWriterStopped:  make(chan bool),
+		kickWriteBufferFlush: make(chan bool, 10),
 		baseDir:              baseDir,
 		formats:              formats,
 		streams:              map[string]*videoStream{},

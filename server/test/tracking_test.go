@@ -27,6 +27,14 @@ const DumpTrackingVideo = false
 // If true, then render a still image with annotation of the first violating detection
 const DumpFirstFalsePositive = false
 
+// concrete classes which map to "vehicle"
+var vehicleClasses = map[string]bool{
+	"car":        true,
+	"motorcycle": true,
+	"truck":      true,
+	"bus":        true,
+}
+
 type EventTrackingParams struct {
 	ModelNameLQ string  // eg "yolov8m"
 	ModelNameHQ string  // eg "yolov8l"
@@ -98,20 +106,11 @@ func drawImageToVideo(t *testing.T, video *videox.VideoEncoder, d *gg.Context, p
 }
 
 func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *EventTrackingTestCase, nnWidth, nnHeight int) {
-	absPath := FromTestPathToRepoRoot(tcase.VideoFilename)
-	decoder, err := videox.NewVideoFileDecoder(absPath)
+	decoder, err := videox.NewVideoFileDecoder(FromTestPathToRepoRoot(tcase.VideoFilename))
 	require.NoError(t, err)
 	defer decoder.Close()
 
 	logger := logs.NewTestingLog(t)
-
-	// concrete classes which map to "vehicle"
-	vehicleClasses := map[string]bool{
-		"car":        true,
-		"motorcycle": true,
-		"truck":      true,
-		"bus":        true,
-	}
 
 	t.Logf("Video is %v x %v", decoder.Width(), decoder.Height())
 	var debugVideo *videox.VideoEncoder
@@ -426,6 +425,12 @@ func TestEventTracking(t *testing.T) {
 		{
 			// This generated a false positive of a person (actually a cat at night) on the hailo8L yolov8m
 			VideoFilename: "testdata/tracking/0014-LD.mp4",
+			NumPeople:     Range{0, 0},
+			NumVehicles:   Range{0, 0},
+		},
+		{
+			// This generated a false positive of a person (actually a dog at twilight) on the hailo8L yolov8m ANB yolov8l
+			VideoFilename: "testdata/tracking/0015-LD.mp4",
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{0, 0},
 		},

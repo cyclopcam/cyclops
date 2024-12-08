@@ -86,6 +86,12 @@ export class SeekBarContext {
 		return this.desiredSeekPosMS;
 	}
 
+	// schedule a render on next animation frame
+	invalidate(canvas: HTMLCanvasElement) {
+		this.needsRender = true;
+		requestAnimationFrame(() => this.render(canvas));
+	}
+
 	render(canvas: HTMLCanvasElement) {
 		let reRender = () => {
 			if (this.needsRender) {

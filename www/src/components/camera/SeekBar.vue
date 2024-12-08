@@ -43,7 +43,7 @@ let exportClipStartTime = 0; // dev tool (export clip by right clicking once on 
 
 watch(() => props.renderKick, () => {
 	if (canvas.value) {
-		props.context.render(canvas.value! as HTMLCanvasElement);
+		props.context.invalidate(canvas.value! as HTMLCanvasElement);
 	}
 });
 
@@ -60,7 +60,7 @@ function autoPanToEndAndRender() {
 	if (props.context.panTimeEndIsNow) {
 		let canv = canvas.value! as HTMLCanvasElement;
 		props.context.panToNow();
-		props.context.render(canv);
+		props.context.invalidate(canv);
 	}
 }
 
@@ -98,7 +98,7 @@ function onWheel(e: WheelEvent) {
 //	props.context.zoomLevel -= 1;
 //	props.context.panToMillisecond(panMS);
 //	props.context.seekToMillisecond(seekMS);
-//	props.context.render(canv);
+//	props.context.invalidate(canv);
 //}
 
 function onPointerDownRightMouse(e: PointerEvent) {
@@ -191,6 +191,11 @@ function pointerUpOrCancel(e: PointerEvent) {
 	if (points.length === 0) {
 		if (state === States.Seek) {
 			emits('seekend');
+		} else if (state === States.Neutral) {
+			if (e.pointerType === "mouse") {
+				// Perform a seek on a mouse click
+				seekTo(pointerPixelToTimeMS(e.offsetX));
+			}
 		}
 		// Only reset to Neutral once both fingers lift.
 		// This is to prevent a pinch-zoom from becoming a seek after one of the fingers
@@ -236,14 +241,21 @@ function onPointerMoveSeek(e: PointerEvent) {
 	if (state !== States.Seek) {
 		return;
 	}
-	let x = pxToCanvas(e.offsetX);
-	let tx = props.context.transform(canvas.value! as HTMLCanvasElement);
-	let timeMS = tx.pixelToTime(x);
+	seekTo(pointerPixelToTimeMS(e.offsetX));
+}
+
+function seekTo(timeMS: number) {
 	// The following two calls are just to move the scroll position indicator around.
 	// Player.vue watches for changes to seekTimeMS, and then does the actual
 	// image/video loading. It also does the debouncing.
 	props.context.seekToMillisecond(timeMS);
-	props.context.render(canvas.value! as HTMLCanvasElement);
+	props.context.invalidate(canvas.value! as HTMLCanvasElement);
+}
+
+function pointerPixelToTimeMS(offsetX: number): number {
+	let x = pxToCanvas(offsetX);
+	let tx = props.context.transform(canvas.value! as HTMLCanvasElement);
+	return tx.pixelToTime(x);
 }
 
 function onPointerMovePinchZoom(e: PointerEvent) {
@@ -281,7 +293,7 @@ function onPointerMovePinchZoom(e: PointerEvent) {
 
 	//console.log(orgTime1MS / 1000, orgTime2MS / 1000, newPixelsPerSecond, props.context.zoomLevel);
 
-	props.context.render(canvas.value! as HTMLCanvasElement);
+	props.context.invalidate(canvas.value! as HTMLCanvasElement);
 }
 
 // Zoom around a single point, eg when zooming in/out with the mouse wheel
@@ -301,7 +313,7 @@ function zoomAroundSinglePoint(offsetX: number, zoomDelta: number) {
 	let timeAtRightEdgeMS = timeMS + msToRightEdge;
 	props.context.panToMillisecond(timeAtRightEdgeMS);
 
-	props.context.render(canv);
+	props.context.invalidate(canv);
 }
 
 function oneFingerZoomTimer() {
@@ -329,7 +341,7 @@ function afterZoom() {
 
 onMounted(() => {
 	let canv = canvas.value! as HTMLCanvasElement
-	props.context.render(canv);
+	props.context.invalidate(canv);
 
 	// On mobile there's this behaviour where the initial render has a slightly different
 	// scale to the first polled render (which comes 5 seconds after page load). This

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/akamensky/argparse"
@@ -29,7 +28,8 @@ func main() {
 	startFrame := parser.Int("", "startframe", &argparse.Options{Help: "Start processing at frame", Required: false, Default: 0})
 	endFrame := parser.Int("", "endframe", &argparse.Options{Help: "Stop processing at frame", Required: false, Default: 0})
 	classes := parser.String("c", "classes", &argparse.Options{Help: "Comma-separated list of named classes to detect", Required: true})
-	modelFile := parser.String("n", "model", &argparse.Options{Help: "Path to NN model file", Required: true})
+	modelDir := parser.String("", "modeldir", &argparse.Options{Help: "Path to NN model dir", Required: false, Default: "models"})
+	modelName := parser.String("n", "model", &argparse.Options{Help: "NN model name", Required: false, Default: "yolov8m"})
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
@@ -45,12 +45,14 @@ func main() {
 		EndFrame:       *endFrame,
 		Classes:        strings.Split(*classes, ","),
 		StdOutProgress: true,
+		StdOutStats:    true,
+		NumThreads:     1, // useless right now - this is per-image threads
 	}
 
 	// nil device = NCNN
 	var device *nnaccel.Device
 
-	model, err := nnload.LoadModel(logger, device, filepath.Dir(*modelFile), filepath.Base(*modelFile), 640, 480, nn.ThreadingModeParallel, nn.NewModelSetup())
+	model, err := nnload.LoadModel(logger, device, *modelDir, *modelName, 640, 480, nn.ThreadingModeSingle, nn.NewModelSetup())
 	check(err)
 
 	videoLabels, err := nn.RunInferenceOnVideoFile(model, *input, options)

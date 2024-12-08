@@ -18,11 +18,31 @@ func (a *Archive) writeBufferThread() {
 		select {
 		case <-a.shutdown:
 			keepRunning = false
-		case <-time.After(1 * time.Second):
+		case <-time.After(1000 * time.Millisecond):
+			// Once, on a random sunday testing, I got:
+			// "2024-12-08 11:12:06.800349 Error Archive: Error writing to stream cam-2-HD: Write buffer for stream cam-2-HD is full. Discarding payload."
+			// That prompted me to lower the interval from 1s to 200ms.
+			// I don't understand why the buffer filled up. The error was transient, and went away after 600ms.
+			// aahhhh OK.. I understand now. This error always happens when we start recording, which means it occurs
+			// when we're flushing the ring buffer. Obviously at this stage we've got plenty of data to flush (i.e. much
+			// more than realtime). So we need a workaround for that scenario.
+			// The workaround I've added is kickBufferFlush.
+			// I raised the timeout back to 1000 milliseconds.
+			a.flushWriteBuffers(false)
+		case <-a.kickWriteBufferFlush:
+			// drain kick channel
+			for len(a.kickWriteBufferFlush) != 0 {
+				<-a.kickWriteBufferFlush
+			}
 			a.flushWriteBuffers(false)
 		}
 	}
 	close(a.bufferWriterStopped)
+}
+
+// Trigger a write buffer flush to happen soon
+func (a *Archive) TriggerWriterBufferFlush() {
+	a.kickWriteBufferFlush <- true
 }
 
 // Write a payload to the archive.

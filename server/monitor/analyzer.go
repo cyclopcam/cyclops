@@ -128,7 +128,8 @@ type TrackedObject struct {
 	// For example: {car: 2, truck: 8}.
 	// This is only applicable to objects that are ambiguous - specifically vehicles which will often flop between car and
 	// truck as different parts of the vehicle come into view.
-	ClassCount map[int]int `json:"classCount"`
+	// This was just an idea, but I haven't needed it yet.
+	//ClassCount map[int]int `json:"classCount"`
 
 	// Number of frames that we have considered this object genuine.
 	// If Genuine = 0, then we still don't consider it genuine.
