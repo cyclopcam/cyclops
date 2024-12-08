@@ -4,6 +4,7 @@ import { onMounted, onUnmounted, watch, ref, reactive } from "vue";
 import { VideoStreamer } from "./videoDecode";
 import SeekBar from "./SeekBar.vue";
 import { SeekBarContext } from "./seekBarContext";
+import { SnapSeek } from "./snapSeek";
 
 // See videoDecode.ts for an explanation of how this works
 
@@ -27,6 +28,7 @@ let seekDebounceTimer = 0;
 let lastSeekAt = 0;
 let lastSeekTo = 0;
 let lastSeekFetchAt = 0;
+let snapSeek = new SnapSeek(props.camera, seekBar.snap);
 
 // This is only useful if the camera is not showing anything (i.e. we can't connect to it),
 // but how to detect that? I guess we need an API for that.
@@ -97,7 +99,10 @@ function videoStyle(): any {
 
 watch(() => props.camera, (newVal, oldVal) => {
 	console.log("New cameraID = ", newVal.id);
-	seekBar.cameraID = newVal.id;
+	streamer.close();
+	streamer = new VideoStreamer(newVal);
+	seekBar = reactive(new SeekBarContext(newVal.id));
+	snapSeek = new SnapSeek(newVal, seekBar.snap);
 })
 
 watch(() => props.play, (newVal, oldVal) => {
@@ -124,24 +129,30 @@ function seekToNoDelay(seekTo: number, resolution: Resolution, keyframeOnly: boo
 	emits('seek', seekTo);
 }
 
-function seekDebounce(seekTo: number) {
+function seekDebounce(desiredMS: number, snappedMS: number) {
 	// These two variables must be determined dynamically, based on how fast the
 	// user is moving the seek bar, and how zoomed in we are. But mostly I think,
 	// based on how fast the bar is moving.
 	let nowMS = (new Date()).getTime();
 	let sinceLastSeek = nowMS - lastSeekAt;
-	let distanceSinceLastSeek = Math.abs(seekTo - lastSeekTo);
+	let distanceSinceLastSeek = Math.abs(desiredMS - lastSeekTo);
 
 	// seekSpeed is how fast the user is seeking around, in ms per ms (i.e. NOT pixels, which we probably also want to use)
 	let seekSpeed = distanceSinceLastSeek / sinceLastSeek;
 	lastSeekAt = nowMS;
-	lastSeekTo = seekTo;
+	lastSeekTo = desiredMS;
 
 	// secondsPerPixel is the seek bar's zoom level
 	let secondsPerPixel = seekBar.secondsPerPixel();
 
+	// If our seek position has been snapped to an event of interest, then don't restrict
+	// ourselves to keyframes. Doing so often ends up putting the resulting frame too far
+	// away from the moment of interest. Snapping to keyframes is 100% a performance
+	// optimization, and if necessary for quality, we must avoid it.
+	let isSnapped = desiredMS !== snappedMS;
+
 	// These constants here are all just empirical thumbsucks
-	let keyframeOnly = true;
+	let keyframeOnly = !isSnapped;
 	let delay = 30;
 	if (secondsPerPixel < 2 || seekSpeed < 8) {
 		keyframeOnly = false;
@@ -158,7 +169,7 @@ function seekDebounce(seekTo: number) {
 	} else if (seekSpeed < 20) {
 		maxFetchesPerSecond = 2;
 	}
-	//console.log(`Zoom seconds per pixel: ${secondsPerPixel}, seekSpeed: ${seekSpeed}, maxFetchesPerSecond: ${maxFetchesPerSecond}`);
+	//console.log(`Zoom/seconds per pixel: ${secondsPerPixel}, seekSpeed: ${seekSpeed}, maxFetchesPerSecond: ${maxFetchesPerSecond}`);
 
 	let intervalMS = 1000 / maxFetchesPerSecond;
 	let sinceLastSeekFetch = nowMS - lastSeekFetchAt;
@@ -169,7 +180,7 @@ function seekDebounce(seekTo: number) {
 		// every single movement keeps getting debounced. Kicking the can down the road.
 		// With this path, we at least maintain some FPS.
 		clearTimeout(seekDebounceTimer);
-		seekToNoDelay(seekTo, 'ld', keyframeOnly);
+		seekToNoDelay(snappedMS, 'ld', keyframeOnly);
 		lastSeekFetchAt = nowMS;
 	} else {
 		// BUT, if we're in a low FPS regime (eg high seekSpeed), then debounce is still a great thing
@@ -180,10 +191,9 @@ function seekDebounce(seekTo: number) {
 		clearTimeout(seekDebounceTimer);
 		seekDebounceTimer = window.setTimeout(() => {
 			lastSeekFetchAt = nowMS;
-			seekToNoDelay(seekTo, 'ld', keyframeOnly);
+			seekToNoDelay(snappedMS, 'ld', keyframeOnly);
 		}, delay);
 	}
-
 }
 
 // This is how we notice that the user wants to seek to a new position
@@ -193,13 +203,30 @@ watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
 		// or possibly a return to live stream.
 		return;
 	}
-	//console.log("Seek to ", newVal);
-	if (streamer.hasCachedSeekFrame(newVal, 'hd')) {
-		seekToNoDelay(newVal, 'hd', false);
-	} else if (streamer.hasCachedSeekFrame(newVal, 'ld')) {
-		seekToNoDelay(newVal, 'ld', false);
+
+	//console.log("zoomLevel", seekBar.zoomLevel, "allowSnap", seekBar.allowSnap());
+	let desiredMS = newVal;
+	let snappedMS = newVal;
+
+	// Snap to events when zoomed out far
+	if (seekBar.allowSnap()) {
+		let maxSnapCssPx = 30;
+		let maxSnapMS = 1000 * maxSnapCssPx * window.devicePixelRatio * seekBar.secondsPerPixel();
+		//console.log("maxSnapMS", maxSnapMS);
+		if (snapSeek.seekTo(newVal, maxSnapMS)) {
+			snappedMS = snapSeek.state.posMS;
+		}
 	} else {
-		seekDebounce(newVal);
+		snapSeek.clear();
+	}
+
+	//console.log("Seek to ", newVal);
+	if (streamer.hasCachedSeekFrame(snappedMS, 'hd')) {
+		seekToNoDelay(snappedMS, 'hd', false);
+	} else if (streamer.hasCachedSeekFrame(newVal, 'ld')) {
+		seekToNoDelay(snappedMS, 'ld', false);
+	} else {
+		seekDebounce(desiredMS, snappedMS);
 	}
 })
 

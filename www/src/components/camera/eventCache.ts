@@ -1,5 +1,11 @@
 import { CameraEvent } from "./events";
 
+function bucketKey(cameraID: number, bucketIdx: number): string {
+	return `${cameraID}-${bucketIdx}`;
+}
+
+type fetchCallback = () => void;
+
 class EventCacheBucket {
 	index: number; // Index of bucket (timeMS / bucketWidthMS)
 	cameraID: number;
@@ -7,6 +13,7 @@ class EventCacheBucket {
 	fetchedAtMS: number;
 	lastUsedMS: number;
 	containsFutureEvents: boolean = false; // True if the end time of the bucket is not at least 5 seconds in the past
+	onLoad: fetchCallback[] = [];
 
 	constructor(index: number, bucketEndTime: Date, cameraID: number, events: CameraEvent[] = []) {
 		let now = new Date();
@@ -28,20 +35,28 @@ class EventCacheBucket {
 // discreet buckets.
 export class EventCache {
 	bucketWidthMS = 5 * 60 * 1000; // Each bucket is 5 minutes
-	maxBucketsInCache = 100;
+	maxBucketsInCache = 200;
 	buckets: { [key: string]: EventCacheBucket } = {};
-	isFetchInProgress: { [key: string]: boolean } = {};
+	busyFetching: { [key: string]: EventCacheBucket } = {};
 
 	// Fetch all events in the given timespan
-	async fetchEvents(cameraID: number, startTime: Date, endTime: Date): Promise<CameraEvent[]> {
-		let startBucket = Math.floor(startTime.getTime() / this.bucketWidthMS);
-		let endBucket = Math.floor(endTime.getTime() / this.bucketWidthMS);
+	fetchEvents(cameraID: number, startTimeMS: number, endTimeMS: number, onFetch?: fetchCallback): CameraEvent[] {
+		let startBucket = Math.floor(startTimeMS / this.bucketWidthMS);
+		let endBucket = Math.ceil(endTimeMS / this.bucketWidthMS);
 		let outEvents: CameraEvent[] = [];
 		let haveEvent = new Set<number>();
-		for (let bucketIdx = startBucket; bucketIdx <= endBucket; bucketIdx++) {
+		for (let bucketIdx = startBucket; bucketIdx < endBucket; bucketIdx++) {
 			let bucket = this.getBucket(cameraID, bucketIdx);
 			if (!bucket) {
-				bucket = await this.fetchBucket(cameraID, bucketIdx);
+				let busy = this.busyFetching[bucketKey(cameraID, bucketIdx)];
+				if (busy) {
+					if (onFetch) {
+						busy.onLoad.push(onFetch);
+					}
+				} else {
+					this.fetchBucket(cameraID, bucketIdx, onFetch);
+				}
+				continue;
 			}
 			for (let ev of bucket.events) {
 				// We need to de-dup the events that we return, because the same event
@@ -57,8 +72,7 @@ export class EventCache {
 	}
 
 	getBucket(cameraID: number, bucketIdx: number): EventCacheBucket | null {
-		let key = `${cameraID}-${bucketIdx}`;
-		let bucket = this.buckets[key];
+		let bucket = this.buckets[bucketKey(cameraID, bucketIdx)];
 		if (bucket === undefined) {
 			return null;
 		}
@@ -66,15 +80,27 @@ export class EventCache {
 		return bucket;
 	}
 
-	async fetchBucket(cameraID: number, bucketIdx: number): Promise<EventCacheBucket> {
+	async fetchBucket(cameraID: number, bucketIdx: number, onLoad: fetchCallback | undefined) {
 		this.autoEvict();
 		let key = `${cameraID}-${bucketIdx}`;
 		let startTime = new Date(bucketIdx * this.bucketWidthMS);
 		let endTime = new Date((bucketIdx + 1) * this.bucketWidthMS);
-		let events = await CameraEvent.fetchEvents(cameraID, startTime, endTime);
-		let bucket = new EventCacheBucket(bucketIdx, endTime, cameraID, events);
+		let bucket = new EventCacheBucket(bucketIdx, endTime, cameraID, []);
+		if (onLoad) {
+			bucket.onLoad.push(onLoad);
+		}
+		this.busyFetching[key] = bucket;
+		try {
+			bucket.events = await CameraEvent.fetchEvents(cameraID, startTime, endTime);
+		} catch (e) {
+			// TODO: show network failure
+			console.error(`Failed to fetch events for ${key}: ${e}`);
+		}
+		delete this.busyFetching[key];
 		this.buckets[key] = bucket;
-		return bucket;
+		for (let cb of bucket.onLoad) {
+			cb();
+		}
 	}
 
 	autoEvict() {

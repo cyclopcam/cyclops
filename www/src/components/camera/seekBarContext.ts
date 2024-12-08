@@ -5,6 +5,7 @@ import { CachedEventTile, globalTileCache } from "./eventTileCache";
 import { clamp, monthNamesShort, zeroPad } from "@/util/util";
 
 import { BitsPerTile, BaseSecondsPerTile, MaxTileLevel } from "./eventTile";
+import { SnapSeekState } from "./snapSeek";
 
 // SeekBar draws the lines at the bottom of a video which show the moments
 // of interest when particular things were detected. For example, the bar might
@@ -20,9 +21,16 @@ export class SeekBarContext {
 	panTimeEndMS = new Date().getTime(); // Unix milliseconds at the end of the seek bar
 	panTimeEndIsNow = false; // If our last seek call was seekToNow()
 	zoomLevel = 3; // 2^zoom seconds per pixel. This can be an arbitrary real number. Higher zoom level = more zoomed out
-	desiredSeekPosMS = 0; // Unix milliseconds of the desired video seek position, or 0 if no explicit seek (i.e. seek to now)
+
+	// Unix milliseconds of the desired video seek position, or 0 if no explicit seek (i.e. seek to now)
+	// This is the place where the user's finger (or mouse cursor) is actually pointing, before we've taken snapping or auto-play into account.
+	// See also actualSeekPosMS.
+	desiredSeekPosMS = 0;
+
 	needsRender = false;
-	snapToEvents = true;
+	snap = new SnapSeekState();
+	classes = ["person", "car", "truck"];
+	colors = ["rgba(255, 40, 0, 1)", "rgba(0, 255, 0, 1)", "rgba(150, 100, 255, 1)"];
 
 	constructor(cameraID = 0) {
 		this.cameraID = cameraID;
@@ -63,6 +71,19 @@ export class SeekBarContext {
 	setZoomLevel(zoomLevel: number) {
 		zoomLevel = clamp(zoomLevel, -7, 15);
 		this.zoomLevel = zoomLevel;
+		//console.log("zoomLevel = " + zoomLevel);
+	}
+
+	allowSnap(): boolean {
+		return this.zoomLevel > -1.5;
+	}
+
+	// The position where we want the video frame
+	actualSeekPosMS(): number {
+		if (this.snap.posMS !== 0) {
+			return this.snap.posMS;
+		}
+		return this.desiredSeekPosMS;
 	}
 
 	render(canvas: HTMLCanvasElement) {
@@ -166,12 +187,31 @@ export class SeekBarContext {
 		}
 		//console.log(`Render ${endTileIdx - startTileIdx} tiles at level ${bestLevel}`);
 
+		let snapClassIdx = this.classes.indexOf(this.snap.detectedClass);
+		let haveSnap = snapClassIdx !== -1 && this.snap.posMS !== 0;
+
 		// Render seek bar
 		if (this.desiredSeekPosMS !== 0) {
 			let desiredSeekPx = this.timeMSToPixel(this.desiredSeekPosMS, canvasWidth, pixelsPerSecond);
 			cx.fillStyle = "rgba(255, 255, 255, 1)";
+			if (haveSnap) {
+				cx.fillStyle = "rgba(255, 255, 255, 0.4)";
+			}
 			let w = 1;
 			cx.fillRect(desiredSeekPx - w, 0, 2 * w, canvasHeight);
+		}
+
+		// Render snapped seek position
+		if (haveSnap) {
+			let posPx = this.timeMSToPixel(this.snap.posMS, canvasWidth, pixelsPerSecond);
+			cx.fillStyle = "rgba(40, 80, 240, 1)";
+			let w = 0.5 * dpr;
+			cx.fillRect(posPx - w, 0, 2 * w, canvasHeight);
+			let boxSize = 8;
+			let yPad = 1 * dpr;
+			let { lineHeight, y } = this.tileTimelineSpan(this.snap.detectedClass)!;
+			cx.fillStyle = this.colors[snapClassIdx];
+			cx.fillRect(posPx - boxSize / 2, y - yPad, boxSize, lineHeight + yPad * 2);
 		}
 	}
 
@@ -339,16 +379,24 @@ export class SeekBarContext {
 		}
 	}
 
+	// Return the Y coordinate span of the timeline representing the given class of object (eg person, vehicle).
+	// If the object class is not drawn, returns null
+	tileTimelineSpan(detectedClass: string): { lineHeight: number, y: number } | null {
+		let topY = 4.5;
+		let lineHeight = 3 * window.devicePixelRatio;
+		let idx = this.classes.indexOf(detectedClass);
+		if (idx === -1) {
+			return null
+		} else {
+			return { lineHeight, y: topY + idx * (lineHeight + 1) };
+		}
+	}
+
 	renderTile(cx: CanvasRenderingContext2D, tile: EventTile, canvasWidth: number, pixelsPerSecond: number, videoStartTime?: Date) {
 		let dpr = window.devicePixelRatio;
 		let { x1: tx1, x2: tx2 } = this.renderedTileBounds(tile, canvasWidth, pixelsPerSecond);
 		let bitWidth = (tx2 - tx1) / BitsPerTile;
-		let classes = ["person", "car", "truck"];
-		let colors = ["rgba(255, 40, 0, 1)", "rgba(0, 255, 0, 1)", "rgba(150, 100, 255, 1)"];
 		let debugMode = false; // Draw tile level and index onto canvas. Super useful when debugging tile creation bugs on the server.
-		let y = 4.5;
-		let lineHeight = 3 * dpr;
-		//let boostThreshold = 2 * dpr;
 		let boostThreshold = 4; // this is coupled to the sliding window size. If you make the window size bigger, you should make this bigger too.
 		let boostLeft = 1.0 * dpr;
 		let boostWidth = 1.75 * boostLeft; // should be about 2x boostLeft to keep the dot unbiased
@@ -363,15 +411,16 @@ export class SeekBarContext {
 			startBit = Math.max(0, startBit);
 			startX = tx1 + startBit * bitWidth;
 		}
-		for (let icls = 0; icls < classes.length; icls++) {
-			cx.fillStyle = colors[icls];
-			let bitmap = tile.classes[classes[icls]];
+		for (let icls = 0; icls < this.classes.length; icls++) {
+			cx.fillStyle = this.colors[icls];
+			let bitmap = tile.classes[this.classes[icls]];
 			if (bitmap) {
 				SeekBarContext.countBitsInSlidingWindow(bitmap, bitWindowCount, 3);
 				//console.log(this.cameraID, "window", bitWindowCount);
 				let state = 0;
 				let x1 = startX;
 				let x2 = startX;
+				let { lineHeight, y } = this.tileTimelineSpan(this.classes[icls])!;
 				for (let bit = startBit; bit <= BitsPerTile; bit++) {
 					if (bit === BitsPerTile || EventTile.getBit(bitmap, bit) !== state) {
 						if (state === 1) {
@@ -391,7 +440,6 @@ export class SeekBarContext {
 					x2 += bitWidth;
 				}
 			}
-			y += lineHeight + 1;
 		}
 		if (debugMode) {
 			cx.strokeStyle = "rgba(255, 255, 255, 0.5)";

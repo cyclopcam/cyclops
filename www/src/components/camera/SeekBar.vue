@@ -271,6 +271,7 @@ function onPointerMovePinchZoom(e: PointerEvent) {
 	let orgTime2MS = txAtPinchStart.pixelToTime(points[1].x1);
 	let newPixelsPerSecond = (points[1].x2 - points[0].x2) / ((orgTime2MS - orgTime1MS) / 1000);
 	props.context.setZoomLevel(SeekBarTransform.pixelsPerSecondToZoomLevel(newPixelsPerSecond));
+	afterZoom();
 
 	//console.log(new Date(orgTime1MS));
 
@@ -291,6 +292,7 @@ function zoomAroundSinglePoint(offsetX: number, zoomDelta: number) {
 	let txOld = props.context.transform(canv);
 	let timeMS = txOld.pixelToTime(x);
 	props.context.setZoomLevel(props.context.zoomLevel + zoomDelta);
+	afterZoom();
 
 	let txNew = props.context.transform(canv);
 	let pixelsToRightEdge = txOld.canvasWidth - x;
@@ -317,6 +319,12 @@ function oneFingerZoomTimer() {
 	}
 
 	setTimeout(oneFingerZoomTimer, 16);
+}
+
+function afterZoom() {
+	if (!props.context.allowSnap()) {
+		props.context.snap.clear();
+	}
 }
 
 onMounted(() => {

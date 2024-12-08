@@ -22,11 +22,11 @@ export function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingC
 		//	continue;
 		//}
 		if (d.genuine) {
-			cx.lineWidth = 1;
+			cx.lineWidth = 2;
 			cx.strokeStyle = "#f00";
 			cx.font = 'bold 18px sans-serif';
 		} else {
-			cx.lineWidth = 1;
+			cx.lineWidth = 2;
 			cx.strokeStyle = "#fc0";
 			cx.font = '18px sans-serif';
 		}

@@ -44,16 +44,24 @@ class CameraEventObject {
 		this.cls = cls;
 		this.positions = [];
 	}
+
+	startTimeMS(): number {
+		return this.positions[0].timeMS;
+	}
+
+	endTimeMS(): number {
+		return this.positions[this.positions.length - 1].timeMS;
+	}
 }
 
 class CameraEventObjectPosition {
 	box: Rect;
-	time: Date;
+	timeMS: number;
 	confidence: number;
 
-	constructor(box: Rect, time: Date, confidence: number) {
+	constructor(box: Rect, timeMS: number, confidence: number) {
 		this.box = box;
-		this.time = time;
+		this.timeMS = timeMS;
 		this.confidence = confidence;
 	}
 }
@@ -63,15 +71,15 @@ class CameraEventObjectPosition {
 export class CameraEvent {
 	id: number; // Internal database ID of the event, can be used to uniquely identify events
 	objects: CameraEventObject[];
-	startTime: Date;
-	endTime: Date;
+	startTimeMS: number;
+	endTimeMS: number;
 	resolution: [number, number]; // [width, height] of camera stream on which detection was run
 
-	constructor(id: number, startTime: Date, endTime: Date) {
+	constructor(id: number, startTime: number, endTime: number) {
 		this.id = id;
 		this.objects = [];
-		this.startTime = startTime;
-		this.endTime = endTime;
+		this.startTimeMS = startTime;
+		this.endTimeMS = endTime;
 		this.resolution = [0, 0];
 	}
 
@@ -80,14 +88,14 @@ export class CameraEvent {
 		let j = await r.json() as GetEventDetailsJSON;
 		let outEvents: CameraEvent[] = [];
 		for (let ev of j.events) {
-			let outEvent = new CameraEvent(ev.id, new Date(ev.time), new Date(ev.time + ev.duration));
+			let outEvent = new CameraEvent(ev.id, ev.time, ev.time + ev.duration);
 			outEvent.resolution = ev.resolution;
 			for (let objects of ev.detections.objects) {
 				let outObject = new CameraEventObject(j.idToString[objects.class]);
 				outObject.positions = objects.positions.map((pos) => {
 					return new CameraEventObjectPosition(
 						new Rect(pos.box[0], pos.box[1], pos.box[2], pos.box[3]),
-						new Date(ev.time + pos.time),
+						ev.time + pos.time,
 						pos.confidence
 					);
 				});
