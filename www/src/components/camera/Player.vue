@@ -33,6 +33,7 @@ let lastSeekFetchAt = 0;
 let snapSeek = new SnapSeek(props.camera, seekBar.snap);
 let seekCount = 0;
 let lastSnapEventLoad = 0;
+let snapFetchDebounceTimer = 0;
 
 // This is only useful if the camera is not showing anything (i.e. we can't connect to it),
 // but how to detect that? I guess we need an API for that.
@@ -235,7 +236,8 @@ function onSeek(newVal: number, oldVal: number) {
 		if (allowFetch) {
 			lastSnapEventLoad = now;
 		} else {
-			setTimeout(() => {
+			clearTimeout(snapFetchDebounceTimer);
+			snapFetchDebounceTimer = window.setTimeout(() => {
 				if (seekCount === lastSeekCount) {
 					onSeek(newVal, newVal);
 				}
