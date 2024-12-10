@@ -47,8 +47,13 @@ export class EventCache {
 		let endBucket = Math.ceil(endTimeMS / this.bucketWidthMS);
 		let outEvents: CameraEvent[] = [];
 		let haveEvent = new Set<number>();
+		let now = new Date().getTime();
 		for (let bucketIdx = startBucket; bucketIdx < endBucket; bucketIdx++) {
 			let bucket = this.getBucket(cameraID, bucketIdx);
+			if (bucket && bucket.containsFutureEvents && now - bucket.fetchedAtMS > 5000) {
+				// Invalidate realtime buckets every 5 seconds (but keep latest bucket around until the new one arrives)
+				bucket = null;
+			}
 			if (!bucket) {
 				let busy = this.busyFetching[bucketKey(cameraID, bucketIdx)];
 				if (busy) {

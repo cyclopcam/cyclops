@@ -56,6 +56,7 @@ export class SeekBarContext {
 
 	seekToNow() {
 		this.desiredSeekPosMS = 0;
+		this.snap.posMS = 0;
 	}
 
 	seekToMillisecond(ms: number) {
