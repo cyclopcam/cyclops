@@ -14,7 +14,6 @@ let props = defineProps<{
 	play: boolean,
 	width: string,
 	height: string,
-	icon?: string, // 'play', 'record' (default = play)
 	round?: boolean,
 }>()
 let emits = defineEmits(['playpause', 'seek']);
@@ -44,8 +43,12 @@ function videoElementID(): string {
 }
 
 function onClick() {
-	console.log("Player.vue onClick");
-	emits('playpause');
+	//console.log("Player.vue onClick");
+	if (seekBar.desiredSeekPosMS === 0) {
+		emits('playpause');
+	} else {
+		exitSeekMode();
+	}
 }
 
 function onPlay() {
@@ -69,8 +72,9 @@ function borderRadius(): string | undefined {
 	return props.round ? "5px" : undefined;
 }
 
-function iconIsPlay() { return (props.icon ?? "play") === "play"; }
-function iconIsRecord() { return (props.icon ?? "play") === "record"; }
+function iconIsPlay() { return seekBar.desiredSeekPosMS === 0; }
+function iconIsExitSeekMode() { return seekBar.desiredSeekPosMS !== 0; }
+function iconIsRecord() { return false; }
 
 function containerStyle(): any {
 	return {
@@ -120,6 +124,14 @@ watch(() => props.play, (newVal, oldVal) => {
 		stop();
 	}
 })
+
+function exitSeekMode() {
+	//seekBar.seekToNow();
+	seekBar.reset();
+	seekBarRenderKick.value++;
+	streamer.clearSeek();
+	streamer.updateOverlay();
+}
 
 function onSeekEnd() {
 	clearTimeout(seekDebounceTimer);
@@ -298,8 +310,8 @@ onMounted(() => {
 			<canvas v-if="showLivenessCanvas" ref="livenessCanvas" class="livenessCanvas" />
 			<div v-if="showCameraName" class="name">{{ camera.name }}</div>
 			<div class="iconContainer flexCenter noselect" @click="onClick">
-				<div v-if="!play" :class="{ playIcon: iconIsPlay(), recordIcon: iconIsRecord() }">
-				</div>
+				<div v-if="!play"
+					:class="{ playIcon: iconIsPlay(), recordIcon: iconIsRecord(), exitSeekModeIcon: iconIsExitSeekMode() }" />
 			</div>
 		</div>
 		<seek-bar class="seekBar" :style="bottomStyle()" :camera="camera" :context="seekBar"
@@ -341,8 +353,17 @@ $seekBarHeight: 10%;
 	//filter: invert(1) drop-shadow(1px 1px 3px rgba(0, 0, 0, 0.9));
 }
 
-.playIcon:hover {
-	filter: invert(1) drop-shadow(0px 0px 1px rgb(183, 184, 255)) drop-shadow(1.5px 1.5px 3px rgba(0, 0, 0, 0.9));
+//.playIcon:hover {
+//	filter: invert(1) drop-shadow(0px 0px 1px rgb(183, 184, 255)) drop-shadow(1.5px 1.5px 3px rgba(0, 0, 0, 0.9));
+//}
+
+.exitSeekModeIcon {
+	background-repeat: no-repeat;
+	background-size: 30px 30px;
+	background-position: center;
+	width: 30px;
+	height: 30px;
+	background-image: url("@/icons/chevrons-right.svg");
 }
 
 .recordIcon {
