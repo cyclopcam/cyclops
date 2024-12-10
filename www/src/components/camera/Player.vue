@@ -123,7 +123,10 @@ watch(() => props.play, (newVal, oldVal) => {
 
 function onSeekEnd() {
 	clearTimeout(seekDebounceTimer);
-	streamer.seekTo(streamer.seekOverlayToMS, 'hd', false);
+	// This is expensive, and can cause a backlog of HD decode requests to pile up
+	// if the user performs many seeks in a short time frame. Let's rather load HD
+	// when the user pinch-zooms into the still frame.
+	//streamer.seekTo(streamer.seekOverlayToMS, 'hd', false);
 }
 
 function seekToNoDelay(seekTo: number, resolution: Resolution, keyframeOnly: boolean) {
