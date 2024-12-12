@@ -203,7 +203,9 @@ public class MainActivity extends AppCompatActivity implements Main {
 
     // This is called after the user logs in to a server
     public void onLogin(String bearerToken, String sessionCookie) {
-        Log.i("C", "onLogin to " + currentServer.publicKey + ", bearerToken: " + bearerToken.substring(0, 4) + "..." + ", sessionCookie: " + sessionCookie.substring(0, 4) + "...");
+        Log.i("C", "onLogin to " + currentServer.publicKey +
+                ", bearerToken: " + bearerToken.substring(0, 4) +
+                "..., sessionCookie: " + sessionCookie.substring(0, 4));
         State.global.addOrUpdateServer(currentServer.lanIP, currentServer.publicKey, bearerToken, currentServer.name, sessionCookie);
         State.global.setLastServer(currentServer.publicKey);
         localClient.cyRefreshServers(localWebView);
@@ -394,7 +396,6 @@ public class MainActivity extends AppCompatActivity implements Main {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                //String proxyOrigin = "https://proxy-cpt.cyclopcam.org";
                 String proxyServer = "proxy-cpt.cyclopcam.org";
                 String proxyOrigin = "https://" + Crypto.shortKeyForServer(target.publicKey) + ".p.cyclopcam.org";
                 Log.i("C", "Set proxy to " + proxyServer + ":8083");
