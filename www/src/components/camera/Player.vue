@@ -6,6 +6,8 @@ import SeekBar from "./SeekBar.vue";
 import { SeekBarContext } from "./seekBarContext";
 import { SnapSeek } from "./snapSeek";
 import { debounce } from "@/util/util";
+import { PinchZoom } from "@/geom/pinchzoom";
+import { XForm } from "@/geom/xform";
 
 // See videoDecode.ts for an explanation of how this works
 
@@ -33,6 +35,8 @@ let snapSeek = new SnapSeek(props.camera, seekBar.snap);
 let seekCount = 0;
 let lastSnapEventLoad = 0;
 let snapFetchDebounceTimer = 0;
+let pinchzoom = new PinchZoom();
+let videoXForm = new XForm();
 
 // This is only useful if the camera is not showing anything (i.e. we can't connect to it),
 // but how to detect that? I guess we need an API for that.
@@ -124,6 +128,32 @@ watch(() => props.play, (newVal, oldVal) => {
 		stop();
 	}
 })
+
+function onVideoPointerDown(ev: PointerEvent) {
+	let w = videoXForm.canvasToWorld(ev.offsetX, ev.offsetY);
+	if (ev.pointerId === 1) {
+		pinchzoom.finger2Down(ev.offsetX, ev.offsetY, w.x, w.y);
+	} else {
+		pinchzoom.finger1Down(ev.offsetX, ev.offsetY, w.x, w.y);
+	}
+}
+
+function onVideoPointerMove(ev: PointerEvent) {
+	if (!pinchzoom.active) {
+		return;
+	}
+	if (ev.pointerId === 1) {
+		pinchzoom.finger2Move(ev.offsetX, ev.offsetY);
+	} else {
+		pinchzoom.finger1Move(ev.offsetX, ev.offsetY);
+	}
+	let { scale, tx, ty } = pinchzoom.compute();
+	console.log(`scale: ${scale}, tx: ${tx}, ty: ${ty}`);
+}
+
+function onVideoPointerUp(ev: PointerEvent) {
+	pinchzoom.active = false;
+}
 
 function exitSeekMode() {
 	//seekBar.seekToNow();
@@ -303,10 +333,13 @@ onMounted(() => {
 
 <template>
 	<div class="container" :style="containerStyle()">
-		<div class="videoContainer">
-			<video class="video" :id="videoElementID()" autoplay :poster="streamer.posterURL()" @play="onPlay"
-				@pause="onPause" :style="videoStyle()" />
-			<canvas ref="overlayCanvas" class="overlay" :style="imgStyle()" />
+		<div class="videoShell" @pointerdown="onVideoPointerDown" @pointermove="onVideoPointerMove"
+			@pointerup="onVideoPointerUp">
+			<div class="videoPixels">
+				<video class="video" :id="videoElementID()" autoplay :poster="streamer.posterURL()" @play="onPlay"
+					@pause="onPause" :style="videoStyle()" />
+				<canvas ref="overlayCanvas" class="overlay" :style="imgStyle()" />
+			</div>
 			<canvas v-if="showLivenessCanvas" ref="livenessCanvas" class="livenessCanvas" />
 			<div v-if="showCameraName" class="name">{{ camera.name }}</div>
 			<div class="iconContainer flexCenter noselect" @click="onClick">
@@ -328,10 +361,16 @@ $seekBarHeight: 10%;
 	border-radius: 5px;
 }
 
-.videoContainer {
+.videoShell {
 	width: 100%;
 	height: calc(100% - $seekBarHeight);
 	position: relative;
+}
+
+.videoPixels {
+	position: relative;
+	width: 100%;
+	height: 100%;
 }
 
 .iconContainer {
