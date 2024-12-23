@@ -20,6 +20,17 @@ import (
 // robustness of having it inside here, and the fact that the VideoRecorder never
 // needs to think about this little detail.
 
+// I've been getting errors like this:
+// 2024-12-22 05:27:47.558271 Warning Archive: Splice found packet at matching time (2024-12-22 07:27:44.467281433 +0200 SAST m=+4562.617532283),
+//                            but lengths are different (old 304697, new 27)
+// SPS/PPS packets?
+// Yes, this makes perfect sense. When SPS/PPS packets come in, they are bundled together in 2 or 3 NALUs, all with an identical PTS.
+// So we make provision for this.
+// The change I made here was to insist that PTS and Payload length match between the existing and incoming packets.
+
+// Returns only the NALUs in 'packets' that are after the last packet in 'recent'.
+// However, if the two sets of NALUs do not overlap, then we scan through 'packets', and return
+// the array from the first keyframe onwards.
 func (a *Archive) splicePacketsBeforeWrite(stream *videoStream, track string, packets []NALU) []NALU {
 	recent := stream.recentWrite[track]
 	if len(recent) == 0 || len(packets) == 0 {
@@ -33,19 +44,19 @@ func (a *Archive) splicePacketsBeforeWrite(stream *videoStream, track string, pa
 
 	// Find the last packet from 'recent' inside 'packets'
 	for i := range packets {
-		if packets[i].PTS == last.PTS {
+		if packets[i].PTS == last.PTS && len(packets[i].Payload) == int(last.Length) {
 			//a.debugPacketSplice("Splice found packet at matching time (%v), i = %v", packets[i].PTS, i)
-			if len(packets[i].Payload) != int(last.Length) {
-				// Not sure what else we can do in this scenario. I guess we'll get some garbled video.
-				// I don't expect this in practice, but I leave it here as a sanity check.
-				a.log.Warnf("Splice found packet at matching time (%v), but lengths are different (old %v, new %v)", packets[i].PTS, last.Length, len(packets[i].Payload))
-			}
+			//if len(packets[i].Payload) != int(last.Length) {
+			//	// Not sure what else we can do in this scenario. I guess we'll get some garbled video.
+			//	// I don't expect this in practice, but I leave it here as a sanity check.
+			//	a.log.Warnf("Splice found packet at matching time (%v), but lengths are different (old %v, new %v)", packets[i].PTS, last.Length, len(packets[i].Payload))
+			//}
 			return packets[i+1:]
 		} else if packets[i].PTS.After(last.PTS) {
 			// We didn't find an exact match, but this packet is at least AFTER the last packet in 'recent'.
 			// So we find the next keyframe in packets, and return everything from that point onwards.
 			for j := i; j < len(packets); j++ {
-				if packets[j].IsKeyFrame() {
+				if packets[j].IsKeyFrame() || packets[j].IsEssentialMeta() {
 					a.debugPacketSplice("Splice found next keyframe at i = %v", j)
 					return packets[j:]
 				}

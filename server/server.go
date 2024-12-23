@@ -120,6 +120,13 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 	}
 	if nnModelName != "" {
 		monitorOptions.ModelNameLQ = nnModelName
+		// Set HQ model automatically
+		if strings.HasPrefix(nnModelName, "yolov8") {
+			plus1 := map[rune]rune{'n': 's', 's': 'm', 'm': 'l', 'l': 'x'}
+			if hq, ok := plus1[rune(nnModelName[len(nnModelName)-1])]; ok {
+				monitorOptions.ModelNameHQ = nnModelName[:len(nnModelName)-1] + string(hq)
+			}
+		}
 	}
 	monitor, err := monitor.NewMonitor(s.Log, monitorOptions)
 	if err != nil {

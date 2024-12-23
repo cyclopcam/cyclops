@@ -122,6 +122,10 @@ func (n *NALU) IsKeyFrame() bool {
 	return n.Flags&NALUFlagKeyFrame != 0
 }
 
+func (n *NALU) IsEssentialMeta() bool {
+	return n.Flags&NALUFlagEssentialMeta != 0
+}
+
 // Archive is a collection of zero or more video streams,
 // rooted at the same base directory. Every sub-directory from the base holds
 // the videos of one stream. The stream name is the directory name.
