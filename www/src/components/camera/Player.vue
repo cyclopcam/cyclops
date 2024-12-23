@@ -23,6 +23,7 @@ let emits = defineEmits(['playpause', 'seek']);
 let showLivenessCanvas = true;
 let livenessCanvas = ref(null);
 let overlayCanvas = ref(null);
+let videoShell = ref(null);
 let streamer = new VideoStreamer(props.camera);
 let seekBar = reactive(new SeekBarContext(props.camera.id));
 let seekBarRenderKick = ref(0);
@@ -35,23 +36,59 @@ let snapSeek = new SnapSeek(props.camera, seekBar.snap);
 let seekCount = 0;
 let lastSnapEventLoad = 0;
 let snapFetchDebounceTimer = 0;
-let pinchzoom = new PinchZoom();
-let videoXForm = new XForm();
+let pinchzoom = reactive(new PinchZoom());
+let clickAtMS = 0;
+let dblClickDelayMS = 200;
+let singleClickTimer = 0;
+let isDblClickZoomBusy = ref(false);
 
 // This is only useful if the camera is not showing anything (i.e. we can't connect to it),
 // but how to detect that? I guess we need an API for that.
 let showCameraName = ref(false);
 
+function isZoomedIn(): boolean {
+	return !pinchzoom.isIdentity();
+}
+
 function videoElementID(): string {
 	return 'vplayer-camera-' + props.camera.id;
 }
 
-function onClick() {
-	//console.log("Player.vue onClick");
-	if (seekBar.desiredSeekPosMS === 0) {
-		emits('playpause');
+// For this we don't want for a double click.
+// We start immediately, to reduce latency.
+function onClickPlayIcon(ev: MouseEvent) {
+	ev.stopPropagation();
+	emits('playpause');
+}
+
+function onClickImage(ev: MouseEvent) {
+	//console.log("click");
+	let now = new Date().getTime();
+	if (now - clickAtMS < dblClickDelayMS) {
+		clearTimeout(singleClickTimer);
+		onDblClick(ev);
 	} else {
-		exitSeekMode();
+		clickAtMS = now;
+		singleClickTimer = window.setTimeout(() => {
+			emits('playpause');
+		}, dblClickDelayMS);
+	}
+}
+
+// We synthesize this by waiting for two clicks.
+// What's the point in using the native dblclick event, if you need to implement your
+// own timer mechanism to avoid responding to @click events?
+function onDblClick(ev: MouseEvent) {
+	//console.log("dblclick");
+	//emits('playpause');
+	if (pinchzoom.scale > 1) {
+		pinchzoom.reset();
+	} else {
+		isDblClickZoomBusy.value = true;
+		pinchzoom.zoomAroundPoint(ev.offsetX, ev.offsetY, pinchzoom.scale * 3);
+		setTimeout(() => {
+			isDblClickZoomBusy.value = false;
+		}, 200); // This is the duration of the zoom animation
 	}
 }
 
@@ -77,14 +114,13 @@ function borderRadius(): string | undefined {
 }
 
 function iconIsPlay() { return seekBar.desiredSeekPosMS === 0; }
-function iconIsExitSeekMode() { return seekBar.desiredSeekPosMS !== 0; }
 function iconIsRecord() { return false; }
 
 function containerStyle(): any {
 	return {
 		"width": props.width,
 		"height": props.height,
-		"border-color": props.play ? "#00a" : "#000",
+		"border-color": props.play ? "#dfff4f" : "#000",
 	}
 }
 
@@ -103,11 +139,35 @@ function bottomStyle(): any {
 }
 
 function imgStyle(): any {
-	return topStyle();
+	return videoPixelsStyle();
 }
 
 function videoStyle(): any {
-	return topStyle();
+	return videoPixelsStyle();
+}
+
+function videoPixelsStyle(): any {
+	let s: any = topStyle();
+	let scale = pinchzoom.scale;
+	let tx = pinchzoom.tx;
+	let ty = pinchzoom.ty;
+	if ((!isZoomedIn() && !pinchzoom.active) || isDblClickZoomBusy.value) {
+		// animate when we're resetting the view back to 100%
+		s["transition"] = "transform 0.2s";
+	}
+	s["transform-origin"] = "0 0";
+	s.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+	return s;
+}
+
+function videoShellStyle(): any {
+	if (pinchzoom.active || isZoomedIn()) {
+		// When we're zoomed in, we handle pan ourselves
+		return { "touch-action": "none" };
+	} else {
+		// This pan is to allow the user to scroll the entire page (eg scroll to another camera that's offscreen)
+		return { "touch-action": "pan-x pan-y" };
+	}
 }
 
 watch(() => props.camera, (newVal, oldVal) => {
@@ -130,32 +190,53 @@ watch(() => props.play, (newVal, oldVal) => {
 })
 
 function onVideoPointerDown(ev: PointerEvent) {
-	let w = videoXForm.canvasToWorld(ev.offsetX, ev.offsetY);
-	if (ev.pointerId === 1) {
-		pinchzoom.finger2Down(ev.offsetX, ev.offsetY, w.x, w.y);
-	} else {
-		pinchzoom.finger1Down(ev.offsetX, ev.offsetY, w.x, w.y);
-	}
+	//console.log(`onVideoPointerDown: ${ev.pointerId}, ${ev.offsetX}, ${ev.offsetY}`);
+	pinchzoom.onPointerDown(ev.pointerId, ev.offsetX, ev.offsetY);
+	//let el = videoShell.value! as HTMLDivElement;
+	//el.setPointerCapture(ev.pointerId);
 }
 
 function onVideoPointerMove(ev: PointerEvent) {
-	if (!pinchzoom.active) {
-		return;
+	//ev.preventDefault();
+	//ev.stopPropagation();
+	//console.log(`onVideoPointerMove: ${ev.pointerId}, ${ev.offsetX}, ${ev.offsetY}`);
+	pinchzoom.onPointerMove(ev.pointerId, ev.offsetX, ev.offsetY);
+	if (pinchzoom.active) {
+		pinchzoom.compute();
+		//console.log(`scale: ${pinchzoom.scale}, tx: ${pinchzoom.tx}, ty: ${pinchzoom.ty}`);
 	}
-	if (ev.pointerId === 1) {
-		pinchzoom.finger2Move(ev.offsetX, ev.offsetY);
-	} else {
-		pinchzoom.finger1Move(ev.offsetX, ev.offsetY);
-	}
-	let { scale, tx, ty } = pinchzoom.compute();
-	console.log(`scale: ${scale}, tx: ${tx}, ty: ${ty}`);
 }
 
 function onVideoPointerUp(ev: PointerEvent) {
-	pinchzoom.active = false;
+	//console.log(`onVideoPointerUp: ${ev.pointerId}, ${ev.offsetX}, ${ev.offsetY}`);
+	//pinchzoom.active = false;
+	pinchzoom.onPointerUp(ev.pointerId);
+	afterZoom();
 }
 
-function exitSeekMode() {
+function onVideoPointerCancel(ev: PointerEvent) {
+	//console.log(`onVideoPointerCancel: ${ev.pointerId}`);
+	pinchzoom.onPointerUp(ev.pointerId);
+	afterZoom();
+}
+
+function onVideoWheel(ev: WheelEvent) {
+	//ev.preventDefault();
+	console.log(`onVideoWheel: ${ev.deltaY}`);
+	//pinchzoom.onWheel(ev.deltaY);
+}
+
+function afterZoom() {
+	if (pinchzoom.scale < 1) {
+		pinchzoom.reset();
+	}
+}
+
+function onZoomOut() {
+	pinchzoom.reset();
+}
+
+function onExitSeekMode() {
 	//seekBar.seekToNow();
 	seekBar.reset();
 	seekBarRenderKick.value++;
@@ -333,8 +414,9 @@ onMounted(() => {
 
 <template>
 	<div class="container" :style="containerStyle()">
-		<div class="videoShell" @pointerdown="onVideoPointerDown" @pointermove="onVideoPointerMove"
-			@pointerup="onVideoPointerUp">
+		<div ref="videoShell" class="videoShell" @pointerdown="onVideoPointerDown" @pointermove="onVideoPointerMove"
+			@pointerup="onVideoPointerUp" @pointercancel="onVideoPointerCancel" @wheel="onVideoWheel"
+			:style="videoShellStyle()">
 			<div class="videoPixels">
 				<video class="video" :id="videoElementID()" autoplay :poster="streamer.posterURL()" @play="onPlay"
 					@pause="onPause" :style="videoStyle()" />
@@ -342,13 +424,14 @@ onMounted(() => {
 			</div>
 			<canvas v-if="showLivenessCanvas" ref="livenessCanvas" class="livenessCanvas" />
 			<div v-if="showCameraName" class="name">{{ camera.name }}</div>
-			<div class="iconContainer flexCenter noselect" @click="onClick">
-				<div v-if="!play"
-					:class="{ playIcon: iconIsPlay(), recordIcon: iconIsRecord(), exitSeekModeIcon: iconIsExitSeekMode() }" />
+			<div class="iconContainer flexCenter noselect" @click="onClickImage">
+				<div v-if="!play" :class="{ playIcon: iconIsPlay(), recordIcon: iconIsRecord() }"
+					@click="onClickPlayIcon" />
 			</div>
 		</div>
 		<seek-bar class="seekBar" :style="bottomStyle()" :camera="camera" :context="seekBar"
-			:renderKick="seekBarRenderKick" @seekend="onSeekEnd" />
+			:renderKick="seekBarRenderKick" @seekend="onSeekEnd" @seekexit="onExitSeekMode" />
+		<div v-if="isZoomedIn()" class="zoomOut" @click="onZoomOut" />
 	</div>
 </template>
 
@@ -365,12 +448,14 @@ $seekBarHeight: 10%;
 	width: 100%;
 	height: calc(100% - $seekBarHeight);
 	position: relative;
+	//touch-action: none;
 }
 
 .videoPixels {
 	position: relative;
 	width: 100%;
 	height: 100%;
+	overflow: hidden;
 }
 
 .iconContainer {
@@ -390,19 +475,6 @@ $seekBarHeight: 10%;
 	height: 30px;
 	background-image: url("@/icons/play-circle-outline.svg");
 	//filter: invert(1) drop-shadow(1px 1px 3px rgba(0, 0, 0, 0.9));
-}
-
-//.playIcon:hover {
-//	filter: invert(1) drop-shadow(0px 0px 1px rgb(183, 184, 255)) drop-shadow(1.5px 1.5px 3px rgba(0, 0, 0, 0.9));
-//}
-
-.exitSeekModeIcon {
-	background-repeat: no-repeat;
-	background-size: 30px 30px;
-	background-position: center;
-	width: 30px;
-	height: 30px;
-	background-image: url("@/icons/chevrons-right.svg");
 }
 
 .recordIcon {
@@ -478,5 +550,17 @@ $seekBarHeight: 10%;
 	left: 0;
 	width: 1px;
 	height: 1px;
+}
+
+.zoomOut {
+	background-image: url("@/icons/arrows-minimize.svg");
+	position: absolute;
+	top: 6px;
+	left: 6px;
+	width: 24px;
+	height: 24px;
+	border: solid 3px #fff;
+	border-radius: 5px;
+	filter: drop-shadow(0px 0px 2px #000);
 }
 </style>

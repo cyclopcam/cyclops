@@ -20,11 +20,16 @@ export class Vec2 {
 	}
 
 	static size(x: number, y: number): number {
-		return Math.sqrt(x * x + y * y);
+		return Math.hypot(x, y);
 	}
 
 	get size(): number {
-		return Math.sqrt(this.x * this.x + this.y * this.y);
+		return Math.hypot(this.x, this.y);
+	}
+
+	set(x: number, y: number) {
+		this.x = x;
+		this.y = y;
 	}
 
 	normalized(): Vec2 {
@@ -41,7 +46,7 @@ export class Vec2 {
 	}
 
 	distance(p: Vec2): number {
-		return Math.sqrt((p.x - this.x) * (p.x - this.x) + (p.y - this.y) * (p.y - this.y));
+		return Math.hypot(p.x - this.x, p.y - this.y);
 	}
 
 	distanceSQ(p: Vec2): number {
@@ -49,7 +54,7 @@ export class Vec2 {
 	}
 
 	distanceXY(x: number, y: number): number {
-		return Math.sqrt((x - this.x) * (x - this.x) + (y - this.y) * (y - this.y));
+		return Math.hypot(x - this.x, y - this.y);
 	}
 
 	distanceXYSQ(x: number, y: number): number {
@@ -110,6 +115,12 @@ export class Vec3 {
 
 	clone(): Vec3 {
 		return new Vec3(this.x, this.y, this.z);
+	}
+
+	set(x: number, y: number, z: number) {
+		this.x = x;
+		this.y = y;
+		this.z = z;
 	}
 
 	dot(v: Vec3): number {

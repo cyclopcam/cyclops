@@ -8,7 +8,7 @@ let props = defineProps<{
 	context: SeekBarContext,
 	renderKick: number, // Increment to force a render
 }>()
-let emits = defineEmits(['seekend']);
+let emits = defineEmits(['seekend', 'seekexit']);
 
 interface Point {
 	id: number; // pointer id
@@ -339,6 +339,10 @@ function afterZoom() {
 	}
 }
 
+function onExit() {
+	emits('seekexit');
+}
+
 onMounted(() => {
 	let canv = canvas.value! as HTMLCanvasElement
 	props.context.invalidate(canv);
@@ -361,6 +365,7 @@ onMounted(() => {
 		<div ref="grabber" class="grabber" @wheel="onWheel" @pointerdown="onPointerDown" @pointerup="onPointerUp"
 			@pointermove="onPointerMove" @pointercancel="onPointerCancel" @contextmenu="onContextMenu" />
 		<canvas ref="canvas" class="canvas" />
+		<div v-if="context.desiredSeekPosMS !== 0" class="exit" @click="onExit" />
 	</div>
 </template>
 
@@ -368,7 +373,7 @@ onMounted(() => {
 @import '@/assets/vars.scss';
 
 .seekBarB {
-	//position: relative;
+	position: relative;
 }
 
 .canvas {
@@ -386,6 +391,8 @@ onMounted(() => {
 
 // Grabber is larger than the canvas, because it's hard to get your thumbs precisely
 // inside the canvas area.
+// The tradeoff here is that the grabber interferes with the ability to pan and zoom
+// inside the image.
 .grabber {
 	position: absolute;
 	left: 0;
@@ -394,19 +401,38 @@ onMounted(() => {
 	// uncomment this line to see the bounds of the grabber. It should be symmetrically bordered around the canvas
 	//border: solid 1px #e00;
 
+	// We add a bit more space underneath than above, because underneath the seek bar
+	// is just blank space (padding between cameras).
+
 	// desktop
 	// Mouse has much greater precision than thumbs, so we make the padding smaller here.
 	top: -5px;
-	height: calc(100% + 10px);
+	height: calc(100% + 15px);
 
 	// mobile
 	// big margins for fat fingers
 	@media (max-width: $mobileCutoff) {
-		top: -30px;
-		height: calc(100% + 60px);
+		top: -10px;
+		height: calc(100% + 30px);
 	}
 
 	z-index: 1;
 	touch-action: pan-y; // we want the browser to implement vertical panning, but we want to control pinch-zoom and horizontal panning
+}
+
+.exit {
+	z-index: 2;
+	background-image: url("@/icons/chevrons-right.svg");
+	background-repeat: no-repeat;
+	background-size: contain;
+	background-position: center;
+	position: absolute;
+	right: 0px;
+	bottom: 0px;
+	width: 26px;
+	height: 26px;
+	border: solid 1.5px #fff;
+	border-radius: 3px;
+	filter: drop-shadow(0px 0px 2px #000);
 }
 </style>
