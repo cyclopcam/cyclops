@@ -1,7 +1,12 @@
 import { AnalysisState, DetectionResult } from "@/camera/nn";
 import { globals } from "@/globals";
 
-export function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingContext2D, detection: AnalysisState) {
+export enum BoxDrawMode {
+	Regular,
+	Thin,
+}
+
+export function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingContext2D, detection: AnalysisState, boxDraw: BoxDrawMode) {
 	if (!detection.input)
 		return;
 	let sx = can.width / detection.input.imageWidth;
@@ -22,12 +27,13 @@ export function drawAnalyzedObjects(can: HTMLCanvasElement, cx: CanvasRenderingC
 		//	// two objects.
 		//	continue;
 		//}
+		let thickness = boxDraw == BoxDrawMode.Regular ? 2 * dpr : 1;
 		if (d.genuine) {
-			cx.lineWidth = 2 * dpr;
+			cx.lineWidth = thickness;
 			cx.strokeStyle = "#f00";
 			cx.font = 'bold 18px sans-serif';
 		} else {
-			cx.lineWidth = 2 * dpr;
+			cx.lineWidth = thickness;
 			cx.strokeStyle = "#fc0";
 			cx.font = '18px sans-serif';
 		}

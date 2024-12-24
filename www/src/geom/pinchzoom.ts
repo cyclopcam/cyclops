@@ -1,5 +1,13 @@
 import { Vec2 } from "./vec";
 
+export class PinchZoomState {
+	constructor(public scale: number, public tx: number, public ty: number) { }
+
+	equals(other: PinchZoomState): boolean {
+		return this.scale === other.scale && this.tx === other.tx && this.ty === other.ty;
+	}
+}
+
 export class PinchZoom {
 	// 1st finger position in canvas coordinates
 	private pointer1Down = new Vec2(0, 0);
@@ -34,6 +42,16 @@ export class PinchZoom {
 		return this.scale === 1 && this.tx === 0 && this.ty === 0;
 	}
 
+	get state(): PinchZoomState {
+		return new PinchZoomState(this.scale, this.tx, this.ty);
+	}
+
+	set state(state: PinchZoomState) {
+		this.scale = state.scale;
+		this.tx = state.tx;
+		this.ty = state.ty;
+	}
+
 	onPointerDown(pointerId: number, canvasX: number, canvasY: number) {
 		let start = false;
 		this.pointerMap.set(pointerId, this.pointerMap.size);
@@ -65,6 +83,9 @@ export class PinchZoom {
 		} else if (p === 1) {
 			this.pointer2Latest.set(canvasX, canvasY);
 		}
+		if (this.active) {
+			this.computePinchZoomOrPan();
+		}
 	}
 
 	onPointerUp(pointerId: number) {
@@ -72,7 +93,11 @@ export class PinchZoom {
 		this.active = false;
 	}
 
-	compute() {
+	onWheel(deltaY: number, canvasX: number, canvasY: number) {
+		this.zoomAroundPoint(canvasX, canvasY, this.scale * (1 - deltaY / 1000));
+	}
+
+	computePinchZoomOrPan() {
 		if (this.pointerMap.size === 2) {
 			// pinch-zoom
 			let lenOrg = this.pointer1Down.distance(this.pointer2Down);

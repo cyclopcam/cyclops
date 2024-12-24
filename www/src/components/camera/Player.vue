@@ -5,9 +5,7 @@ import { VideoStreamer } from "./videoDecode";
 import SeekBar from "./SeekBar.vue";
 import { SeekBarContext } from "./seekBarContext";
 import { SnapSeek } from "./snapSeek";
-import { debounce } from "@/util/util";
-import { PinchZoom } from "@/geom/pinchzoom";
-import { XForm } from "@/geom/xform";
+import { PinchZoom, PinchZoomState } from "@/geom/pinchzoom";
 
 // See videoDecode.ts for an explanation of how this works
 
@@ -29,18 +27,24 @@ let seekBar = reactive(new SeekBarContext(props.camera.id));
 let seekBarRenderKick = ref(0);
 let seekDebounceTimer = 0;
 let lastSeekAt = 0;
-let lastSeekToOuter = 0;
 let lastSeekToInner = 0;
 let lastSeekFetchAt = 0;
+let lastActualSeekPos = 0;
+let lastActualSeekResolution: Resolution = 'ld';
+let lastActualSeekKeyframeOnly = false;
 let snapSeek = new SnapSeek(props.camera, seekBar.snap);
 let seekCount = 0;
 let lastSnapEventLoad = 0;
 let snapFetchDebounceTimer = 0;
 let pinchzoom = reactive(new PinchZoom());
+let pinchZoomOnMouseDown = new PinchZoomState(1, 0, 0);
 let clickAtMS = 0;
 let dblClickDelayMS = 200;
 let singleClickTimer = 0;
 let isDblClickZoomBusy = ref(false);
+let isHD = ref(false);
+let showHDButton = ref(false);
+let ignoreNextClick = false;
 
 // This is only useful if the camera is not showing anything (i.e. we can't connect to it),
 // but how to detect that? I guess we need an API for that.
@@ -62,6 +66,10 @@ function onClickPlayIcon(ev: MouseEvent) {
 }
 
 function onClickImage(ev: MouseEvent) {
+	if (ignoreNextClick) {
+		ignoreNextClick = false;
+		return;
+	}
 	//console.log("click");
 	let now = new Date().getTime();
 	if (now - clickAtMS < dblClickDelayMS) {
@@ -70,6 +78,12 @@ function onClickImage(ev: MouseEvent) {
 	} else {
 		clickAtMS = now;
 		singleClickTimer = window.setTimeout(() => {
+			// Don't start playing if we're zoomed in, and the user just clicks on the image.
+			// This is too unexpected, and could be a pan.
+			//if (!isZoomedIn()) {
+			//	emits('playpause');
+			//}
+			// hmm no we need to be able to pause
 			emits('playpause');
 		}, dblClickDelayMS);
 	}
@@ -183,17 +197,22 @@ watch(() => props.play, (newVal, oldVal) => {
 	if (newVal) {
 		seekBar.reset();
 		seekBarRenderKick.value++;
-		streamer.play(videoElementID());
+		startLivestream();
 	} else {
 		stop();
 	}
 })
+
+function startLivestream() {
+	streamer.play(videoElementID(), isHD.value ? 'hd' : 'ld');
+}
 
 function onVideoPointerDown(ev: PointerEvent) {
 	//console.log(`onVideoPointerDown: ${ev.pointerId}, ${ev.offsetX}, ${ev.offsetY}`);
 	pinchzoom.onPointerDown(ev.pointerId, ev.offsetX, ev.offsetY);
 	//let el = videoShell.value! as HTMLDivElement;
 	//el.setPointerCapture(ev.pointerId);
+	pinchZoomOnMouseDown = pinchzoom.state;
 }
 
 function onVideoPointerMove(ev: PointerEvent) {
@@ -201,13 +220,15 @@ function onVideoPointerMove(ev: PointerEvent) {
 	//ev.stopPropagation();
 	//console.log(`onVideoPointerMove: ${ev.pointerId}, ${ev.offsetX}, ${ev.offsetY}`);
 	pinchzoom.onPointerMove(ev.pointerId, ev.offsetX, ev.offsetY);
-	if (pinchzoom.active) {
-		pinchzoom.compute();
-		//console.log(`scale: ${pinchzoom.scale}, tx: ${pinchzoom.tx}, ty: ${pinchzoom.ty}`);
-	}
+	//console.log(`scale: ${pinchzoom.scale}, tx: ${pinchzoom.tx}, ty: ${pinchzoom.ty}`);
 }
 
 function onVideoPointerUp(ev: PointerEvent) {
+	if (ev.pointerType === 'mouse' && !pinchzoom.state.equals(pinchZoomOnMouseDown)) {
+		// On desktop, even if this was a drag (pan) event, we'll still get a 'click' event after this.
+		ignoreNextClick = true;
+	}
+
 	//console.log(`onVideoPointerUp: ${ev.pointerId}, ${ev.offsetX}, ${ev.offsetY}`);
 	//pinchzoom.active = false;
 	pinchzoom.onPointerUp(ev.pointerId);
@@ -222,18 +243,34 @@ function onVideoPointerCancel(ev: PointerEvent) {
 
 function onVideoWheel(ev: WheelEvent) {
 	//ev.preventDefault();
-	console.log(`onVideoWheel: ${ev.deltaY}`);
-	//pinchzoom.onWheel(ev.deltaY);
+	//console.log(`onVideoWheel: ${ev.deltaY}`);
+	pinchzoom.onWheel(ev.deltaY, ev.offsetX, ev.offsetY);
+	afterZoom();
 }
 
 function afterZoom() {
 	if (pinchzoom.scale < 1) {
 		pinchzoom.reset();
 	}
+	if (pinchzoom.scale > 1) {
+		showHDButton.value = true;
+	}
 }
 
 function onZoomOut() {
 	pinchzoom.reset();
+}
+
+function onHDClick() {
+	isHD.value = !isHD.value;
+
+	if (seekBar.desiredSeekPosMS === 0) {
+		// If we're not seeking, then we can just switch the stream resolution
+		//streamer.switchResolution(isHD.value ? 'hd' : 'ld');
+	} else {
+		// Re-seek to the same position, but with the new resolution
+		seekToNoDelay(lastActualSeekPos, isHD.value ? 'hd' : 'ld', lastActualSeekKeyframeOnly);
+	}
 }
 
 function onExitSeekMode() {
@@ -249,10 +286,16 @@ function onSeekEnd() {
 	// This is expensive, and can cause a backlog of HD decode requests to pile up
 	// if the user performs many seeks in a short time frame. Let's rather load HD
 	// when the user pinch-zooms into the still frame.
-	//streamer.seekTo(streamer.seekOverlayToMS, 'hd', false);
+	if (isHD.value) {
+		seekToNoDelay(lastActualSeekPos, 'hd', lastActualSeekKeyframeOnly);
+	}
 }
 
 function seekToNoDelay(seekTo: number, resolution: Resolution, keyframeOnly: boolean) {
+	lastActualSeekPos = seekTo;
+	lastActualSeekResolution = resolution;
+	lastActualSeekKeyframeOnly = keyframeOnly;
+
 	streamer.seekTo(seekTo, resolution, keyframeOnly);
 
 	// This emit is how we end up stopping/pausing the live stream (if it's currently busy).
@@ -333,7 +376,6 @@ watch(() => seekBar.desiredSeekPosMS, (newVal, oldVal) => {
 
 // This is how we notice that the user wants to seek to a new position
 function onSeek(newVal: number, oldVal: number) {
-	lastSeekToOuter = newVal;
 	if (newVal !== oldVal) {
 		seekCount++;
 	}
@@ -408,7 +450,7 @@ onMounted(() => {
 	seekBar.panToNow();
 
 	if (props.play)
-		streamer.play(videoElementID());
+		startLivestream();
 })
 </script>
 
@@ -432,6 +474,9 @@ onMounted(() => {
 		<seek-bar class="seekBar" :style="bottomStyle()" :camera="camera" :context="seekBar"
 			:renderKick="seekBarRenderKick" @seekend="onSeekEnd" @seekexit="onExitSeekMode" />
 		<div v-if="isZoomedIn()" class="zoomOut" @click="onZoomOut" />
+		<div v-if="showHDButton" :class="{ hd: true, flexCenter: true, hdActive: isHD }" @click="onHDClick">
+			<div :class="{ hdInner: true, hdInnerActive: isHD }" />
+		</div>
 	</div>
 </template>
 
@@ -562,5 +607,34 @@ $seekBarHeight: 10%;
 	border: solid 3px #fff;
 	border-radius: 5px;
 	filter: drop-shadow(0px 0px 2px #000);
+}
+
+.hd {
+	position: absolute;
+	right: 6px;
+	top: 6px;
+	width: 30px;
+	height: 26px;
+	background-color: #eee;
+	border-radius: 3px;
+	border: solid 1px rgba(255, 255, 255, 0);
+	transition: box-shadow 400ms, border-width 400ms, border-color 400ms;
+}
+
+.hdActive {
+	border: solid 1px #ffea28;
+	box-shadow: 0px 0px 7px #ffef5f, 0px 0px 3px #ffca57;
+}
+
+.hdInner {
+	background-image: url("@/icons/hd.svg");
+	background-size: cover;
+	background-position: center;
+	width: 32px;
+	height: 32px;
+}
+
+.hdInnerActive {
+	filter: drop-shadow(1px 1px 2px rgba(0, 0, 0, 0.3));
 }
 </style>

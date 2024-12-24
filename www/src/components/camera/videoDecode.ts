@@ -2,7 +2,7 @@ import type { CameraInfo, Resolution } from "@/camera/camera";
 import { AnalysisState } from "@/camera/nn";
 import JMuxer from "jmuxer";
 import { globals } from "@/globals";
-import { drawAnalyzedObjects } from "./detections";
+import { BoxDrawMode, drawAnalyzedObjects } from "./detections";
 import { encodeQuery } from "@/util/util";
 import { CachedFrame, FrameCache } from "./frameCache";
 
@@ -237,7 +237,7 @@ export class VideoStreamer {
 		// promises, so that we can await on them both at the same time.
 		// uhh.. I don't understand this comment now!
 
-		let quality = resolution === 'ld' ? 70 : 75;
+		let quality = resolution === 'ld' ? 70 : 85;
 		let fetchFrame = this.fetchSingleFrame(resolution, posMS, quality, keyframeOnly);
 		let [cachedFrame] = await Promise.all([fetchFrame]);
 		if (!cachedFrame) {
@@ -269,7 +269,7 @@ export class VideoStreamer {
 		return this.muxer !== null;
 	}
 
-	play(videoElementID: string) {
+	play(videoElementID: string, res: Resolution) {
 		let isPlaying = this.muxer !== null;
 		console.log("VideoStreamer.play(). isPlaying: " + (isPlaying ? "yes" : "no"));
 		this.showPosterImageInOverlay = false;
@@ -281,8 +281,7 @@ export class VideoStreamer {
 		this.isPaused = false;
 
 		let scheme = window.location.origin.startsWith("https") ? "wss://" : "ws://";
-		let resolution = "LD";
-		let socketURL = `${scheme}${window.location.host}/api/ws/camera/stream/${this.camera.id}/${resolution}`;
+		let socketURL = `${scheme}${window.location.host}/api/ws/camera/stream/${this.camera.id}/${res}`;
 		console.log("Play " + socketURL);
 
 		let firstPackets: parsedPacket[] = [];
@@ -480,22 +479,33 @@ export class VideoStreamer {
 			return;
 		}
 		let dpr = window.devicePixelRatio;
+		let canvasScale = 1;
 
 		// This function is async, so it's important that we don't clear the canvas
 		// until we're ready to paint.
 		// The point of resetCanvasOnce() is to only clear it a single time, regardless
 		// of which async operation finishes first.
 		let isCanvasReset = false;
-		let resetCanvasOnce = () => {
+		let resetCanvasOnce = (minWidth: number, minHeight: number) => {
 			// TS thinks 'can' can be null here, but I can't see how that could happen.
 			if (!isCanvasReset && can) {
-				can.width = can.clientWidth * dpr;
-				can.height = can.clientHeight * dpr;
+				let width = Math.ceil(can.clientWidth * dpr);
+				let height = Math.ceil(can.clientHeight * dpr);
+				if (width < minWidth || height < minHeight) {
+					// This is used when zooming in on an HD frame, so that we don't lose resolution.
+					canvasScale = Math.max(minWidth / width, minHeight / height);
+					width = minWidth;
+					height = minHeight;
+				}
+				//console.log(`Resetting canvas to ${width} x ${height} (min ${minWidth} x ${minHeight})`);
+				can.width = width;
+				can.height = height;
 			}
 			isCanvasReset = true;
 		};
 
 		let cx = can.getContext('2d')!;
+		let isHDSeek = false;
 
 		if (this.showPosterImageInOverlay || this.seekImage) {
 			let image = this.seekImage;
@@ -508,8 +518,9 @@ export class VideoStreamer {
 				let blob = await r.blob();
 				image = await createImageBitmap(blob);
 			}
-			resetCanvasOnce();
+			resetCanvasOnce(image.width, image.height);
 			cx.drawImage(image, 0, 0, can.width, can.height);
+			isHDSeek = this.seekResolution === 'hd';
 
 			if (r) {
 				let jAnalysis = r.headers.get("X-Analysis");
@@ -521,8 +532,11 @@ export class VideoStreamer {
 		}
 
 		if (this.lastDetection.cameraID === this.camera.id && this.lastDetection.input) {
-			resetCanvasOnce();
-			drawAnalyzedObjects(can, cx, this.lastDetection);
+			resetCanvasOnce(0, 0);
+			if (!isHDSeek) {
+				let boxDraw = isHDSeek ? BoxDrawMode.Thin : BoxDrawMode.Regular;
+				drawAnalyzedObjects(can, cx, this.lastDetection, boxDraw);
+			}
 			//drawRawNNObjects(can, cx, lastDetection.input);
 		}
 
