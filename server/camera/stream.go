@@ -150,6 +150,9 @@ type Stream struct {
 	// don't occur on all packets, so there's no way to know this deterministically by
 	// analyzing a single packet. In future, we might have to add some kind of automatic
 	// detection mechanism.
+	// Also, see this comment from the gortsplib library: https://github.com/bluenviron/gortsplib/issues/608#issuecomment-2518748235
+	// The author seems to indicate that all video NALUs have emulation prevention bytes,
+	// so for now we're setting cameraSendsAnnexBEncoded to true, for unknown camera models.
 	cameraSendsAnnexBEncoded bool
 }
 

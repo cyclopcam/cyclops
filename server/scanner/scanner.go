@@ -1,11 +1,8 @@
 package scanner
 
 import (
-	"context"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
 	"sort"
 	"time"
 
@@ -48,8 +45,9 @@ options is optional.
 */
 func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
 	var (
-		ip  net.IP
-		err error
+		ip      net.IP
+		err     error
+		timeout time.Duration
 	)
 	if options != nil && options.OwnIP != nil {
 		ip = options.OwnIP
@@ -63,6 +61,9 @@ func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
 	ip4 := ip.To4()
 	if ip4 == nil {
 		return nil, fmt.Errorf("Local IP address is not an IPv4 address")
+	}
+	if options != nil {
+		timeout = options.Timeout
 	}
 
 	excludeIPs := map[string]bool{}
@@ -93,7 +94,7 @@ func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
 				select {
 				case camIP := <-workQueue:
 					//fmt.Printf("Trying %v\n", camIP)
-					model, err := tryToContactCamera(camIP, options)
+					model, err := TryToContactCamera(camIP.String(), timeout, ScanMethodHTTP|ScanMethodRTSP)
 					if err == nil && model != camera.CameraModelUnknown {
 						cam := &configdb.Camera{
 							Model: string(model),
@@ -123,34 +124,6 @@ func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
 	})
 
 	return cams, nil
-}
-
-func tryToContactCamera(ip net.IP, options *ScanOptions) (camera.CameraModels, error) {
-	//fmt.Printf("Contacting %v...\n", ip)
-
-	// 100ms has been sufficient on my home network with HikVision cameras and ethernet, but it might be too aggressive for some
-	timeout := 100 * time.Millisecond
-	if options != nil && options.Timeout != 0 {
-		timeout = options.Timeout
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	u := "http://" + ip.String()
-	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
-	if err != nil {
-		return camera.CameraModelUnknown, err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return camera.CameraModelUnknown, err
-	}
-	defer resp.Body.Close()
-	bodyB, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return camera.CameraModelUnknown, err
-	}
-	body := string(bodyB)
-	return camera.IdentifyCameraFromHTTP(resp.Header, body), nil
 }
 
 // GetLocalIPv4 tries to figure out our local IPv4 address (eg 192.168.1.5)

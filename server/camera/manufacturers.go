@@ -11,9 +11,11 @@ type CameraModels string
 
 const (
 	// SYNC-CAMERA-MODELS
-	CameraModelUnknown     CameraModels = ""
-	CameraModelHikVision   CameraModels = "HikVision"
-	CameraModelJustTesting CameraModels = "JustTesting"
+	CameraModelUnknown      CameraModels = ""
+	CameraModelHikVision    CameraModels = "HikVision"
+	CameraModelReolink      CameraModels = "Reolink"
+	CameraModelGenericRTSP  CameraModels = "Generic RTSP"  // Used as a response from the port scanner to indicate that we can connect on RTSP, but we don't know anything else yet
+	CameraModelGenericONVIF CameraModels = "Generic ONVIF" // Used as a response from OnvifGetDeviceInfo() to indicate a camera that supports ONVIF, but which we don't recognize
 )
 
 // AllCameraModels is an array of all camera model names, excluding "Unknown"
@@ -37,7 +39,16 @@ func GetCameraModelParameters(model, baseURL, lowResSuffix, highResSuffix string
 		out.LowResURL = baseURL + "Streaming/Channels/102"
 		out.PacketsAreAnnexBEncoded = true
 	default:
-		return nil, fmt.Errorf("Don't know how to find low and high resolution streams for Camera Model '%v' (connection details: %v)", model, baseURL)
+		if lowResSuffix != "" && highResSuffix != "" {
+			out.HighResURL = baseURL + highResSuffix
+			out.LowResURL = baseURL + lowResSuffix
+			// This is an unvalidated assumption.
+			// Read the comment above Stream.cameraSendsAnnexBEncoded for more context,
+			// and the justification for why we make this true by default.
+			out.PacketsAreAnnexBEncoded = true
+		} else {
+			return nil, fmt.Errorf("Don't know how to find low and high resolution streams for Camera Model '%v' (connection details: %v)", model, baseURL)
+		}
 	}
 	return out, nil
 }
@@ -50,6 +61,9 @@ func IdentifyCameraFromHTTP(headers http.Header, body string) CameraModels {
 	if headers.Get("Server") == "App-webs/" && strings.Contains(body, "//使其IE窗口最大化") {
 		return CameraModelHikVision
 	}
+	if strings.Contains(body, "Reolink") {
+		return CameraModelReolink
+	}
 	return CameraModelUnknown
 }
 
@@ -57,7 +71,7 @@ func init() {
 	// SYNC-CAMERA-MODELS
 	AllCameraModels = []CameraModels{
 		CameraModelHikVision,
-		CameraModelJustTesting,
+		CameraModelReolink,
 	}
 	sort.Slice(AllCameraModels, func(i, j int) bool {
 		return AllCameraModels[i] < AllCameraModels[j]
