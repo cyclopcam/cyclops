@@ -119,7 +119,7 @@ func (s *Server) httpSystemRestart(w http.ResponseWriter, r *http.Request, param
 
 func (s *Server) httpSystemConstants(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	cams := []string{}
-	for _, m := range camera.AllCameraModels {
+	for _, m := range camera.AllCameraBrands {
 		cams = append(cams, string(m))
 	}
 	c := &constantsJSON{

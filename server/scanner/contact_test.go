@@ -56,7 +56,7 @@ func TestTryConnect(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error: %v", err)
 	}
-	if cam == camera.CameraModelUnknown {
+	if cam == camera.CameraBrandUnknown {
 		t.Errorf("Unknown camera model")
 	} else {
 		t.Logf("Camera type: %v", cam)

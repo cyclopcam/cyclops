@@ -39,6 +39,9 @@ func loadTestCameraDetails(t *testing.T) testCameraDetails {
 	return d
 }
 
+func testStream(t *testing.T) {
+}
+
 // example:
 // CAMERA_HOST=192.168.10.10 CAMERA_USERNAME=admin CAMERA_PASSWORD=foo go test -v -run Onvif ./server/camera
 func TestOnvif(t *testing.T) {
@@ -49,7 +52,7 @@ func TestOnvif(t *testing.T) {
 	t.Logf("MainStreamURL: %v", info.MainStreamURL)
 	t.Logf("SubStreamURL: %v", info.SubStreamURL)
 	require.NotEmpty(t, info.Model)
-	require.NotEqual(t, CameraModelGenericONVIF, info.Model) // If you've got the camera in your possession, then add a new enum for it
+	require.NotEqual(t, CameraBrandGenericONVIF, info.Model) // If you've got the camera in your possession, then add a new enum for it
 	require.NotEmpty(t, info.MainStreamURL)
 	require.NotEmpty(t, info.SubStreamURL)
 }

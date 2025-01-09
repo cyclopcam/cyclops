@@ -7,19 +7,19 @@ import (
 	"strings"
 )
 
-type CameraModels string
+type CameraBrands string
 
 const (
-	// SYNC-CAMERA-MODELS
-	CameraModelUnknown      CameraModels = ""
-	CameraModelHikVision    CameraModels = "HikVision"
-	CameraModelReolink      CameraModels = "Reolink"
-	CameraModelGenericRTSP  CameraModels = "Generic RTSP"  // Used as a response from the port scanner to indicate that we can connect on RTSP, but we don't know anything else yet
-	CameraModelGenericONVIF CameraModels = "Generic ONVIF" // Used as a response from OnvifGetDeviceInfo() to indicate a camera that supports ONVIF, but which we don't recognize
+	// SYNC-CAMERA-BRANDS
+	CameraBrandUnknown      CameraBrands = ""
+	CameraBrandHikVision    CameraBrands = "HikVision"
+	CameraBrandReolink      CameraBrands = "Reolink"
+	CameraBrandGenericRTSP  CameraBrands = "Generic RTSP"  // Used as a response from the port scanner to indicate that we can connect on RTSP, but we don't know anything else yet
+	CameraBrandGenericONVIF CameraBrands = "Generic ONVIF" // Used as a response from OnvifGetDeviceInfo() to indicate a camera that supports ONVIF, but which we don't recognize
 )
 
-// AllCameraModels is an array of all camera model names, excluding "Unknown"
-var AllCameraModels []CameraModels
+// AllCameraBrands is an array of all camera model names, excluding "Unknown"
+var AllCameraBrands []CameraBrands
 
 type CameraModelOutputParameters struct {
 	LowResURL               string
@@ -33,8 +33,8 @@ func GetCameraModelParameters(model, baseURL, lowResSuffix, highResSuffix string
 		baseURL += "/"
 	}
 	out := &CameraModelOutputParameters{}
-	switch CameraModels(model) {
-	case CameraModelHikVision:
+	switch CameraBrands(model) {
+	case CameraBrandHikVision:
 		out.HighResURL = baseURL + "Streaming/Channels/101"
 		out.LowResURL = baseURL + "Streaming/Channels/102"
 		out.PacketsAreAnnexBEncoded = true
@@ -54,26 +54,28 @@ func GetCameraModelParameters(model, baseURL, lowResSuffix, highResSuffix string
 }
 
 // Attempt to identify the camera from the HTTP response it sends when asked for it's root page (eg http://192.168.10.5)
-func IdentifyCameraFromHTTP(headers http.Header, body string) CameraModels {
+func IdentifyCameraFromHTTP(headers http.Header, body string) CameraBrands {
 	if headers.Get("Server") == "webserver" && strings.Contains(body, "去除edge下将数字处理成电话的错误") {
-		return CameraModelHikVision
+		return CameraBrandHikVision
 	}
 	if headers.Get("Server") == "App-webs/" && strings.Contains(body, "//使其IE窗口最大化") {
-		return CameraModelHikVision
+		return CameraBrandHikVision
 	}
 	if strings.Contains(body, "Reolink") {
-		return CameraModelReolink
+		return CameraBrandReolink
 	}
-	return CameraModelUnknown
+	return CameraBrandUnknown
 }
 
 func init() {
-	// SYNC-CAMERA-MODELS
-	AllCameraModels = []CameraModels{
-		CameraModelHikVision,
-		CameraModelReolink,
+	// SYNC-CAMERA-BRANDS
+	AllCameraBrands = []CameraBrands{
+		CameraBrandHikVision,
+		CameraBrandReolink,
+		CameraBrandGenericRTSP,
+		CameraBrandGenericONVIF,
 	}
-	sort.Slice(AllCameraModels, func(i, j int) bool {
-		return AllCameraModels[i] < AllCameraModels[j]
+	sort.Slice(AllCameraBrands, func(i, j int) bool {
+		return AllCameraBrands[i] < AllCameraBrands[j]
 	})
 }

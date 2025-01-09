@@ -95,7 +95,7 @@ func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
 				case camIP := <-workQueue:
 					//fmt.Printf("Trying %v\n", camIP)
 					model, err := TryToContactCamera(camIP.String(), timeout, ScanMethodHTTP|ScanMethodRTSP)
-					if err == nil && model != camera.CameraModelUnknown {
+					if err == nil && model != camera.CameraBrandUnknown {
 						cam := &configdb.Camera{
 							Model: string(model),
 							Host:  camIP.String(),

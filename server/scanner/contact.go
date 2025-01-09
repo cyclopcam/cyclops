@@ -19,7 +19,7 @@ const (
 )
 
 // Try to contact the camera, using whatever network heuristics you specify in scanMethods
-func TryToContactCamera(host string, timeout time.Duration, scanMethods ScanMethod) (camera.CameraModels, error) {
+func TryToContactCamera(host string, timeout time.Duration, scanMethods ScanMethod) (camera.CameraBrands, error) {
 	//fmt.Printf("Contacting %v...\n", ip)
 
 	// 100ms is usually sufficient on my home network with HikVision cameras and ethernet, but it might be too aggressive for some.
@@ -38,41 +38,41 @@ func TryToContactCamera(host string, timeout time.Duration, scanMethods ScanMeth
 	if enableRTSP {
 		nMethods++
 	}
-	results := make(chan camera.CameraModels, nMethods)
+	results := make(chan camera.CameraBrands, nMethods)
 
-	tryHttp := func() (camera.CameraModels, error) {
+	tryHttp := func() (camera.CameraBrands, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		u := "http://" + host
 		req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 		if err != nil {
-			return camera.CameraModelUnknown, err
+			return camera.CameraBrandUnknown, err
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return camera.CameraModelUnknown, err
+			return camera.CameraBrandUnknown, err
 		}
 		defer resp.Body.Close()
 		bodyB, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return camera.CameraModelUnknown, err
+			return camera.CameraBrandUnknown, err
 		}
 		body := string(bodyB)
 		return camera.IdentifyCameraFromHTTP(resp.Header, body), nil
 	}
-	tryRTSP := func() (camera.CameraModels, error) {
+	tryRTSP := func() (camera.CameraBrands, error) {
 		cameraURL := "rtsp://" + host + ":554"
 		url, err := base.ParseURL(cameraURL)
 		if err != nil {
-			return camera.CameraModelUnknown, err
+			return camera.CameraBrandUnknown, err
 		}
 		client := &gortsplib.Client{}
 		if err := client.Start(url.Scheme, url.Host); err != nil {
-			return camera.CameraModelUnknown, err
+			return camera.CameraBrandUnknown, err
 		}
 		defer client.Close()
 		if _, err := client.Options(url); err != nil {
-			return camera.CameraModelUnknown, err
+			return camera.CameraBrandUnknown, err
 		} else {
 			// At least for Hikvision cameras, I can't get any identifying information from the OPTIONS response.
 			//fmt.Printf("%v %v\n", resp.StatusCode, resp.StatusMessage)
@@ -80,7 +80,7 @@ func TryToContactCamera(host string, timeout time.Duration, scanMethods ScanMeth
 			//for k, v := range resp.Header {
 			//	fmt.Printf("%v: %v\n", k, v)
 			//}
-			return camera.CameraModelGenericRTSP, nil
+			return camera.CameraBrandGenericRTSP, nil
 		}
 	}
 
@@ -98,18 +98,18 @@ func TryToContactCamera(host string, timeout time.Duration, scanMethods ScanMeth
 	}
 
 	// Higher numbers mean a more specific camera result
-	cameraSpecificity := func(c camera.CameraModels) int {
+	cameraSpecificity := func(c camera.CameraBrands) int {
 		switch c {
-		case camera.CameraModelUnknown:
+		case camera.CameraBrandUnknown:
 			return 0
-		case camera.CameraModelGenericRTSP:
+		case camera.CameraBrandGenericRTSP:
 			return 1
 		default:
 			return 2
 		}
 	}
 
-	best := camera.CameraModelUnknown
+	best := camera.CameraBrandUnknown
 	for i := 0; i < nMethods; i++ {
 		result := <-results
 		if cameraSpecificity(result) > cameraSpecificity(best) {

@@ -17,8 +17,8 @@ import (
 const onvifVerboseEnable = true
 
 // Whatever we have discovered about the camera via ONVIF
-type DeviceInfo struct {
-	Model         CameraModels
+type OnvifDeviceInfo struct {
+	Model         CameraBrands
 	MainStreamURL string
 	SubStreamURL  string
 }
@@ -30,7 +30,7 @@ func onvifVerbose(format string, v ...any) {
 }
 
 // Use ONVIF to discover whatever we need to know about the device
-func OnvifGetDeviceInfo(host, username, password string) (*DeviceInfo, error) {
+func OnvifGetDeviceInfo(host, username, password string) (*OnvifDeviceInfo, error) {
 	// Connect to the camera
 	//deviceEndpoint := fmt.Sprintf("%v", host)
 	dev, err := onvif.NewDevice(onvif.DeviceParams{
@@ -44,7 +44,7 @@ func OnvifGetDeviceInfo(host, username, password string) (*DeviceInfo, error) {
 		return nil, err
 	}
 
-	result := &DeviceInfo{}
+	result := &OnvifDeviceInfo{}
 
 	// The GetDeviceInfo() API is not implemented in the use-go/onvif library
 	//deviceInfo := dev.GetDeviceInfo()
@@ -56,11 +56,11 @@ func OnvifGetDeviceInfo(host, username, password string) (*DeviceInfo, error) {
 	} else {
 		switch strings.ToUpper(devInfo.Manufacturer) {
 		case "REOLINK":
-			result.Model = CameraModelReolink
+			result.Model = CameraBrandReolink
 		case "HIKVISION":
-			result.Model = CameraModelHikVision
+			result.Model = CameraBrandHikVision
 		default:
-			result.Model = CameraModelGenericONVIF
+			result.Model = CameraBrandGenericONVIF
 		}
 		if onvifVerboseEnable {
 			onvifVerbose("Device info: %v\n", devInfo)
