@@ -1,7 +1,6 @@
 package camera
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -27,14 +26,7 @@ type Camera struct {
 }
 
 func NewCamera(log logs.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Camera, error) {
-	baseURL := "rtsp://" + cfg.Username + ":" + cfg.Password + "@" + cfg.Host
-	if cfg.Port == 0 {
-		baseURL += ":554"
-	} else {
-		baseURL += fmt.Sprintf(":%v", cfg.Port)
-	}
-
-	params, err := GetCameraModelParameters(cfg.Model, baseURL, cfg.LowResURLSuffix, cfg.HighResURLSuffix)
+	rtspInfo, err := GetCameraRTSP(CameraBrands(cfg.Model), cfg.Host, cfg.Username, cfg.Password, cfg.Port, cfg.LowResURLSuffix, cfg.HighResURLSuffix)
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +38,8 @@ func NewCamera(log logs.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Cam
 	lowDumper := NewVideoRingBuffer(3 * 1024 * 1024)
 
 	lowDecoder := NewVideoDecodeReader()
-	high := NewStream(log, cfg.Name, "high", params.PacketsAreAnnexBEncoded)
-	low := NewStream(log, cfg.Name, "low", params.PacketsAreAnnexBEncoded)
+	high := NewStream(log, cfg.Name, "high", rtspInfo.PacketsAreAnnexBEncoded)
+	low := NewStream(log, cfg.Name, "low", rtspInfo.PacketsAreAnnexBEncoded)
 
 	return &Camera{
 		Log:        log,
@@ -57,8 +49,8 @@ func NewCamera(log logs.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Cam
 		HighDumper: highDumper,
 		LowDecoder: lowDecoder,
 		LowDumper:  lowDumper,
-		lowResURL:  params.LowResURL,
-		highResURL: params.HighResURL,
+		lowResURL:  rtspInfo.LowResURL,
+		highResURL: rtspInfo.HighResURL,
 	}, nil
 }
 

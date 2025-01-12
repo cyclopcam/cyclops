@@ -3,6 +3,7 @@ package camera
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/use-go/onvif"
@@ -18,7 +19,10 @@ const onvifVerboseEnable = true
 
 // Whatever we have discovered about the camera via ONVIF
 type OnvifDeviceInfo struct {
-	Model         CameraBrands
+	Brand         CameraBrands
+	Model         string
+	Firmware      string
+	Serial        string
 	MainStreamURL string
 	SubStreamURL  string
 }
@@ -32,9 +36,7 @@ func onvifVerbose(format string, v ...any) {
 // Use ONVIF to discover whatever we need to know about the device
 func OnvifGetDeviceInfo(host, username, password string) (*OnvifDeviceInfo, error) {
 	// Connect to the camera
-	//deviceEndpoint := fmt.Sprintf("%v", host)
 	dev, err := onvif.NewDevice(onvif.DeviceParams{
-		//Xaddr:    deviceEndpoint,
 		Xaddr:    host,
 		Username: username,
 		Password: password,
@@ -56,12 +58,15 @@ func OnvifGetDeviceInfo(host, username, password string) (*OnvifDeviceInfo, erro
 	} else {
 		switch strings.ToUpper(devInfo.Manufacturer) {
 		case "REOLINK":
-			result.Model = CameraBrandReolink
+			result.Brand = CameraBrandReolink
 		case "HIKVISION":
-			result.Model = CameraBrandHikVision
+			result.Brand = CameraBrandHikVision
 		default:
-			result.Model = CameraBrandGenericONVIF
+			result.Brand = CameraBrandGenericONVIF
 		}
+		result.Model = devInfo.Model
+		result.Firmware = devInfo.FirmwareVersion
+		result.Serial = devInfo.SerialNumber
 		if onvifVerboseEnable {
 			onvifVerbose("Device info: %v\n", devInfo)
 			onvifVerbose("Manufacturer: %v\n", devInfo.Manufacturer)
@@ -111,10 +116,23 @@ func OnvifGetDeviceInfo(host, username, password string) (*OnvifDeviceInfo, erro
 		//check(err)
 		onvifVerbose("Stream URI: %v\n", r)
 		onvifVerbose("\n")
+		streamUri := string(r.MediaUri.Uri)
+		u, err := url.Parse(streamUri)
+		if err != nil {
+			return nil, err
+		}
+		path := u.Path
+		if u.RawQuery != "" {
+			path += "?" + u.RawQuery
+		}
+		if len(path) > 1 {
+			// Remove leading slash
+			path = path[1:]
+		}
 		if isMain {
-			result.MainStreamURL = string(r.MediaUri.Uri)
+			result.MainStreamURL = path
 		} else if isSub {
-			result.SubStreamURL = string(r.MediaUri.Uri)
+			result.SubStreamURL = path
 		}
 	}
 

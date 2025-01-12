@@ -21,35 +21,55 @@ const (
 // AllCameraBrands is an array of all camera model names, excluding "Unknown"
 var AllCameraBrands []CameraBrands
 
-type CameraModelOutputParameters struct {
+type CameraRTSPInfo struct {
 	LowResURL               string
 	HighResURL              string
 	PacketsAreAnnexBEncoded bool
 }
 
-// Should switch to onvif!
-func GetCameraModelParameters(model, baseURL, lowResSuffix, highResSuffix string) (*CameraModelOutputParameters, error) {
-	if !strings.HasSuffix(baseURL, "/") {
-		baseURL += "/"
-	}
-	out := &CameraModelOutputParameters{}
-	switch CameraBrands(model) {
+func cameraBrandDefaults(brand CameraBrands, info *CameraRTSPInfo) {
+	// This is an unvalidated assumption.
+	// Read the comment above Stream.cameraSendsAnnexBEncoded for more context,
+	// and the justification for why we make this true by default.
+	info.PacketsAreAnnexBEncoded = true
+
+	switch brand {
 	case CameraBrandHikVision:
-		out.HighResURL = baseURL + "Streaming/Channels/101"
-		out.LowResURL = baseURL + "Streaming/Channels/102"
-		out.PacketsAreAnnexBEncoded = true
-	default:
-		if lowResSuffix != "" && highResSuffix != "" {
-			out.HighResURL = baseURL + highResSuffix
-			out.LowResURL = baseURL + lowResSuffix
-			// This is an unvalidated assumption.
-			// Read the comment above Stream.cameraSendsAnnexBEncoded for more context,
-			// and the justification for why we make this true by default.
-			out.PacketsAreAnnexBEncoded = true
-		} else {
-			return nil, fmt.Errorf("Don't know how to find low and high resolution streams for Camera Model '%v' (connection details: %v)", model, baseURL)
-		}
+		info.HighResURL = "Streaming/Channels/101"
+		info.LowResURL = "Streaming/Channels/102"
+		info.PacketsAreAnnexBEncoded = true // tested
+	case CameraBrandReolink:
+		info.HighResURL = "/"
+		info.LowResURL = "h264Preview_01_sub"
+		info.PacketsAreAnnexBEncoded = true // untested
 	}
+}
+
+func GetCameraRTSP(brand CameraBrands, host, username, password string, port int, lowResSuffix, highResSuffix string) (*CameraRTSPInfo, error) {
+	baseURL := "rtsp://" + username + ":" + password + "@" + host
+	if port == 0 {
+		baseURL += ":554"
+	} else {
+		baseURL += fmt.Sprintf(":%v", port)
+	}
+
+	out := &CameraRTSPInfo{}
+	cameraBrandDefaults(brand, out)
+	// At this stage out.LowResURL and out.HighResURL and just the path (eg "Streaming/Channels/101")
+	if lowResSuffix != "" {
+		out.LowResURL = lowResSuffix
+	}
+	if highResSuffix != "" {
+		out.HighResURL = highResSuffix
+	}
+	if out.LowResURL == "" {
+		return nil, fmt.Errorf("Can't find low resolution stream for Camera Model '%v'", brand)
+	}
+	if out.HighResURL == "" {
+		return nil, fmt.Errorf("Can't find high resolution stream for Camera Model '%v'", brand)
+	}
+	out.LowResURL = baseURL + "/" + strings.TrimPrefix(out.LowResURL, "/")
+	out.HighResURL = baseURL + "/" + strings.TrimPrefix(out.HighResURL, "/")
 	return out, nil
 }
 
