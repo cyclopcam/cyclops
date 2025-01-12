@@ -30,6 +30,12 @@ on the forum: (post not available yet, waiting for moderators to approve).
 An alternative workaround (which I intend to use) is to create all the models
 up-front.
 
+## Confidence Margin
+
+The post-NMS output of the Hailo stack doesn't give us access to any
+probabilities except for the max(arg), so we can't compute the confidence
+margin.
+
 ## Notes
 
 1. The Hailo has hardware support for bilinear filtering. We should use that to

@@ -26,6 +26,7 @@ struct Object {
 	cv::Rect_<float> rect;
 	int              label;
 	float            prob;
+	float            probMargin; // Only outputted for YOLOv8 and YOLOv11
 };
 
 static inline float clamp(float v, float vmin, float vmax) {
@@ -393,19 +394,22 @@ static void detect_yolov7_8(ModelTypes modelType, ncnn::Net& net, int nn_width, 
 		proposals.reserve(256);
 
 		for (size_t i = 0; i < (size_t) out.h; i++) {
-			float        maxProb    = 0;
-			int          maxProbCls = 0;
-			const float* prob       = out.row(i);
+			float        secondMaxProb = 0;
+			float        maxProb       = 0;
+			int          maxProbCls    = 0;
+			const float* prob          = out.row(i);
 			for (size_t c = 4; c < (size_t) out.w; c++) {
 				if (prob[c] > maxProb) {
-					maxProb    = prob[c];
-					maxProbCls = c - 4;
+					secondMaxProb = maxProb;
+					maxProb       = prob[c];
+					maxProbCls    = c - 4;
 				}
 			}
 			if (maxProb >= prob_threshold) {
 				Object obj;
 				obj.label       = maxProbCls;
 				obj.prob        = maxProb;
+				obj.probMargin  = maxProb - secondMaxProb;
 				obj.rect.x      = prob[0] - prob[2] / 2;
 				obj.rect.y      = prob[1] - prob[3] / 2;
 				obj.rect.width  = prob[2];
@@ -470,12 +474,13 @@ void DetectYOLO(ModelTypes modelType, ncnn::Net& net, int nn_width, int nn_heigh
 
 	for (const auto& o : obj) {
 		Detection det;
-		det.Box.X      = o.rect.x;
-		det.Box.Y      = o.rect.y;
-		det.Box.Width  = o.rect.width;
-		det.Box.Height = o.rect.height;
-		det.Class      = o.label;
-		det.Confidence = o.prob;
+		det.Box.X            = o.rect.x;
+		det.Box.Y            = o.rect.y;
+		det.Box.Width        = o.rect.width;
+		det.Box.Height       = o.rect.height;
+		det.Class            = o.label;
+		det.Confidence       = o.prob;
+		det.ConfidenceMargin = o.probMargin;
 		objects.push_back(det);
 	}
 }

@@ -23,5 +23,6 @@ typedef struct _Rect {
 typedef struct _Detection {
 	int   Class;
 	float Confidence;
+	float ConfidenceMargin;
 	Rect  Box;
 } Detection;

@@ -15,9 +15,10 @@ type ImageLabels struct {
 
 // ObjectDetection is an object that a neural network has found in an image
 type ObjectDetection struct {
-	Class      int     `json:"class"`
-	Confidence float32 `json:"confidence"`
-	Box        Rect    `json:"box"`
+	Class            int     `json:"class"`
+	Confidence       float32 `json:"confidence"`
+	ConfidenceMargin float32 `json:"confidenceMargin"` // p(max) - p(second max)
+	Box              Rect    `json:"box"`
 }
 
 // ProcessedObject is an ObjectDetection that has undergone some post-processing

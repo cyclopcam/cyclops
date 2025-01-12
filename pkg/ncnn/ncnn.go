@@ -70,8 +70,9 @@ func (d *Detector) DetectObjects(batch nn.ImageBatch, params *nn.DetectionParams
 
 		for i := 0; i < int(nDetections); i++ {
 			result[i] = nn.ObjectDetection{
-				Class:      int(detections[i].Class),
-				Confidence: float32(detections[i].Confidence),
+				Class:            int(detections[i].Class),
+				Confidence:       float32(detections[i].Confidence),
+				ConfidenceMargin: float32(detections[i].ConfidenceMargin),
 				Box: nn.Rect{
 					X:      int32(detections[i].Box.X),
 					Y:      int32(detections[i].Box.Y),

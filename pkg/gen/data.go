@@ -51,3 +51,15 @@ func IndexOf[T comparable](src []T, v T) int {
 	}
 	return -1
 }
+
+// Filter takes a slice of any type and a predicate function,
+// returning a new slice with only the elements that satisfy the predicate.
+func Filter[T any](items []T, predicate func(T) bool) []T {
+	var result []T
+	for _, item := range items {
+		if predicate(item) {
+			result = append(result, item)
+		}
+	}
+	return result
+}

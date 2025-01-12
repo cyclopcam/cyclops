@@ -131,6 +131,10 @@ type TrackedObject struct {
 	// This was just an idea, but I haven't needed it yet.
 	//ClassCount map[int]int `json:"classCount"`
 
+	// The class confidence margin, which is the difference between the confidence of the most likely class
+	// and the confidence of the second most likely class.
+	ConfidenceMargin float32 `json:"confidenceMargin"`
+
 	// Number of frames that we have considered this object genuine.
 	// If Genuine = 0, then we still don't consider it genuine.
 	// If Genuine = 1, then this is the first time we consider it genuine.

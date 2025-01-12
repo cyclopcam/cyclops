@@ -212,13 +212,13 @@ func (m *Monitor) trackDetectedObjects(cam *analyzerCameraState, objects []nn.Pr
 				totalSightings: 0,
 			})
 			if m.analyzerSettings.verbose {
-				m.Log.Infof("Analyzer (cam %v): New '%v' frame %v at %v,%v (bestIoU %.2f)", cam.cameraID, m.nnClassList[newObj.Class], imgID, newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y, newState[i].bestIoU)
+				m.Log.Infof("Analyzer (cam %v): New '%v' frame %v at %v,%v (bestIoU %.2f, CM %.2f)", cam.cameraID, m.nnClassList[newObj.Class], imgID, newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y, newState[i].bestIoU, newObj.Raw.ConfidenceMargin)
 			}
 			trackedAndFound = append(trackedAndFound, true)
 		} else if bestJ != -1 {
 			if m.analyzerSettings.verbose {
 				// Sometimes I comment out this line, because it's by far the most spammy of the log messages.
-				m.Log.Infof("Analyzer (cam %v): Existing '%v' frame %v at %v,%v (IoU %.2f)", cam.cameraID, m.nnClassList[newObj.Class], imgID, newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y, newState[i].bestIoU)
+				m.Log.Infof("Analyzer (cam %v): Existing '%v' frame %v at %v,%v (IoU %.2f, CM %.2f)", cam.cameraID, m.nnClassList[newObj.Class], imgID, newObj.Raw.Box.Center().X, newObj.Raw.Box.Center().Y, newState[i].bestIoU, newObj.Raw.ConfidenceMargin)
 			}
 			trackedAndFound[bestJ] = true
 		}

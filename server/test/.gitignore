@@ -1,3 +1,4 @@
 frame-*.jpg
 false-*.jpg
 validation-frame-*.jpg
+tracking-results.csv

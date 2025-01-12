@@ -2,7 +2,9 @@ package test
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -45,6 +47,17 @@ type EventTrackingParams struct {
 type Range struct {
 	Min int
 	Max int
+}
+
+type TestCaseResult struct {
+	Expected       EventTrackingTestCase
+	ActualPeople   int
+	ActualVehicles int
+}
+
+func (t *TestCaseResult) IsPass() bool {
+	return t.ActualPeople >= t.Expected.NumPeople.Min && t.ActualPeople <= t.Expected.NumPeople.Max &&
+		t.ActualVehicles >= t.Expected.NumVehicles.Min && t.ActualVehicles <= t.Expected.NumVehicles.Max
 }
 
 type EventTrackingTestCase struct {
@@ -105,7 +118,7 @@ func drawImageToVideo(t *testing.T, video *videox.VideoEncoder, d *gg.Context, p
 	require.NoError(t, err)
 }
 
-func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *EventTrackingTestCase, nnWidth, nnHeight int) {
+func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *EventTrackingTestCase, nnWidth, nnHeight int, needResult bool) TestCaseResult {
 	decoder, err := videox.NewVideoFileDecoder(FromTestPathToRepoRoot(tcase.VideoFilename))
 	require.NoError(t, err)
 	defer decoder.Close()
@@ -307,10 +320,21 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 
 	t.Logf("Found %v people, %v vehicles", nPerson, nVehicle)
 	if nPerson < tcase.NumPeople.Min || nPerson > tcase.NumPeople.Max {
-		t.Fatalf("Expected %v people, but found %v", tcase.NumPeople, nPerson)
+		t.Logf("Expected %v people, but found %v", tcase.NumPeople, nPerson)
+		if !needResult {
+			t.Fail()
+		}
 	}
 	if nVehicle < tcase.NumVehicles.Min || nVehicle > tcase.NumVehicles.Max {
-		t.Fatalf("Expected %v vehicles, but found %v", tcase.NumVehicles, nVehicle)
+		t.Logf("Expected %v vehicles, but found %v", tcase.NumVehicles, nVehicle)
+		if !needResult {
+			t.Fail()
+		}
+	}
+	return TestCaseResult{
+		Expected:       *tcase,
+		ActualPeople:   nPerson,
+		ActualVehicles: nVehicle,
 	}
 }
 
@@ -318,6 +342,11 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 // vs an existing object that has moved.
 func TestEventTracking(t *testing.T) {
 	nnload.LoadAccelerators(logs.NewTestingLog(t), true)
+
+	// If true, then do not fail the test on the first failure, but write our results out to
+	// a CSV file. Someday I hope to have zero failures, but right now that's not happening.
+	// With a correctly tuned model we should get there.
+	writeToResultFile := true
 
 	defaultNNWidth := 0
 	defaultNNHeight := 0
@@ -434,9 +463,52 @@ func TestEventTracking(t *testing.T) {
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{0, 0},
 		},
+		{
+			// Spider!
+			VideoFilename: "testdata/tracking/0016-LD.mp4",
+			NumPeople:     Range{0, 0},
+			NumVehicles:   Range{0, 0},
+		},
+		{
+			// Same spider
+			VideoFilename: "testdata/tracking/0017-LD.mp4",
+			NumPeople:     Range{0, 0},
+			NumVehicles:   Range{0, 0},
+		},
+		{
+			// Cat (not person)
+			VideoFilename: "testdata/tracking/0018-LD.mp4",
+			NumPeople:     Range{0, 0},
+			NumVehicles:   Range{0, 0},
+		},
 	}
-	//cases = cases[len(cases)-1:]
-	//cases = cases[8:9]
+
+	// The following chunk is useful for isolating a single test case
+	//cases = gen.Filter(cases, func(tcase *EventTrackingTestCase) bool {
+	//	return tcase.VideoFilename == "testdata/tracking/0018-LD.mp4"
+	//})
+
+	var resultFile *os.File
+	if writeToResultFile {
+		var err error
+		resultFile, err = os.Create("tracking-results.csv")
+		require.NoError(t, err)
+		defer resultFile.Close()
+		_, err = fmt.Fprintf(resultFile, "Video,Pass,Min People,Max People,Actual People,Min Vehicles,Max Vehicles,Actual Vehicles,Has False Positives,Has False Negatives\n")
+		require.NoError(t, err)
+	}
+	writeResult := func(r TestCaseResult) {
+		e := r.Expected
+		hasFalsePositives := r.ActualPeople > r.Expected.NumPeople.Max || r.ActualVehicles > r.Expected.NumVehicles.Max
+		hasFalseNegatives := r.ActualPeople < r.Expected.NumPeople.Min || r.ActualVehicles < r.Expected.NumVehicles.Min
+		pass := !hasFalsePositives && !hasFalseNegatives
+		fmt.Fprintf(resultFile,
+			"%v,%v,%v,%v,%v,%v,%v,%v,%v,%v\n",
+			e.VideoFilename, pass, e.NumPeople.Max, e.NumPeople.Max, r.ActualPeople, e.NumVehicles.Min, e.NumVehicles.Max, r.ActualVehicles, hasFalsePositives, hasFalseNegatives)
+	}
+
+	numPass := 0
+	numFail := 0
 
 	for iparams, params := range paramPurmutations {
 		t.Logf("Testing parameter permutation %v/%v (%v, %v, %v)", iparams, len(paramPurmutations), params.ModelNameLQ, params.ModelNameHQ, params.NNCoverage)
@@ -453,7 +525,20 @@ func TestEventTracking(t *testing.T) {
 				nnHeight = 256
 			}
 			t.Logf("Testing case %v", tcase.VideoFilename)
-			testEventTrackingCase(t, &params, tcase, nnWidth, nnHeight)
+			result := testEventTrackingCase(t, &params, tcase, nnWidth, nnHeight, writeToResultFile)
+			if writeToResultFile {
+				writeResult(result)
+			}
+			if result.IsPass() {
+				numPass++
+			} else {
+				numFail++
+			}
 		}
+	}
+
+	t.Logf("Passed %v/%v", numPass, numPass+numFail)
+	if numFail != 0 {
+		t.Fail()
 	}
 }
