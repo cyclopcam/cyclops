@@ -19,6 +19,7 @@ const (
 )
 
 // Try to contact the camera, using whatever network heuristics you specify in scanMethods
+// In this function CameraBrandUnknown means "no camera found"
 func TryToContactCamera(host string, timeout time.Duration, scanMethods ScanMethod) (camera.CameraBrands, error) {
 	//fmt.Printf("Contacting %v...\n", ip)
 
@@ -115,7 +116,8 @@ func TryToContactCamera(host string, timeout time.Duration, scanMethods ScanMeth
 		if cameraSpecificity(result) > cameraSpecificity(best) {
 			best = result
 		}
-		// If we get a specific brand result, return immediately
+		// If we get a specific brand result, then return immediately,
+		// because we don't expect to get any more information than this.
 		if cameraSpecificity(result) >= 2 {
 			return result, nil
 		}

@@ -152,8 +152,8 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 	}
 
 	// In case the previous test camera is the same as this one, close it.
-	// Cameras have a limited number of listeners, so it's not a good idea to open
-	// more connections to a camera than strictly necessary.
+	// Cameras (i.e. the hardware devices in the real world) have a limited number of listeners,
+	// so it's not a good idea to open more connections to a camera than strictly necessary.
 	s.LiveCameras.CloseTestCamera()
 
 	cam, err := camera.NewCamera(s.Log, cfg, s.RingBufferSize)
@@ -161,7 +161,7 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 		c.WriteJSON(message{Error: err.Error()})
 		return
 	}
-	// From here on out, we need to pay attention to Close() the camera at any failure point.
+	// From here on out, we need to make sure to Close() the camera at any failure point.
 	if err := cam.Start(); err != nil {
 		cam.Close(nil)
 		c.WriteJSON(message{Error: err.Error()})
