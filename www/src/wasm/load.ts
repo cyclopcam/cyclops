@@ -4,6 +4,9 @@ export let cyWasm: CyclopsModule;
 
 export async function loadWASM() {
 	cyWasm = await cyclopsWasmModule();
+
+	// To test, I just uncomment this code.
+	// There are some decent unit tests inside test-wasm.mjs
 	//testOnoffDecode();
 }
 

@@ -32,7 +32,9 @@
 // Return the maximum number of bits required to encode an input of the given bit length
 size_t onoff_encode_3_max_output_size(size_t input_bit_size) {
 	// 1 in case first bit is 'on', 4 for each additional bit, if the pattern is 1010101010101010...
-	return 1 + 4 * input_bit_size;
+	// plus 11, because it's the largest encoding of a 32-bit uint, with 4-bit nibbles.
+	// The +11 is not a practical concern, but it allows our encoder to make strict guarantees.
+	return 1 + 4 * input_bit_size + 11;
 }
 
 // Version 3.

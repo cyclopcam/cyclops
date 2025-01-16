@@ -35,6 +35,7 @@ type Camera struct {
 	LowResURLSuffix  string      `json:"lowResURLSuffix" gorm:"default:null"`  // eg Streaming/Channels/102 for HikVision. Can leave blank if Model is a known type.
 	CreatedAt        dbh.IntTime `json:"createdAt" gorm:"autoCreateTime:milli"`
 	UpdatedAt        dbh.IntTime `json:"updatedAt" gorm:"autoUpdateTime:milli"`
+	DetectionZone    string      `json:"detectionZone" gorm:"default:null"` // See DetectionZone.EncodeBase64()
 
 	// The long lived name is used to identify the camera in the storage archive.
 	// If necessary, we can make this configurable.
@@ -63,7 +64,9 @@ func (c *Camera) DeepEquals(x *Camera) bool {
 	if !c.EqualsConnection(x) {
 		return false
 	}
-	return c.Name == x.Name && c.LongLivedName == x.LongLivedName
+	return c.Name == x.Name &&
+		c.LongLivedName == x.LongLivedName &&
+		c.DetectionZone == x.DetectionZone
 }
 
 type Variable struct {

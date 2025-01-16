@@ -1,5 +1,6 @@
 import { encodeQuery, fetchOrErr } from "@/util/util";
 import { cyWasm } from "@/wasm/load";
+import { BinaryDecoder, decodeOnoff } from "@/mybits/onoff";
 import * as base64 from "base64-arraybuffer";
 
 export const BaseSecondsPerTile = 1024; // Expect this to be a multiple of BitsPerTile. I went with 1:1 for simplicity.
@@ -14,42 +15,6 @@ export function tileStartTimeMS(level: number, tileIdx: number): number {
 
 export function tileEndTimeMS(level: number, tileIdx: number): number {
 	return (tileIdx + 1) * ((1000 * BaseSecondsPerTile) << level);
-}
-
-export class BinaryDecoder {
-	buffer: Uint8Array;
-	pos = 0;
-
-	constructor(buffer: Uint8Array) {
-		this.buffer = buffer;
-	}
-
-	uvariant(): number {
-		let result = 0;
-		let shift = 0;
-		let byte;
-		do {
-			byte = this.buffer[this.pos++];
-			result |= (byte & 0x7f) << shift;
-			shift += 7;
-		} while (byte & 0x80);
-		return result;
-	}
-
-	byte(): number {
-		return this.buffer[this.pos++];
-	}
-
-	// Read into 'dst', at the destination offset provided.
-	// If 'length' is not provided, read dst.length bytes
-	// If 'dstOffset' is not provided, read into the start of 'dst'
-	byteArray(dst: Uint8Array, length?: number, dstOffset?: number) {
-		if (length === undefined) {
-			length = dst.length;
-		}
-		dst.set(this.buffer.subarray(this.pos, this.pos + length), dstOffset);
-		this.pos += length;
-	}
 }
 
 // Map from class ID to 1024-bit event tile bitmap
@@ -171,23 +136,10 @@ export class EventTile {
 			if (encodedLength === 128) {
 				decoder.byteArray(tile[cls]);
 			} else {
-				EventTile.decodeOnoff(decoder, encodedLength, tile[cls]);
+				decodeOnoff(decoder, encodedLength, tile[cls], BitsPerTile);
 			}
 		}
 
 		return tile;
-	}
-
-	static decodeOnoff(decoder: BinaryDecoder, encodedBufferLength: number, output: Uint8Array) {
-		let encodedBuffer = cyWasm._malloc(encodedBufferLength);
-		let decodeBuffer = cyWasm._malloc(output.length);
-		decoder.byteArray(cyWasm.HEAPU8, encodedBufferLength, encodedBuffer);
-		let nDecodedBits = cyWasm._onoff_decode_3(encodedBuffer, encodedBufferLength, decodeBuffer, output.length);
-		output.set(cyWasm.HEAPU8.subarray(decodeBuffer, decodeBuffer + output.length));
-		cyWasm._free(encodedBuffer);
-		cyWasm._free(decodeBuffer);
-		if (nDecodedBits !== BitsPerTile) {
-			throw new Error(`Expected ${BitsPerTile} bits of output from onoff_decode_3, got ${nDecodedBits}`);
-		}
 	}
 }

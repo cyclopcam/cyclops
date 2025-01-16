@@ -1,4 +1,5 @@
 import { encodeQuery } from "@/util/util";
+import { DetectionZone } from "./detectionZone";
 
 export enum Permissions {
 	Admin = "a",
@@ -44,6 +45,7 @@ export class CameraRecord {
 	lowResURLSuffix = ""; // eg Streaming/Channels/102 for HikVision. Can leave blank if Model is a known type.
 	createdAt = new Date();
 	updatedAt = new Date();
+	detectionZone: DetectionZone | null = null;
 
 	static fromJSON(j: any): CameraRecord {
 		let x = new CameraRecord();
@@ -58,6 +60,9 @@ export class CameraRecord {
 		x.lowResURLSuffix = j.lowResURLSuffix;
 		x.createdAt = new Date(j.createdAt);
 		x.updatedAt = new Date(j.updatedAt);
+		if (j.detectionZone && j.detectionZone !== "") {
+			x.detectionZone = DetectionZone.decodeBase64(j.detectionZone);
+		}
 		return x;
 	}
 
@@ -70,7 +75,7 @@ export class CameraRecord {
 	}
 
 	toJSON(): any {
-		return {
+		let j: any = {
 			id: this.id,
 			model: this.model,
 			name: this.name,
@@ -83,6 +88,10 @@ export class CameraRecord {
 			createdAt: this.createdAt.getTime(),
 			updatedAt: this.updatedAt.getTime(),
 		};
+		if (this.detectionZone) {
+			j.detectionZone = this.detectionZone.toBase64();
+		}
+		return j;
 	}
 
 	clone(): CameraRecord {
@@ -98,6 +107,9 @@ export class CameraRecord {
 		c.lowResURLSuffix = this.lowResURLSuffix;
 		c.createdAt = this.createdAt;
 		c.updatedAt = this.updatedAt;
+		if (this.detectionZone) {
+			c.detectionZone = this.detectionZone.clone();
+		}
 		return c;
 	}
 

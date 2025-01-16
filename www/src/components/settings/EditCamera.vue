@@ -4,12 +4,14 @@ import { computed, onMounted, ref } from 'vue';
 import { constants } from '@/constants';
 import CameraTester from './CameraTester.vue';
 import CameraPreview from './CameraPreview.vue';
+import DetectionZoneImage from './DetectionZoneImage.vue';
 import type { CameraTestResult } from './config';
 import { fetchOrErr } from '@/util/util';
 import WideText from '@/components/widewidgets/WideText.vue';
 import WideDropdown from '@/components/widewidgets/WideDropdown.vue';
 import WideButton from '@/components/widewidgets/WideButton.vue';
 import WideSection from '@/components/widewidgets/WideSection.vue';
+import WidePanel from '@/components/widewidgets/WidePanel.vue';
 import WideSpacer from '@/components/widewidgets/WideSpacer.vue';
 import Confirm from '@/components/widgets/Confirm.vue';
 import { useRouter } from 'vue-router';
@@ -276,6 +278,13 @@ onMounted(async () => {
 				<camera-tester v-if="testBusy" :camera="newCameraRecordFromLocalState()" @close="onTestFinished" />
 			</div>
 		</wide-section>
+		<!--
+		<wide-panel>
+			<div>Detection Zone</div>
+			<detection-zone-image :camera="original" />
+			<button>Edit Detection Zone</button>
+		</wide-panel>
+		-->
 		<div v-if="!isNewCamera">
 			<wide-spacer />
 			<wide-button class="unpair" @click="onUnpair" :disabled="unpairBusy">{{ unpairTitle() }}</wide-button>
