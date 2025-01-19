@@ -22,7 +22,7 @@ function statusText(): string {
 </script>
 
 <template>
-	<wide-section class="wideSaveCancel">
+	<div class="wideSaveCancel wide-section-element">
 		<div class="buttons">
 			<div v-if="status" class="status">
 				{{ statusText() }}
@@ -32,12 +32,13 @@ function statusText(): string {
 		<div v-if="error" class="error">
 			{{ error }}
 		</div>
-	</wide-section>
+	</div>
 </template>
 
 <style lang="scss" scoped>
 .wideSaveCancel {
-	margin-top: 10px;
+	margin: 0px 0px 10px 0px;
+	padding: 12px 0 2px 0;
 }
 
 .buttons {

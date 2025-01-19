@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import WideSection from '@/components/widewidgets/WideSection.vue';
-import WideText from '@/components/widewidgets/WideText.vue';
+import WideInput from '@/components/widewidgets/WideInput.vue';
 import WideSaveCancel from '@/components/widewidgets/WideSaveCancel.vue';
-import WideDropdown from '@/components/widewidgets/WideDropdown.vue';
+import WideRoot from '@/components/widewidgets/WideRoot.vue';
 import { ref, watch, onMounted } from 'vue';
 import { byteSizeUnit, formatByteSize, kibiSplit, type ByteSizeUnit } from '@/util/kibi';
 import { fetchOrErr } from '@/util/util';
@@ -40,8 +40,8 @@ let recordingMode = ref('always' as RecordingMode);
 let saveError = ref('');
 let saveStatus = ref('');
 
-let archiveDirExplain = 'This is where video recordings are stored.';
-let maxStorageExplain = 'The maximum amount of space to use for video recordings.';
+let archiveDirExplain = 'Video recordings are stored at this location.';
+let maxStorageExplain = 'The maximum amount of space to use for video recordings. When the storage is full, old recordings are deleted to free up space.';
 let storageUnits = ["KB", "MB", "GB", "TB", "PB"];
 let recordingModes = [
 	{ value: 'always', label: 'Always' },
@@ -52,7 +52,7 @@ let recordingModes = [
 //watch(archiveDir, async (newVal) => {
 //});
 
-async function onArchiveBlur() {
+async function onArchiveChange() {
 	await measureSpaceAvailable();
 }
 
@@ -122,6 +122,7 @@ async function onSave() {
 		},
 		body: JSON.stringify(altered),
 	});
+	let success = false;
 	if (r.ok) {
 		let rj = await r.r.json();
 		config.value = altered;
@@ -132,12 +133,12 @@ async function onSave() {
 			let restart = await globals.restart(10);
 			if (restart === "") {
 				// success
-				saveStatus.value = "Settings Applied";
+				success = true
 			} else {
 				saveError.value = restart;
 			}
 		} else {
-			saveStatus.value = "Settings Applied";
+			success = true
 		}
 	} else {
 		saveStatus.value = "";
@@ -145,6 +146,12 @@ async function onSave() {
 		console.error("Failed to save: " + r.error);
 	}
 
+	if (success) {
+		saveStatus.value = "Settings Applied";
+		setTimeout(() => {
+			saveStatus.value = "";
+		}, 700);
+	}
 }
 
 async function loadConfig() {
@@ -177,25 +184,30 @@ onMounted(async () => {
 </script>
 
 <template>
-	<div class="wideRoot">
-		<wide-text label="Video Location" v-model="archiveDir" :explain="archiveDirExplain" @blur="onArchiveBlur" />
+	<wide-root title="System Settings">
 		<wide-section>
-			<div v-if="spaceAtArchiveError" class="spaceAvailable error">
-				{{ spaceAtArchiveError }}
+			<wide-input label="Video Location" v-model="archiveDir" :explain="archiveDirExplain" ok-text="OK"
+				:required="true" @change="onArchiveChange" />
+			<div style="display: flex; justify-content: flex-end; margin-bottom: 8px">
+				<div v-if="spaceAtArchiveError" class="spaceAvailable wide-callout error">
+					{{ spaceAtArchiveError }}
+				</div>
+				<div v-else class="spaceAvailable wide-callout">
+					<span class="spaceAvailableMute">Space used</span> {{ spaceUsed() }} / {{ spaceAvailable() }}
+				</div>
 			</div>
-			<div v-else class="spaceAvailable">
-				<span class="spaceAvailableMute">Space used</span> {{ spaceUsed() }} / {{ spaceAvailable() }}
-			</div>
+			<wide-input label="Max storage space" v-model="maxStorage" :explain="maxStorageExplain" type="number"
+				:unit="storageUnit" :units="storageUnits" :required="true" @unit-change="onStorageUnitChange" />
+			<wide-input label="When to record" v-model="recordingMode" :required="true" :options="recordingModes" />
+			<wide-save-cancel :can-save="canSave()" :error="saveError" :status="saveStatus" @save="onSave" />
 		</wide-section>
-		<wide-text label="Max storage space" v-model="maxStorage" :explain="maxStorageExplain" :unit="storageUnit"
-			:units="storageUnits" @unit-change="onStorageUnitChange" />
-		<!-- <wide-text label="Fake password" v-model="fakePassword" type="password" />  -->
-		<wide-dropdown label="When to record" v-model="recordingMode" :options="recordingModes" />
-		<wide-save-cancel :can-save="canSave()" :error="saveError" :status="saveStatus" @save="onSave" />
-	</div>
+	</wide-root>
 </template>
 
 <style lang="scss" scoped>
+@import '@/assets/vars.scss';
+@import '@/components/widewidgets/widewidget.scss';
+
 .spaceAvailable {
 	display: flex;
 	justify-content: flex-end;
@@ -204,7 +216,7 @@ onMounted(async () => {
 }
 
 .spaceAvailableMute {
-	color: #777;
+	color: #555;
 	margin-right: 12px;
 }
 

@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { CameraRecord } from '@/db/config/configdb';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { constants } from '@/constants';
 import CameraTester from './CameraTester.vue';
 import CameraPreview from './CameraPreview.vue';
 import DetectionZoneImage from './DetectionZoneImage.vue';
 import type { CameraTestResult } from './config';
 import { fetchOrErr } from '@/util/util';
-import WideText from '@/components/widewidgets/WideText.vue';
-import WideDropdown from '@/components/widewidgets/WideDropdown.vue';
+import WideRoot from '@/components/widewidgets/WideRoot.vue';
+import WideInput from '@/components/widewidgets/WideInput.vue';
 import WideButton from '@/components/widewidgets/WideButton.vue';
 import WideSection from '@/components/widewidgets/WideSection.vue';
-import WidePanel from '@/components/widewidgets/WidePanel.vue';
 import WideSpacer from '@/components/widewidgets/WideSpacer.vue';
 import Confirm from '@/components/widgets/Confirm.vue';
 import { useRouter } from 'vue-router';
@@ -73,6 +72,11 @@ function areCameraConnectionsEqual(a: CameraRecord, b: CameraRecord): boolean {
 		a.password == b.password &&
 		a.model == b.model;
 }
+
+function onNameChanged() {
+	console.log("Saving new name", name.value);
+	onSave();
+};
 
 function needTest(): boolean {
 	if (testResult.value === TestResult.Unknown || testResult.value === TestResult.Fail)
@@ -153,7 +157,7 @@ async function onSave() {
 			error.value = r.error;
 			return;
 		}
-		pushRoute(router, { name: "rtSettingsHome" });
+		//pushRoute(router, { name: "rtSettingsHome" });
 	}
 }
 
@@ -254,14 +258,16 @@ onMounted(async () => {
 </script>
 
 <template>
-	<div class="wideRoot">
-		<wide-text label="Camera Name" v-model="name" />
-		<wide-text label="IP Address / Hostname" v-model="host" />
-		<wide-dropdown label="Model" v-model="model" :options="constants.cameraModels" />
-		<wide-text label="Username" v-model="username" />
-		<wide-text label="Password" v-model="password" type="password" autocomplete="off" />
+	<wide-root :title="isNewCamera ? 'Add Camera' : 'Edit Camera'">
 		<wide-section>
-			<!-- <div v-if="testResult === TestResult.Success" class="success">Connection Succeeded</div> -->
+			<wide-input label="Camera Name" v-model="name" @change="onNameChanged" :required="true" />
+		</wide-section>
+		<wide-section>
+			<wide-input label="IP Address / Hostname" v-model="host" okText="OK" :required="true" />
+			<wide-input label="Model" v-model="model" :options="constants.cameraModels" :required="true" />
+			<wide-input label="Username" v-model="username" okText="OK" :required="true" />
+			<wide-input label="Password" v-model="password" type="password" autocomplete="off" okText="OK"
+				:required="true" />
 			<div v-if="error" class="error">{{ error }}</div>
 			<div class="submit">
 				<button :class="{ focalButton: !canSave(), submitButtons: true }" :disabled="isTestDisabled()"
@@ -285,17 +291,18 @@ onMounted(async () => {
 			<button>Edit Detection Zone</button>
 		</wide-panel>
 		-->
-		<div v-if="!isNewCamera">
-			<wide-spacer />
+		<wide-section v-if="!isNewCamera">
 			<wide-button class="unpair" @click="onUnpair" :disabled="unpairBusy">{{ unpairTitle() }}</wide-button>
-			<wide-spacer />
-		</div>
+		</wide-section>
 		<confirm v-if="showConfirmUnpair" msg="Are you sure you want to unlink this camera?" yesText="Remove Camera"
 			:danger='true' @cancel="showConfirmUnpair = false" @ok="onUnpairConfirmed" />
-	</div>
+	</wide-root>
 </template>
 
 <style lang="scss" scoped>
+@import '@/assets/vars.scss';
+@import '@/components/widewidgets/widewidget.scss';
+
 .spacer {
 	height: 10px;
 }
@@ -331,6 +338,7 @@ onMounted(async () => {
 
 .error {
 	color: #d00;
+	padding: 10px 0 0 0;
 	margin: 16px 20px 0px 20px;
 	display: flex;
 	justify-content: center;

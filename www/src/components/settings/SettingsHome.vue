@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import PanelButton from "../core/PanelButton.vue";
-import Panel from "../core/Panel.vue";
+import WideSection from '@/components/widewidgets/WideSection.vue';
+import WideRoot from '@/components/widewidgets/WideRoot.vue';
+import WideButton from '@/components/widewidgets/WideButton.vue';
 import server from "@/icons/server.svg";
 import { onMounted, ref } from 'vue';
 import { CameraRecord } from '@/db/config/configdb';
@@ -23,12 +24,14 @@ onMounted(async () => {
 </script>
 
 <template>
-	<panel>
-		<panel-button :icon="server" route-target="rtSettingsSystem">System Settings</panel-button>
-		<panel-button v-for="camera of configured" :route-target="`/settings/camera/${camera.id}/_/_/0`"
-			:icon="camera.posterURL()" icon-size="50px">
-			{{ camera.name }}</panel-button>
-		<panel-button route-target="rtSettingsAddCamera" :icon="addIcon">Add
-			Camera</panel-button>
-	</panel>
+	<wide-root>
+		<wide-section>
+			<wide-button :icon="server" route-target="rtSettingsSystem">System Settings</wide-button>
+			<wide-button v-for="camera of configured" :route-target="`/settings/camera/${camera.id}/_/_/0`"
+				:icon="camera.posterURL()" icon-size="45px">
+				{{ camera.name }}</wide-button>
+			<wide-button route-target="rtSettingsAddCamera" :icon="addIcon">Add
+				Camera</wide-button>
+		</wide-section>
+	</wide-root>
 </template>

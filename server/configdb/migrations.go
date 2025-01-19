@@ -170,5 +170,10 @@ func Migrations(log logs.Log) []migration.Migrator {
 		DROP TABLE record_instruction;
 	`))
 
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		ALTER TABLE camera ADD COLUMN detection_zone TEXT;
+	`))
+
 	return migs
 }

@@ -17,8 +17,8 @@ let emits = defineEmits(['ok', 'cancel']);
 		<div class="root">
 			<div class="msg">{{ msg }}</div>
 			<div class="buttons">
-				<button @click="emits('ok')" :class="{ dangerButton: danger }">{{ yesText }}</button>
 				<button @click="emits('cancel')" class="cancel">{{ noText ?? "Cancel" }}</button>
+				<button @click="emits('ok')" :class="{ dangerButton: danger }">{{ yesText }}</button>
 			</div>
 		</div>
 	</modal>
@@ -28,7 +28,7 @@ let emits = defineEmits(['ok', 'cancel']);
 .root {
 	background: #fff;
 	width: 90vw;
-	border-radius: 5px;
+	border-radius: 15px;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -41,10 +41,10 @@ let emits = defineEmits(['ok', 'cancel']);
 
 .buttons {
 	display: flex;
-	margin-bottom: 20px;
+	margin-bottom: 30px;
 }
 
 .cancel {
-	margin-left: 16px;
+	margin-right: 20px;
 }
 </style>

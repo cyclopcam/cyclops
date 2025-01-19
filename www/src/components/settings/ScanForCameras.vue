@@ -2,9 +2,11 @@
 import { CameraRecord } from '@/db/config/configdb';
 import { onMounted, ref } from 'vue';
 import NewCameraConfig from '@/components/settings/NewCameraConfig.vue';
-import { encodeQuery, fetchOrErr } from '@/util/util';
+import { encodeQuery, fetchOrErr, sleep } from '@/util/util';
 import Error from '@/components/core/Error.vue';
 import Buttin from '@/components/core/Buttin.vue';
+import WideRoot from '@/components/widewidgets/WideRoot.vue';
+import WideSection from '@/components/widewidgets/WideSection.vue';
 import WideButton from '@/components/widewidgets/WideButton.vue';
 import ScannedCamera from './ScannedCamera.vue';
 import { useRouter } from 'vue-router';
@@ -26,6 +28,13 @@ let busyScanning = ref(false);
 let timeoutMS = ref(0);
 let numScans = ref(0);
 
+// Use this to simulate a scan, when iterating on the UI/UX
+let enableDebugFakeScan = false;
+async function debugFakeScan() {
+	await sleep(500);
+	scanned.value = [];
+}
+
 async function onScanAgain() {
 	scan();
 }
@@ -43,13 +52,17 @@ async function scan() {
 	};
 	scanned.value = [];
 	busyScanning.value = true;
-	let r = await fetchOrErr('/api/config/scanNetworkForCameras?' + encodeQuery(options), { method: 'POST' });
-	if (r.ok) {
-		let resultJSON = await r.r.json();
-		globals.lastNetworkCameraScanJSON = resultJSON;
-		scanned.value = (resultJSON as []).map(x => CameraRecord.fromJSON(x));
+	if (enableDebugFakeScan) {
+		await debugFakeScan();
 	} else {
-		error.value = r.error;
+		let r = await fetchOrErr('/api/config/scanNetworkForCameras?' + encodeQuery(options), { method: 'POST' });
+		if (r.ok) {
+			let resultJSON = await r.r.json();
+			globals.lastNetworkCameraScanJSON = resultJSON;
+			scanned.value = (resultJSON as []).map(x => CameraRecord.fromJSON(x));
+		} else {
+			error.value = r.error;
+		}
 	}
 	busyScanning.value = false;
 }
@@ -103,21 +116,31 @@ onMounted(async () => {
 </script>
 
 <template>
-	<div class="wideRoot">
-		<div class="title">The following devices were found on your network</div>
-		<div v-if="busyScanning" class="busy">
-			Busy Scanning (timeout {{ timeoutMS / 1000 }} seconds)...
-		</div>
-		<div class="cameras">
-			<div v-for="camera of scanned">
-				<scanned-camera :camera="camera" :is-configured="isConfigured(camera)" @add="onAdd(camera)"
-					style="margin: 10px 0px" />
+	<wide-root title="Scan for Cameras">
+		<wide-section>
+			<div class="title">The following devices were found on your network</div>
+			<div v-if="busyScanning" class="busy">
+				Busy Scanning (timeout {{ timeoutMS / 1000 }} seconds)...
 			</div>
-			<div class="scanAgain">
-				<buttin :busy="busyScanning" @click="onScanAgain">Scan Again</buttin>
+			<div v-else-if="!busyScanning && scanned.length === 0">
+				<span style="color:#d00">No cameras found.</span><br><br>If your server is running in a different subnet
+				to
+				your cameras, you can
+				specify the subnet to scan with the "--ip &lt;network&gt;" CLI parameter when starting the server.
+				<br><br>
+				Each time you press "Scan Again", we'll raise the network timeout.
 			</div>
-		</div>
-	</div>
+			<div class="cameras">
+				<div v-for="camera of scanned">
+					<scanned-camera :camera="camera" :is-configured="isConfigured(camera)" @add="onAdd(camera)"
+						style="margin: 10px 0px" />
+				</div>
+				<div class="scanAgain">
+					<buttin :busy="busyScanning" @click="onScanAgain">Scan Again</buttin>
+				</div>
+			</div>
+		</wide-section>
+	</wide-root>
 </template>
 
 <style lang="scss" scoped>
@@ -139,6 +162,6 @@ onMounted(async () => {
 .scanAgain {
 	display: flex;
 	justify-content: flex-end;
-	margin: 30px 0px 0px 0px;
+	margin: 30px 0px 20px 0px;
 }
 </style>

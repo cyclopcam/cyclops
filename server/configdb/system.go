@@ -86,7 +86,8 @@ func ValidateRecordingConfig(isDefaults bool, c *RecordingJSON) error {
 		return fmt.Errorf("Invalid recording mode '%v'. Valid modes are 'always', 'movement', and 'detection'", c.Mode)
 	}
 	if isDefaults && c.Path == "" {
-		return fmt.Errorf("Recording path is required")
+		// Keep this wording consistent with front-end. The front-end uses "Video Location"
+		return fmt.Errorf("Video Location is required")
 	}
 	if c.Path != "" {
 		if err := os.MkdirAll(c.Path, 0770); err != nil {

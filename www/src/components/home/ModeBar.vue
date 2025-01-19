@@ -28,6 +28,9 @@ function onBack() {
 }
 
 function showBack(): boolean {
+	// I'm moving this back button to the top of the screen.
+	return false;
+	/*
 	// Don't count paths which are the default child.
 	// The default child paths are the same as their parent,
 	// so that's how we detect them.
@@ -40,6 +43,7 @@ function showBack(): boolean {
 		}
 	}
 	return d >= 3;
+	*/
 }
 
 onMounted(() => {

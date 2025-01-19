@@ -31,6 +31,9 @@ $darkBackground1: #444;
 	background-position: center;
 }
 
+@mixin shadow3 {
+	box-shadow: 1px 2px 3px rgba(0, 0, 0, 0.3);
+}
 @mixin shadow5 {
 	box-shadow: 1px 2px 5px rgba(0, 0, 0, 0.3);
 }
@@ -45,6 +48,9 @@ $darkBackground1: #444;
 }
 @mixin shadowHeavy {
 	box-shadow: 5px 5px 30px rgba(0, 0, 0, 0.35), 3px 4px 15px rgba(0, 0, 0, 0.45);
+}
+@mixin shadow3L {
+	box-shadow: 1px 2px 3px rgba(0, 0, 0, 0.12);
 }
 @mixin shadow5L {
 	box-shadow: 1px 2px 5px rgba(0, 0, 0, 0.12);

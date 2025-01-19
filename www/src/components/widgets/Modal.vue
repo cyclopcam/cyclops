@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 
 let props = defineProps({
 	// parent: relative to parent DOM element
@@ -51,6 +51,7 @@ let emits = defineEmits(['close']);
 let domBreaker = ref(1);
 let hide = ref(true);
 
+let screenHeight = ref(0);
 let ownWidth = ref(0);
 let ownHeight = ref(0);
 let numPolls = 0;
@@ -75,6 +76,9 @@ function fixedStyle(): any {
 	let s: any = {
 		'background-color': t,
 	};
+	if (screenHeight.value > 0) {
+		s['height'] = screenHeight.value + 'px';
+	}
 	//if (props.clickThrough) {
 	//	s['pointer-events'] = "none";
 	//}
@@ -217,8 +221,19 @@ function sizePoller() {
 	setTimeout(() => { sizePoller() }, timeout);
 }
 
+// This is for adapting to screen size change when virtual keyboard is shown
+function onScreenSizeChanged() {
+	saveScreenHeight();
+}
+
+function saveScreenHeight() {
+	screenHeight.value = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+}
+
 onMounted(() => {
 	domBreaker.value++;
+	saveScreenHeight();
+	window.addEventListener('resize', onScreenSizeChanged);
 	if (props.pollSize) {
 		sizePoller();
 	} else {
@@ -228,6 +243,11 @@ onMounted(() => {
 	if (props.showX)
 		xPoller();
 })
+
+onUnmounted(() => {
+	window.removeEventListener('resize', onScreenSizeChanged);
+})
+
 </script>
 
 <template>
@@ -245,7 +265,8 @@ onMounted(() => {
 	left: 0;
 	top: 0;
 	width: 100%;
-	height: 100%;
+	//height: 100%; // We override this in code, in order to deal with virtual keyboards on mobile
+	transition: height 60ms;
 	z-index: 1;
 }
 
