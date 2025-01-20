@@ -208,6 +208,8 @@ int nna_run_model(void* model, int batchSize, int batchStride, int width, int he
 	const std::string& input_name       = m->InferModel->get_input_names()[0];
 	size_t             input_frame_size = m->InferModel->input(input_name)->get_frame_size();
 
+	debug_printf("input_name %s, input_frame_size %d\n", input_name.c_str(), (int) input_frame_size);
+
 	// Validate inputs
 	if (stride == 0) {
 		stride = width * nchan;
@@ -250,7 +252,7 @@ int nna_run_model(void* model, int batchSize, int batchStride, int width, int he
 	// Waiting for available requests in the pipeline.
 	// I'm not 100% sure whether we need to do this before binding, or if we can do it after binding.
 	// mkay -- I have moved this check back down below our bindings, and I'm not seeing any crashes.
-	//hailo_status status = m->ConfiguredInferModel->wait_for_async_ready(2s, batchSize);
+	//status = m->ConfiguredInferModel->wait_for_async_ready(2s, batchSize);
 	//if (status != HAILO_SUCCESS) {
 	//	debug_printf("Failed to wait for async ready, status = %d", (int) status);
 	//	return _make_own_status(status);
@@ -262,20 +264,18 @@ int nna_run_model(void* model, int batchSize, int batchStride, int width, int he
 	for (int iBatchEl = 0; iBatchEl < batchSize; iBatchEl++) {
 		Expected<ConfiguredInferModel::Bindings> bindings_exp = m->ConfiguredInferModel->create_bindings();
 		if (!bindings_exp) {
-			printf("Failed to get infer model bindings\n");
+			debug_printf("Failed to get infer model bindings\n");
 			return bindings_exp.status();
 		}
-		ConfiguredInferModel::Bindings bindings = bindings_exp.release();
-		bindings_batch.push_back(bindings);
+		bindings_batch.push_back(bindings_exp.release());
+		ConfiguredInferModel::Bindings& bindings = bindings_batch.back();
 
-		//uint8_t* elInput = (uint8_t*) denseInput[iBatchEl];
-		//uint8_t* elInput = (uint8_t*) data[iBatchEl];
 		uint8_t* elInput = ((uint8_t*) data) + iBatchEl * batchStride;
 		status           = bindings.input(input_name)->set_buffer(MemoryView(elInput, input_frame_size));
 		if (status != HAILO_SUCCESS) {
 			return _make_own_status(status);
 		}
-
+		//debug_printf("bound %s to %p for %d bytes\n", input_name.c_str(), elInput, (int) input_frame_size);
 		//std::vector<OutTensor> outputTensors;
 
 		// Bind output tensors
@@ -317,12 +317,15 @@ int nna_run_model(void* model, int batchSize, int batchStride, int width, int he
 	// Waiting for available requests in the pipeline.
 	status = m->ConfiguredInferModel->wait_for_async_ready(2s, batchSize);
 	if (status != HAILO_SUCCESS) {
-		debug_printf("Failed to wait for async ready, status = %d", (int) status);
+		debug_printf("Failed to wait for async ready, status = %d\n", (int) status);
 		return _make_own_status(status);
 	}
 
+	debug_printf("dispatch\n");
+
 	// Dispatch the job.
 	Expected<AsyncInferJob> job_exp = m->ConfiguredInferModel->run_async(bindings_batch);
+	//Expected<AsyncInferJob> job_exp = m->ConfiguredInferModel->run_async(fooBindings);
 
 	//Expected<AsyncInferJob> job_exp = m->ConfiguredInferModel->run_async(bindings_batch, [](const AsyncInferCompletionInfo& completion_info) {
 	//	// Use completion_info to get the async operation status
@@ -330,10 +333,12 @@ int nna_run_model(void* model, int batchSize, int batchStride, int width, int he
 	//	(void) completion_info.status;
 	//});
 	if (!job_exp) {
-		//printf("Failed to start async infer job, status = %d\n", (int) job_exp.status());
+		debug_printf("Failed to start async infer job, status = %d\n", (int) job_exp.status());
 		return _make_own_status(job_exp.status());
 	}
 	//hailort::AsyncInferJob* job = new AsyncInferJob(job_exp.release());
+
+	debug_printf("dispatch OK\n");
 
 	// Detaches the job. Without detaching, the job's destructor will block until the job finishes.
 	// Hmmm, but what if somebody wants to abandon an inference job. We can't delete the memory
