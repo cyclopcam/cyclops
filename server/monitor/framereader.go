@@ -109,13 +109,18 @@ func (m *Monitor) readFrames() {
 			totalFrames, totalProcessed := frameReaderStats(looperCameras)
 			lq := &m.nnPerfStatsLQ
 			hq := &m.nnPerfStatsHQ
-			m.Log.Infof("%.0f%% frames analyzed by LQ NN. %v Threads. Times per frame: (%.1f ms Prep, %.1f ms NN)",
+			m.Log.Infof("%.0f%% frames analyzed by LQ NN. %v Threads. Times per frame: (%.1f ms Prep, %.1f ms NN, %v batch size)",
 				100*float64(totalProcessed)/float64(totalFrames),
 				m.numNNThreads,
 				float64(lq.avgTimeNSPerFrameNNPrep.Load())/1e6,
 				float64(lq.avgTimeNSPerFrameNNDet.Load())/1e6,
+				m.nnBatchSizeLQ,
 			)
-			m.Log.Infof("HQ validation network: %.1f ms Prep, %.1f ms NN", float64(hq.avgTimeNSPerFrameNNPrep.Load())/1e6, float64(hq.avgTimeNSPerFrameNNDet.Load())/1e6)
+			m.Log.Infof("HQ validation network: %.1f ms Prep, %.1f ms NN, %v batch size",
+				float64(hq.avgTimeNSPerFrameNNPrep.Load())/1e6,
+				float64(hq.avgTimeNSPerFrameNNDet.Load())/1e6,
+				m.nnBatchSizeHQ,
+			)
 			lastStats = time.Now()
 		}
 	}
