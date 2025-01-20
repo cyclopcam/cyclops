@@ -46,10 +46,9 @@ export const router = createRouter({
 							props: true,
 						},
 						{
-							path: "scan/:usePreviousScan",
+							path: "scan",
 							name: "rtSettingsScanForCameras",
 							component: ScanForCameras,
-							props: true,
 						},
 						{
 							path: "addCamera",

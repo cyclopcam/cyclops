@@ -74,9 +74,10 @@ function areCameraConnectionsEqual(a: CameraRecord, b: CameraRecord): boolean {
 }
 
 function onNameChanged() {
-	console.log("Saving new name", name.value);
-	onSave();
-};
+	if (!isNewCamera.value) {
+		onSave(false);
+	}
+}
 
 function needTest(): boolean {
 	if (testResult.value === TestResult.Unknown || testResult.value === TestResult.Fail)
@@ -126,7 +127,7 @@ function newCameraRecordFromLocalState(): CameraRecord {
 	return c;
 }
 
-async function onSave() {
+async function onSave(allowNavigate: boolean) {
 	if (isNewCamera.value) {
 		// Add the camera to the system
 		busySaving.value = true;
@@ -141,10 +142,12 @@ async function onSave() {
 		}
 		globals.lastCameraUsername = username.value;
 		globals.lastCameraPassword = password.value;
-		if (props.returnToScan === '1') {
-			pushRoute(router, { name: "rtSettingsScanForCameras", params: { usePreviousScan: '1' } });
-		} else {
-			pushRoute(router, { name: "rtSettingsHome" });
+		if (allowNavigate) {
+			if (props.returnToScan === '1') {
+				pushRoute(router, { name: "rtSettingsScanForCameras" });
+			} else {
+				pushRoute(router, { name: "rtSettingsHome" });
+			}
 		}
 	} else {
 		busySaving.value = true;
@@ -275,7 +278,7 @@ onMounted(async () => {
 					Settings</button>
 				<div style="width:10px" />
 				<button :class="{ focalButton: canSave(), submitButtons: true }" :disabled="!canSave() || busySaving"
-					@click="onSave">{{
+					@click="onSave(true)">{{
 						saveButtonTitle()
 					}}</button>
 			</div>

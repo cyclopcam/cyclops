@@ -41,27 +41,6 @@ async function moveToNextStage() {
 	console.log("moveToNextStage");
 	await globals.postAuthenticateLoadSystemInfo(false);
 	replaceRoute(router, { name: "rtSettingsHome" });
-
-
-	/*
-	if (stage.value === Stages.ConfigureCameras) {
-		// we're done
-		globals.networkError = '';
-		await globals.loadCameras();
-		replaceRoute(router, { name: "rtMonitor" });
-		return;
-	}
-
-	stage.value++;
-
-	if (stage.value === Stages.CreateFirstUser) {
-		// This code path is necessary for when the VPN is still not setup, but the user is logged in
-		let r = await fetch("/api/auth/whoami");
-		if (r.ok) {
-			moveToNextStage();
-		}
-	}
-	*/
 }
 
 onMounted(async () => {

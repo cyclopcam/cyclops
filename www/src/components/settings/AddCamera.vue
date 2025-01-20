@@ -16,7 +16,7 @@ function onManual() {
 }
 
 function onScan() {
-	pushRoute(router, { name: 'rtSettingsScanForCameras', params: { usePreviousScan: '0' } });
+	pushRoute(router, { name: 'rtSettingsScanForCameras' });
 }
 
 </script>

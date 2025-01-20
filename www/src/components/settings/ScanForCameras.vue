@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { CameraRecord } from '@/db/config/configdb';
 import { onMounted, ref } from 'vue';
-import NewCameraConfig from '@/components/settings/NewCameraConfig.vue';
 import { encodeQuery, fetchOrErr, sleep } from '@/util/util';
-import Error from '@/components/core/Error.vue';
 import Buttin from '@/components/core/Buttin.vue';
 import WideRoot from '@/components/widewidgets/WideRoot.vue';
 import WideSection from '@/components/widewidgets/WideSection.vue';
-import WideButton from '@/components/widewidgets/WideButton.vue';
 import ScannedCamera from './ScannedCamera.vue';
 import { useRouter } from 'vue-router';
 import { pushRoute } from "@/router/helpers";
@@ -16,7 +13,6 @@ import { globals } from '@/globals';
 const router = useRouter();
 
 let props = defineProps<{
-	usePreviousScan?: string,
 }>();
 
 let emits = defineEmits(['finished']);
@@ -102,9 +98,10 @@ onMounted(async () => {
 
 	await fetchExisting();
 
-	console.log(`ScanForCameras onMounted usePreviousScan=${props.usePreviousScan}, lastNetworkCameraScanJSON=`, globals.lastNetworkCameraScanJSON);
-	if (props.usePreviousScan === '1' && globals.lastNetworkCameraScanJSON) {
+	console.log(`ScanForCameras onMounted, lastNetworkCameraScanJSON=`, globals.lastNetworkCameraScanJSON);
+	if (globals.lastNetworkCameraScanJSON) {
 		// The user is busy setting up a bunch of cameras, so we don't want to rescan after each one.
+		// The user can always just hit Scan again, if this list is stale.
 		scanned.value = (globals.lastNetworkCameraScanJSON as []).map(x => CameraRecord.fromJSON(x));
 	} else {
 		await scan();
