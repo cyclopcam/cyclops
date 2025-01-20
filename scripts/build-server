@@ -5,7 +5,7 @@ set -e
 cd ncnn
 mkdir -p build
 cd build
-cmake -DNCNN_SIMPLEOCV=1 ..
+cmake -DNCNN_SIMPLEOCV=1 -DNCNN_BUILD_EXAMPLES=OFF ..
 make -j2
 
 cd ../..
