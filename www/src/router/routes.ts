@@ -13,6 +13,7 @@ import EditCamera from "@/components/settings/EditCamera.vue";
 import ScanForCameras from "@/components/settings/ScanForCameras.vue";
 import AddCamera from "@/components/settings/AddCamera.vue";
 import SystemSettings from "@/components/settings/SystemSettings.vue";
+import EditDetectionZone from "@/components/settings/EditDetectionZone.vue";
 import Empty from "@/components/home/Empty.vue";
 import BlankView from "@/views/Blank.vue";
 
@@ -40,9 +41,15 @@ export const router = createRouter({
 							component: SystemSettings,
 						},
 						{
-							path: "camera/:id/:host/:model/:returnToScan",
+							path: "camera/:id",
 							name: "rtSettingsEditCamera",
 							component: EditCamera,
+							props: true,
+						},
+						{
+							path: "camera/:id/detectionZone",
+							name: "rtSettingsEditDetectionZone",
+							component: EditDetectionZone,
 							props: true,
 						},
 						{

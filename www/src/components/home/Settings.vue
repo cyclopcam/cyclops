@@ -12,19 +12,20 @@
 </template>
 
 <style lang="scss" scoped>
-@import '@/assets/vars.scss';
+//@import '@/assets/vars.scss';
+@import '@/assets/base.scss';
 
 .settingsRoot {
 	box-sizing: border-box;
+	background: $widerootbg;
 	height: 100%;
 
 	// We do this, otherwise the invocation of a vertical scrollbar on desktop causes
-	// there to be too little horizonta space, and then we get a really ugly horizontal
+	// there to be too little horizontal space, and then we get a really ugly horizontal
 	// scrollbar too.
 	overflow-x: hidden;
 
 	overflow-y: auto;
-	//padding: 10px 20px;
 
 	// for desktop
 	width: 300px;

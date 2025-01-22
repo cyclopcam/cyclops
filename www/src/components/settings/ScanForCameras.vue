@@ -80,7 +80,7 @@ function onAdd(cam: CameraRecord) {
 	}
 	let returnToScan = remaining > 1 ? '1' : '0';
 
-	pushRoute(router, { name: 'rtSettingsEditCamera', params: { id: 'new', host: cam.host, model: cam.model, returnToScan: returnToScan } });
+	pushRoute(router, { name: 'rtSettingsEditCamera', params: { id: 'new' }, hash: encodeQuery({ host: cam.host, model: cam.model, returnToScan: returnToScan }) });
 }
 
 function isConfigured(cam: CameraRecord): boolean {

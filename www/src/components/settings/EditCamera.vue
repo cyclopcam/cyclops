@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import { CameraRecord } from '@/db/config/configdb';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { constants } from '@/constants';
 import CameraTester from './CameraTester.vue';
 import CameraPreview from './CameraPreview.vue';
-import DetectionZoneImage from './DetectionZoneImage.vue';
 import type { CameraTestResult } from './config';
 import { fetchOrErr } from '@/util/util';
 import WideRoot from '@/components/widewidgets/WideRoot.vue';
 import WideInput from '@/components/widewidgets/WideInput.vue';
 import WideButton from '@/components/widewidgets/WideButton.vue';
 import WideSection from '@/components/widewidgets/WideSection.vue';
-import WideSpacer from '@/components/widewidgets/WideSpacer.vue';
 import Confirm from '@/components/widgets/Confirm.vue';
 import { useRouter } from 'vue-router';
 import { pushRoute } from "@/router/helpers";
@@ -19,9 +17,6 @@ import { globals } from '@/globals';
 
 let props = defineProps<{
 	id: string, // either the ID or "new"
-	host: string, // when 'new', this is the host to pre-fill
-	model: string, // when 'new', this is the model to pre-fill
-	returnToScan: string, // Instruct us to return to the ScanForCameras page when we're done
 }>();
 
 let router = useRouter();
@@ -47,6 +42,8 @@ let busySaving = ref(false);
 let showConfirmUnpair = ref(false);
 let unpairBusy = ref(false);
 let error = ref('');
+
+let returnRoute = 'rtSettingsHome';
 
 // This is useful for development on the Edit Camera workflow, because it allows you
 // to change a trivial field and then go through the Test Camera.. Save Changes process.
@@ -143,11 +140,7 @@ async function onSave(allowNavigate: boolean) {
 		globals.lastCameraUsername = username.value;
 		globals.lastCameraPassword = password.value;
 		if (allowNavigate) {
-			if (props.returnToScan === '1') {
-				pushRoute(router, { name: "rtSettingsScanForCameras" });
-			} else {
-				pushRoute(router, { name: "rtSettingsHome" });
-			}
+			pushRoute(router, { name: returnRoute });
 		}
 	} else {
 		busySaving.value = true;
@@ -160,7 +153,6 @@ async function onSave(allowNavigate: boolean) {
 			error.value = r.error;
 			return;
 		}
-		//pushRoute(router, { name: "rtSettingsHome" });
 	}
 }
 
@@ -178,8 +170,6 @@ function onTestFinished(result: CameraTestResult) {
 		testResultImageBlob.value = result.image;
 		error.value = '';
 		testResult.value = TestResult.Success;
-		//addToRecentUsernames(username.value);
-		//addToRecentPasswords(password.value);
 	}
 }
 
@@ -218,24 +208,23 @@ onMounted(async () => {
 			copyCameraRecordToLocalState(original.value);
 			lastGoodConfig.value = original.value.clone();
 		}
-		//if (username.value === '' && recentUsernames.length !== 0) {
-		//	username.value = recentUsernames[recentUsernames.length - 1];
-		//}
-		//if (password.value === '' && recentPasswords.length !== 0) {
-		//	password.value = recentPasswords[recentPasswords.length - 1];
-		//}
 	} else {
-		// Params are not allowed to be empty strings, so we use a single space
-		// as a special value that we interpret as an empty string.
-		console.log("EditCamera props.host", props.host);
-		console.log("EditCamera props.model", props.model);
+		let discoveredHost = window.location.hash.match(/host=([^&]+)/);
+		let discoveredModel = window.location.hash.match(/model=([^&]+)/);
+		let returnToScan = window.location.hash.match(/returnToScan=([^&]+)/);
+
+		console.log("EditCamera host", discoveredHost);
+		console.log("EditCamera model", discoveredModel);
 		console.log("globals.lastCameraPassword", globals.lastCameraPassword);
 		console.log("globals.lastCameraUsername", globals.lastCameraUsername);
-		if (props.host && props.host !== ' ') {
-			host.value = props.host;
+		if (discoveredHost) {
+			host.value = discoveredHost[1];
 		}
-		if (props.model && props.model !== ' ') {
-			model.value = props.model;
+		if (discoveredModel) {
+			model.value = discoveredModel[1];
+		}
+		if (returnToScan) {
+			returnRoute = 'rtSettingsScanForCameras';
 		}
 		if (globals.lastCameraPassword) {
 			password.value = globals.lastCameraPassword;
@@ -287,13 +276,9 @@ onMounted(async () => {
 				<camera-tester v-if="testBusy" :camera="newCameraRecordFromLocalState()" @close="onTestFinished" />
 			</div>
 		</wide-section>
-		<!--
-		<wide-panel>
-			<div>Detection Zone</div>
-			<detection-zone-image :camera="original" />
-			<button>Edit Detection Zone</button>
-		</wide-panel>
-		-->
+		<wide-section v-if="!isNewCamera">
+			<wide-button :routeTarget="`/settings/camera/${id}/detectionZone`">Detection Zone</wide-button>
+		</wide-section>
 		<wide-section v-if="!isNewCamera">
 			<wide-button class="unpair" @click="onUnpair" :disabled="unpairBusy">{{ unpairTitle() }}</wide-button>
 		</wide-section>

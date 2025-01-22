@@ -425,6 +425,18 @@ $slideAmount: 100vw;
 	text-decoration: underline;
 }
 
+// grr.. unfortunately we can't specify our background color inside .wideRoot.
+// If we do, then we're limited in our size. I can't figure out how to make us always
+// fill our container, BUT ALSO if our content is larger than our container, then we
+// shouldn't be limited by it. So that's why we need OUR CONTAINER to draw the background
+// color for us.
+// To see the problem in action, look at two configuration screens.
+// One with just 2 or 3 rows. You want the $widerootbg to fill the top of the screen.
+// Now, try a different configuration screen that needs to be scrolled down to see its
+// content. Likewise, the $widerootbg should fill all the content, including the region
+// which is "beneath the fold" (i.e. the stuff you need to scroll down for).
+$widerootbg: #efefef;
+
 // Top-level object that holds a bunch of 'wide widget' items
 // When creating this class, the only reason I needed it was to make
 // the left/right transitions work nicely. Specifically, so that
@@ -436,8 +448,6 @@ $slideAmount: 100vw;
 	display: flex;
 	flex-direction: column;
 	width: 100%;
-	height: 100%;
 	box-sizing: border-box;
-	background-color: #efefef;
 	padding: 0px 0px 8px 0px;
 }

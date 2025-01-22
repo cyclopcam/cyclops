@@ -12,7 +12,7 @@ const router = useRouter();
 function onManual() {
 	// Params are not allowed to be empty strings, so we use a space as a placeholder.
 	// The edit camera component recognizes this and treats it like an empty string.
-	pushRoute(router, { name: 'rtSettingsEditCamera', params: { id: 'new', host: ' ', model: ' ', returnToScan: 0 } });
+	pushRoute(router, { name: 'rtSettingsEditCamera', params: { id: 'new' }, hash: 'returnToScan:0' });
 }
 
 function onScan() {

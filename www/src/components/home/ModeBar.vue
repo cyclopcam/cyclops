@@ -99,7 +99,8 @@ onMounted(() => {
 
 	// but now that we're on the bottom...
 	border-top: solid 1px #ccc;
-	//box-shadow: 0px -1px 5px rgba(0, 0, 0, 0.1);
+
+	box-shadow: 0px 0px 7px rgba(0, 0, 0, 0.1);
 }
 
 .topbarInner {

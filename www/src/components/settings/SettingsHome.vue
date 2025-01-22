@@ -27,7 +27,7 @@ onMounted(async () => {
 	<wide-root>
 		<wide-section>
 			<wide-button :icon="server" route-target="rtSettingsSystem">System Settings</wide-button>
-			<wide-button v-for="camera of configured" :route-target="`/settings/camera/${camera.id}/_/_/0`"
+			<wide-button v-for="camera of configured" :route-target="`/settings/camera/${camera.id}`"
 				:icon="camera.posterURL()" icon-size="45px">
 				{{ camera.name }}</wide-button>
 			<wide-button route-target="rtSettingsAddCamera" :icon="addIcon">Add

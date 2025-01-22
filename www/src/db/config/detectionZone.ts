@@ -42,4 +42,18 @@ export class DetectionZone {
 		dz.active.set(this.active);
 		return dz;
 	}
+
+	get(x: number, y: number): boolean {
+		let i = y * this.width + x;
+		return (this.active[i >> 3] & (1 << (i & 7))) !== 0;
+	}
+
+	set(x: number, y: number, value: boolean) {
+		let i = y * this.width + x;
+		if (value) {
+			this.active[i >> 3] |= 1 << (i & 7);
+		} else {
+			this.active[i >> 3] &= ~(1 << (i & 7));
+		}
+	}
 }
