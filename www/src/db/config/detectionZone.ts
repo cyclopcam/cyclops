@@ -1,3 +1,4 @@
+import * as base64 from "base64-arraybuffer";
 import { BinaryDecoder, decodeOnoff, encodeOnoff, onoffMaxOutputSize } from "@/mybits/onoff";
 
 // DetectionZone is an arbitrarily sized bitmap where every bit indicates
@@ -14,13 +15,13 @@ export class DetectionZone {
 	}
 
 	static decodeBase64(b64: string): DetectionZone {
-		let raw = Buffer.from(b64, "base64");
-		let version = raw.readUint8(0);
+		let raw = new Uint8Array(base64.decode(b64));
+		let version = raw[0];
 		if (version !== 0) {
 			throw new Error("Unknown DetectionZone version: " + version);
 		}
-		let width = raw.readUInt8(1);
-		let height = raw.readUInt8(2);
+		let width = raw[1];
+		let height = raw[2];
 		let decoder = new BinaryDecoder(raw, 3);
 		let nBits = width * height;
 		let dz = new DetectionZone(width, height);
@@ -34,7 +35,7 @@ export class DetectionZone {
 		output[1] = this.width;
 		output[2] = this.height;
 		let nBytes = encodeOnoff(this.active, output.subarray(3));
-		return Buffer.from(output.subarray(0, 3 + nBytes)).toString("base64");
+		return base64.encode(output.subarray(0, 3 + nBytes));
 	}
 
 	clone(): DetectionZone {
@@ -55,5 +56,9 @@ export class DetectionZone {
 		} else {
 			this.active[i >> 3] &= ~(1 << (i & 7));
 		}
+	}
+
+	fill(value: boolean) {
+		this.active.fill(value ? 0xFF : 0);
 	}
 }

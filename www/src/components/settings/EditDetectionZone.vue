@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import WideRoot from '@/components/widewidgets/WideRoot.vue';
 import WideSection from '@/components/widewidgets/WideSection.vue';
+import WideSaveCancel from '@/components/widewidgets/WideSaveCancel.vue';
+import WideError from '@/components/widewidgets/WideError.vue';
+import PaintBlocks from './PaintBlocks.vue';
 import { CameraRecord } from '@/db/config/configdb';
 import { fetchOrErr } from '@/util/util';
 import { onMounted, ref } from 'vue';
 import CameraPreview from './CameraPreview.vue';
 import { DetectionZone } from '@/db/config/detectionZone';
+import { globals } from '@/globals';
 
 let props = defineProps<{
 	id: string, // camera id
@@ -16,12 +20,18 @@ let canvas = ref(null);
 let xscale = 1;
 let yscale = 1;
 let lastPaintEvent: PointerEvent | null = null;
+let paintHot = ref(true);
+let error = ref("");
+let busySaving = ref(false);
+let saveStatus = ref("");
+let isModified = ref(false);
 
 function initDetectionZoneBitmap() {
 	let cam = camera.value;
 	if (!cam.detectionZone || cam.detectionZone.width === 0) {
 		cam.detectionZone = new DetectionZone(60, 40);
-		cam.detectionZone.set(59, 39, true);
+		cam.detectionZone.fill(true);
+		paintHot.value = false;
 	}
 }
 
@@ -50,10 +60,9 @@ function renderCanvas() {
 }
 
 function screenToDz(x: number, y: number): [number, number] {
-	let can = canvas.value! as HTMLCanvasElement;
-	let dz = camera.value.detectionZone!;
-	let dx = Math.floor(x * window.devicePixelRatio / xscale);
-	let dy = Math.floor(y * window.devicePixelRatio / yscale);
+	let dpr = window.devicePixelRatio;
+	let dx = Math.floor(x * dpr / xscale);
+	let dy = Math.floor(y * dpr / yscale);
 	return [dx, dy];
 }
 
@@ -93,12 +102,14 @@ function paint(e: PointerEvent, render = true) {
 	let [tx, ty] = screenToDz(e.offsetX, e.offsetY);
 	let dz = camera.value.detectionZone!;
 	let brushRadius = 2;
+	let hot = paintHot.value;
+	isModified.value = true;
 	for (let dx = -brushRadius; dx <= brushRadius; dx++) {
 		for (let dy = -brushRadius; dy <= brushRadius; dy++) {
 			let x = tx + dx;
 			let y = ty + dy;
 			if (x >= 0 && x < dz.width && y >= 0 && y < dz.height) {
-				dz.set(x, y, true);
+				dz.set(x, y, hot);
 			}
 		}
 	}
@@ -106,11 +117,28 @@ function paint(e: PointerEvent, render = true) {
 		renderCanvas();
 }
 
+async function onSave() {
+	busySaving.value = true;
+	saveStatus.value = "Saving...";
+	let r = await camera.value.saveSettingsToServer();
+	busySaving.value = false;
+	if (!r.ok) {
+		saveStatus.value = "";
+		error.value = r.error;
+		return;
+	} else {
+		saveStatus.value = "Saved";
+		isModified.value = false;
+		setTimeout(() => saveStatus.value = "", 1000);
+	}
+}
+
 onMounted(async () => {
 	let r = await fetchOrErr(`/api/config/camera/${props.id}`);
 	if (r.ok) {
 		camera.value = CameraRecord.fromJSON(await r.r.json());
 		initDetectionZoneBitmap();
+		renderCanvas();
 	}
 })
 </script>
@@ -123,6 +151,17 @@ onMounted(async () => {
 				<canvas ref="canvas" class="canvas" @pointerdown="onPointerDown" @pointerup="onPointerUp"
 					@pointermove="onPointerMove" />
 			</div>
+			<div :class="{ 'paintButton': true, 'activeButton': paintHot }" @click="paintHot = true">
+				<paint-blocks :hot-zone="true" size="20px" style="margin-right: 12px" />
+				Detection Zone
+			</div>
+			<div :class="{ 'paintButton': true, 'activeButton': !paintHot }" @click="paintHot = false">
+				<paint-blocks :hot-zone="false" size="20px" style="margin-right: 12px" />
+				Erase
+			</div>
+			<div class="explain">Objects must enter the red region to trigger an alarm.</div>
+			<wide-error v-if="error">{{ error }}</wide-error>
+			<wide-save-cancel :can-save="!busySaving && isModified" :status="saveStatus" @save="onSave" />
 		</wide-section>
 	</wide-root>
 </template>
@@ -133,8 +172,9 @@ onMounted(async () => {
 
 .detectionZoneImage {
 	position: relative;
-	width: 100%;
+	//width: calc(100% - 10px);
 	aspect-ratio: 1.5;
+	margin: 26px 10px;
 }
 
 .preview {
@@ -149,5 +189,22 @@ onMounted(async () => {
 	width: 100%;
 	height: 100%;
 	touch-action: none;
+}
+
+.paintButton {
+	display: flex;
+	margin: 4px 10px 0px 10px;
+	border-radius: 8px;
+	padding: 6px 6px;
+	border: solid 3px rgba(0, 0, 0, 0);
+}
+
+.activeButton {
+	background: #f8f8f8;
+	border: solid 3px #44d
+}
+
+.explain {
+	margin: 15px 20px 15px 20px;
 }
 </style>

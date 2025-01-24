@@ -38,13 +38,13 @@ function drawImage() {
 	if (!can)
 		return;
 	if (imageElement) {
-		console.log("CameraPreview rendering HTMLImageElement");
+		//console.log("CameraPreview rendering HTMLImageElement");
 		can.width = imageElement.width;
 		can.height = imageElement.height;
 		let ctx = can.getContext("2d")!;
 		ctx.drawImage(imageElement, 0, 0, can.width, can.height);
 	} else if (imageBitmap) {
-		console.log("CameraPreview rendering image blob");
+		//console.log("CameraPreview rendering image blob");
 		can.width = imageBitmap.width;
 		can.height = imageBitmap.height;
 		let ctx = can.getContext("2d")!;

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { CameraRecord } from '@/db/config/configdb';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, nextTick } from 'vue';
 import { constants } from '@/constants';
 import CameraTester from './CameraTester.vue';
 import CameraPreview from './CameraPreview.vue';
 import type { CameraTestResult } from './config';
-import { fetchOrErr } from '@/util/util';
+import { fetchOrErr, sleep } from '@/util/util';
 import WideRoot from '@/components/widewidgets/WideRoot.vue';
 import WideInput from '@/components/widewidgets/WideInput.vue';
 import WideButton from '@/components/widewidgets/WideButton.vue';
@@ -14,12 +14,15 @@ import Confirm from '@/components/widgets/Confirm.vue';
 import { useRouter } from 'vue-router';
 import { pushRoute } from "@/router/helpers";
 import { globals } from '@/globals';
+//import { ScrollMemory } from '@/util/scroll';
 
 let props = defineProps<{
 	id: string, // either the ID or "new"
 }>();
 
 let router = useRouter();
+
+//let scrollSaver = new ScrollMemory("settingsRoot");
 
 enum TestResult {
 	Unknown,
@@ -213,10 +216,10 @@ onMounted(async () => {
 		let discoveredModel = window.location.hash.match(/model=([^&]+)/);
 		let returnToScan = window.location.hash.match(/returnToScan=([^&]+)/);
 
-		console.log("EditCamera host", discoveredHost);
-		console.log("EditCamera model", discoveredModel);
-		console.log("globals.lastCameraPassword", globals.lastCameraPassword);
-		console.log("globals.lastCameraUsername", globals.lastCameraUsername);
+		//console.log("EditCamera host", discoveredHost);
+		//console.log("EditCamera model", discoveredModel);
+		//console.log("globals.lastCameraPassword", globals.lastCameraPassword);
+		//console.log("globals.lastCameraUsername", globals.lastCameraUsername);
 		if (discoveredHost) {
 			host.value = discoveredHost[1];
 		}
@@ -245,6 +248,14 @@ onMounted(async () => {
 		}
 		name.value = newName;
 	}
+	// We need to wait for the right/left swipe transition to finish, before we can scroll
+	// SYNC-SLIDE-TRANSITION
+	//await sleep(185);
+	//scrollSaver.load();
+})
+
+onBeforeUnmount(() => {
+	//scrollSaver.save();
 })
 
 </script>

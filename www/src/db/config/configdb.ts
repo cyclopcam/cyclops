@@ -1,4 +1,4 @@
-import { encodeQuery } from "@/util/util";
+import { encodeQuery, fetchOrErr, type FetchResult } from "@/util/util";
 import { DetectionZone } from "./detectionZone";
 
 export enum Permissions {
@@ -119,5 +119,9 @@ export class CameraRecord {
 		} else {
 			return "/api/camera/latestImage/" + this.id;
 		}
+	}
+
+	async saveSettingsToServer(): Promise<FetchResult> {
+		return fetchOrErr('/api/config/changeCamera', { method: "POST", body: JSON.stringify(this.toJSON()) });
 	}
 }
