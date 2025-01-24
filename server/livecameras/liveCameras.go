@@ -276,6 +276,9 @@ func (s *LiveCameras) startStopConfiguredCameras() {
 		s.removeCamera(cam)
 	}
 
+	// If true, then we need a monitor.SetCameras() call
+	needMonitorRefresh := false
+
 	for _, cfg := range configs {
 		// Why abort if there is a wake message?
 		// Let's say we have a big system with 10 cameras, and a few of them are timing out and
@@ -290,21 +293,26 @@ func (s *LiveCameras) startStopConfiguredCameras() {
 			break
 		}
 
-		if cam := s.CameraFromID(cfg.ID); cam != nil {
-			if time.Now().Sub(cam.LastPacketAt()) > s.timeUntilCameraRestart {
+		if existing := s.CameraFromID(cfg.ID); existing != nil {
+			existingConfig := existing.Config.Load()
+			if time.Now().Sub(existing.LastPacketAt()) > s.timeUntilCameraRestart {
 				s.log.Warnf("Camera %v (%v) unresponsive. Restarting", cfg.ID, cfg.Name)
-			} else if !cam.Config.DeepEquals(cfg) {
-				// Initially my criteria here for restarting a camera was Camera.EqualsConnection().
-				// However, when adding the concept of the long-lived name, and the VideoDB, I changed that,
-				// because the VideoDB needs to know the long-lived name when writing events to the DB.
-				// I debated hiding Camera.Config behind a mutex, so that we could update the config
-				// of a running camera, but that seemed way too messy. Simply restarting the camera
-				// is much cleaner.
-				s.log.Warnf("Camera %v (%v) configuration out of date. Restarting", cfg.ID, cfg.Name)
+			} else if !existingConfig.EqualsConnection(cfg) {
+				s.log.Warnf("Camera %v (%v) connection config out of date. Restarting", cfg.ID, cfg.Name)
+			} else if !existingConfig.DeepEquals(cfg) {
+				// I've been through a few iterations here. At first I restarted the camera when anything
+				// changed in its config. But eventually I decided to make Camera.Config atomic,
+				// so that I can update a camera's config without restarting it. Restarting a camera can take
+				// a second or two while we reconnect, and during that time, the camera disappears from the
+				// API list. So the front-end sees errors when it tries to query the state of a camera that it
+				// has just recently modified. This is a bad UX.
+				s.log.Infof("Camera %v (%v) configuration changed. Updating", cfg.ID, cfg.Name)
+				needMonitorRefresh = true
+				continue
 			} else {
 				continue
 			}
-			s.removeCamera(cam)
+			s.removeCamera(existing)
 		}
 		s.log.Infof("Starting camera %v (%v)", cfg.ID, cfg.Name)
 		s.lastTestedCameraLock.Lock()
@@ -313,7 +321,7 @@ func (s *LiveCameras) startStopConfiguredCameras() {
 			s.log.Infof("Success using last tested camera '%v'", s.lastTestedCameraConfig.Host)
 			cam = s.lastTestedCamera
 			s.lastTestedCamera = nil
-			cam.Config = *cfg // Update initial test config to final config in DB (which includes, at the very least, the camera ID and long-lived name)
+			cam.Config.Store(cfg) // Update initial test config to final config in DB (which includes, at the very least, the camera ID and long-lived name)
 		}
 		s.lastTestedCameraLock.Unlock()
 
@@ -333,7 +341,13 @@ func (s *LiveCameras) startStopConfiguredCameras() {
 		}
 		if cam != nil {
 			s.addCamera(cam)
+			// Whenever we add a camera, we do a monitor refresh, so we can cancel the need for a monitor refresh here.
+			needMonitorRefresh = false
 		}
+	}
+
+	if needMonitorRefresh {
+		s.monitor.SetCameras(s.Cameras())
 	}
 }
 

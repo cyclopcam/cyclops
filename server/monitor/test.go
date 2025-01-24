@@ -15,12 +15,12 @@ import (
 func (m *Monitor) InjectTestCamera() {
 	m.camerasLock.Lock()
 	id := len(m.cameras) + 1
-	fakeCamera := &camera.Camera{
-		Config: configdb.Camera{
-			LongLivedName: fmt.Sprintf("cam%v", id),
-		},
+	fakeCamera := &camera.Camera{}
+	cfg := &configdb.Camera{
+		LongLivedName: fmt.Sprintf("cam%v", id),
 	}
-	fakeCamera.Config.ID = int64(id)
+	cfg.ID = int64(id)
+	fakeCamera.Config.Store(cfg)
 	cam := &monitorCamera{
 		camera: fakeCamera,
 	}

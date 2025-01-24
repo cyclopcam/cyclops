@@ -2,6 +2,7 @@ package camera
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bmharper/cimg/v2"
@@ -14,8 +15,13 @@ import (
 
 // Camera represents a single physical camera, with two streams (high and low res)
 type Camera struct {
+	// Copy from the config database.
+	// Can be modified in-place if the camera is reconfigured.
+	// This is shared state, so do not modify the fields directly. Instead, use
+	// Config.Store() to store a new config.
+	Config atomic.Pointer[configdb.Camera]
+
 	Log        logs.Log
-	Config     configdb.Camera // Copy from the config database, from the moment when the camera was created. Can be out of date if camera config has been modified since.
 	LowStream  *Stream
 	HighStream *Stream
 	HighDumper *VideoRingBuffer
@@ -41,9 +47,8 @@ func NewCamera(log logs.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Cam
 	high := NewStream(log, cfg.Name, "high", rtspInfo.PacketsAreAnnexBEncoded)
 	low := NewStream(log, cfg.Name, "low", rtspInfo.PacketsAreAnnexBEncoded)
 
-	return &Camera{
+	cam := &Camera{
 		Log:        log,
-		Config:     cfg,
 		LowStream:  low,
 		HighStream: high,
 		HighDumper: highDumper,
@@ -51,19 +56,21 @@ func NewCamera(log logs.Log, cfg configdb.Camera, ringBufferSizeBytes int) (*Cam
 		LowDumper:  lowDumper,
 		lowResURL:  rtspInfo.LowResURL,
 		highResURL: rtspInfo.HighResURL,
-	}, nil
+	}
+	cam.Config.Store(&cfg)
+	return cam, nil
 }
 
 func (c *Camera) ID() int64 {
-	return c.Config.ID
+	return c.Config.Load().ID
 }
 
 func (c *Camera) Name() string {
-	return c.Config.Name
+	return c.Config.Load().Name
 }
 
 func (c *Camera) LongLivedName() string {
-	return c.Config.LongLivedName
+	return c.Config.Load().LongLivedName
 }
 
 // The name of the low res recording stream in the video archive
@@ -78,7 +85,7 @@ func (c *Camera) HighResRecordingStreamName() string {
 
 // The name of high/low res recording stream in the video archive
 func (c *Camera) RecordingStreamName(resolution defs.Resolution) string {
-	return videodb.VideoStreamNameForCamera(c.Config.LongLivedName, resolution)
+	return videodb.VideoStreamNameForCamera(c.Config.Load().LongLivedName, resolution)
 }
 
 func (c *Camera) Start() error {
