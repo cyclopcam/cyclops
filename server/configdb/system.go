@@ -40,14 +40,14 @@ type RecordingJSON struct {
 
 func (r *RecordingJSON) RecordBeforeEventDuration() time.Duration {
 	if r.RecordBeforeEvent <= 0 {
-		return 15 * time.Second
+		return 30 * time.Second
 	}
 	return time.Duration(r.RecordBeforeEvent) * time.Second
 }
 
 func (r *RecordingJSON) RecordAfterEventDuration() time.Duration {
 	if r.RecordAfterEvent <= 0 {
-		return 15 * time.Second
+		return 30 * time.Second
 	}
 	return time.Duration(r.RecordAfterEvent) * time.Second
 }
