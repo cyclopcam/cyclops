@@ -17,8 +17,6 @@ let props = defineProps<{
 
 let camera = ref(new CameraRecord());
 let canvas = ref(null);
-let xscale = 1;
-let yscale = 1;
 let lastPaintEvent: PointerEvent | null = null;
 let paintHot = ref(true);
 let error = ref("");
@@ -47,8 +45,8 @@ function renderCanvas() {
 	if (!dz || dz.width === 0)
 		return;
 	let cx = can.getContext("2d")!;
-	xscale = width / dz.width;
-	yscale = height / dz.height;
+	let xscale = width / dz.width;
+	let yscale = height / dz.height;
 	for (let y = 0; y < dz.height; y++) {
 		for (let x = 0; x < dz.width; x++) {
 			if (dz.get(x, y)) {
@@ -60,15 +58,20 @@ function renderCanvas() {
 }
 
 function screenToDz(x: number, y: number): [number, number] {
-	let dpr = window.devicePixelRatio;
-	let dx = Math.floor(x * dpr / xscale);
-	let dy = Math.floor(y * dpr / yscale);
+	let el = canvas.value;
+	if (!el)
+		return [0, 0];
+	let can = el as HTMLCanvasElement;
+	let width = can.clientWidth;
+	let height = can.clientHeight;
+	let dx = Math.floor(x / width * camera.value.detectionZone!.width);
+	let dy = Math.floor(y / height * camera.value.detectionZone!.height);
 	return [dx, dy];
 }
 
 function onPointerDown(e: PointerEvent) {
 	lastPaintEvent = e;
-	paint(e);
+	paint(e.offsetX, e.offsetY, true);
 }
 
 function onPointerUp(e: PointerEvent) {
@@ -89,23 +92,26 @@ function onPointerMove(e: PointerEvent) {
 				for (let i = 0; i < steps; i++) {
 					let x = lastPaintEvent.offsetX + stepx * i;
 					let y = lastPaintEvent.offsetY + stepy * i;
-					paint(new PointerEvent("pointermove", { clientX: x, clientY: y }), false);
+					paint(x, y, false);
 				}
 			}
 		}
-		paint(e);
+		paint(e.offsetX, e.offsetY, true);
 		lastPaintEvent = e;
 	}
 }
 
-function paint(e: PointerEvent, render = true) {
-	let [tx, ty] = screenToDz(e.offsetX, e.offsetY);
+function paint(offsetX: number, offsetY: number, render = true) {
+	let [tx, ty] = screenToDz(offsetX, offsetY);
 	let dz = camera.value.detectionZone!;
-	let brushRadius = 2;
+	let brushRadius = 3;
 	let hot = paintHot.value;
 	isModified.value = true;
 	for (let dx = -brushRadius; dx <= brushRadius; dx++) {
 		for (let dy = -brushRadius; dy <= brushRadius; dy++) {
+			let distance = Math.hypot(dx, dy);
+			if (distance + 0.5 > brushRadius)
+				continue;
 			let x = tx + dx;
 			let y = ty + dy;
 			if (x >= 0 && x < dz.width && y >= 0 && y < dz.height) {
@@ -159,7 +165,7 @@ onMounted(async () => {
 				<paint-blocks :hot-zone="false" size="20px" style="margin-right: 12px" />
 				Erase
 			</div>
-			<div class="explain">Objects must enter the red region to trigger an alarm.</div>
+			<div class="explain">Objects must enter the red region to trigger the alarm.</div>
 			<wide-error v-if="error">{{ error }}</wide-error>
 			<wide-save-cancel :can-save="!busySaving && isModified" :status="saveStatus" @save="onSave" />
 		</wide-section>

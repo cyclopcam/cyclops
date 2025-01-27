@@ -28,7 +28,7 @@
 	overflow-y: auto;
 
 	// for desktop
-	width: 300px;
+	width: 420px;
 
 	// for mobile
 	@media (max-width: $mobileCutoff) {
