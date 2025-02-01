@@ -46,6 +46,7 @@ export class CameraRecord {
 	createdAt = new Date();
 	updatedAt = new Date();
 	detectionZone: DetectionZone | null = null;
+	enableAlarm = true;
 
 	static fromJSON(j: any): CameraRecord {
 		let x = new CameraRecord();
@@ -60,6 +61,7 @@ export class CameraRecord {
 		x.lowResURLSuffix = j.lowResURLSuffix;
 		x.createdAt = new Date(j.createdAt);
 		x.updatedAt = new Date(j.updatedAt);
+		x.enableAlarm = j.enableAlarm;
 		if (j.detectionZone && j.detectionZone !== "") {
 			x.detectionZone = DetectionZone.decodeBase64(j.detectionZone);
 		}
@@ -87,6 +89,7 @@ export class CameraRecord {
 			lowResURLSuffix: this.lowResURLSuffix,
 			createdAt: this.createdAt.getTime(),
 			updatedAt: this.updatedAt.getTime(),
+			enableAlarm: this.enableAlarm,
 		};
 		if (this.detectionZone) {
 			j.detectionZone = this.detectionZone.toBase64();
@@ -107,6 +110,7 @@ export class CameraRecord {
 		c.lowResURLSuffix = this.lowResURLSuffix;
 		c.createdAt = this.createdAt;
 		c.updatedAt = this.updatedAt;
+		c.enableAlarm = this.enableAlarm;
 		if (this.detectionZone) {
 			c.detectionZone = this.detectionZone.clone();
 		}

@@ -9,9 +9,12 @@ export class DetectionZone {
 	active: Uint8Array;
 
 	constructor(width: number, height: number) {
+		if ((width & 7) !== 0) {
+			throw new Error("DetectionZone width must be a multiple of 8");
+		}
 		this.width = width;
 		this.height = height;
-		this.active = new Uint8Array(Math.ceil(width * height / 8));
+		this.active = new Uint8Array(width * height / 8);
 	}
 
 	static decodeBase64(b64: string): DetectionZone {

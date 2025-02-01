@@ -11,6 +11,9 @@ inline static void setbit(unsigned char* input, size_t i) {
 	input[i / 8] |= 1 << (i % 8);
 }
 
-void setbits(unsigned char* input, size_t i, size_t len);
+void   setbits(unsigned char* input, size_t i, size_t len);
+size_t andbits(unsigned char* a, unsigned char* b, size_t bytesLength);
+
+void bitmap_fillrect(unsigned char* bitmap, int width, int x, int y, int w, int h);
 
 #endif // BIT_H

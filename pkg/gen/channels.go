@@ -39,3 +39,14 @@ func IsChannelClosed[T any](ch chan T) bool {
 		return false
 	}
 }
+
+func WaitForChannelToClose[T any](ch chan T) {
+	for {
+		select {
+		case _, ok := <-ch:
+			if !ok {
+				return
+			}
+		}
+	}
+}

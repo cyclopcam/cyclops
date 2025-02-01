@@ -16,6 +16,7 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/nnaccel"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/server/camera"
+	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/logs"
 )
 
@@ -71,6 +72,8 @@ type Monitor struct {
 	mustStopFrameReader       atomic.Bool            // True if stopFrameReader() has been called
 	analyzerQueue             chan analyzerQueueItem // Analyzer work queue. When closed, analyzer must exit.
 	analyzerStopped           chan bool              // Analyzer thread has exited
+	alarmingStop              chan bool              // Used to signal that the alarming thread must exit
+	alarmingStopped           chan bool              // Used to signal that the alarming thread has exited
 	numNNThreads              int                    // Number of NN threads
 	nnBatchSizeLQ             int                    // Batch size for low quality NN
 	nnBatchSizeHQ             int                    // Batch size for high quality NN
@@ -110,7 +113,8 @@ type Monitor struct {
 
 // monitorCamera is the internal data structure for managing a single camera that we are monitoring
 type monitorCamera struct {
-	camera *camera.Camera
+	camera        *camera.Camera
+	detectionZone *configdb.DetectionZone // If nil, then the entire image is the detection zone
 
 	// Guards access to lastImg, lastDetection, analyzerState
 	lock sync.Mutex
@@ -359,6 +363,8 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		nnThreadState:       make([]NNThreadState, nnThreads),
 		analyzerQueue:       make(chan analyzerQueueItem, analysisQueueSize),
 		analyzerStopped:     make(chan bool),
+		alarmingStop:        make(chan bool),
+		alarmingStopped:     make(chan bool),
 		nnModelSetupLQ:      modelSetupLQ,
 		nnModelSetupHQ:      modelSetupHQ,
 		numNNThreads:        nnThreads,
@@ -395,6 +401,7 @@ func NewMonitor(logger logs.Log, options *MonitorOptions) (*Monitor, error) {
 		m.startFrameReader()
 	}
 	go m.analyzer()
+	go m.alarmer()
 
 	return m, nil
 }
@@ -413,6 +420,11 @@ func (m *Monitor) Close() {
 		m.stopFrameReader()
 	}
 
+	// Stop alarming thread
+	m.Log.Infof("Monitor waiting for alarming")
+	m.alarmingStop <- true
+	<-m.alarmingStopped
+
 	// Stop NN threads
 	m.Log.Infof("Monitor waiting for NN threads")
 	m.nnThreadStopWG.Add(m.numNNThreads)
@@ -422,6 +434,7 @@ func (m *Monitor) Close() {
 	// Stop analyzer
 	m.Log.Infof("Monitor waiting for analyzer")
 	close(m.analyzerQueue)
+	gen.WaitForChannelToClose(m.analyzerStopped)
 
 	// Close the C++ NN objects
 	m.nnDetectorLQ.Close()
@@ -494,10 +507,6 @@ func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *nn.DetectionResult,
 const WatcherChannelSize = 100
 
 // Register to receive detection results for a specific camera.
-// You must be careful to ensure that your receiver always processes a result
-// immediately, and keeps the channel drained. If you don't do this, then
-// the monitor will freeze, and obviously that's a really bad thing to happen
-// to a security system.
 func (m *Monitor) AddWatcher(cameraID int64) chan *AnalysisState {
 	m.watchersLock.Lock()
 	defer m.watchersLock.Unlock()
@@ -548,16 +557,19 @@ func (m *Monitor) sendToWatchers(state *AnalysisState) {
 	// This would presumably wake up the threads that consume the analysis.
 	// HOWEVER - if a watcher is waiting on IO, then waking up other threads
 	// wouldn't help.
+	// ALSO - I think we want the behaviour that even if one watcher stalls, other watchers
+	// can continue to run. If we didn't drop frames, then all watchers would stall.
 	for _, ch := range m.watchers[state.CameraID] {
 		// SYNC-WATCHER-CHANNEL-SIZE
 		if len(ch) >= cap(ch)*9/10 {
-			// This should never happen. But as a safeguard against a monitor stalls, we choose to drop frames.
+			// This should never happen. But as a safeguard against monitor stalls, we choose to drop frames.
 			m.Log.Warnf("Monitor watcher on camera %v is falling behind. I am going to drop frames.", state.CameraID)
 		} else {
 			ch <- state
 		}
 	}
 	for _, ch := range m.watchersAllCameras {
+		// SYNC-WATCHER-CHANNEL-SIZE
 		if len(ch) >= cap(ch)*9/10 {
 			// This should never happen. But as a safeguard against a monitor stalls, we choose to drop frames.
 			m.Log.Warnf("Monitor watcher on all cameras is falling behind. I am going to drop frames.")
@@ -621,8 +633,20 @@ func (m *Monitor) SetCameras(cameras []*camera.Camera) {
 
 	newCameras := []*monitorCamera{}
 	for _, cam := range cameras {
+		// Decode the detection zone from Base64 into a bitmap
+		var detectionZone *configdb.DetectionZone
+		var err error
+		config := cam.Config.Load()
+		if config.DetectionZone != "" {
+			detectionZone, err = configdb.DecodeDetectionZoneBase64(config.DetectionZone)
+			if err != nil {
+				// In this case, the detection zone is the full frame
+				m.Log.Errorf("Failed to decode detection zone for camera %v: %v", cam.ID(), err)
+			}
+		}
 		newCameras = append(newCameras, &monitorCamera{
-			camera: cam,
+			camera:        cam,
+			detectionZone: detectionZone,
 		})
 	}
 

@@ -32,3 +32,28 @@ void setbits(unsigned char* input, size_t i, size_t len) {
 		}
 	}
 }
+
+// Compute the binary AND of 'a' and 'b', and return the number of bits set to 1.
+size_t andbits(unsigned char* a, unsigned char* b, size_t bytesLength) {
+	size_t total = 0;
+	for (size_t i = 0; i < bytesLength; i++) {
+		// Compute the AND of the corresponding bytes...
+		unsigned char result = a[i] & b[i];
+		// ... and add in the number of bits set to 1.
+		total += __builtin_popcount((unsigned int) result);
+	}
+	return total;
+}
+
+void bitmap_fillrect(unsigned char* bitmap, int width, int x, int y, int w, int h) {
+	if (width & 7) {
+		return;
+	}
+	size_t         stride = width >> 3;
+	unsigned char* p      = bitmap + y * stride;
+	int            y2     = y + h;
+	for (; y < y2; y++) {
+		setbits(p, x, w);
+		p += stride;
+	}
+}

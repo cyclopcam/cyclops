@@ -27,7 +27,7 @@ let isModified = ref(false);
 function initDetectionZoneBitmap() {
 	let cam = camera.value;
 	if (!cam.detectionZone || cam.detectionZone.width === 0) {
-		cam.detectionZone = new DetectionZone(60, 40);
+		cam.detectionZone = new DetectionZone(64, 40);
 		cam.detectionZone.fill(true);
 		paintHot.value = false;
 	}

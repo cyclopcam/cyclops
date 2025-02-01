@@ -127,3 +127,18 @@ func (s *Server) httpSystemConstants(w http.ResponseWriter, r *http.Request, par
 	}
 	www.SendJSON(w, c)
 }
+
+func (s *Server) httpSystemAlarmArm(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	www.Check(s.configDB.Arm())
+	www.SendOK(w)
+}
+
+func (s *Server) httpSystemAlarmDisarm(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	www.Check(s.configDB.Disarm())
+	www.SendOK(w)
+}
+
+func (s *Server) httpSystemAlarmPanic(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	s.configDB.Panic()
+	www.SendOK(w)
+}

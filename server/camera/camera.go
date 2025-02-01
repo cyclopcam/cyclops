@@ -16,9 +16,9 @@ import (
 // Camera represents a single physical camera, with two streams (high and low res)
 type Camera struct {
 	// Copy from the config database.
-	// Can be modified in-place if the camera is reconfigured.
-	// This is shared state, so do not modify the fields directly. Instead, use
-	// Config.Store() to store a new config.
+	// The pointer can be modified in-place if the camera is reconfigured.
+	// This is shared state, so do not modify the Config fields directly.
+	// Instead, use Config.Store() to atomically store an entirely new config.
 	Config atomic.Pointer[configdb.Camera]
 
 	Log        logs.Log

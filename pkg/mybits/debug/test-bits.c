@@ -33,7 +33,24 @@ void TestSetBits() {
 	TestPattern(buf, 20, 9, 60);
 }
 
+void TestFillRectAndAND() {
+	unsigned char buf1[100];
+	unsigned char buf2[100];
+	memset(buf1, 0, sizeof(buf1));
+	memset(buf2, 0, sizeof(buf2));
+	bitmap_fillrect(buf1, 32, 5, 11, 2, 2);
+
+	// no overlap
+	bitmap_fillrect(buf2, 32, 7, 11, 2, 2);
+	assert(andbits(buf1, buf2, sizeof(buf1)) == 0);
+
+	// some overlap
+	bitmap_fillrect(buf2, 32, 6, 11, 2, 2);
+	assert(andbits(buf1, buf2, sizeof(buf1)) == 2);
+}
+
 int main(int argc, char** argv) {
 	TestSetBits();
+	TestFillRectAndAND();
 	return 0;
 }

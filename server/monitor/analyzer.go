@@ -133,6 +133,8 @@ type TrackedObject struct {
 
 	// The class confidence margin, which is the difference between the confidence of the most likely class
 	// and the confidence of the second most likely class.
+	// I was initially hoping that this could help assist in rejecting false positives, but it doesn't.
+	// Training the correct NN is the only way to truly address false positives.
 	ConfidenceMargin float32 `json:"confidenceMargin"`
 
 	// Number of frames that we have considered this object genuine.
@@ -224,7 +226,7 @@ func (m *Monitor) analyzer() {
 		}
 	}
 	m.Log.Infof("Analyzer stopped")
-	m.analyzerStopped <- true
+	close(m.analyzerStopped)
 }
 
 // Create abstract objects for each detection, based on nnClassAbstract.
@@ -359,9 +361,7 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	}
 	cam.tracked = remaining
 
-	// Publish results so that live feed can display them in the app.
-	// This is useful for debugging the analyzer, and people just like to see it operate.
-	// In addition, this goes into the event database. It's not just for live viewing!
+	// Publish results
 	result := &AnalysisState{
 		CameraID: cam.cameraID,
 		Objects:  make([]TrackedObject, 0), // non-nil, so that we always get an array in our JSON output
@@ -369,12 +369,9 @@ func (m *Monitor) analyzeFrame(cam *analyzerCameraState, item analyzerQueueItem)
 	}
 	for _, tracked := range cam.tracked {
 		obj := TrackedObject{
-			ID:    tracked.id,
-			Class: tracked.firstDetection.Class,
-			//Box:        mostRecent.detection.Raw.Box,
+			ID:      tracked.id,
+			Class:   tracked.firstDetection.Class,
 			Genuine: tracked.genuine,
-			//Confidence: tracked.averageConfidence(),
-			//LastSeen:   mostRecent.time,
 		}
 		// In the default case (not genuine, or was already genuine previously), send only the most recent frame
 		startFrame := tracked.history.Len() - 1

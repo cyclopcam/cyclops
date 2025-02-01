@@ -92,6 +92,9 @@ func (s *Server) SetupHTTP() error {
 	protected("a", "POST", "/api/system/restart", s.httpSystemRestart)
 	//unprotected("POST", "/api/system/startVPN", s.httpSystemStartVPN) // disabling this because I no longer think it's a good part of user flow
 	unprotected("GET", "/api/system/constants", s.httpSystemConstants)
+	protected("a", "POST", "/api/system/alarm/arm", s.httpSystemAlarmArm)
+	protected("a", "POST", "/api/system/alarm/disarm", s.httpSystemAlarmDisarm)
+	protected("a", "POST", "/api/system/alarm/panic", s.httpSystemAlarmPanic)
 	protected("v", "GET", "/api/camera/info/:cameraID", s.httpCamGetInfo)
 	protected("v", "GET", "/api/camera/latestImage/:cameraID", s.httpCamGetLatestImage)
 	protected("v", "GET", "/api/camera/recentVideo/:cameraID", s.httpCamGetRecentVideo)
@@ -118,7 +121,6 @@ func (s *Server) SetupHTTP() error {
 	unprotected("POST", "/api/auth/createUser", s.httpAuthCreateUser)
 	unprotectedLimited("POST", "/api/auth/login", s.httpAuthLogin, 10, 10*time.Second)
 
-	//static, err := staticfiles.NewCachedStaticFileServer(absRoot, []string{"/api/"}, s.Log, isImmutable, nil)
 	isImmutable := true
 	var fsys fs.FS
 	fsysRoot := "www"

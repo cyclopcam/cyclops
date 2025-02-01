@@ -36,6 +36,7 @@ type Camera struct {
 	CreatedAt        dbh.IntTime `json:"createdAt" gorm:"autoCreateTime:milli"`
 	UpdatedAt        dbh.IntTime `json:"updatedAt" gorm:"autoUpdateTime:milli"`
 	DetectionZone    string      `json:"detectionZone" gorm:"default:null"` // See DetectionZone.EncodeBase64()
+	EnableAlarm      bool        `json:"enableAlarm"`                       // If this camera sees a person when armed, then trigger the alarm
 
 	// The long lived name is used to identify the camera in the storage archive.
 	// If necessary, we can make this configurable.
@@ -66,7 +67,8 @@ func (c *Camera) DeepEquals(x *Camera) bool {
 	}
 	return c.Name == x.Name &&
 		c.LongLivedName == x.LongLivedName &&
-		c.DetectionZone == x.DetectionZone
+		c.DetectionZone == x.DetectionZone &&
+		c.EnableAlarm == x.EnableAlarm
 }
 
 type Variable struct {

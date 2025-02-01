@@ -5,6 +5,7 @@ import "errors"
 // #include <stdint.h>
 // #include <stddef.h>
 // #include "onoff.h"
+// #include "bit.h"
 import "C"
 
 var ErrOutOfSpace = errors.New("out of buffer space")
@@ -32,35 +33,6 @@ func MaxEncodedBytes(inputBitCount int) int {
 	return (maxBits + 7) / 8
 }
 
-/*
-// Encode the given bit stream using out on/off encoding.
-// Returns the number of bytes written into 'out'.
-// If the resulting bit stream ends up being larger than 'out',
-// then abort and return ErrOutOfSpace.
-func EncodeOnoff1(bits []byte, out []byte) (int, error) {
-	if len(out) == 0 {
-		return 0, ErrOutOfSpace
-	}
-	outputBytes := C.onoff_encode_1((*C.uint8_t)(&bits[0]), C.size_t(len(bits)*8), (*C.uint8_t)(&out[0]), C.size_t(len(out)))
-	if outputBytes == C.size_t(^uintptr(0)) {
-		return 0, ErrOutOfSpace
-	}
-	return int(outputBytes), nil
-}
-
-// Experimental (not used) version
-func EncodeOnoff2(bits []byte, out []byte) (int, error) {
-	if len(out) == 0 {
-		return 0, ErrOutOfSpace
-	}
-	outputBytes := C.onoff_encode_2((*C.uint8_t)(&bits[0]), C.size_t(len(bits)*8), (*C.uint8_t)(&out[0]), C.size_t(len(out)))
-	if outputBytes == C.size_t(^uintptr(0)) {
-		return 0, ErrOutOfSpace
-	}
-	return int(outputBytes), nil
-}
-*/
-
 // Final version
 // Note that EncodeOnoff is a wrapper around this function.
 func EncodeOnoff3(bits []byte, out []byte) (int, error) {
@@ -86,4 +58,18 @@ func DecodeOnoff3(enc []byte, out []byte) (int, error) {
 		return 0, ErrOutOfSpace
 	}
 	return int(outputBits), nil
+}
+
+// Fill a bitmap with a rectangle of 'on' bits.
+// The bitmap's width must be a multiple of 8
+func BitmapFillRect(bits []byte, width, x, y, w, h int) {
+	C.bitmap_fillrect((*C.uint8_t)(&bits[0]), C.int(width), C.int(x), C.int(y), C.int(w), C.int(h))
+}
+
+// Compute the binary AND of the bitmaps 'a' and 'b', and return the number of 'on' bits.
+func AndBitmaps(a, b []byte) int {
+	if len(a) != len(b) {
+		panic("Length of bitmaps must match")
+	}
+	return int(C.andbits((*C.uint8_t)(&a[0]), (*C.uint8_t)(&b[0]), C.size_t(len(a))))
 }

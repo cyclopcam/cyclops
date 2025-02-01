@@ -83,6 +83,7 @@ function iconStyle(): any {
 	justify-content: center;
 	flex-grow: 1;
 	font-weight: 500;
+	font-size: 15px;
 }
 
 .inner-route {

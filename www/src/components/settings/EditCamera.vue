@@ -58,6 +58,7 @@ let username = ref(original.value.username);
 let password = ref(original.value.password);
 let model = ref(original.value.model);
 let name = ref(original.value.name);
+let enableAlarm = ref(original.value.enableAlarm);
 
 let isNewCamera = computed(() => props.id === 'new');
 
@@ -96,9 +97,16 @@ function canSave(): boolean {
 }
 
 function saveButtonTitle(): string {
-	if (busySaving.value) {
-		return "Saving...";
-	} else if (isNewCamera.value) {
+	//if (busySaving.value) {
+	//	return "Saving...";
+	//} else if (isNewCamera.value) {
+	//	return "Add Camera";
+	//} else {
+	//	return "Save Changes";
+	//}
+	// This thing of using the button text to show progress is kinda weird actually.
+	// Rather show a status somewhere else.
+	if (isNewCamera.value) {
 		return "Add Camera";
 	} else {
 		return "Save Changes";
@@ -111,6 +119,7 @@ function copyCameraRecordToLocalState(camera: CameraRecord) {
 	password.value = camera.password;
 	model.value = camera.model;
 	name.value = camera.name;
+	enableAlarm.value = camera.enableAlarm;
 }
 
 function copyLocalStateToCameraRecord(rec: CameraRecord) {
@@ -119,6 +128,7 @@ function copyLocalStateToCameraRecord(rec: CameraRecord) {
 	rec.password = password.value;
 	rec.model = model.value;
 	rec.name = name.value;
+	rec.enableAlarm = enableAlarm.value;
 }
 
 function newCameraRecordFromLocalState(): CameraRecord {
@@ -131,7 +141,10 @@ async function onSave(allowNavigate: boolean) {
 	if (isNewCamera.value) {
 		// Add the camera to the system
 		busySaving.value = true;
-		let r = await fetchOrErr('/api/config/addCamera', { method: "POST", body: JSON.stringify(newCameraRecordFromLocalState().toJSON()) });
+		let newCamState = newCameraRecordFromLocalState();
+		// Ensure sane defaults for new camera
+		newCamState.enableAlarm = true;
+		let r = await fetchOrErr('/api/config/addCamera', { method: "POST", body: JSON.stringify(newCamState.toJSON()) });
 		if (r.ok) {
 			await globals.loadCameras();
 		}
@@ -174,6 +187,10 @@ function onTestFinished(result: CameraTestResult) {
 		error.value = '';
 		testResult.value = TestResult.Success;
 	}
+}
+
+function onEnableAlarmChanged() {
+	onSave(false);
 }
 
 function onUnpair() {
@@ -289,6 +306,7 @@ onBeforeUnmount(() => {
 		</wide-section>
 		<wide-section v-if="!isNewCamera">
 			<wide-button :routeTarget="`/settings/camera/${id}/detectionZone`">Detection Zone</wide-button>
+			<wide-input label="Enable Alarm" v-model="enableAlarm" type="boolean" @change="onEnableAlarmChanged" />
 		</wide-section>
 		<wide-section v-if="!isNewCamera">
 			<wide-button class="unpair" @click="onUnpair" :disabled="unpairBusy">{{ unpairTitle() }}</wide-button>

@@ -10,17 +10,22 @@ import (
 var ErrDetectionZoneDecode = errors.New("DetectionZone decode error")
 
 // Bitmap of camera detection zone (i.e. which areas of the image are important when the system is armed)
+// We make sure that the width is a multiple of 8, so that it's easy to manipulate bits on a row-by-row
+// basis.
 type DetectionZone struct {
-	Width  int
+	Width  int // Must be a multiple of 8
 	Height int
 	Active []byte // Bitmap of Width * Height bits. If bit is 1, then objects in that area are important. If bit is 0, then objects in that area are ignored.
 }
 
 func NewDetectionZone(width, height int) *DetectionZone {
+	if width&7 != 0 {
+		panic("width must be a multiple of 8")
+	}
 	return &DetectionZone{
 		Width:  width,
 		Height: height,
-		Active: make([]byte, (width*height+7)/8),
+		Active: make([]byte, width*height/8),
 	}
 }
 
@@ -60,8 +65,11 @@ func DecodeDetectionZoneBytes(raw []byte) (*DetectionZone, error) {
 	}
 	width := int(raw[1])
 	height := int(raw[2])
+	if width&7 != 0 || width < 0 || height < 0 || width > 128 || height > 128 {
+		return nil, ErrDetectionZoneDecode
+	}
 
-	bits := make([]byte, (width*height+7)/8)
+	bits := make([]byte, width*height/8)
 	nbits, err := mybits.DecodeOnoff(raw[HeadingSize:], bits)
 	if err != nil || nbits != int(width*height) {
 		return nil, ErrDetectionZoneDecode

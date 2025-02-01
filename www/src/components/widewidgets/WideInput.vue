@@ -4,6 +4,7 @@ import { computed } from '@vue/reactivity';
 import WidePopupText from '@/components/widewidgets/WidePopupText.vue';
 import WidePopupOptions from '@/components/widewidgets/WidePopupOptions.vue';
 import WidePopupExplain from '@/components/widewidgets/WidePopupExplain.vue';
+import Toggle from '@/components/widgets/Toggle.vue';
 
 enum Type {
 	Number = 'number',
@@ -15,7 +16,7 @@ enum Type {
 
 let props = defineProps<{
 	label: string,
-	modelValue: string | null,
+	modelValue: string | boolean | null,
 	options?: any[], // Can be an array of strings, or array of objects of type {value:string, label: string}
 	placeholder?: string,
 	type?: 'number' | 'text' | 'password' | 'options' | 'boolean',
@@ -45,8 +46,8 @@ let inputValue = computed(() => {
 
 function getValueText(): string {
 	if (getType() === Type.Options)
-		return getOptionLabelFromValue(props.modelValue);
-	return inputValue.value;
+		return getOptionLabelFromValue(props.modelValue as string);
+	return inputValue.value as string;
 }
 
 function isEmpty(): boolean {
@@ -114,6 +115,12 @@ function onSelectOption(opt: any) {
 	emit('change', getOptionValue(opt));
 }
 
+function onToggleChange(value: boolean) {
+	//console.log("WideInput onToggleChange", value);
+	emit('update:modelValue', value);
+	emit('change', value);
+}
+
 function onSelectUnit(opt: any) {
 	showUnitPicker.value = false;
 	emit('unit-change', opt);
@@ -145,15 +152,16 @@ onMounted(() => {
 			</div>
 		</div>
 		<div class="wideinput-value-container">
-			<div class="wideinput-value" :class="{ empty: isEmpty() && required }" @click="onValueClick">{{
+			<toggle v-if="type === 'boolean'" v-model="modelValue as boolean" @change="onToggleChange" />
+			<div v-else class="wideinput-value" :class="{ empty: isEmpty() && required }" @click="onValueClick">{{
 				getValueText() }}</div>
 			<div v-if="units" class="unit" @click="onUnitClick">
 				{{ unit }}
 			</div>
 		</div>
 		<wide-popup-text v-if="showPopupText" :title="label" :type="textInputHTMLType()" :okText="okText ?? 'Save'"
-			:value="modelValue ?? ''" @cancel="showPopupText = false" @ok="onTextEdit" />
-		<wide-popup-options v-if="showPopupOptions" :title="label" :options="options!" :value="inputValue"
+			:value="(modelValue as string | null) ?? ''" @cancel="showPopupText = false" @ok="onTextEdit" />
+		<wide-popup-options v-if="showPopupOptions" :title="label" :options="options!" :value="inputValue as string"
 			@cancel="showPopupOptions = false" @select="onSelectOption" />
 		<wide-popup-explain v-if="showExplain" @close="showExplain = false" :text="explain" />
 		<wide-popup-options v-if="showUnitPicker" title="Units" :options="units!" :value="unit!"

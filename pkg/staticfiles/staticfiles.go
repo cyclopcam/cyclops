@@ -330,7 +330,7 @@ func (s *CachedStaticFileServer) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	path := r.URL.Path
 	//s.parent.Log.Infof("Static file request (path=%v), If-Modified-Since='%v'", path, r.Header.Get("If-Modified-Since"))
 
-	maxAgeSeconds := 5
+	maxAgeSeconds := 10
 
 	for _, api := range s.apiRoutes {
 		if strings.HasPrefix(path, api) {

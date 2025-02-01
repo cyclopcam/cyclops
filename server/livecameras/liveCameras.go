@@ -142,12 +142,14 @@ func (s *LiveCameras) Cameras() []*camera.Camera {
 }
 
 // Add a running camera
-func (s *LiveCameras) addCamera(cam *camera.Camera) {
+func (s *LiveCameras) addCamera(cam *camera.Camera, refreshMonitor bool) {
 	s.log.Infof("Adding camera %v", cam.ID())
 	s.camerasLock.Lock()
 	defer s.camerasLock.Unlock()
 	s.cameraFromID[cam.ID()] = cam
-	s.monitor.SetCameras(s.cameraListNoLock())
+	if refreshMonitor {
+		s.monitor.SetCameras(s.cameraListNoLock())
+	}
 }
 
 // Remove a running camera
@@ -281,8 +283,8 @@ func (s *LiveCameras) startStopConfiguredCameras() {
 
 	for _, cfg := range configs {
 		// Why abort if there is a wake message?
-		// Let's say we have a big system with 10 cameras, and a few of them are timing out and
-		// not connecting. Maybe some of their IPs have changed.
+		// Let's say we have a big system with 50 cameras, and a few of them are timing out
+		// and not connecting. Maybe some of their IPs have changed.
 		// The user goes into the config page, and enters the correct IP, and hits Save.
 		// At that moment, we'll get a wake message. We want to abandon our previous loop that was
 		// going through all those invalid IPs, and immediately start the new camera.
@@ -298,15 +300,17 @@ func (s *LiveCameras) startStopConfiguredCameras() {
 			if time.Now().Sub(existing.LastPacketAt()) > s.timeUntilCameraRestart {
 				s.log.Warnf("Camera %v (%v) unresponsive. Restarting", cfg.ID, cfg.Name)
 			} else if !existingConfig.EqualsConnection(cfg) {
-				s.log.Warnf("Camera %v (%v) connection config out of date. Restarting", cfg.ID, cfg.Name)
+				s.log.Warnf("Camera %v (%v) connection config changed. Restarting", cfg.ID, cfg.Name)
 			} else if !existingConfig.DeepEquals(cfg) {
 				// I've been through a few iterations here. At first I restarted the camera when anything
 				// changed in its config. But eventually I decided to make Camera.Config atomic,
 				// so that I can update a camera's config without restarting it. Restarting a camera can take
-				// a second or two while we reconnect, and during that time, the camera disappears from the
-				// API list. So the front-end sees errors when it tries to query the state of a camera that it
-				// has just recently modified. This is a bad UX.
+				// afew seconds while we reconnect, and during that time, the camera disappears from the
+				// API list. The front-end sees an error when it tries to query the state of a camera that it
+				// has just recently modified. This is a bad UX. And to make it even worse, we need to wait
+				// up to a few seconds for the first keyframe, so that whole experience is just untenable.
 				s.log.Infof("Camera %v (%v) configuration changed. Updating", cfg.ID, cfg.Name)
+				existing.Config.Store(cfg)
 				needMonitorRefresh = true
 				continue
 			} else {
@@ -340,9 +344,10 @@ func (s *LiveCameras) startStopConfiguredCameras() {
 			}
 		}
 		if cam != nil {
-			s.addCamera(cam)
-			// Whenever we add a camera, we do a monitor refresh, so we can cancel the need for a monitor refresh here.
-			needMonitorRefresh = false
+			// Delay calling monitor.SetCameras until the end. Otherwise we start/stop the monitoring system
+			// for every camera. This makes bootup slower.
+			s.addCamera(cam, false)
+			needMonitorRefresh = true
 		}
 	}
 

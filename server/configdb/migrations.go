@@ -175,5 +175,41 @@ func Migrations(log logs.Log) []migration.Migrator {
 		ALTER TABLE camera ADD COLUMN detection_zone TEXT;
 	`))
 
+	// Add enable_alarm column
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		ALTER TABLE camera RENAME TO camera_old;
+
+		CREATE TABLE camera(
+			id INTEGER PRIMARY KEY,
+			model TEXT NOT NULL,
+			name TEXT NOT NULL,
+			host TEXT NOT NULL,
+			port INT,
+			username TEXT NOT NULL,
+			password TEXT NOT NULL,
+			high_res_url_suffix TEXT,
+			low_res_url_suffix TEXT,
+			created_at INT NOT NULL,
+			updated_at INT NOT NULL,
+			long_lived_name TEXT NOT NULL,
+			detection_zone TEXT,
+			enable_alarm BOOLEAN NOT NULL
+		);
+
+		INSERT INTO camera
+			SELECT id, model, name, host, port, username, password, high_res_url_suffix, low_res_url_suffix, created_at, updated_at, long_lived_name, detection_zone,
+				TRUE AS enable_alarm
+			FROM camera_old;
+
+		DROP TABLE camera_old;
+	`))
+
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		CREATE TABLE alarm_state (armed BOOLEAN NOT NULL, triggered BOOLEAN NOT NULL);
+		INSERT INTO alarm_state (armed, triggered) VALUES (0, 0);
+	`))
+
 	return migs
 }
