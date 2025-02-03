@@ -88,6 +88,9 @@ void bitmap_fillrect(unsigned char* bitmap, int width, int x, int y, int w, int 
 	if (width & 7) {
 		return;
 	}
+	if (w <= 0 || h <= 0) {
+		return;
+	}
 	size_t         stride = width >> 3;
 	unsigned char* p      = bitmap + y * stride;
 	int            y2     = y + h;
