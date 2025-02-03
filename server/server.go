@@ -60,6 +60,7 @@ type Server struct {
 	arcCredentialsLock     sync.Mutex
 	arcCredentials         *arc.ArcServerCredentials // If Arc server is not configured, then this is nil.
 	monitorToVideoDBClosed chan bool                 // If this channel is closed, then monitor to video DB has stopped
+	alarmHandlerClosed     chan bool                 // If this channel is closed, then the alarm handler has stopped
 }
 
 const (
@@ -97,6 +98,7 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 		ShutdownStarted:        make(chan bool),
 		HotReloadWWW:           (serverFlags & ServerFlagHotReloadWWW) != 0,
 		monitorToVideoDBClosed: make(chan bool),
+		alarmHandlerClosed:     make(chan bool),
 		configDB:               cfg,
 		seekFrameCache:         videox.NewFrameCache(seekFrameCacheMB * 1024 * 1024),
 	}
@@ -139,6 +141,8 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 	} else {
 		close(s.monitorToVideoDBClosed)
 	}
+
+	s.runAlarmHandler()
 
 	s.LiveCameras = livecameras.NewLiveCameras(s.Log, s.configDB, s.ShutdownStarted, s.monitor, fsvArchive, s.RingBufferSize)
 

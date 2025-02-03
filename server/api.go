@@ -92,6 +92,7 @@ func (s *Server) SetupHTTP() error {
 	protected("a", "POST", "/api/system/restart", s.httpSystemRestart)
 	//unprotected("POST", "/api/system/startVPN", s.httpSystemStartVPN) // disabling this because I no longer think it's a good part of user flow
 	unprotected("GET", "/api/system/constants", s.httpSystemConstants)
+	protected("v", "GET", "/api/system/alarm/status", s.httpSystemAlarmStatus)
 	protected("a", "POST", "/api/system/alarm/arm", s.httpSystemAlarmArm)
 	protected("a", "POST", "/api/system/alarm/disarm", s.httpSystemAlarmDisarm)
 	protected("a", "POST", "/api/system/alarm/panic", s.httpSystemAlarmPanic)

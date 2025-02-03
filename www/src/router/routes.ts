@@ -4,6 +4,7 @@ import WelcomeView from "../views/WelcomeView.vue";
 import LoginView from "../views/LoginView.vue";
 import Settings from "@/components/home/Settings.vue";
 import Monitor from "@/components/home/Monitor.vue";
+import Alarm from "@/components/home/Alarm.vue";
 import Train from "@/components/home/train/Train.vue";
 import TrainHome from "@/components/home/train/TrainHome.vue";
 import TrainRecord from "@/components/home/train/Recorder.vue";
@@ -68,6 +69,11 @@ export const router = createRouter({
 					path: "monitor",
 					name: "rtMonitor",
 					component: Monitor,
+				},
+				{
+					path: "alarm",
+					name: "rtAlarm",
+					component: Alarm,
 				},
 				{
 					path: "train",

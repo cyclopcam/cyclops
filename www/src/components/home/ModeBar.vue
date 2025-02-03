@@ -3,6 +3,7 @@ import ToggleButton from "../core/ToggleButton.vue";
 import { onMounted } from "vue";
 import settings from "@/icons/settings.svg";
 import monitor from "@/icons/monitor.svg";
+import alert from "@/icons/alert.svg";
 import bulb from "@/icons/bulb.svg";
 import back from "@/icons/back.svg";
 import wand from "@/icons/wand.svg";
@@ -61,6 +62,7 @@ onMounted(() => {
 			<div class="centerGroup">
 				<toggle-button :icon="monitor" title="Monitor" route="rtMonitor" />
 				<toggle-button :icon="settings" title="Settings" route="rtSettings" route-target="rtSettingsHome" />
+				<toggle-button :icon="alert" title="Alarm" route="rtAlarm" />
 				<!-- I use the item below when debugging overflow issues on top bar -->
 				<!--
 				<toggle-button :icon="wand" title="Empty" route="rtEmpty" />

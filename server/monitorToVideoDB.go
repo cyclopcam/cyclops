@@ -15,11 +15,11 @@ func (s *Server) attachMonitorToVideoDB() {
 	go func() {
 		s.Log.Infof("Monitor -> VideoDB thread starting")
 		incoming := s.monitor.AddWatcherAllCameras()
-		keepRunning := true
-		for keepRunning {
+	runLoop:
+		for {
 			select {
 			case <-s.ShutdownStarted:
-				keepRunning = false
+				break runLoop
 			case msg := <-incoming:
 				classes := s.monitor.AllClasses()
 				cam := s.LiveCameras.CameraFromID(msg.CameraID)

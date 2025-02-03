@@ -1,5 +1,14 @@
 package configdb
 
+// AlarmTriggerState tells you what happened when you tried to trigger the alarm
+type AlarmTriggerState int
+
+const (
+	AlarmTriggerAlreadyTripped AlarmTriggerState = iota // Alarm was already triggered
+	AlarmTriggerTripped                                 // This call triggered the alarm
+	AlarmTriggerNotArmed                                // The system is not armed, so the alarm was not triggered
+)
+
 // Arm the system (ready to be triggered if any alarm conditions are met)
 func (c *ConfigDB) Arm() error {
 	return c.armDisarm(true)
@@ -26,14 +35,17 @@ func (c *ConfigDB) Panic() {
 
 // If the system is armed, then trigger the alarm
 // Returns true if the alarm has been triggered (either by this call, or any other earlier call)
-func (c *ConfigDB) TriggerAlarmIfArmed() bool {
+func (c *ConfigDB) TriggerAlarmIfArmed() AlarmTriggerState {
 	c.alarmLock.Lock()
 	defer c.alarmLock.Unlock()
 	if !c.armed {
-		return c.alarmTriggered
+		return AlarmTriggerNotArmed
+	}
+	if c.alarmTriggered {
+		return AlarmTriggerAlreadyTripped
 	}
 	c.triggerAlarm()
-	return true
+	return AlarmTriggerTripped
 }
 
 // Trigger the alarm, regardless of whether it is armed or not.

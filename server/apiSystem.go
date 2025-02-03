@@ -128,6 +128,18 @@ func (s *Server) httpSystemConstants(w http.ResponseWriter, r *http.Request, par
 	www.SendJSON(w, c)
 }
 
+func (s *Server) httpSystemAlarmStatus(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
+	type status struct {
+		Armed     bool `json:"armed"`
+		Triggered bool `json:"triggered"`
+	}
+	st := status{
+		Armed:     s.configDB.IsArmed(),
+		Triggered: s.configDB.IsAlarmTriggered(),
+	}
+	www.SendJSON(w, st)
+}
+
 func (s *Server) httpSystemAlarmArm(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
 	www.Check(s.configDB.Arm())
 	www.SendOK(w)

@@ -10,7 +10,6 @@ import (
 
 	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/accel"
-	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/idgen"
 	"github.com/cyclopcam/cyclops/pkg/nn"
 	"github.com/cyclopcam/cyclops/pkg/nnaccel"
@@ -109,6 +108,9 @@ type Monitor struct {
 	watchersLock       sync.RWMutex                    // Guards access to watchers, watchersAllCameras
 	watchers           map[int64][]chan *AnalysisState // Keys are CameraID. Values are channels to send detection results to
 	watchersAllCameras []chan *AnalysisState           // Agents watching all cameras
+
+	alarmWatchersLock sync.RWMutex       // Guards access to alarmWatchers
+	alarmWatchers     []chan *AlarmEvent // Agents watching for alarm events
 }
 
 // monitorCamera is the internal data structure for managing a single camera that we are monitoring
@@ -434,7 +436,7 @@ func (m *Monitor) Close() {
 	// Stop analyzer
 	m.Log.Infof("Monitor waiting for analyzer")
 	close(m.analyzerQueue)
-	gen.WaitForChannelToClose(m.analyzerStopped)
+	<-m.analyzerStopped
 
 	// Close the C++ NN objects
 	m.nnDetectorLQ.Close()
@@ -501,83 +503,6 @@ func (m *Monitor) LatestFrame(cameraID int64) (*cimg.Image, *nn.DetectionResult,
 	//fmt.Printf("LatestFrame %v = %p, analyzerState = %p\n", cameraID, cam, cam.analyzerState)
 
 	return cam.lastImg, cam.lastDetection, cam.analyzerState, nil
-}
-
-// SYNC-WATCHER-CHANNEL-SIZE
-const WatcherChannelSize = 100
-
-// Register to receive detection results for a specific camera.
-func (m *Monitor) AddWatcher(cameraID int64) chan *AnalysisState {
-	m.watchersLock.Lock()
-	defer m.watchersLock.Unlock()
-	ch := make(chan *AnalysisState, WatcherChannelSize)
-	m.watchers[cameraID] = append(m.watchers[cameraID], ch)
-	return ch
-}
-
-// Unregister from detection results for a specific camera
-func (m *Monitor) RemoveWatcher(cameraID int64, ch chan *AnalysisState) {
-	m.watchersLock.Lock()
-	defer m.watchersLock.Unlock()
-	for i, w := range m.watchers[cameraID] {
-		if w == ch {
-			m.watchers[cameraID] = gen.DeleteFromSliceUnordered(m.watchers[cameraID], i)
-			return
-		}
-	}
-	m.Log.Warnf("Monitor.RemoveWatcher failed to find channel for camera %v", cameraID)
-}
-
-// Add a watcher that is interested in all camera activity
-func (m *Monitor) AddWatcherAllCameras() chan *AnalysisState {
-	m.watchersLock.Lock()
-	defer m.watchersLock.Unlock()
-	ch := make(chan *AnalysisState, WatcherChannelSize)
-	m.watchersAllCameras = append(m.watchersAllCameras, ch)
-	return ch
-}
-
-// Unregister from detection results of all cameras
-func (m *Monitor) RemoveWatcherAllCameras(ch chan *AnalysisState) {
-	m.watchersLock.Lock()
-	defer m.watchersLock.Unlock()
-	for i, wch := range m.watchersAllCameras {
-		if wch == ch {
-			m.watchersAllCameras = gen.DeleteFromSliceUnordered(m.watchersAllCameras, i)
-			return
-		}
-	}
-	m.Log.Warnf("Monitor.RemoveWatcherAllCameras failed to find channel")
-}
-
-func (m *Monitor) sendToWatchers(state *AnalysisState) {
-	m.watchersLock.RLock()
-	// Regarding our behaviour here to drop frames:
-	// Perhaps it would be better not to drop frames, but simply to stall.
-	// This would presumably wake up the threads that consume the analysis.
-	// HOWEVER - if a watcher is waiting on IO, then waking up other threads
-	// wouldn't help.
-	// ALSO - I think we want the behaviour that even if one watcher stalls, other watchers
-	// can continue to run. If we didn't drop frames, then all watchers would stall.
-	for _, ch := range m.watchers[state.CameraID] {
-		// SYNC-WATCHER-CHANNEL-SIZE
-		if len(ch) >= cap(ch)*9/10 {
-			// This should never happen. But as a safeguard against monitor stalls, we choose to drop frames.
-			m.Log.Warnf("Monitor watcher on camera %v is falling behind. I am going to drop frames.", state.CameraID)
-		} else {
-			ch <- state
-		}
-	}
-	for _, ch := range m.watchersAllCameras {
-		// SYNC-WATCHER-CHANNEL-SIZE
-		if len(ch) >= cap(ch)*9/10 {
-			// This should never happen. But as a safeguard against a monitor stalls, we choose to drop frames.
-			m.Log.Warnf("Monitor watcher on all cameras is falling behind. I am going to drop frames.")
-		} else {
-			ch <- state
-		}
-	}
-	m.watchersLock.RUnlock()
 }
 
 // Return a set containing all the abstract class indices

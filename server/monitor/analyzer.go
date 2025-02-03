@@ -161,6 +161,12 @@ type AnalysisState struct {
 	Objects  []TrackedObject     `json:"objects"`
 }
 
+// Sent when the alarm is triggered
+type AlarmEvent struct {
+	CameraID int64
+	Time     time.Time
+}
+
 func (t *trackedObject) mostRecent() timeAndPosition {
 	return t.history.Peek(t.history.Len() - 1)
 }
@@ -226,7 +232,7 @@ func (m *Monitor) analyzer() {
 		}
 	}
 	m.Log.Infof("Analyzer stopped")
-	close(m.analyzerStopped)
+	m.analyzerStopped <- true
 }
 
 // Create abstract objects for each detection, based on nnClassAbstract.

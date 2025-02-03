@@ -67,9 +67,17 @@ func BitmapFillRect(bits []byte, width, x, y, w, h int) {
 }
 
 // Compute the binary AND of the bitmaps 'a' and 'b', and return the number of 'on' bits.
-func AndBitmaps(a, b []byte) int {
+func AndBitmapsCount(a, b []byte) int {
 	if len(a) != len(b) {
 		panic("Length of bitmaps must match")
 	}
-	return int(C.andbits((*C.uint8_t)(&a[0]), (*C.uint8_t)(&b[0]), C.size_t(len(a))))
+	return int(C.andbits_count((*C.uint8_t)(&a[0]), (*C.uint8_t)(&b[0]), C.size_t(len(a))))
+}
+
+// Compute the binary AND of the bitmaps 'a' and 'b', and return true if any bits are set
+func AndBitmapsNonZero(a, b []byte) bool {
+	if len(a) != len(b) {
+		panic("Length of bitmaps must match")
+	}
+	return C.andbits_nonzero((*C.uint8_t)(&a[0]), (*C.uint8_t)(&b[0]), C.size_t(len(a))) == 1
 }
