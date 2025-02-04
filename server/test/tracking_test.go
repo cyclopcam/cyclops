@@ -24,10 +24,10 @@ import (
 // If true, then render a video of our tracking results.
 // This is very useful for quickly visualizing what the monitor/analyzer is doing.
 // This makes the process MUCH slower, because we wait extra long for each NN frame.
-const DumpTrackingVideo = false
+const DumpTrackingVideo = true
 
 // If true, then render a still image with annotation of the first violating detection
-const DumpFirstFalsePositive = false
+const DumpFirstFalsePositive = true
 
 // concrete classes which map to "vehicle"
 var vehicleClasses = map[string]bool{
@@ -50,9 +50,10 @@ type Range struct {
 }
 
 type TestCaseResult struct {
-	Expected       EventTrackingTestCase
-	ActualPeople   int
-	ActualVehicles int
+	Expected                EventTrackingTestCase
+	ActualPeople            int
+	ActualPeopleUnconfirmed int
+	ActualVehicles          int
 }
 
 func (t *TestCaseResult) IsPass() bool {
@@ -163,20 +164,21 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 
 	trackedObjects := []*EventTrackingObject{}
 
-	countTrackedObjects := func() (person, vehicle int) {
-		nPerson := 0
-		nVehicle := 0
+	countTrackedObjects := func() (person, vehicle, personUnconfirmed int) {
 		for _, obj := range trackedObjects {
+			if obj.Class == "person" {
+				personUnconfirmed++
+			}
 			if obj.Genuine == 0 {
 				continue
 			}
 			if obj.Class == "person" {
-				nPerson++
+				person++
 			} else if obj.Class == "vehicle" || vehicleClasses[obj.Class] {
-				nVehicle++
+				vehicle++
 			}
 		}
-		return nPerson, nVehicle
+		return
 	}
 
 	// Create a function that watches for incoming monitor messages.
@@ -279,7 +281,7 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 			}
 			if DumpFirstFalsePositive && !haveDumpedFalsePositive {
 				waitForMonitorToProcessFrames()
-				nPerson, nVehicle := countTrackedObjects()
+				nPerson, nVehicle, _ := countTrackedObjects()
 				dump := nPerson > 0 && tcase.NumPeople.Max == 0 ||
 					nVehicle > 0 && tcase.NumVehicles.Max == 0
 				if dump {
@@ -311,14 +313,14 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 	monChan <- nil
 	<-trackerExited
 
-	nPerson, nVehicle := countTrackedObjects()
+	nPerson, nVehicle, nPersonUnconfirmed := countTrackedObjects()
 
 	if DumpTrackingVideo {
 		debugVideo.WriteTrailer()
 		debugVideo.Close()
 	}
 
-	t.Logf("Found %v people, %v vehicles", nPerson, nVehicle)
+	t.Logf("Found %v people, %v vehicles (%v unconfirmed people)", nPerson, nVehicle, nPersonUnconfirmed)
 	if nPerson < tcase.NumPeople.Min || nPerson > tcase.NumPeople.Max {
 		t.Logf("Expected %v people, but found %v", tcase.NumPeople, nPerson)
 		if !needResult {
@@ -332,9 +334,10 @@ func testEventTrackingCase(t *testing.T, params *EventTrackingParams, tcase *Eve
 		}
 	}
 	return TestCaseResult{
-		Expected:       *tcase,
-		ActualPeople:   nPerson,
-		ActualVehicles: nVehicle,
+		Expected:                *tcase,
+		ActualPeople:            nPerson,
+		ActualPeopleUnconfirmed: nPersonUnconfirmed,
+		ActualVehicles:          nVehicle,
 	}
 }
 
@@ -481,11 +484,27 @@ func TestEventTracking(t *testing.T) {
 			NumPeople:     Range{0, 0},
 			NumVehicles:   Range{0, 0},
 		},
+		{
+			// Cat (not person)
+			VideoFilename: "testdata/tracking/0019-LD.mp4",
+			NumPeople:     Range{0, 0},
+			NumVehicles:   Range{0, 0},
+		},
+		{
+			// Plant (not person)
+			VideoFilename: "testdata/tracking/0020-LD.mp4",
+			NumPeople:     Range{0, 0},
+			NumVehicles:   Range{0, 0},
+		},
 	}
 
 	// The following chunk is useful for isolating a single test case
 	//cases = gen.Filter(cases, func(tcase *EventTrackingTestCase) bool {
-	//	return tcase.VideoFilename == "testdata/tracking/0018-LD.mp4"
+	//	// regex to extract the number 20 out of "testdata/tracking/0020-LD.mp4"
+	//	nr := regexp.MustCompile(`\d+`)
+	//	m := nr.FindString(tcase.VideoFilename)
+	//	n, _ := strconv.Atoi(m)
+	//	return n >= 19 && n <= 20
 	//})
 
 	var resultFile *os.File
@@ -494,17 +513,18 @@ func TestEventTracking(t *testing.T) {
 		resultFile, err = os.Create("tracking-results.csv")
 		require.NoError(t, err)
 		defer resultFile.Close()
-		_, err = fmt.Fprintf(resultFile, "Video,Pass,Min People,Max People,Actual People,Min Vehicles,Max Vehicles,Actual Vehicles,Has False Positives,Has False Negatives\n")
+		_, err = fmt.Fprintf(resultFile, "Video,Pass,Min People,Max People,Actual People,Actual People Unconfirmed,Min Vehicles,Max Vehicles,Actual Vehicles,Has False Positives,Has False Negatives,Weak False Positives\n")
 		require.NoError(t, err)
 	}
 	writeResult := func(r TestCaseResult) {
 		e := r.Expected
 		hasFalsePositives := r.ActualPeople > r.Expected.NumPeople.Max || r.ActualVehicles > r.Expected.NumVehicles.Max
 		hasFalseNegatives := r.ActualPeople < r.Expected.NumPeople.Min || r.ActualVehicles < r.Expected.NumVehicles.Min
+		weakFalsePositives := max(0, r.ActualPeopleUnconfirmed-r.Expected.NumPeople.Max)
 		pass := !hasFalsePositives && !hasFalseNegatives
 		fmt.Fprintf(resultFile,
-			"%v,%v,%v,%v,%v,%v,%v,%v,%v,%v\n",
-			e.VideoFilename, pass, e.NumPeople.Max, e.NumPeople.Max, r.ActualPeople, e.NumVehicles.Min, e.NumVehicles.Max, r.ActualVehicles, hasFalsePositives, hasFalseNegatives)
+			"%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v\n",
+			e.VideoFilename, pass, e.NumPeople.Max, e.NumPeople.Max, r.ActualPeople, r.ActualPeopleUnconfirmed, e.NumVehicles.Min, e.NumVehicles.Max, r.ActualVehicles, hasFalsePositives, hasFalseNegatives, weakFalsePositives)
 	}
 
 	numPass := 0
