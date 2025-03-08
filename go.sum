@@ -80,6 +80,10 @@ github.com/cyclopcam/proxyapi v1.0.0 h1:ZuQK5ZcUGZmTP71SULqDFr0lSrjUj+0ZjTZpn9xA
 github.com/cyclopcam/proxyapi v1.0.0/go.mod h1:zRjQYSXfF07/xtiuIWQ4SZ97yUbSBViLtzdCORgorB4=
 github.com/cyclopcam/safewg v1.0.5 h1:36kwecWrWRCELGPZf/icow8Ho3FfKuxHiotZLDSmmNU=
 github.com/cyclopcam/safewg v1.0.5/go.mod h1:F9gLcOFyATAna7E/vv1QsMBamSfKqBAPLYa6VAshr4w=
+github.com/cyclopcam/staticfiles v0.0.0-20250308121433-48d9101c7827 h1:7Iik+ihgeKHLTt9W4/gDDQH7Od9ypu+hyGuypxXFGm8=
+github.com/cyclopcam/staticfiles v0.0.0-20250308121433-48d9101c7827/go.mod h1:RO0EXX7GCv7uy/P2W8ucPpenS6ysCHt+Dn7DPFfSYDg=
+github.com/cyclopcam/staticfiles v1.0.0 h1:H58PPI19Nf/azyvw1Pw1zuqB+qEwb22NRGwIK2JJWVw=
+github.com/cyclopcam/staticfiles v1.0.0/go.mod h1:RO0EXX7GCv7uy/P2W8ucPpenS6ysCHt+Dn7DPFfSYDg=
 github.com/cyclopcam/www v1.0.1 h1:B5/hRYJ3e7p5xVRSpln8cHtTJu2L9SAc7A08mF3b+4I=
 github.com/cyclopcam/www v1.0.1/go.mod h1:UfV0bNZpXHTRrqtFL8iKQ2felJz78FLxE78dE1/XkIo=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

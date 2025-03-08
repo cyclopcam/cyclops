@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/cyclopcam/cyclops/arc/server/auth"
-	"github.com/cyclopcam/cyclops/pkg/staticfiles"
+	"github.com/cyclopcam/staticfiles"
 	"github.com/cyclopcam/www"
 	"github.com/julienschmidt/httprouter"
 )

@@ -11,8 +11,8 @@ import (
 
 	"embed"
 
-	"github.com/cyclopcam/cyclops/pkg/staticfiles"
 	"github.com/cyclopcam/cyclops/server/configdb"
+	"github.com/cyclopcam/staticfiles"
 	"github.com/cyclopcam/www"
 	"github.com/go-chi/httprate"
 	"github.com/julienschmidt/httprouter"

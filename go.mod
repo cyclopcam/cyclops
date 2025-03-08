@@ -1,6 +1,6 @@
 module github.com/cyclopcam/cyclops
 
-go 1.23.3
+go 1.23.6
 
 //replace github.com/go-chi/httprate => ../httprate
 
@@ -53,6 +53,7 @@ require (
 	github.com/beevik/etree v1.1.0 // indirect
 	github.com/caddyserver/zerossl v0.1.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/cyclopcam/staticfiles v1.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsoprea/go-exif/v3 v3.0.1 // indirect
 	github.com/dsoprea/go-iptc v0.0.0-20200610044640-bc9ca208b413 // indirect

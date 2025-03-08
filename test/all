@@ -30,7 +30,6 @@ go test ./pkg/gen
 go test ./pkg/kibi
 go test ./pkg/nn
 go test ./pkg/rle
-go test ./pkg/staticfiles
 go test ./pkg/videoformat/rf1
 go test ./pkg/videoformat/fsv
 go test ./pkg/videox
