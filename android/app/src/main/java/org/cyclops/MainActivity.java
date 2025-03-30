@@ -1,5 +1,7 @@
 package org.cyclops;
 
+//import static org.cyclops.Accounts.RC_SIGN_IN;
+
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
@@ -9,6 +11,7 @@ import androidx.webkit.WebViewFeature;
 import android.annotation.SuppressLint;
 import android.app.ActionBar;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.net.ConnectivityManager;
@@ -29,15 +32,12 @@ import android.webkit.WebView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
+import androidx.annotation.Nullable;
 
-import java.io.IOException;
-import java.net.Proxy;
-import java.net.ProxySelector;
-import java.net.URI;
-import java.util.Collections;
-import java.util.List;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
+//import com.google.android.gms.auth.api.signin.GoogleSignIn;
+//import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+//import com.google.android.gms.common.api.ApiException;
+//import com.google.android.gms.tasks.Task;
 
 import java.util.ArrayList;
 import java.util.concurrent.Executor;
@@ -46,6 +46,8 @@ import java.util.concurrent.TimeUnit;
 import okhttp3.OkHttpClient;
 
 public class MainActivity extends AppCompatActivity implements Main {
+    private static final String TAG = "cyclops";
+
     RelativeLayout rootView;
     View statusBarPlaceholder;
     WebView localWebView; // loads embedded JS code
@@ -67,6 +69,7 @@ public class MainActivity extends AppCompatActivity implements Main {
     String currentNetworkSignature = ""; // Used to detect when we change networks, to avoid sending secrets to a new server with the same IP address
     HttpClient connectivityCheckClient;
     Crypto crypto;
+    Accounts accounts;
 
     // Maintain our own history stack, for the tricky transitions between localWebView and remoteWebView.
     // An example of where you need this, is when the user has just scanned the LAN for local servers.
@@ -90,6 +93,8 @@ public class MainActivity extends AppCompatActivity implements Main {
 
         // Uncomment the following line when testing initial application UI
         //State.global.resetAllState(); // DO NOT COMMIT
+
+        accounts = new Accounts();
 
         // dev time
         WebView.setWebContentsDebuggingEnabled(true);
@@ -137,11 +142,27 @@ public class MainActivity extends AppCompatActivity implements Main {
             @Override
             public void run() {
                 contentHeight = rootView.getHeight() - statusBarPlaceholder.getHeight();
-                Log.i("C", "contentHeight = " + contentHeight);
+                Log.i(TAG, "contentHeight = " + contentHeight);
             }
         });
 
+        // Handle cyclops://auth redirect if app was launched via URI
+        //State.global.setAccountsToken("");
+        if (!handleRedirect(getIntent())) {
+            if (State.global.getAccountsToken().equals("")) {
+                //accounts.signinNative(this);
+                accounts.signinWeb(this);
+            }
+        }
+
         //openServer("http://192.168.10.15:8080");
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // Handle cyclops://auth redirect if app was already running
+        handleRedirect(intent);
     }
 
     @Override
@@ -197,13 +218,13 @@ public class MainActivity extends AppCompatActivity implements Main {
             return;
         }
         // This will usually exit the activity
-        Log.i("C", "going super.back");
+        Log.i(TAG, "going super.back");
         super.onBackPressed();
     }
 
     // This is called after the user logs in to a server
     public void onLogin(String bearerToken, String sessionCookie) {
-        Log.i("C", "onLogin to " + currentServer.publicKey +
+        Log.i(TAG, "onLogin to " + currentServer.publicKey +
                 ", bearerToken: " + bearerToken.substring(0, 4) +
                 "..., sessionCookie: " + sessionCookie.substring(0, 4));
         State.global.addOrUpdateServer(currentServer.lanIP, currentServer.publicKey, bearerToken, currentServer.name, sessionCookie);
@@ -214,7 +235,7 @@ public class MainActivity extends AppCompatActivity implements Main {
     // Invoked via the Webview when it notices that it can no longer talk to the cyclops server,
     // such as when it loses Wifi connection.
     public void onNetworkDown(String errorMsg) {
-        Log.i("C", "onNetworkDown: " + errorMsg);
+        Log.i(TAG, "onNetworkDown: " + errorMsg);
         revalidateCurrentConnection();
     }
 
@@ -259,26 +280,26 @@ public class MainActivity extends AppCompatActivity implements Main {
             if (dropdownMode.equals("1")) {
                 // The WebView wants to expand. But before expanding it, we make it invisible, so that there
                 // is no flicker as it redraws in an intermediate state.
-                Log.i("C", "recalculateWebViewLayout dropDown=1, localWebView.height = " + localWebView.getHeight());
+                Log.i(TAG, "recalculateWebViewLayout dropDown=1, localWebView.height = " + localWebView.getHeight());
                 replaceStatusBarWithScreenGrab();
                 local.height = ActionBar.LayoutParams.MATCH_PARENT;
                 //localWebView.setVisibility(View.INVISIBLE);
                 localWebView.setAlpha(0.01f);
             } else if (dropdownMode.equals("2")) {
                 // By this stage, the WebView has rendered itself, so we can show it
-                Log.i("C", "recalculateWebViewLayout dropDown=2, localWebView.height = " + localWebView.getHeight());
+                Log.i(TAG, "recalculateWebViewLayout dropDown=2, localWebView.height = " + localWebView.getHeight());
                 removeStatusBarScreenGrab();
                 local.height = ActionBar.LayoutParams.MATCH_PARENT;
                 //localWebView.setVisibility(View.VISIBLE);
                 localWebView.setAlpha(1.0f);
             } else {
                 // Just status bar at the top
-                Log.i("C", "recalculateWebViewLayout dropDown=0, localWebView.height = " + localWebView.getHeight());
+                Log.i(TAG, "recalculateWebViewLayout dropDown=0, localWebView.height = " + localWebView.getHeight());
                 removeStatusBarScreenGrab();
                 local.height = statusBarHeight;
             }
         } else {
-            Log.i("C", "recalculateWebViewLayout remote hidden");
+            Log.i(TAG, "recalculateWebViewLayout remote hidden");
             local.height = ActionBar.LayoutParams.MATCH_PARENT;
         }
 
@@ -287,7 +308,7 @@ public class MainActivity extends AppCompatActivity implements Main {
             remote.addRule(RelativeLayout.BELOW, R.id.statusBarPlaceholder);
             remote.height = rootView.getHeight() - statusBarHeight;
         }
-        //Log.i("C", rootView.getHeight() + ", " + rootView.getMeasuredHeight() + ", " + statusBarPlaceholder.getHeight() + ", " + statusBarPlaceholder.getMeasuredHeight());
+        //Log.i(TAG, rootView.getHeight() + ", " + rootView.getMeasuredHeight() + ", " + statusBarPlaceholder.getHeight() + ", " + statusBarPlaceholder.getMeasuredHeight());
 
         //if (needOverlay && screenGrab == null) {
         //    saveScreenGrab();
@@ -341,21 +362,21 @@ public class MainActivity extends AppCompatActivity implements Main {
 
     Bitmap getScreenGrabOfView(View grabView) {
         if (grabView.getWidth() == 0 || grabView.getHeight() == 0) {
-            Log.i("C", "grabView is empty, so just getScreenGrabOfView is returning a 1x1 white bitmap");
+            Log.i(TAG, "grabView is empty, so just getScreenGrabOfView is returning a 1x1 white bitmap");
             int[] colors = new int[]{0xffffffff};
             Bitmap bmp = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
             return bmp;
         } else {
-            Log.i("C", "Grabbing screen size " + grabView.getWidth() + " x " + grabView.getHeight());
+            Log.i(TAG, "Grabbing screen size " + grabView.getWidth() + " x " + grabView.getHeight());
             Bitmap cached = grabView.getDrawingCache();
             if (cached != null) {
-                Log.i("C", "getDrawingCache() -> size " + cached.getWidth() + " x " + cached.getHeight());
+                Log.i(TAG, "getDrawingCache() -> size " + cached.getWidth() + " x " + cached.getHeight());
             }
             Bitmap bmp = Bitmap.createBitmap(grabView.getWidth(), grabView.getHeight(), Bitmap.Config.ARGB_8888);
             Canvas c = new Canvas(bmp);
             //rootView.layout()
             grabView.draw(c);
-            Log.i("C", "Screen grab done");
+            Log.i(TAG, "Screen grab done");
             return bmp;
         }
     }
@@ -384,7 +405,7 @@ public class MainActivity extends AppCompatActivity implements Main {
 
         State.Server target = State.global.getServerCopyByPublicKey(publicKey);
         if (target == null) {
-            Log.e("C", "Requested to switch to unknown server " + publicKey);
+            Log.e(TAG, "Requested to switch to unknown server " + publicKey);
             return;
         }
 
@@ -398,12 +419,12 @@ public class MainActivity extends AppCompatActivity implements Main {
             public void run() {
                 String proxyServer = "proxy-cpt.cyclopcam.org";
                 String proxyOrigin = "https://" + Crypto.shortKeyForServer(target.publicKey) + ".p.cyclopcam.org";
-                Log.i("C", "Set proxy to " + proxyServer + ":8083");
-                Log.i("C", "Set target to " + proxyOrigin);
+                Log.i(TAG, "Set proxy to " + proxyServer + ":8083");
+                Log.i(TAG, "Set target to " + proxyOrigin);
                 //try {
                 //    httpProxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyServer, 8083));
                 //} catch (Exception e) {
-                //    Log.e("C", "Failed to set proxy: " + e.toString());
+                //    Log.e(TAG, "Failed to set proxy: " + e.toString());
                 //}
 
                 // Try first to connect over LAN, and if that fails, then fall back to proxy.
@@ -416,10 +437,10 @@ public class MainActivity extends AppCompatActivity implements Main {
                         // Refresh state of 'server', because the preflight check can alter it (eg obtain a new session cookie)
                         server = State.global.getServerCopyByPublicKey(server.publicKey);
                         if (justCheck && isOnLAN) {
-                            Log.i("C", "Remaining on LAN " + server.lanIP + " for server " + server.publicKey);
+                            Log.i(TAG, "Remaining on LAN " + server.lanIP + " for server " + server.publicKey);
                             return;
                         }
-                        Log.i("C", "Connecting to LAN " + server.lanIP + " for server " + server.publicKey);
+                        Log.i(TAG, "Connecting to LAN " + server.lanIP + " for server " + server.publicKey);
                         isOnLAN = true;
                         //runOnUiThread(() -> navigateToServer(serverLanURL(server), false, server, true));
 
@@ -429,35 +450,35 @@ public class MainActivity extends AppCompatActivity implements Main {
                             CookieManager cookies = CookieManager.getInstance();
                             // SYNC-CYCLOPS-SESSION-COOKIE
                             cookies.setCookie(lanURL, "session=" + finalServer.sessionCookie, (Boolean ok) -> {
-                                Log.i("C", "setCookie(LAN) session=" + finalServer.sessionCookie.substring(0, 6) + "... result " + (ok ? "OK" : "Failed"));
+                                Log.i(TAG, "setCookie(LAN) session=" + finalServer.sessionCookie.substring(0, 6) + "... result " + (ok ? "OK" : "Failed"));
                                 navigateToServer(lanURL, false, finalServer, true);
                             });
                         });
 
                         return;
                     } else {
-                        Log.i("C", "Preflight check failed for LAN " + server.lanIP + " for server " + server.publicKey + ": " + err);
+                        Log.i(TAG, "Preflight check failed for LAN " + server.lanIP + " for server " + server.publicKey + ": " + err);
                     }
                 }
 
                 // Fall back to using proxy
                 setupHttpProxy("http://" + proxyServer + ":8083");
                 if (justCheck && !isOnLAN) {
-                    Log.i("C", "Remaining on proxy " + proxyServer + " for server " + server.publicKey);
+                    Log.i(TAG, "Remaining on proxy " + proxyServer + " for server " + server.publicKey);
                     return;
                 }
                 isOnLAN = false;
-                Log.i("C", "Falling back to proxy " + proxyServer + " for server " + server.publicKey);
+                Log.i(TAG, "Falling back to proxy " + proxyServer + " for server " + server.publicKey);
                 State.Server finalServer = server;
                 runOnUiThread(() -> {
                     CookieManager cookies = CookieManager.getInstance();
                     // SYNC-CYCLOPS-SERVER-COOKIE
                     cookies.setCookie(proxyOrigin, "CyclopsServerPublicKey=" + finalServer.publicKey, (Boolean ok) -> {
-                        Log.i("C", "setCookie(proxy) CyclopsServerPublicKey=" +finalServer.publicKey.substring(0,8) + "... result " + (ok ? "OK" : "Failed"));
+                        Log.i(TAG, "setCookie(proxy) CyclopsServerPublicKey=" +finalServer.publicKey.substring(0,8) + "... result " + (ok ? "OK" : "Failed"));
                         // SYNC-CYCLOPS-SESSION-COOKIE
                         cookies.setCookie(proxyOrigin, "session=" + finalServer.sessionCookie, (Boolean ok2) -> {
                             String shortCookie = finalServer.sessionCookie.substring(0, 5);
-                            Log.i("C", "setCookie(proxy) session=" + shortCookie + "... result " + (ok2 ? "OK" : "Failed"));
+                            Log.i(TAG, "setCookie(proxy) session=" + shortCookie + "... result " + (ok2 ? "OK" : "Failed"));
                             navigateToServer(proxyOrigin, false, finalServer, true);
                         });
 
@@ -472,7 +493,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         // the hostname and LAN IP can filter through in case the user logs into this server.
         Scanner.ScannedServer s = State.global.scanner.getScannedServer(publicKey);
         if (s == null) {
-            Log.i("C", "navigateToScannedLocalServer failed to find server " + publicKey);
+            Log.i(TAG, "navigateToScannedLocalServer failed to find server " + publicKey);
             return;
         }
         String baseUrl = serverLanURL(s);
@@ -490,7 +511,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         CookieManager cookies = CookieManager.getInstance();
         // SYNC-CYCLOPS-SESSION-COOKIE
         cookies.setCookie(baseUrl, "session=x", (Boolean ok) -> {
-            Log.i("C", "setCookie session=x result " + (ok ? "OK" : "Failed"));
+            Log.i(TAG, "setCookie session=x result " + (ok ? "OK" : "Failed"));
             navigateToServer(baseUrl, true, tmp, false);
         });
     }
@@ -512,7 +533,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                 url += current.getPath();
             }
         }
-        Log.i("C", "navigateToServer. currentURL = " + currentURL + ". New URL = " + url);
+        Log.i(TAG, "navigateToServer. currentURL = " + currentURL + ". New URL = " + url);
         remoteClient.setServer(server);
         remoteWebView.loadUrl(url);
         if (addToNavigationHistory) {
@@ -527,12 +548,12 @@ public class MainActivity extends AppCompatActivity implements Main {
         ProxySelector.setDefault(new ProxySelector() {
             @Override
             public List<Proxy> select(URI uri) {
-                Log.e("C", "FOOBAR");
+                Log.e(TAG, "FOOBAR");
                 if (uri.getHost().contains(".cyclopcam.org")) {
-                    Log.i("C", "Using proxy for " + uri.getHost());
+                    Log.i(TAG, "Using proxy for " + uri.getHost());
                     return Collections.singletonList(httpProxy);
                 } else {
-                    Log.i("C", "NOT using proxy for " + uri.getHost());
+                    Log.i(TAG, "NOT using proxy for " + uri.getHost());
                     return Collections.singletonList(Proxy.NO_PROXY);
                 }
             }
@@ -550,7 +571,7 @@ public class MainActivity extends AppCompatActivity implements Main {
     public void setupHttpProxy(String proxyUrl) {
         ProxyController proxyController;
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
-            Log.e("C", "Proxy override is not supported");
+            Log.e(TAG, "Proxy override is not supported");
             return;
         } else {
             proxyController = ProxyController.getInstance();
@@ -571,7 +592,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         Runnable listener = new Runnable() {
             @Override
             public void run() {
-                Log.i("C", "Proxy override set to " + proxyUrl);
+                Log.i(TAG, "Proxy override set to " + proxyUrl);
             }
         };
 
@@ -588,22 +609,22 @@ public class MainActivity extends AppCompatActivity implements Main {
         connectivityManager.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
             @Override
             public void onAvailable(Network network) {
-                //Log.e("C", "The default network is now: " + network);
+                //Log.e(TAG, "The default network is now: " + network);
             }
 
             @Override
             public void onLost(Network network) {
-                //Log.e("C", "The application no longer has a default network. The last default network was " + network);
+                //Log.e(TAG, "The application no longer has a default network. The last default network was " + network);
             }
 
             @Override
             public void onCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) {
-                //Log.e("C", "The default network changed capabilities: " + networkCapabilities);
+                //Log.e(TAG, "The default network changed capabilities: " + networkCapabilities);
             }
 
             @Override
             public void onLinkPropertiesChanged(Network network, LinkProperties linkProperties) {
-                Log.i("C", "The default network changed link properties: " + linkProperties);
+                Log.i(TAG, "The default network changed link properties: " + linkProperties);
 
                 String networkSignature = linkProperties.getInterfaceName() + " ";
                 for (LinkAddress addr : linkProperties.getLinkAddresses()) {
@@ -624,8 +645,8 @@ public class MainActivity extends AppCompatActivity implements Main {
                         networkSignature += " wifi:" + info.getSSID() + info.getBSSID();
                     }
                 }
-                Log.i("C", "Old network signature: " + currentNetworkSignature);
-                Log.i("C", "New network signature: " + networkSignature);
+                Log.i(TAG, "Old network signature: " + currentNetworkSignature);
+                Log.i(TAG, "New network signature: " + networkSignature);
 
                 if (!networkSignature.equals(currentNetworkSignature)) {
                     currentNetworkSignature = networkSignature;
@@ -635,5 +656,54 @@ public class MainActivity extends AppCompatActivity implements Main {
         });
     }
 
+    // For native oauth (not used)
+    /*
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
 
+        if (requestCode == RC_SIGN_IN) {
+            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+            try {
+                GoogleSignInAccount account = task.getResult(ApiException.class);
+                String idToken = account.getIdToken();
+                Log.d(TAG, "ID Token: " + idToken);
+                //sendIdTokenToBackend(idToken);
+            } catch (ApiException e) {
+                Log.w(TAG, "Sign-in failed with code: " + e.getStatusCode() + ", message: " + e.getMessage(), e);
+            }
+        }
+    }
+    */
+
+    // For browser based oauth
+    // You can simulate this using adb:
+    // adb shell am start -a android.intent.action.VIEW -d "cyclops://auth?token=secret"
+    private boolean handleRedirect(Intent intent) {
+        if (intent == null || intent.getData() == null) {
+            return false; // No redirect to handle
+        }
+
+        Uri redirectUri = intent.getData();
+        //Log.d(TAG, "handleRedirect: " + redirectUri.toString());
+        if ("cyclops".equals(redirectUri.getScheme()) && "auth".equals(redirectUri.getHost())) {
+            // Extract session token from query parameter
+            String sessionToken = redirectUri.getQueryParameter("token");
+            if (sessionToken != null) {
+                Log.d(TAG, "Received session token: " + sessionToken);
+                State.global.setAccountsToken(sessionToken);
+                // Store the token (e.g., in SharedPreferences)
+                //getSharedPreferences("auth", MODE_PRIVATE)
+                //        .edit()
+                //        .putString("session_token", sessionToken)
+                //        .apply();
+                //// Proceed with your app (e.g., load WebView with token)
+                //loadAuthenticatedWebView(sessionToken);
+            } else {
+                Log.e(TAG, "No session token in redirect URI: " + redirectUri.toString());
+            }
+            return true;
+        }
+        return false;
+    }
 }

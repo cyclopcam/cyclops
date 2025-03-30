@@ -33,6 +33,7 @@ class State {
 
     // SYNC-ALL-PREFS
     static final String PREF_LAST_SERVER_PUBLIC_KEY = "LAST_SERVER_PUBLIC_KEY";
+    static final String PREF_ACCOUNTS_TOKEN = "ACCOUNTS_TOKEN"; // Authentication token to accounts.cyclopcam.org
 
     // Server is sent as JSON to appui
     // SYNC-NATCOM-SERVER
@@ -80,6 +81,7 @@ class State {
             // SYNC-ALL-PREFS
             SharedPreferences.Editor edit = sharedPref.edit();
             edit.remove(PREF_LAST_SERVER_PUBLIC_KEY);
+            edit.remove(PREF_ACCOUNTS_TOKEN);
             edit.apply();
 
             SQLiteDatabase h = db.getWritableDatabase();
@@ -100,6 +102,16 @@ class State {
         } finally {
             serversLock.unlock();
         }
+    }
+
+    // Get the authentication token to accounts.cyclopcam.org
+    String getAccountsToken() {
+        return sharedPref.getString(PREF_ACCOUNTS_TOKEN, "");
+    }
+
+    // Set the authentication token to accounts.cyclopcam.org
+    void setAccountsToken(String token) {
+        sharedPref.edit().putString(PREF_ACCOUNTS_TOKEN, token).apply();
     }
 
     // Returns a deep copy of the servers list
