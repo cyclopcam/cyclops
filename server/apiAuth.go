@@ -21,18 +21,42 @@ func (s *Server) httpAuthHasAdmin(w http.ResponseWriter, r *http.Request, params
 }
 
 func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	password := www.RequiredQueryValue(r, "password")
+	//identityToken := www.QueryValue(r, "identityToken")
+	password := www.QueryValue(r, "password")
+
 	newUser := configdb.User{}
+
+	//if identityToken != "" {
+	//	// This path (and the query parameter "identityToken") was created for the initial admin user creation.
+	//	// Note that for the sake of authorization, we don't actually care who's calling us, or how they validate
+	//	// themselves here, because this is the creation of the initial admin user, so we allow absolutely
+	//	// anything in. So the reason we accept an identity token is simply for consistency with other places
+	//	// where we accept an identity token. We could just as well .. hmmm.. now that I'm writing this, I'm
+	//	// realizing that we should get rid of this code path!
+	//	verified, err := configdb.GetVerifiedIdentityFromToken(identityToken)
+	//	if err != nil {
+	//		www.PanicBadRequestf("Failed to verify identity token: %v", err)
+	//	}
+	//	newUser.Email = verified.Email
+	//	newUser.Name = verified.DisplayName
+	//	newUser.ExternalID = verified.ID
+	//} else {
+
+	// This code path could be used to create the initial admin user, or any other user thereafter
 	www.ReadJSON(w, r, &newUser, 1024*1024)
+	newUser.ID = 0
 	newUser.Username = strings.TrimSpace(newUser.Username)
 	newUser.UsernameNormalized = configdb.NormalizeUsername(newUser.Username)
-	if newUser.Username == "" {
-		www.PanicBadRequestf("Username may not be empty")
+	if password != "" {
+		newUser.Password = pwdhash.HashPasswordBase64(password)
 	}
-	newUser.Password = pwdhash.HashPassword(password)
 
-	creds := s.configDB.GetUser(r)
+	//}
+
+	creds := s.configDB.GetUser(r, 0)
 	if creds == nil || !creds.HasPermission(configdb.UserPermissionAdmin) {
+		// Create the initial admin user.
+		// This requires no authentication.
 		n, err := s.configDB.NumAdminUsers()
 		www.Check(err)
 		if n != 0 {
@@ -42,17 +66,27 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 		if !s.configDB.IsCallerOnLAN(r) {
 			www.PanicForbiddenf("You must be on the LAN to create the initial user")
 		}
-		s.Log.Infof("Creating initial user %v", newUser.Username)
+		s.Log.Infof("Creating initial user %v, %v, %v", newUser.Username, newUser.Email, newUser.ExternalID)
 		if !newUser.HasPermission(configdb.UserPermissionAdmin) {
 			// We must force initial creation to be an admin user, otherwise you could somehow
 			// screw this up and create a bunch of non-admin users before creating your first
-			// admin user... which just doesn't make any sense.
+			// admin user... which just doesn't make any sense. This code path is always hit for the
+			// case where you're using external ID to create the initial user.
 			newUser.Permissions += string(configdb.UserPermissionAdmin)
 		}
 	}
 
+	if newUser.ExternalID == "" {
+		if newUser.Username == "" {
+			www.PanicBadRequestf("Either username or external ID must be set")
+		}
+		if password == "" {
+			www.PanicBadRequestf("If not using an external ID, then password must be set")
+		}
+	}
+
 	www.Check(s.configDB.DB.Create(&newUser).Error)
-	s.Log.Infof("Created new user %v, perms:%v", newUser.Username, newUser.Permissions)
+	s.Log.Infof("Created new user %v, %v, perms:%v", newUser.Username, newUser.ExternalID, newUser.Permissions)
 	www.SendOK(w)
 }
 

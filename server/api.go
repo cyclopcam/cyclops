@@ -43,7 +43,7 @@ func (s *Server) SetupHTTP() error {
 			}
 			//w.Header().Set("Access-Control-Allow-Origin", "https://appassets.androidplatform.net")
 			//w.Header().Set("Access-Control-Allow-Origin", "*")
-			user := s.configDB.GetUser(r)
+			user := s.configDB.GetUser(r, 0)
 			if user == nil {
 				www.PanicForbidden()
 			}
@@ -120,7 +120,7 @@ func (s *Server) SetupHTTP() error {
 	unprotected("GET", "/api/auth/hasAdmin", s.httpAuthHasAdmin)
 	protected("v", "GET", "/api/auth/whoami", s.httpAuthWhoAmi)
 	unprotected("POST", "/api/auth/createUser", s.httpAuthCreateUser)
-	unprotectedLimited("POST", "/api/auth/login", s.httpAuthLogin, 10, 10*time.Second)
+	unprotectedLimited("POST", "/api/auth/login", s.httpAuthLogin, 5, 60*time.Second)
 
 	isImmutable := true
 	var fsys fs.FS

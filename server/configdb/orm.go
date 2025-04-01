@@ -98,11 +98,14 @@ const (
 // SYNC-RECORD-USER
 type User struct {
 	BaseModel
-	Username           string `json:"username"`
-	UsernameNormalized string `json:"username_normalized"`
-	Permissions        string `json:"permissions"`
-	Name               string `json:"name" gorm:"default:null"`
-	Password           []byte `json:"-" gorm:"default:null"`
+	Username           string      `json:"username" gorm:"default:null"`            // Can be null if ExternalID is set
+	UsernameNormalized string      `json:"username_normalized" gorm:"default:null"` // Can be null if ExternalID is set
+	Permissions        string      `json:"permissions"`
+	Name               string      `json:"name" gorm:"default:null"`
+	Password           string      `json:"-" gorm:"default:null"`
+	ExternalID         string      `json:"externalId" gorm:"default:null"` // ID on accounts.cyclopcam.org
+	Email              string      `json:"email" gorm:"default:null"`      // Email on accounts.cyclopcam.org (can be blank, but either Name, Username or Email should not be blank)
+	CreatedAt          dbh.IntTime `json:"createdAt" gorm:"autoCreateTime:milli"`
 }
 
 type Session struct {

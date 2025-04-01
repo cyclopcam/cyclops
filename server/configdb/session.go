@@ -16,7 +16,7 @@ import (
 const SessionCookie = "session"
 
 func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
-	userID := c.GetUserID(r)
+	userID := c.GetUserID(r, SpecialAuthMethodBASIC|SpecialAuthMethodIdentityToken)
 	if userID == 0 {
 		http.Error(w, "Not authorized", http.StatusUnauthorized)
 		return
@@ -38,6 +38,15 @@ const (
 	LoginModeCookie               = "Cookie"
 	LoginModeBearerToken          = "BearerToken"
 	LoginModeCookieAndBearerToken = "CookieAndBearerToken"
+)
+
+// Special authentication methods, which take computation time on our side, or internet bandwidth.
+// We want to rate limit these methods, or disallow them from the internet.
+type SpecialAuthMethods int
+
+const (
+	SpecialAuthMethodBASIC         = 1 << iota // BASIC (username/password)
+	SpecialAuthMethodIdentityToken             // Identity Token (validated by accounts.cyclopcam.org)
 )
 
 func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time, mode string) {
@@ -119,9 +128,8 @@ func (c *ConfigDB) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // Returns the user or nil.
-// See GetUserID() for discussion about allowBasic.
-func (c *ConfigDB) GetUser(r *http.Request) *User {
-	userID := c.GetUserID(r)
+func (c *ConfigDB) GetUser(r *http.Request, allowSpecial SpecialAuthMethods) *User {
+	userID := c.GetUserID(r, allowSpecial)
 	if userID == 0 {
 		return nil
 	}
@@ -134,9 +142,14 @@ func (c *ConfigDB) GetUser(r *http.Request) *User {
 }
 
 // Returns the user id, or zero.
-func (c *ConfigDB) GetUserID(r *http.Request) int64 {
+func (c *ConfigDB) GetUserID(r *http.Request, allowSpecial SpecialAuthMethods) int64 {
+	allowBasic := 0 != (allowSpecial & SpecialAuthMethodBASIC)
+	allowIdentityToken := 0 != (allowSpecial & SpecialAuthMethodIdentityToken)
+
 	// It is too dangerous to allow BASIC authentication from anywhere on the internet.
-	allowBasic := c.IsCallerOnLAN(r)
+	if !c.IsCallerOnLAN(r) {
+		allowBasic = false
+	}
 
 	cookie, _ := r.Cookie(SessionCookie)
 	sessionCookie := ""
@@ -177,13 +190,27 @@ func (c *ConfigDB) GetUserID(r *http.Request) int64 {
 		}
 	}
 
+	if strings.HasPrefix(authorization, "IdentityToken ") {
+		if allowIdentityToken {
+			// Identity token from accounts.cyclopcam.org
+			verified, err := GetVerifiedIdentityFromToken(authorization[14:])
+			if err == nil {
+				user := User{}
+				c.DB.Where("external_id = ?", verified.ID).Find(&user)
+				return user.ID
+			}
+		} else {
+			c.Log.Warnf("Identity token authentication is not allowed for this API call")
+		}
+	}
+
 	if allowBasic {
 		username, password, haveBasic := r.BasicAuth()
-		if haveBasic {
+		if haveBasic && username != "" && password != "" {
 			user := User{}
 			c.DB.Where("username_normalized = ?", NormalizeUsername(username)).Find(&user)
 			if user.ID != 0 {
-				if pwdhash.VerifyHash(password, user.Password) {
+				if pwdhash.VerifyHashBase64(password, user.Password) {
 					return user.ID
 				}
 			}

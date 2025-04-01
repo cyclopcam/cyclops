@@ -50,7 +50,7 @@ func HashPassword(password string) []byte {
 
 // Return base64 encoding of HashPassword
 func HashPasswordBase64(password string) string {
-	return base64.RawStdEncoding.EncodeToString(HashPassword(password))
+	return base64.StdEncoding.EncodeToString(HashPassword(password))
 }
 
 // Returns true if a plaintext password matches a stored hash
@@ -65,7 +65,7 @@ func VerifyHash(password string, hash []byte) bool {
 
 // Returns true if a plaintext password matches a stored hash, in base64
 func VerifyHashBase64(password string, hashb64 string) bool {
-	raw, _ := base64.RawStdEncoding.DecodeString(hashb64)
+	raw, _ := base64.StdEncoding.DecodeString(hashb64)
 	return VerifyHash(password, raw)
 }
 
@@ -78,5 +78,5 @@ func HashSessionToken(value string) []byte {
 
 // Return the base64 encoding of the hash of the session token
 func HashSessionTokenBase64(value string) string {
-	return base64.RawStdEncoding.EncodeToString(HashSessionToken(value))
+	return base64.StdEncoding.EncodeToString(HashSessionToken(value))
 }

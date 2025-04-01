@@ -1,6 +1,7 @@
 package configdb
 
 import (
+	"encoding/base64"
 	"encoding/json"
 
 	"github.com/BurntSushi/migration"
@@ -210,6 +211,62 @@ func Migrations(log logs.Log) []migration.Migrator {
 		CREATE TABLE alarm_state (armed BOOLEAN NOT NULL, triggered BOOLEAN NOT NULL);
 		INSERT INTO alarm_state (armed, triggered) VALUES (0, 0);
 	`))
+
+	migs = append(migs, dbh.MakeMigrationFromSQL(log, &idx,
+		`
+		ALTER TABLE user RENAME TO user_old;
+		DROP INDEX idx_user_username_normalized;
+
+		CREATE TABLE user(
+			id INTEGER PRIMARY KEY,
+			username TEXT,
+			username_normalized TEXT,
+			permissions TEXT NOT NULL,
+			name TEXT,
+			password TEXT,
+			external_id TEXT,
+			email TEXT,
+			created_at INT NOT NULL
+		);
+		CREATE UNIQUE INDEX idx_user_username_normalized ON user (username_normalized);
+		CREATE UNIQUE INDEX idx_user_external_id ON user (external_id);
+
+		INSERT INTO user
+			SELECT id, username, username_normalized, permissions, name, password, NULL AS external_id, NULL AS email, strftime('%s') * 1000
+			FROM user_old;
+		DROP TABLE user_old;
+	`))
+
+	migs = append(migs, dbh.MakeMigrationFromFunc(log, &idx, func(tx migration.LimitedTx) error {
+		// Convert password from blob to base64(blob), because the blob is just so nasty to deal with when manually inspecting the database.
+		// The latest sqlite has base64() builtin, but we're on older versions of ubuntu/debian.
+		rows, err := tx.Query("SELECT id, password FROM user")
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		passwords := map[int64][]byte{}
+		for rows.Next() {
+			var id int64
+			var password []byte
+			if err := rows.Scan(&id, &password); err != nil {
+				return err
+			}
+			if len(password) != 0 {
+				passwords[id] = password
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for id, password := range passwords {
+			// Convert the password to base64
+			if _, err := tx.Exec("UPDATE user SET password = ? WHERE id = ?", base64.StdEncoding.EncodeToString(password), id); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
 
 	return migs
 }
