@@ -67,6 +67,8 @@ public class Accounts {
         // Launch Chrome Custom Tabs to your OAuth sign-in page
         String url = "https://accounts.cyclopcam.org/login.html?return_to=cyclops://auth";
         CustomTabsIntent.Builder builder = new CustomTabsIntent.Builder();
+        builder.setShowTitle(false);
+        builder.setShareState(CustomTabsIntent.SHARE_STATE_OFF);
         CustomTabsIntent customTabsIntent = builder.build();
         customTabsIntent.launchUrl(activity, Uri.parse(url));
     }

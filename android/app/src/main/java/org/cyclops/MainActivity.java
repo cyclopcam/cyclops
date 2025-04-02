@@ -679,6 +679,8 @@ public class MainActivity extends AppCompatActivity implements Main {
     // For browser based oauth
     // You can simulate this using adb:
     // adb shell am start -a android.intent.action.VIEW -d "cyclops://auth?token=secret"
+    // This is the final phase of logging into accounts.cyclopcam.org via OAuth, via a Chrome Custom Tab)
+    // Our shared-secret token comes in via a URL query parameter called "token"
     private boolean handleRedirect(Intent intent) {
         if (intent == null || intent.getData() == null) {
             return false; // No redirect to handle
@@ -692,11 +694,6 @@ public class MainActivity extends AppCompatActivity implements Main {
             if (sessionToken != null) {
                 Log.d(TAG, "Received session token: " + sessionToken);
                 State.global.setAccountsToken(sessionToken);
-                // Store the token (e.g., in SharedPreferences)
-                //getSharedPreferences("auth", MODE_PRIVATE)
-                //        .edit()
-                //        .putString("session_token", sessionToken)
-                //        .apply();
                 //// Proceed with your app (e.g., load WebView with token)
                 //loadAuthenticatedWebView(sessionToken);
             } else {
