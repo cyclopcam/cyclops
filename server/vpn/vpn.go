@@ -92,6 +92,13 @@ func (v *VPN) Start() error {
 		return fmt.Errorf("client.GetDevice (#1) failed: %w", err)
 	}
 
+	// Temporarily raise the timeout.
+	// Cyclops reliably fails to start on reboot, and I'm wondering if my timeout is just too short.
+	// So this is a test. The default timeout is 10 seconds.
+	timeout := v.client.GetMaxReadDuration()
+	defer v.client.SetMaxReadDuration(timeout)
+	v.client.SetMaxReadDuration(30 * time.Second)
+
 	// Try bringing up device
 	if err := v.client.BringDeviceUp(v.deviceName); err != nil {
 		if !errors.Is(err, wguser.ErrWireguardDeviceNotExist) {

@@ -29,7 +29,7 @@ require (
 	github.com/cyclopcam/dbh v1.0.0
 	github.com/cyclopcam/logs v1.0.1
 	github.com/cyclopcam/proxyapi v1.0.0
-	github.com/cyclopcam/safewg v1.0.5
+	github.com/cyclopcam/safewg v1.0.6
 	github.com/cyclopcam/staticfiles v1.0.1
 	github.com/cyclopcam/www v1.0.1
 	github.com/go-chi/httprate v0.14.1
