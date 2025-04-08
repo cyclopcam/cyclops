@@ -1,5 +1,5 @@
 import { globals } from "./globals";
-import { encodeQuery, fetchOrErr } from "./util/util";
+import { encodeQuery, fetchOrErr, type FetchResult, type FetchSuccess } from "./util/util";
 import { sharedKey } from "curve25519-js";
 import { sha256 } from "js-sha256";
 import * as base64 from "base64-arraybuffer";
@@ -79,7 +79,6 @@ export async function login(username: string, password: string): Promise<string>
 	}
 
 	console.log(`Logging in with ${loginMode}`);
-	console.log(`Hello????`);
 	let basic = btoa(username.trim() + ":" + password.trim());
 	let r = await fetchOrErr('/api/auth/login?' + encodeQuery({ loginMode: loginMode }),
 		{ method: 'POST', headers: { "Authorization": "BASIC " + basic } });
@@ -87,6 +86,11 @@ export async function login(username: string, password: string): Promise<string>
 		console.log(`Login error: ${r.error}`);
 		return r.error;
 	}
+
+	return handleLoginSuccess(r);
+}
+
+export async function handleLoginSuccess(r: FetchSuccess): Promise<string> {
 	globals.isLoggedIn = true;
 
 	let j = await r.r.json();

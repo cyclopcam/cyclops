@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/cyclopcam/cyclops/pkg/pwdhash"
 	"github.com/cyclopcam/cyclops/server/configdb"
@@ -21,37 +22,35 @@ func (s *Server) httpAuthHasAdmin(w http.ResponseWriter, r *http.Request, params
 }
 
 func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	//identityToken := www.QueryValue(r, "identityToken")
+	identityToken := www.QueryValue(r, "identityToken")
 	password := www.QueryValue(r, "password")
 
+	isInitialUser := false
 	newUser := configdb.User{}
 
-	//if identityToken != "" {
-	//	// This path (and the query parameter "identityToken") was created for the initial admin user creation.
-	//	// Note that for the sake of authorization, we don't actually care who's calling us, or how they validate
-	//	// themselves here, because this is the creation of the initial admin user, so we allow absolutely
-	//	// anything in. So the reason we accept an identity token is simply for consistency with other places
-	//	// where we accept an identity token. We could just as well .. hmmm.. now that I'm writing this, I'm
-	//	// realizing that we should get rid of this code path!
-	//	verified, err := configdb.GetVerifiedIdentityFromToken(identityToken)
-	//	if err != nil {
-	//		www.PanicBadRequestf("Failed to verify identity token: %v", err)
-	//	}
-	//	newUser.Email = verified.Email
-	//	newUser.Name = verified.DisplayName
-	//	newUser.ExternalID = verified.ID
-	//} else {
-
-	// This code path could be used to create the initial admin user, or any other user thereafter
-	www.ReadJSON(w, r, &newUser, 1024*1024)
-	newUser.ID = 0
-	newUser.Username = strings.TrimSpace(newUser.Username)
-	newUser.UsernameNormalized = configdb.NormalizeUsername(newUser.Username)
-	if password != "" {
-		newUser.Password = pwdhash.HashPasswordBase64(password)
+	if identityToken != "" {
+		// This path (and the query parameter "identityToken") was created for the initial admin user creation.
+		// Note that for the sake of authorization, we don't actually care who's calling us, or how they validate
+		// themselves here, because this is the creation of the initial admin user, so we allow absolutely
+		// anything in. So the reason we accept an identity token is simply to reduce the back and forth
+		// comms between the native app an the webview.
+		verified, err := configdb.GetVerifiedIdentityFromToken(identityToken)
+		if err != nil {
+			www.PanicBadRequestf("Failed to verify identity token: %v", err)
+		}
+		newUser.Email = verified.Email
+		newUser.Name = verified.DisplayName
+		newUser.ExternalID = verified.ID
+	} else {
+		// This code path could be used to create the initial admin user, or any other user thereafter
+		www.ReadJSON(w, r, &newUser, 1024*1024)
+		newUser.ID = 0
+		newUser.Username = strings.TrimSpace(newUser.Username)
+		newUser.UsernameNormalized = configdb.NormalizeUsername(newUser.Username)
+		if password != "" {
+			newUser.Password = pwdhash.HashPasswordBase64(password)
+		}
 	}
-
-	//}
 
 	creds := s.configDB.GetUser(r, 0)
 	if creds == nil || !creds.HasPermission(configdb.UserPermissionAdmin) {
@@ -67,6 +66,7 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 			www.PanicForbiddenf("You must be on the LAN to create the initial user")
 		}
 		s.Log.Infof("Creating initial user %v, %v, %v", newUser.Username, newUser.Email, newUser.ExternalID)
+		isInitialUser = true
 		if !newUser.HasPermission(configdb.UserPermissionAdmin) {
 			// We must force initial creation to be an admin user, otherwise you could somehow
 			// screw this up and create a bunch of non-admin users before creating your first
@@ -86,8 +86,13 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 	}
 
 	www.Check(s.configDB.DB.Create(&newUser).Error)
-	s.Log.Infof("Created new user %v, %v, perms:%v", newUser.Username, newUser.ExternalID, newUser.Permissions)
-	www.SendOK(w)
+	s.Log.Infof("Created new user %v, %v, %v, perms:%v", newUser.Username, newUser.Email, newUser.ExternalID, newUser.Permissions)
+
+	if isInitialUser {
+		s.configDB.LoginInternal(w, newUser.ID, time.Time{}, configdb.LoginModeCookieAndBearerToken)
+	} else {
+		www.SendOK(w)
+	}
 }
 
 func (s *Server) httpAuthLogin(w http.ResponseWriter, r *http.Request) {

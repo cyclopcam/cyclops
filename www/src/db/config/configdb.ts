@@ -9,9 +9,12 @@ export enum Permissions {
 // SYNC-RECORD-USER
 export class UserRecord {
 	id = 0;
-	username = "";
+	username = ""; // Can be empty if externalId is set
 	name = "";
 	permissions = "";
+	externalId = ""; // ID on accounts.cyclopcam.org
+	email = ""; // Email on accounts.cyclopcam.org (can be blank, but either Name, Username or Email should not be blank)
+	createdAt = new Date();
 
 	static fromJSON(j: any): UserRecord {
 		let x = new UserRecord();
@@ -19,6 +22,9 @@ export class UserRecord {
 		x.username = j.username;
 		x.name = j.name;
 		x.permissions = j.permissions;
+		x.externalId = j.externalId;
+		x.email = j.email;
+		x.createdAt = new Date(j.createdAt);
 		return x;
 	}
 
@@ -28,6 +34,9 @@ export class UserRecord {
 			username: this.username,
 			name: this.name,
 			permissions: this.permissions,
+			externalId: this.externalId,
+			email: this.email,
+			createdAt: this.createdAt.getTime(),
 		};
 	}
 }

@@ -40,6 +40,7 @@ import androidx.annotation.Nullable;
 //import com.google.android.gms.tasks.Task;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
@@ -79,6 +80,7 @@ public class MainActivity extends AppCompatActivity implements Main {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Log.i(TAG, "MainActivity onCreate");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
@@ -124,6 +126,19 @@ public class MainActivity extends AppCompatActivity implements Main {
         remoteClient = new RemoteWebViewClient(this, this);
         remoteWebView.setWebViewClient(remoteClient);
 
+        // Clear login token with accounts.cyclopcam.org (for testing)
+        //State.global.setAccountsToken("");
+        String accountsToken = State.global.getAccountsToken();
+        Log.i(TAG, "accountsToken: " + accountsToken);
+
+        // Handle cyclops://auth redirect if app was launched via URI
+        if (!handleRedirect(getIntent())) {
+            // Force sign-in (used when testing)
+            //if (State.global.getAccountsToken().equals("")) {
+            //    accounts.signinWeb(this, "");
+            //}
+        }
+
         if (State.global.servers.size() == 0) {
             showRemoteWebView(false);
         } else {
@@ -145,15 +160,6 @@ public class MainActivity extends AppCompatActivity implements Main {
                 Log.i(TAG, "contentHeight = " + contentHeight);
             }
         });
-
-        // Handle cyclops://auth redirect if app was launched via URI
-        //State.global.setAccountsToken("");
-        if (!handleRedirect(getIntent())) {
-            if (State.global.getAccountsToken().equals("")) {
-                //accounts.signinNative(this);
-                accounts.signinWeb(this);
-            }
-        }
 
         //openServer("http://192.168.10.15:8080");
     }
@@ -237,6 +243,46 @@ public class MainActivity extends AppCompatActivity implements Main {
     public void onNetworkDown(String errorMsg) {
         Log.i(TAG, "onNetworkDown: " + errorMsg);
         revalidateCurrentConnection();
+    }
+
+    // Invoked by the Remote webview when the user wants to create the initial user via OAuth.
+    // Basically what he's asking for is an IdentityToken to accounts.cyclopcam.org, and for us to
+    // ensure that the identity there has been associated with a Microsoft account.
+    public void requestOAuthLogin(String purpose, String provider) {
+        Log.i(TAG, "requestOAuthLogin");
+        remoteClient.cySetProgressMessage(remoteWebView, "Searching for tokens...");
+        boolean isSignedIn = false;
+        try {
+            isSignedIn = accounts.isSignedinWithOAuthProvider(provider, State.global.getAccountsToken());
+        } catch (RuntimeException e) {
+            // Likely network error.
+            remoteClient.cySetProgressMessage(remoteWebView, "ERROR:" + e.toString());
+            return;
+        }
+
+        if (isSignedIn) {
+            // Acquire an IdentityToken and send it to the WebView
+            remoteClient.cySetProgressMessage(remoteWebView, "Almost there...");
+            try {
+                Accounts.CreateTokenJSON identityToken = accounts.getIdentityToken(State.global.getAccountsToken());
+                remoteClient.cySetIdentityToken(remoteWebView, identityToken.token);
+                //remoteClient.cySetProgressMessage(remoteWebView, "Use this: " + identityToken.token);
+            } catch(RuntimeException e) {
+                remoteClient.cySetProgressMessage(remoteWebView, "ERROR:" + e.getMessage());
+            }
+        } else {
+            // First sign in via OAuth, then acquire an IdentityToken and send it to the WebView
+            remoteClient.cySetProgressMessage(remoteWebView, "Redirecting to OAuth signin...");
+
+            // Save our current state, so that we can restore it after the user has logged in
+            State.SavedActivity save = new State.SavedActivity();
+            save.activity = State.SAVEDACTIVITY_NEWSERVER_LOGIN;
+            save.scannedServer = State.global.scanner.getScannedServer(currentServer.publicKey);
+            save.oauthProvider = provider;
+            State.global.saveActivity(save);
+
+            accounts.signinWeb(this, provider, "");
+        }
     }
 
     // This is called after the user logs in to a new server
@@ -451,7 +497,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                             // SYNC-CYCLOPS-SESSION-COOKIE
                             cookies.setCookie(lanURL, "session=" + finalServer.sessionCookie, (Boolean ok) -> {
                                 Log.i(TAG, "setCookie(LAN) session=" + finalServer.sessionCookie.substring(0, 6) + "... result " + (ok ? "OK" : "Failed"));
-                                navigateToServer(lanURL, false, finalServer, true);
+                                navigateToServer(lanURL, false, finalServer, true, null);
                             });
                         });
 
@@ -479,7 +525,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                         cookies.setCookie(proxyOrigin, "session=" + finalServer.sessionCookie, (Boolean ok2) -> {
                             String shortCookie = finalServer.sessionCookie.substring(0, 5);
                             Log.i(TAG, "setCookie(proxy) session=" + shortCookie + "... result " + (ok2 ? "OK" : "Failed"));
-                            navigateToServer(proxyOrigin, false, finalServer, true);
+                            navigateToServer(proxyOrigin, false, finalServer, true, null);
                         });
 
                     });
@@ -488,7 +534,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         }).start();
     }
 
-    public void navigateToScannedLocalServer(String publicKey) {
+    public void navigateToScannedLocalServer(String publicKey, String path, HashMap<String,String> queryParams) {
         // We reference the ScannedServer object here so that details such as
         // the hostname and LAN IP can filter through in case the user logs into this server.
         Scanner.ScannedServer s = State.global.scanner.getScannedServer(publicKey);
@@ -497,6 +543,9 @@ public class MainActivity extends AppCompatActivity implements Main {
             return;
         }
         String baseUrl = serverLanURL(s);
+        if (path != null && !path.equals("")) {
+            baseUrl += path;
+        }
 
         // Clone ScannedServer into a State.Server object, which carries all of the same
         // relevant details. We'll use this later, if the user logs in (see currentServer in onLogin)
@@ -505,6 +554,8 @@ public class MainActivity extends AppCompatActivity implements Main {
         tmp.name = s.hostname;
         tmp.publicKey = s.publicKey;
 
+        final String baseUrlCopy = baseUrl;
+
         // Clear the session cookie for the host, so that we don't somehow get tricked into revealing
         // a session key for an existing server that we talk to, which happens to have the same IP
         // as a freshly scanned server.
@@ -512,12 +563,12 @@ public class MainActivity extends AppCompatActivity implements Main {
         // SYNC-CYCLOPS-SESSION-COOKIE
         cookies.setCookie(baseUrl, "session=x", (Boolean ok) -> {
             Log.i(TAG, "setCookie session=x result " + (ok ? "OK" : "Failed"));
-            navigateToServer(baseUrl, true, tmp, false);
+            navigateToServer(baseUrlCopy, true, tmp, false, queryParams);
         });
     }
 
     // This is private to remind you that you must ensure the cookie state is good before navigating to a server
-    private void navigateToServer(String url, boolean addToNavigationHistory, State.Server server, boolean preserveURL) {
+    private void navigateToServer(String url, boolean addToNavigationHistory, State.Server server, boolean preserveURL, HashMap<String,String> queryParams) {
         currentServer = server.copy();
         showRemoteWebView(true);
         String currentURL = remoteWebView.getUrl();
@@ -532,6 +583,13 @@ public class MainActivity extends AppCompatActivity implements Main {
                 }
                 url += current.getPath();
             }
+        }
+        if (queryParams != null) {
+            Uri.Builder builder = Uri.parse(url).buildUpon();
+            for (String key : queryParams.keySet()) {
+                builder.appendQueryParameter(key, queryParams.get(key));
+            }
+            url = builder.build().toString();
         }
         Log.i(TAG, "navigateToServer. currentURL = " + currentURL + ". New URL = " + url);
         remoteClient.setServer(server);
@@ -687,20 +745,48 @@ public class MainActivity extends AppCompatActivity implements Main {
         }
 
         Uri redirectUri = intent.getData();
-        //Log.d(TAG, "handleRedirect: " + redirectUri.toString());
+        Log.d(TAG, "handleRedirect: " + redirectUri.toString());
         if ("cyclops".equals(redirectUri.getScheme()) && "auth".equals(redirectUri.getHost())) {
             // Extract session token from query parameter
             String sessionToken = redirectUri.getQueryParameter("token");
+            String appState = redirectUri.getQueryParameter("app_state");
             if (sessionToken != null) {
                 Log.d(TAG, "Received session token: " + sessionToken);
                 State.global.setAccountsToken(sessionToken);
                 //// Proceed with your app (e.g., load WebView with token)
                 //loadAuthenticatedWebView(sessionToken);
+                resumeSavedActivity();
             } else {
                 Log.e(TAG, "No session token in redirect URI: " + redirectUri.toString());
             }
+            Log.d(TAG, "In redirect, app_state = " + appState);
             return true;
         }
         return false;
+    }
+
+    // Load our previous app state out of the shared preferences.
+    private void resumeSavedActivity() {
+        State.SavedActivity saved = State.global.loadActivity();
+        if (saved != null) {
+            switch (saved.activity) {
+                case State.SAVEDACTIVITY_NEWSERVER_LOGIN:
+                    Log.d(TAG, "Resuming login process with OAuth provider " + saved.oauthProvider);
+                    // Inject the scanned server into the in-memory list of scanned servers, so that the
+                    // rest of the code can continue on as though we've just done an IP scan.
+                    State.global.scanner.injectServerIfNotPresent(saved.scannedServer);
+                    // Inform the remote app that we have a token. It must proceed with the login.
+                    // The next thing that will happen is the remote cyclops server will
+                    // us to get an IdentityToken from accounts.cyclopcam.org, by calling back
+                    // into requestOAuthLogin().
+                    // We want the remote webview to return to the same place it was at before
+                    // all the oauth redirect occurred. This will make the user comfortable
+                    // seeing a familiar screen.
+                    HashMap<String, String> queryParams = new HashMap<>();
+                    queryParams.put("have_accounts_token", "1");
+                    queryParams.put("provider", saved.oauthProvider);
+                    navigateToScannedLocalServer(saved.scannedServer.publicKey, "/welcome", queryParams);
+            }
+        }
     }
 }

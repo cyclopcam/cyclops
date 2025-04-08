@@ -132,7 +132,7 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                 case "/natcom/forward":
                     return forward(request);
                 case "/natcom/navigateToScannedLocalServer":
-                    activity.runOnUiThread(() -> main.navigateToScannedLocalServer(url.getQueryParameter("publicKey")));
+                    activity.runOnUiThread(() -> main.navigateToScannedLocalServer(url.getQueryParameter("publicKey"), "", null));
                     return sendOK();
                 case "/natcom/switchToRegisteredServer":
                     activity.runOnUiThread(() -> main.switchToServer(url.getQueryParameter("publicKey")));

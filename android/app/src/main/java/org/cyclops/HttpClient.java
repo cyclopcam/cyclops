@@ -38,15 +38,32 @@ public class HttpClient {
     // Either a network error, or a response.
     // If Error is null, then Resp is not null.
     // If Resp is null, then Error is not null.
+    // If resp is not null, and it had a body, then it will have been read into Body
+    // You do not need to close the response, as it is closed in this class.
     static class Response {
         String Error;
-        okhttp3.Response Resp;
+        okhttp3.Response Resp; // Resp.body has already been read into Body
+
+        // If Resp was not null, and the body was not null, this is the body.
+        String Body;
+
+        // If Error is not null, then this is null.
+        // If Body is not null, then this is Body.
+        // If Body is null, then this is the status code and message (eg "404 Not Found", or "200 OK")
+        // Basically, you'll usually use this as an error message, if Resp.code() != 200.
+        String BodyOrStatusString;
 
         Response(String error) {
             Error = error;
         }
-        Response(okhttp3.Response resp) {
+        Response(okhttp3.Response resp, String body) {
             Resp = resp;
+            Body = body;
+            if (body != null) {
+                BodyOrStatusString = body;
+            } else {
+                BodyOrStatusString = resp.code() + " " + resp.message();
+            }
         }
     }
 
@@ -77,7 +94,7 @@ public class HttpClient {
 
     Response Do(String method, String url, HashMap<String,String> headers) {
         Request.Builder builder = new Request.Builder();
-        try {
+        //try {
             builder.url(url);
             if (headers != null) {
                 for (String key : headers.keySet()) {
@@ -100,11 +117,36 @@ public class HttpClient {
             } else {
                 builder.method(method, null);
             }
-            return new Response(client.newCall(builder.build()).execute());
-        } catch (IOException e) {
-            Log.e("C", "Failed to contact " + url + ": " + e.toString());
-            return new Response(e.toString());
-        }
+
+            try (okhttp3.Response resp = client.newCall(builder.build()).execute()) {
+                if (resp.body() != null) {
+                    String bodyString = resp.body().string();
+                    return new Response(resp, bodyString);
+                } else {
+                    return new Response(resp, null);
+                }
+            } catch (IOException e) {
+                Log.e("C", "Failed to read from " + url + ": " + e.toString());
+                return new Response("Failed to read from " + url + ": " + e.toString());
+            }
+            //okhttp3.Response resp = client.newCall(builder.build()).execute();
+            //if (resp.body() != null) {
+            //    try {
+            //        String bodyString = resp.body().string();
+            //        resp.close();
+            //        return new Response(resp, bodyString);
+            //    } catch (IOException e) {
+            //        resp.close();
+            //        Log.e("C", "Failed to read response body: " + e.toString());
+            //        return new Response("Failed to read response body: " + e.toString());
+            //    }
+            //} else {
+            //    return new Response(resp, null);
+            //}
+        //} catch (IOException e) {
+        //    Log.e("C", "Failed to contact " + url + ": " + e.toString());
+        //    return new Response(e.toString());
+        //}
     }
 
 }

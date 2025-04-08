@@ -99,6 +99,14 @@ public class Scanner {
             }
             return null;
         }
+        synchronized void injectServerIfNotPresent(ScannedServer s) {
+            for (ScannedServer server : servers) {
+                if (server.publicKey.equals(s.publicKey)) {
+                    return;
+                }
+            }
+            servers.add(s);
+        }
     }
 
     private Context context;
@@ -133,6 +141,10 @@ public class Scanner {
 
     ScannedServer getScannedServer(String publicKey) {
         return state.getByPublicKey(publicKey);
+    }
+
+    void injectServerIfNotPresent(ScannedServer s) {
+        state.injectServerIfNotPresent(s);
     }
 
     static int getWifiIPAddress(Context context) {
@@ -265,7 +277,6 @@ public class Scanner {
             Log.i("C", "Preflight session error: " + resp.Error);
             return resp.Error;
         }
-        resp.Resp.close();
         if (resp.Resp.code() == 200) {
             Log.i("C", "Preflight session OK");
             return null;
@@ -287,13 +298,11 @@ public class Scanner {
             return resp.Error;
         }
         if (resp.Resp.code() != 200) {
-            String err = resp.Resp.toString();
-            resp.Resp.close();
+            String err = resp.BodyOrStatusString;
             Log.i("C", "Recreate session != 200: " + err);
             return err;
         }
         String cookie = resp.Resp.header("Set-Cookie");
-        resp.Resp.close();
         if (cookie == null) {
             Log.i("C", "Recreate session: no cookie");
             return "No session cookie in response";
@@ -332,16 +341,14 @@ public class Scanner {
             return resp.Error;
         }
         Gson gson = new Gson();
-        try (ResponseBody body = resp.Resp.body()) {
-            if (resp.Resp.code() == 200 && body != null) {
-                JSAPI.KeysResponseJSON keys = gson.fromJson(body.charStream(), JSAPI.KeysResponseJSON.class);
-                // check the signature
-                if (crypto.verifyChallenge(publicKey, challenge, Base64.decode(keys.proof, Base64.NO_WRAP))) {
-                    Log.i("C", "Preflight public key OK");
-                    return null;
-                }
-                Log.i("C", "Server's signature check failed");
+        if (resp.Resp.code() == 200 && resp.Body != null) {
+            JSAPI.KeysResponseJSON keys = gson.fromJson(resp.Body, JSAPI.KeysResponseJSON.class);
+            // check the signature
+            if (crypto.verifyChallenge(publicKey, challenge, Base64.decode(keys.proof, Base64.NO_WRAP))) {
+                Log.i("C", "Preflight public key OK");
+                return null;
             }
+            Log.i("C", "Server's signature check failed");
         }
         return "Server signature check failed";
     }

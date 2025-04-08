@@ -20,3 +20,13 @@ import { popRoute } from "./router/helpers";
 	globals.isApp = true;
 	console.log("App mode activated (JS)");
 };
+
+// Set progress message, for a long-running native operation.
+// If the string starts with "ERROR:" then it's an error message, and we'll strip out the "ERROR:" prefix.
+(window as any).cySetProgressMessage = (message: string) => {
+	globals.nativeProgressMessage = message;
+};
+
+(window as any).cySetIdentityToken = (token: string) => {
+	globals.nativeIdentityToken = token;
+};

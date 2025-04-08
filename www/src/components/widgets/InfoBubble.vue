@@ -8,6 +8,7 @@ let props = defineProps<{
 	size?: number, // Override icon size
 	caption?: string, // If defined, the bubble is "? <caption>"
 	tint?: string, // Sent to modal tint
+	modalPosition?: string // default 'previous'
 }>()
 
 let isOpen = ref(false);
@@ -37,14 +38,14 @@ function iconStyle(): any {
 		<div class="bubbleContainer" @click="isOpen = true">
 			<div class="icon background" :style="iconStyle()">
 			</div>
-			<div v-if="caption" class="captionText">{{caption}}</div>
+			<div v-if="caption" class="captionText">{{ caption }}</div>
 		</div>
-		<modal v-if="isOpen" position="previous" :tint="tint" @close="isOpen = false">
+		<modal v-if="isOpen" :position="modalPosition || 'previous'" :tint="tint" @close="isOpen = false">
 			<div class="bubble">
 				<slot />
-				<div v-if="title" class="title">{{title}}</div>
+				<div v-if="title" class="title">{{ title }}</div>
 				<div v-if="text" class="text">
-					<p v-for="line of textLines()" class="text">{{line}}</p>
+					<p v-for="line of textLines()" class="text">{{ line }}</p>
 				</div>
 			</div>
 		</modal>
@@ -68,9 +69,9 @@ function iconStyle(): any {
 }
 
 .bubbleContainer {
-	background-color: rgb(244, 244, 255);
-	border: solid 1px rgb(237, 237, 255);
-	border-radius: 5px;
+	//background-color: rgb(244, 244, 255);
+	//border: solid 1px rgb(237, 237, 255);
+	//border-radius: 5px;
 	display: flex;
 	align-items: center;
 	cursor: pointer;
@@ -108,4 +109,3 @@ p {
 	padding: 0;
 }
 </style>
-	

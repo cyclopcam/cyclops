@@ -7,6 +7,11 @@ import android.os.Build;
 import android.util.Log;
 import androidx.browser.customtabs.CustomTabsIntent;
 
+import com.google.gson.Gson;
+
+import java.util.HashMap;
+import java.util.Map;
+
 //import com.google.android.gms.auth.api.signin.GoogleSignIn;
 //import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 //import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
@@ -22,6 +27,31 @@ import androidx.browser.customtabs.CustomTabsIntent;
 public class Accounts {
 
     private static final String TAG = "cyclops";
+    private final HttpClient httpClient;
+
+    public static class OauthLinkJSON {
+        String provider = ""; // eg "google"
+        String id = ""; // ID at the provider (eg Google ID, such as "1234567890")
+        String email = "";
+        String displayName = "";
+    }
+
+    // Response from accounts.cyclopcam.org /api/auth/whoami
+    public static class WhoamiJSON {
+        String id = ""; // ID with accounts.cyclopcam.org
+        String email = "";
+        String displayName = "";
+        OauthLinkJSON[] oauth;
+    }
+
+    public static class CreateTokenJSON {
+        String token = "";
+        long expiresAt = 0; // Unix seconds (0/omitted if no expiration)
+    }
+
+    Accounts() {
+        httpClient = new HttpClient();
+    }
 
     //public static final int RC_SIGN_IN = 9001;
     //private GoogleSignInClient mGoogleSignInClient;
@@ -63,14 +93,64 @@ public class Accounts {
     }
     */
 
-    public void signinWeb(Activity activity) {
+    public void signinWeb(Activity activity, String provider, String appState) {
+        Log.i(TAG, "signinWeb for " + provider);
         // Launch Chrome Custom Tabs to your OAuth sign-in page
-        String url = "https://accounts.cyclopcam.org/login.html?return_to=cyclops://auth";
+        String url = "https://accounts.cyclopcam.org/login";
+        if (!provider.equals("")) {
+            url = "https://accounts.cyclopcam.org/api/auth/oauth2/" + provider + "/login";
+        }
+        url += "?return_to=cyclops://auth";
+        if (!appState.equals(""))
+            url += "&app_state=" + appState;
         CustomTabsIntent.Builder builder = new CustomTabsIntent.Builder();
-        builder.setShowTitle(false);
-        builder.setShareState(CustomTabsIntent.SHARE_STATE_OFF);
+        //builder.setShowTitle(false);
+        //builder.setShareState(CustomTabsIntent.SHARE_STATE_OFF);
         CustomTabsIntent customTabsIntent = builder.build();
         customTabsIntent.launchUrl(activity, Uri.parse(url));
+    }
+
+    // Check with accounts.cyclopcam.org if we are signed in with a specific OAuth provider
+    public boolean isSignedinWithOAuthProvider(String provider, String token) throws RuntimeException {
+        if (token == null || token.equals("")) {
+            return false;
+        }
+        Log.i(TAG, "isSignedinWithOAuthProvider");
+        HttpClient.Response response = httpClient.GET("https://accounts.cyclopcam.org/api/auth/whoami", new HashMap<>(Map.of("Authorization", "Bearer " + token)));
+        if (response.Error != null) {
+            Log.e(TAG, "isSignedinWithOAuthProvider Error: " + response.Error);
+            throw new RuntimeException(response.Error);
+        }
+        Log.i(TAG, "isSignedinWithOAuthProvider: " + response.BodyOrStatusString);
+        if (response.Resp.code() != 200) {
+            return false;
+        }
+        WhoamiJSON whoami = new Gson().fromJson(response.Body, WhoamiJSON.class);
+        for (OauthLinkJSON oauth : whoami.oauth) {
+            if (oauth.provider.equals(provider)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Acquire an IdentityToken from accounts.cyclopcam.org. An IdentityToken is a short-lived
+    // token (eg 1 minute lifetime) that a cyclops server can use to verify the caller's
+    // identity.
+    // Returns an empty string on success, or an error otherwise.
+    public CreateTokenJSON getIdentityToken(String token) throws RuntimeException {
+        Log.i(TAG, "getIdentityToken");
+        HttpClient.Response response = httpClient.POST("https://accounts.cyclopcam.org/api/auth/createIdentityToken", new HashMap<>(Map.of("Authorization", "Bearer " + token)));
+        if (response.Error != null) {
+            Log.e(TAG, "getIdentityToken network failed: " + response.Error);
+            throw new RuntimeException(response.Error);
+        }
+        if (response.Resp.code() != 200) {
+            Log.e(TAG, "getIdentityToken failed: " + response.BodyOrStatusString);
+            throw new RuntimeException(response.BodyOrStatusString);
+        }
+        Log.i(TAG, "getIdentityToken success: " + response.Body);
+        return new Gson().fromJson(response.Body, CreateTokenJSON.class);
     }
 
     private String bytesToHex(byte[] bytes) {

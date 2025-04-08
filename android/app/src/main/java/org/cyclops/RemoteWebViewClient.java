@@ -92,6 +92,18 @@ public class RemoteWebViewClient extends WebViewClientCompat {
         });
     }
 
+    // The client recognizes messages that start with "ERROR:"
+    // Anything else is a normal progress message.
+    void cySetProgressMessage(WebView view, String msg) {
+        activity.runOnUiThread(() -> { view.evaluateJavascript("window.cySetProgressMessage('" + msg + "')", null); });
+    }
+
+    void cySetIdentityToken(WebView view, String token) {
+        String js = "window.cySetIdentityToken('" + token + "')";
+        Log.i("C", "DEBUG:" + js);
+        activity.runOnUiThread(() -> { view.evaluateJavascript(js, null); });
+    }
+
     WebResourceResponse sendOK() {
         return new WebResourceResponse("text/plain", "utf-8", 200, "OK", null, null);
     }
@@ -126,6 +138,10 @@ public class RemoteWebViewClient extends WebViewClientCompat {
                 case "/natcom/networkDown":
                     Log.i("C", "natcom/networkDown reached");
                     activity.runOnUiThread(() -> main.onNetworkDown(url.getQueryParameter("errorMsg")));
+                    return sendOK();
+                case "/natcom/requestOAuthLogin":
+                    //activity.runOnUiThread(() -> main.requestOAuthLogin(url.getQueryParameter("purpose"), url.getQueryParameter("provider")));
+                    main.requestOAuthLogin(url.getQueryParameter("purpose"), url.getQueryParameter("provider"));
                     return sendOK();
             }
         }

@@ -1,8 +1,11 @@
 <script setup lang="ts">
+let props = defineProps<{
+	padding?: string, // default: 2px 16px
+}>()
 </script>
 
 <template>
-	<div class="widesection">
+	<div class="widesection" :style="{ padding: props.padding || '2px 16px' }">
 		<slot />
 	</div>
 </template>

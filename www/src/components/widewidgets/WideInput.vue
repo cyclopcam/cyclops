@@ -26,6 +26,7 @@ let props = defineProps<{
 	unit?: string, // Accompanies units
 	units?: string[], // Optional units, like ['GB', 'TB']
 	required?: boolean, // Default false
+	bottomBorder?: boolean, // Default false
 }>()
 let emit = defineEmits(['update:modelValue', 'change', 'unit-change']);
 
@@ -135,7 +136,7 @@ onMounted(() => {
 </script>
 
 <template>
-	<div class="wideinput wide-section-element">
+	<div :class="{ wideinput: true, 'wide-section-element': true, 'wide-section-element-bottom-border': bottomBorder }">
 		<div class="wideinput-label">
 			<div>
 				{{ label }}

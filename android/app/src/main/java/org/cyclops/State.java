@@ -57,6 +57,18 @@ class State {
         }
     }
 
+    static final int SAVEDACTIVITY_NEWSERVER_LOGIN = 1; // Busy logging into new server
+
+    // SavedActivity represents a state that our app was in before we needed to kick off some other
+    // activity. This was created for the OAuth Web signin flow, where we're busy signing into
+    // a new Cyclops server, and we need to invoke a Chrome Custom Tab. When our activity is
+    // restarted, we need to know where we left off.
+    public static class SavedActivity {
+        int activity = 0; // SAVEDACTIVTY_*
+        Scanner.ScannedServer scannedServer = null; // The server we were logging into
+        String oauthProvider = ""; // The OAuth provider we were logging into
+    }
+
     // These objects are created in MainActivity's onCreate
     Scanner scanner;
     LocalDB db;
@@ -298,71 +310,31 @@ class State {
         }
     }
 
-    //static class LoginResult {
-    //    String error;
-    //    String token;
-    //}
+    // Save our current activity
+    void saveActivity(SavedActivity activity) {
+        SharedPreferences.Editor edit = sharedPref.edit();
+        edit.putString("savedActivity", new Gson().toJson(activity));
+        edit.apply();
+    }
 
-    // Use our bearer token to perform a cookie-based login, and set the cookie for our webviews
-    //void recreateSession(String publicKey, boolean isProxy) {
-    //}
-
-    // The code below should work.. but I decided to keep logins on the Typescript side.
-    // There's no benefit to performing logins here.
-    /*
-    // Returns an empty string on success, or an error message on failure
-    String login(String url, String publicKey, String username, String password) {
-        // Talk to server
-        LoginResult lr = performLogin(url, publicKey, username, password);
-        if (lr.error != null) {
-            return lr.error;
+    // Returns either the most recently saved activity, or null.
+    // After loading, clears the saved activity.
+    SavedActivity loadActivity() {
+        String json = sharedPref.getString("savedActivity", "");
+        if (json.equals("")) {
+            return null;
         }
-
-        // Save session token
-        serversLock.lock();
         try {
-            Server s = getServerByPublicKey(publicKey);
-            if (s == null) {
-                s = new Server();
-                s.publicKey = publicKey;
-                s.state = STATE_NEW;
-            }
-            s.bearerToken = lr.token;
-            servers.add(s);
-            saveServersToDB();
+            SavedActivity activity = new Gson().fromJson(json, SavedActivity.class);
+            return activity;
+        } catch (Exception e) {
+            // Maybe the app was upgraded, and the JSON changed.
+            Log.e("C", "Failed to load saved activity: " + e);
+            return null;
         } finally {
-            serversLock.unlock();
+            SharedPreferences.Editor edit = sharedPref.edit();
+            edit.remove("savedActivity");
+            edit.apply();
         }
-
-        return "";
     }
-
-    // Returns an empty string on success, or an error message on failure
-    LoginResult performLogin(String url, String publicKey, String username, String password) {
-        HashMap<String, String> headers = new HashMap<>();
-        headers.put("Authorization", "BASIC " + Base64.encodeToString((username + ":" + password).getBytes(), 0));
-        HttpClient.Response resp = client.POST(url, headers);
-        LoginResult result = new LoginResult();
-        if (resp.Error != null) {
-            result.error = resp.Error;
-        } else {
-            ResponseBody body = resp.Resp.body();
-            if (resp.Resp.code() == 200 && body != null) {
-                Gson gson = new Gson();
-                JSAPI.LoginResponseJSON v = gson.fromJson(body.charStream(), JSAPI.LoginResponseJSON.class);
-                result.token = v.bearerToken;
-            } else {
-                if (body != null) {
-                    result.error = body.toString();
-                } else {
-                    result.error = "Error " + resp.Resp.code();
-                }
-            }
-            if (body != null) {
-                body.close();
-            }
-        }
-        return result;
-    }
-     */
 }

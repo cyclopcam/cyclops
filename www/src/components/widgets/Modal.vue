@@ -251,12 +251,15 @@ onUnmounted(() => {
 </script>
 
 <template>
-	<div ref="fixed" :class="{ modalRoot: true, centered: true }" :style="fixedStyle()" @mousedown="onRootClick">
-		<div ref="container" :style="containerStyle()">
-			<slot />
-			<div v-if="showX" ref="xButton" class="x" :style="xStyle()" @click="onXClick"></div>
+	<!-- teleport to body so that we're not affected by any CSS 'transform' statements -->
+	<Teleport to="body">
+		<div ref="fixed" :class="{ modalRoot: true, centered: true }" :style="fixedStyle()" @mousedown="onRootClick">
+			<div ref="container" :style="containerStyle()">
+				<slot />
+				<div v-if="showX" ref="xButton" class="x" :style="xStyle()" @click="onXClick"></div>
+			</div>
 		</div>
-	</div>
+	</Teleport>
 </template>
 
 <style lang="scss" scoped>

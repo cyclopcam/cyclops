@@ -58,6 +58,12 @@ export class Globals {
 	lastCameraPassword = "";
 	lastCameraUsername = ""; // Username of the most recently added camera.
 
+	// Native app changes this when it's busy with a long-running operation (eg OAuth token acquisition)
+	nativeProgressMessage = "";
+
+	// Native app gives us this so that we can login to a cyclops server using an account from accounts.cyclopcam.org
+	nativeIdentityToken = "";
+
 	private _networkError = ""; // Most recent network error, typically shown in the top/bottom bar
 
 	constructor() {

@@ -426,6 +426,22 @@ $slideAmount: 100vw;
 	text-decoration: underline;
 }
 
+// Blinking text
+.blinkingStatusText {
+	animation: blinkingStatusText 0.5s infinite;
+	animation-direction: alternate;
+	animation-timing-function: ease-in-out;
+}
+
+@keyframes blinkingStatusText {
+	0% {
+		color: #000;
+	}
+	100% {
+		color: #999;
+	}
+}
+
 // grr.. unfortunately we can't specify our background color inside .wideRoot.
 // If we do, then we're limited in our size. I can't figure out how to make us always
 // fill our container, BUT ALSO if our content is larger than our container, then we
