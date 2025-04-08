@@ -93,8 +93,12 @@ func (v *VPN) Start() error {
 	}
 
 	// Temporarily raise the timeout.
-	// Cyclops reliably fails to start on reboot, and I'm wondering if my timeout is just too short.
+	// Cyclops sometimes fails to start on reboot, and I'm wondering if my timeout is just too short.
 	// So this is a test. The default timeout is 10 seconds.
+	// Hmm.. so in a test I just ran, BringDeviceUp takes 5 seconds.
+	// The only time my test device ever reboots is when all the power goes down. In these events, the wifi/fiber/ethernet
+	// goes down too. So maybe the slow startup is due to the network being down. Doesn't make sense though - why would
+	// bringing up the wireguard device be dependent on the internet being up?
 	timeout := v.client.GetMaxReadDuration()
 	defer v.client.SetMaxReadDuration(timeout)
 	v.client.SetMaxReadDuration(30 * time.Second)

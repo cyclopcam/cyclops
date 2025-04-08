@@ -225,7 +225,7 @@ func main() {
 		vpnClient, err = server.StartVPN(logger, configDB.PrivateKey, kernelWGSecret, forceIPv4)
 		if err != nil {
 			logger.Errorf("%v", err)
-			ExitNoRestart()
+			ExitAndRestart()
 		}
 		vpnClient.RunRegisterLoop(vpnShutdown)
 		configDB.VpnAllowedIP = vpnClient.AllowedIP
