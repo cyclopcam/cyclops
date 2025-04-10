@@ -441,7 +441,17 @@ public class MainActivity extends AppCompatActivity implements Main {
         }
     }
 
-    // If you call switchToServer and 'server' = 'currentServer', then the function will first check
+    public void serverDeleted(String publicKey) {
+        // If the server that we were connected to has been deleted, then connect to something else.
+        if (currentServer != null && currentServer.publicKey.equals(publicKey)) {
+            State.Server any = State.global.getAnyServer();
+            if (any != null) {
+                switchToServer(any.publicKey);
+            }
+        }
+    }
+
+    // If you call switchToServer and publicKey = '<public key of current server>', then the function will first check
     // if a change between LAN and proxy is needed. If no change is needed, then it will leave the
     // app as-is.
     // However, if you're doing that, then rather use revalidateCurrentConnection(), to make that
@@ -769,23 +779,28 @@ public class MainActivity extends AppCompatActivity implements Main {
     private void resumeSavedActivity() {
         State.SavedActivity saved = State.global.loadActivity();
         if (saved != null) {
-            switch (saved.activity) {
-                case State.SAVEDACTIVITY_NEWSERVER_LOGIN:
-                    Log.d(TAG, "Resuming login process with OAuth provider " + saved.oauthProvider);
-                    // Inject the scanned server into the in-memory list of scanned servers, so that the
-                    // rest of the code can continue on as though we've just done an IP scan.
-                    State.global.scanner.injectServerIfNotPresent(saved.scannedServer);
-                    // Inform the remote app that we have a token. It must proceed with the login.
-                    // The next thing that will happen is the remote cyclops server will
-                    // us to get an IdentityToken from accounts.cyclopcam.org, by calling back
-                    // into requestOAuthLogin().
-                    // We want the remote webview to return to the same place it was at before
-                    // all the oauth redirect occurred. This will make the user comfortable
-                    // seeing a familiar screen.
-                    HashMap<String, String> queryParams = new HashMap<>();
-                    queryParams.put("have_accounts_token", "1");
-                    queryParams.put("provider", saved.oauthProvider);
-                    navigateToScannedLocalServer(saved.scannedServer.publicKey, "/welcome", queryParams);
+            if (saved.activity == State.SAVEDACTIVITY_NEWSERVER_LOGIN || saved.activity == State.SAVEDACTIVITY_LOGIN) {
+                Log.d(TAG, "Resuming login process with OAuth provider " + saved.oauthProvider);
+                // Inject the scanned server into the in-memory list of scanned servers, so that the
+                // rest of the code can continue on as though we've just done an IP scan.
+                State.global.scanner.injectServerIfNotPresent(saved.scannedServer);
+                // Inform the remote app that we have a token. It must proceed with the login.
+                // The next thing that will happen is the remote cyclops server will
+                // us to get an IdentityToken from accounts.cyclopcam.org, by calling back
+                // into requestOAuthLogin().
+                // We want the remote webview to return to the same place it was at before
+                // all the oauth redirect occurred. This will make the user comfortable
+                // seeing a familiar screen.
+                HashMap<String, String> queryParams = new HashMap<>();
+                queryParams.put("have_accounts_token", "1");
+                queryParams.put("provider", saved.oauthProvider);
+                // On the server side, I unified /welcome and /login
+                String url = "/welcome";
+                //if (saved.activity == State.SAVEDACTIVITY_NEWSERVER_LOGIN)
+                //    url = "/welcome";
+                //else
+                //    url = "/login";
+                navigateToScannedLocalServer(saved.scannedServer.publicKey, url, queryParams);
             }
         }
     }

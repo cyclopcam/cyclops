@@ -90,6 +90,7 @@ export async function login(username: string, password: string): Promise<string>
 	return handleLoginSuccess(r);
 }
 
+// Returns a non-empty string on error, or "" on success
 export async function handleLoginSuccess(r: FetchSuccess): Promise<string> {
 	globals.isLoggedIn = true;
 

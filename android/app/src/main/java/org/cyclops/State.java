@@ -30,10 +30,12 @@ class State {
     static final int STATE_NEW = 0; // Record is not in database
     static final int STATE_MODIFIED = 1; // Record has been modified
     static final int STATE_NOTMODIFIED = 2; // Record has not been modified
+    static final int STATE_DELETE = 3; // Record must be deleted
 
     // SYNC-ALL-PREFS
     static final String PREF_LAST_SERVER_PUBLIC_KEY = "LAST_SERVER_PUBLIC_KEY";
     static final String PREF_ACCOUNTS_TOKEN = "ACCOUNTS_TOKEN"; // Authentication token to accounts.cyclopcam.org
+    static final String PREF_SAVED_ACTIVITY = "SAVED_ACTIVITY"; // Used to remember our state
 
     // Server is sent as JSON to appui
     // SYNC-NATCOM-SERVER
@@ -57,14 +59,15 @@ class State {
         }
     }
 
-    static final int SAVEDACTIVITY_NEWSERVER_LOGIN = 1; // Busy logging into new server
+    static final int SAVEDACTIVITY_NEWSERVER_LOGIN = 1; // Busy logging into new server (so we are implicitly going to become the admin there, and possibly go through a setup flow)
+    static final int SAVEDACTIVITY_LOGIN = 2; // Busy logging into a server that already has users on it
 
     // SavedActivity represents a state that our app was in before we needed to kick off some other
     // activity. This was created for the OAuth Web signin flow, where we're busy signing into
     // a new Cyclops server, and we need to invoke a Chrome Custom Tab. When our activity is
     // restarted, we need to know where we left off.
     public static class SavedActivity {
-        int activity = 0; // SAVEDACTIVTY_*
+        int activity = 0; // SAVEDACTIVITY_*
         Scanner.ScannedServer scannedServer = null; // The server we were logging into
         String oauthProvider = ""; // The OAuth provider we were logging into
     }
@@ -94,6 +97,7 @@ class State {
             SharedPreferences.Editor edit = sharedPref.edit();
             edit.remove(PREF_LAST_SERVER_PUBLIC_KEY);
             edit.remove(PREF_ACCOUNTS_TOKEN);
+            edit.remove(PREF_SAVED_ACTIVITY);
             edit.apply();
 
             SQLiteDatabase h = db.getWritableDatabase();
@@ -154,6 +158,18 @@ class State {
         return null;
     }
 
+    Server getAnyServer() {
+        serversLock.lock();
+        try {
+            if (servers.size() > 0) {
+                return servers.get(0);
+            }
+        } finally {
+            serversLock.unlock();
+        }
+        return null;
+    }
+
     Server getServerCopyByPublicKey(String publicKey) {
         try {
             serversLock.lock();
@@ -186,9 +202,7 @@ class State {
         try {
             Log.i("C", "setLastServer to " + publicKey);
             lastServerPublicKey = publicKey;
-            SharedPreferences.Editor edit = sharedPref.edit();
-            edit.putString(PREF_LAST_SERVER_PUBLIC_KEY, publicKey);
-            edit.apply();
+            sharedPref.edit().putString(PREF_LAST_SERVER_PUBLIC_KEY, publicKey).apply();
         } finally {
             serversLock.unlock();
         }
@@ -249,21 +263,7 @@ class State {
         serversLock.lock();
         try {
             SQLiteDatabase h = db.getWritableDatabase();
-            // Update existing
-            for (Server s : servers) {
-                if (s.state == STATE_MODIFIED) {
-                    Log.i("C", "Updating server " + s.publicKey + " in DB");
-                    ContentValues v = new ContentValues();
-                    v.put("lanIP", s.lanIP);
-                    v.put("bearerToken", s.bearerToken);
-                    v.put("name", s.name);
-                    v.put("sessionCookie", s.sessionCookie);
-                    String[] args = {s.publicKey};
-                    h.update("server", v, "publicKey = ?", args);
-                    s.state = STATE_NOTMODIFIED;
-                }
-            }
-            // Insert new
+            ArrayList<Server> newServerList = new ArrayList<>();
             for (Server s : servers) {
                 if (s.state == STATE_NEW) {
                     Log.i("C", "Adding server " + s.publicKey + " to DB");
@@ -275,8 +275,26 @@ class State {
                     v.put("sessionCookie", s.sessionCookie);
                     h.insert("server", null, v);
                     s.state = STATE_NOTMODIFIED;
+                } else if (s.state == STATE_MODIFIED) {
+                    Log.i("C", "Updating server " + s.publicKey + " in DB");
+                    ContentValues v = new ContentValues();
+                    v.put("lanIP", s.lanIP);
+                    v.put("bearerToken", s.bearerToken);
+                    v.put("name", s.name);
+                    v.put("sessionCookie", s.sessionCookie);
+                    String[] args = {s.publicKey};
+                    h.update("server", v, "publicKey = ?", args);
+                    s.state = STATE_NOTMODIFIED;
+                } else if (s.state == STATE_DELETE) {
+                    Log.i("C", "Deleting server " + s.publicKey + " from DB");
+                    String[] args = {s.publicKey};
+                    h.delete("server", "publicKey = ?", args);
+                }
+                if (s.state != STATE_DELETE) {
+                    newServerList.add(s);
                 }
             }
+            servers = newServerList;
         } finally {
             serversLock.unlock();
         }
@@ -310,17 +328,37 @@ class State {
         }
     }
 
-    // Save our current activity
+    void deleteServer(String publicKey) {
+        serversLock.lock();
+        boolean wasLast = false;
+        try {
+            Server s = getServerByPublicKey(publicKey);
+            if (s == null) {
+                return;
+            }
+            s.state = STATE_DELETE;
+            wasLast = lastServerPublicKey.equals(publicKey);
+            saveServersToDB();
+        } finally {
+            serversLock.unlock();
+        }
+
+        if (wasLast) {
+            setLastServer("");
+        }
+    }
+
+    // Save our current activity.
+    // This is used when invoking a custom chrome tab for OAuth login, so that we can save
+    // where we were.
     void saveActivity(SavedActivity activity) {
-        SharedPreferences.Editor edit = sharedPref.edit();
-        edit.putString("savedActivity", new Gson().toJson(activity));
-        edit.apply();
+        sharedPref.edit().putString(PREF_SAVED_ACTIVITY, new Gson().toJson(activity)).apply();
     }
 
     // Returns either the most recently saved activity, or null.
     // After loading, clears the saved activity.
     SavedActivity loadActivity() {
-        String json = sharedPref.getString("savedActivity", "");
+        String json = sharedPref.getString(PREF_SAVED_ACTIVITY, "");
         if (json.equals("")) {
             return null;
         }
@@ -332,9 +370,7 @@ class State {
             Log.e("C", "Failed to load saved activity: " + e);
             return null;
         } finally {
-            SharedPreferences.Editor edit = sharedPref.edit();
-            edit.remove("savedActivity");
-            edit.apply();
+            sharedPref.edit().remove(PREF_SAVED_ACTIVITY).apply();
         }
     }
 }

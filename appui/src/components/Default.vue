@@ -28,7 +28,7 @@ function onAddLocal() {
 }
 
 function onAddRemote() {
-	//
+	// TODO
 }
 
 onMounted(async () => {
@@ -37,7 +37,7 @@ onMounted(async () => {
 })
 
 </script>
- 
+
 <template>
 	<div ref="root" class="pageContainer default">
 		<h3>Connections</h3>
@@ -53,9 +53,11 @@ onMounted(async () => {
 				<a class="link addlink" @click="onAddLocal()"><img :src="Plus" class="plus" /> Add Server on local WiFi
 					Network</a>
 			</div>
+			<!--
 			<div class="addserver">
 				<a class="link addlink" @click="onAddRemote()"><img :src="Plus" class="plus" /> Add Remote Server</a>
 			</div>
+			-->
 		</div>
 	</div>
 </template>

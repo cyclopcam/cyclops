@@ -17,7 +17,7 @@ function isError(): boolean {
 </script>
 
 <template>
-	<p :class="{ error: isError() }">
+	<p :class="{ error: isError(), blinkingStatusText: !isError() }">
 		{{ cleanText() }}
 	</p>
 </template>

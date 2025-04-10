@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { bestServerName, cloneServer, natFetchRegisteredServers, natSetServerProperty } from '@/nativeOut';
+import { bestServerName, cloneServer, natDeleteServer, natFetchRegisteredServers, natSetServerProperty } from '@/nativeOut';
 import type { Server } from '@/nativeOut';
 import { onMounted, ref, watch } from 'vue';
 import Copy from '@/icons/copy-blue.svg';
@@ -60,13 +60,15 @@ function onDelete() {
 	showRemove.value = true;
 }
 
-function onDeleteConfirm() {
+async function onDeleteConfirm() {
 	showRemove.value = false;
-	// etc...
+	await natDeleteServer(server.value.publicKey);
+	await globals.loadServers();
+	router.back();
 }
 
-function onSave() {
-	natSetServerProperty(server.value.publicKey, "name", server.value.name);
+async function onSave() {
+	await natSetServerProperty(server.value.publicKey, "name", server.value.name);
 	orgServer.value = cloneServer(server.value);
 	router.back();
 }
@@ -80,7 +82,7 @@ onMounted(async () => {
 })
 
 </script>
- 
+
 <template>
 	<div class="editServer">
 		<h3>Edit Server</h3>

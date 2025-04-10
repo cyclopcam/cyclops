@@ -11,6 +11,7 @@ public interface Main {
     void navigateToScannedLocalServer(String publicKey, String path, HashMap<String,String> queryParams);
     void setLocalWebviewVisibility(String mode);
     void onLogin(String bearerToken, String sessionCookie);
+    void serverDeleted(String publicKey);
     void switchToServer(String publicKey);
     int getContentHeight();
     Bitmap getRemoteViewScreenGrab();

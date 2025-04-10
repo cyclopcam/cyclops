@@ -122,10 +122,7 @@ export class Globals {
 			let r = await fetch("/api/auth/whoami");
 			if (r.status === 403) {
 				this.isLoggedIn = false;
-				r = await (await fetch("/api/auth/hasAdmin")).json();
-				if (r) {
-					replaceRoute(router, { name: "rtLogin" });
-				} else {
+				if (router.currentRoute.value.name !== "rtWelcome") {
 					replaceRoute(router, { name: "rtWelcome" });
 				}
 			} else if (r.status === 200) {

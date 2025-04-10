@@ -148,6 +148,11 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                 case "/natcom/setServerProperty":
                     State.global.setServerProperty(url.getQueryParameter("publicKey"), url.getQueryParameter("key"), url.getQueryParameter("value"));
                     return sendOK();
+                case "/natcom/deleteServer":
+                    String publicKey = url.getQueryParameter("publicKey");
+                    State.global.deleteServer(publicKey);
+                    activity.runOnUiThread(() -> main.serverDeleted(publicKey));
+                    return sendOK();
                 case "/natcom/setLocalWebviewVisibility":
                     activity.runOnUiThread(() -> main.setLocalWebviewVisibility(url.getQueryParameter("mode")));
                     return sendOK();

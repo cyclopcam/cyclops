@@ -139,6 +139,10 @@ export async function natNavigateToScannedLocalServer(s: ScannedServer) {
 	await fetch('/natcom/navigateToScannedLocalServer?' + encodeQuery({ publicKey: s.publicKey }));
 }
 
+export async function natDeleteServer(publicKey: string) {
+	await fetch("/natcom/deleteServer?" + encodeQuery({ publicKey: publicKey }));
+}
+
 export async function natWaitForScreenGrab(): Promise<ImageData> {
 	let start = new Date().getTime();
 	let pauseMS = 5;

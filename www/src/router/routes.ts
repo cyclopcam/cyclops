@@ -124,7 +124,7 @@ export const router = createRouter({
 		{
 			path: "/login",
 			name: "rtLogin",
-			component: LoginView,
+			component: WelcomeView, // It made sense to just subsume Welcome and Login into one page
 		},
 		{
 			path: "/blank",

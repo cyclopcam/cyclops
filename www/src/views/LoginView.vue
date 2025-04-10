@@ -7,6 +7,9 @@ import FormBottom from '@/components/form/FormBottom.vue';
 import { globals } from '@/globals';
 import { login } from '@/auth';
 
+// WARNING! This has been subsumed by WelcomeView.vue
+// Will delete soon.
+
 let username = ref("");
 let password = ref("");
 
