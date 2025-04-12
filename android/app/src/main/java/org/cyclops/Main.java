@@ -13,6 +13,7 @@ public interface Main {
     void onLogin(String bearerToken, String sessionCookie);
     void serverDeleted(String publicKey);
     void switchToServer(String publicKey);
+    boolean isLoggingIn();
     int getContentHeight();
     Bitmap getRemoteViewScreenGrab();
     void clearRemoteViewScreenGrab();

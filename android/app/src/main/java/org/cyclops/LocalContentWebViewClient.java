@@ -145,6 +145,8 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                     return sendJSON(s);
                 case "/natcom/getRegisteredServers":
                     return sendJSON(State.global.getServersCopy());
+                case "/natcom/isLoggingIn":
+                    return sendJSON(main.isLoggingIn());
                 case "/natcom/setServerProperty":
                     State.global.setServerProperty(url.getQueryParameter("publicKey"), url.getQueryParameter("key"), url.getQueryParameter("value"));
                     return sendOK();

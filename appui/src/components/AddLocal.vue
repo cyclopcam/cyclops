@@ -11,6 +11,9 @@ import { dummyMode } from '@/constants';
 
 //let props = defineProps<{}>()
 
+// TODO
+let allowConnectToRemote = false;
+
 function isInit(): boolean {
 	return globals.mustShowWelcomeScreen;
 }
@@ -84,14 +87,13 @@ onMounted(() => {
 })
 
 </script>
- 
+
 <template>
 	<div :class="{ flexColumnCenter: true, pageContainer: true, init: isInit() }">
 		<h1 style="margin-bottom: 45px">Connect to your<br /> Cyclops system</h1>
 		<button class="focalButton" @click="onScan" :disabled="scanState().status === 'b'">Scan Home Network</button>
-		<div v-if="isInit()" class="link" @click="onConnectExisting" style="margin-top: 30px; font-size: 13px">Connect
-			to
-			Remote Server</div>
+		<div v-if="allowConnectToRemote && isInit()" class="link" @click="onConnectExisting"
+			style="margin-top: 30px; font-size: 13px">Connect to Remote Server</div>
 		<div v-if="showScanStatus()" class="scanning shadow15L">
 			<div :class="{ block: true, error: scanState().error !== 'e' }">{{ scanState().error }}
 			</div>

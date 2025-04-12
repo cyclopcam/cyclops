@@ -1,7 +1,12 @@
 package org.cyclops;
 
+import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
+
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
@@ -9,6 +14,7 @@ import androidx.browser.customtabs.CustomTabsIntent;
 
 import com.google.gson.Gson;
 
+import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -57,14 +63,11 @@ public class Accounts {
     //private GoogleSignInClient mGoogleSignInClient;
     //private OkHttpClient httpClient;
 
-    // NOTE. This is not used - I couldn't get anything besides a "10" response from Google auth.
-    // So we use signinWeb instead.
-    /*
-    public void signinNative(Activity activity) {
+    public void debugPrintSigningCert(Activity activity) {
         Log.d(TAG, "Application ID: " + activity.getPackageName());
         Log.d(TAG, "Getting SHA1 fingerprint");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            Log.d(TAG, "Getting SHA1 fingerprint FOIR REAL");
+            Log.d(TAG, "Getting SHA1 fingerprint FOR REAL");
             try {
                 PackageInfo info = activity.getPackageManager().getPackageInfo(activity.getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
                 for (Signature sig : info.signingInfo.getApkContentsSigners()) {
@@ -77,7 +80,13 @@ public class Accounts {
                 Log.e(TAG, "Error getting SHA1", e);
             }
         }
+    }
 
+    // NOTE. This is not used - I couldn't get anything besides a "10" response from Google auth.
+    // So we use signinWeb instead.
+    /*
+    public void signinNative(Activity activity) {
+        debugPrintSigningCert();
 
         // Configure Google Sign-In
         GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -93,20 +102,37 @@ public class Accounts {
     }
     */
 
-    public void signinWeb(Activity activity, String provider, String appState) {
+    public void signinWeb(Activity activity, String provider) {
         Log.i(TAG, "signinWeb for " + provider);
+        // v1
+        String redirectUri = "cyclops://auth";
+        // v2
+        //String redirectUri = "https://cyclopcam.org/android-auth";
+
         // Launch Chrome Custom Tabs to your OAuth sign-in page
-        String url = "https://accounts.cyclopcam.org/login";
+        String url = "https://accounts.cyclopcam.org/login?return_to=" + redirectUri;
         if (!provider.equals("")) {
-            url = "https://accounts.cyclopcam.org/api/auth/oauth2/" + provider + "/login";
+            // I have NO IDEA WHY (logcat logs give me no clue). If we point the custom tab
+            // directly at this URL, then the auth completes (I can see it on accounts.cyclopcam.org),
+            // but the redirect back to cyclops://auth never happens (our activity is never resumed).
+            // So, as a workaround, I point the custom tab to /login?click=google, and the
+            // server then waits 200ms, before simulating the click of the "login with google" button.
+            url = "https://accounts.cyclopcam.org/api/auth/oauth2/" + provider + "/login?return_to=" + redirectUri;
+            // mkay, this workaround didn't fix the problem. sigh.
+            //url = "https://accounts.cyclopcam.org/login?click=" + provider + "&return_to=" + redirectUri;
+            // It turned out that FLAG_ACTIVITY_NEW_TASK was necessary
+            // See all these other people experiencing the same issue:
+            // https://stackoverflow.com/questions/36084681/chrome-custom-tabs-redirect-to-android-app-will-close-the-app
         }
-        url += "?return_to=cyclops://auth";
-        if (!appState.equals(""))
-            url += "&app_state=" + appState;
         CustomTabsIntent.Builder builder = new CustomTabsIntent.Builder();
         //builder.setShowTitle(false);
-        //builder.setShareState(CustomTabsIntent.SHARE_STATE_OFF);
+        builder.setShareState(CustomTabsIntent.SHARE_STATE_OFF);
         CustomTabsIntent customTabsIntent = builder.build();
+
+        // This next line is crucial to ensure that after the OAuth flow completes,
+        // our app doesn't get backgrounded.
+        customTabsIntent.intent.setFlags(FLAG_ACTIVITY_NEW_TASK);
+
         customTabsIntent.launchUrl(activity, Uri.parse(url));
     }
 

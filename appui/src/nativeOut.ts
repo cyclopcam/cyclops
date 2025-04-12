@@ -108,6 +108,15 @@ export async function natGetLastServer(): Promise<Server> {
 	return await (await fetch("/natcom/getLastServer")).json() as Server;
 }
 
+export async function natIsLoggingIn(): Promise<boolean> {
+	if (dummyMode) {
+		return false;
+	}
+	let resp = await fetch("/natcom/isLoggingIn");
+	let j = await resp.json();
+	return j as boolean;
+}
+
 export enum LocalWebviewVisibility {
 	Hidden = "0",
 	PrepareToShow = "1",

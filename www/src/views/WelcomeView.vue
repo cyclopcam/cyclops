@@ -22,6 +22,10 @@ let isBusy = ref(false);
 let isLoadingInitialState = ref(true);
 let isNewSystem = ref(false);
 
+function isValidIdentityType(t: any): boolean {
+	return t === 'google' || t === 'microsoft' || t === 'username';
+}
+
 function isOAuth(): boolean {
 	return identityType.value === "google" || identityType.value === "microsoft";
 }
@@ -35,8 +39,9 @@ function usernamePrompt(): string {
 }
 
 async function moveToNextStage() {
+	console.log("WelcomeView moveToNextStage");
 	await globals.postAuthenticateLoadSystemInfo(false);
-	if (isNewSystem.value)
+	if (isNewSystem.value || globals.cameras.length === 0)
 		replaceRoute(router, { name: "rtSettingsHome" });
 	else
 		replaceRoute(router, { name: "rtMonitor" });
@@ -58,9 +63,9 @@ async function onLogin() {
 	if (isOAuth()) {
 		// The first time this is called, if the native app is not logged into accounts.cyclopcam.org, then it will
 		// use a custom chrome tab to initiate the Oauth login flow. Once that's done, it will re-open this page,
-		// and inform us that have_accounts_token=1. Then we'll kick off this function again, an this time
+		// and inform us that have_accounts_token=1. Then we'll kick off this function again, and this time
 		// the native app will acquire a short-lived identity token, and pass it to us via globals.nativeIdentityToken.
-		// Our watcher will notice nativeIdentityToken changing, an will send that on to our server.
+		// Our watcher (in this source file) will notice nativeIdentityToken changing, an will send that on to our server.
 		await natRequestOAuthLogin(OAuthLoginPurpose.InitialUser, identityType.value);
 	} else {
 		if (isNewSystem.value)
@@ -79,16 +84,20 @@ function loginMode(): string {
 
 // The final step (for initial setup)
 async function finalCreateUser() {
+	console.log("WelcomeView finalCreateUser 1");
+
 	let r: FetchResult;
 	isBusy.value = true;
 	if (isOAuth()) {
+		r = await fetchOrErr('/api/auth/createUser?' + encodeQuery({ identityToken: globals.nativeIdentityToken }), { method: 'POST' });
+	} else {
 		let user = new UserRecord();
 		user.username = username.value;
 		user.permissions = Permissions.Admin;
 		r = await fetchOrErr('/api/auth/createUser?' + encodeQuery({ password: password.value }), { method: 'POST', body: JSON.stringify(user.toJSON()) });
-	} else {
-		r = await fetchOrErr('/api/auth/createUser?' + encodeQuery({ identityToken: globals.nativeIdentityToken }), { method: 'POST' });
 	}
+
+	console.log("WelcomeView finalCreateUser 2");
 
 	isBusy.value = false;
 	postLoginOrCreateUser(r);
@@ -116,11 +125,13 @@ async function finalLogin() {
 }
 
 async function postLoginOrCreateUser(r: FetchResult) {
+	console.log("WelcomeView postLoginOrCreateUser", r.ok);
 	if (!r.ok) {
 		globals.nativeProgressMessage = "ERROR:" + r.status;
 	} else {
 		// Send cookies etc to native app
 		let err = await handleLoginSuccess(r);
+		console.log("WelcomeView postLoginOrCreateUser", err);
 		if (err !== "") {
 			globals.nativeProgressMessage = "ERROR:" + err;
 		} else {
@@ -149,10 +160,14 @@ onMounted(async () => {
 	// http://<lan ip>:80/welcome?have_accounts_token=1?provider=google
 	//console.log("parsing window location.search", window.location.search);
 	let query = parseQuery(window.location.search);
+
+	if (isValidIdentityType(query['provider'])) {
+		identityType.value = query['provider'] as string;
+	}
+
 	//console.log("parsing OK");
 	if (query['have_accounts_token'] === "1") {
 		// Here we basically just show the same screen that the user was on before we started the OAuth signin flow.
-		identityType.value = query['provider'] as string;
 		globals.nativeProgressMessage = "Acquiring Identity Token...";
 		await onLogin();
 		// After this point, we expect a native call that modifies globals.nativeIdentityToken.

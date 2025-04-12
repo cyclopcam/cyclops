@@ -2,7 +2,7 @@ import { reactive, ref, VueElement } from "vue";
 import { initialScanState, mockScanState, mockScanStateError, type ScanState } from "@/scan";
 
 import "@/nativeIn"; // We must import nativeIn *somewhere* so that it's global functions are available
-import { blankServer, LocalWebviewVisibility, natFetchRegisteredServers, natGetLastServer, natGetScreenGrab, natGetScreenParams, natSetLocalWebviewVisibility, natWaitForScreenGrab, type Server } from "./nativeOut";
+import { blankServer, LocalWebviewVisibility, natFetchRegisteredServers, natGetLastServer, natGetScreenGrab, natGetScreenParams, natSetLocalWebviewVisibility, natWaitForScreenGrab, type Server, natIsLoggingIn } from "./nativeOut";
 import { encodeQuery, sleep } from "@/util/util";
 import { panelSlideTransitionMS } from "./constants";
 import { pushRoute, replaceRoute } from "./router/routes";
@@ -29,10 +29,11 @@ export class Globals {
 	async startup() {
 		await this.loadScreenParams();
 		await this.loadServers();
+		let isLoggingIn = await natIsLoggingIn();
 
-		this.mustShowWelcomeScreen = this.servers.length === 0;
+		this.mustShowWelcomeScreen = this.servers.length === 0 && !isLoggingIn;
 
-		console.log("isLoaded = true");
+		console.log(`isLoaded = true, servers.length = ${this.servers.length}, isLoggingIn = ${isLoggingIn}, mustShowWelcomeScreen = ${this.mustShowWelcomeScreen}`);
 		this.isLoaded = true;
 
 		if (this.mustShowWelcomeScreen) {

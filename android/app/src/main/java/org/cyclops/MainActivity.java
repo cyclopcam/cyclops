@@ -67,6 +67,7 @@ public class MainActivity extends AppCompatActivity implements Main {
     int contentHeight = 0;
     //ConnectivityManager.NetworkCallback networkCallback;
     State.Server currentServer; // The server that our remote webview is pointed at
+    boolean mIsLoggingIn = false; // True if we're busy trying to login to a server
     String currentNetworkSignature = ""; // Used to detect when we change networks, to avoid sending secrets to a new server with the same IP address
     HttpClient connectivityCheckClient;
     Crypto crypto;
@@ -99,7 +100,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         accounts = new Accounts();
 
         // dev time
-        WebView.setWebContentsDebuggingEnabled(true);
+        //WebView.setWebContentsDebuggingEnabled(true);
 
         rootView = findViewById(R.id.mainRoot);
         statusBarPlaceholder = findViewById(R.id.statusBarPlaceholder);
@@ -110,46 +111,45 @@ public class MainActivity extends AppCompatActivity implements Main {
 
         //setupHttpProxy();
 
-        // Get rid of white flash when expanding localWebView with screen grab underlay of remoteWebView.
-        // OK... even this doesn't work. It's very very hard to get to the bottom of this. Slow it down
-        // to debug, and it disappears...
-        localWebView.getSettings().setOffscreenPreRaster(true);
-
-        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
-                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
-                .addPathHandler("/res/", new WebViewAssetLoader.ResourcesPathHandler(this))
-                .build();
-        localClient = new LocalContentWebViewClient(assetLoader, this, this);
-        localWebView.setWebViewClient(localClient);
-        localWebView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
-
         remoteClient = new RemoteWebViewClient(this, this);
         remoteWebView.setWebViewClient(remoteClient);
 
-        // Clear login token with accounts.cyclopcam.org (for testing)
+        accounts.debugPrintSigningCert(this);
+
+        // Clear login token with accounts.cyclopcam.org (for testing fresh OAuth login)
         //State.global.setAccountsToken("");
+
         String accountsToken = State.global.getAccountsToken();
         Log.i(TAG, "accountsToken: " + accountsToken);
 
         // Handle cyclops://auth redirect if app was launched via URI
-        if (!handleRedirect(getIntent())) {
-            // Force sign-in (used when testing)
-            //if (State.global.getAccountsToken().equals("")) {
-            //    accounts.signinWeb(this, "");
-            //}
-        }
+        boolean haveRedirect = handleRedirect(getIntent());
+        // Force sign-in (used when testing)
+        //if (State.global.getAccountsToken().equals("")) {
+        //    accounts.signinWeb(this, "");
+        //}
 
-        if (State.global.servers.size() == 0) {
-            showRemoteWebView(false);
-        } else {
-            State.Server last = State.global.getLastServer();
-            if (last == null) {
-                last = State.global.servers.get(0);
+        // Delay the startup of our local appui webview, so that our "isLoggingIn" state is correct
+        // before appui's login runs. appui will check if we have zero servers, and are not logging in,
+        // and will bring itself to the forefront, and show the welcome/scan for servers screen.
+        // We don't want that to happy if we're busy logging in. This was first a problem when adding
+        // OAuth via custom chrome tabs, because our activity gets shutdown and resumed.
+        // handleRedirect() is where isLoggingIn gets set, in the above case.
+        startLocalAppUIWebView();
+
+        if (!haveRedirect) {
+            if (State.global.servers.size() == 0) {
+                showRemoteWebView("onCreate servers.size() == 0", false);
+            } else {
+                State.Server last = State.global.getLastServer();
+                if (last == null) {
+                    last = State.global.servers.get(0);
+                }
+                switchToServer(last.publicKey);
             }
-            switchToServer(last.publicKey);
+            // This can interfere with the login process, so disable it while performing initial auth/login
+            setupNetworkMonitor();
         }
-
-        setupNetworkMonitor();
 
         // Our dimensions are not available yet, because layout hasn't happened yet.
         // See https://stackoverflow.com/questions/3591784/views-getwidth-and-getheight-returns-0 for an explanation
@@ -166,6 +166,7 @@ public class MainActivity extends AppCompatActivity implements Main {
 
     @Override
     protected void onNewIntent(Intent intent) {
+        Log.i(TAG, "MainActivity onNewIntent");
         super.onNewIntent(intent);
         // Handle cyclops://auth redirect if app was already running
         handleRedirect(intent);
@@ -173,9 +174,30 @@ public class MainActivity extends AppCompatActivity implements Main {
 
     @Override
     protected void onResume() {
+        Log.i(TAG, "MainActivity onResume");
         super.onResume();
         // If we've just woken up then it's possible that we've changed networks
         revalidateCurrentConnection();
+    }
+
+    @Override
+    public boolean isLoggingIn() {
+        return mIsLoggingIn;
+    }
+
+    void startLocalAppUIWebView() {
+        // Get rid of white flash when expanding localWebView with screen grab underlay of remoteWebView.
+        // OK... even this doesn't work. It's very very hard to get to the bottom of this. Slow it down
+        // to debug, and it disappears...
+        localWebView.getSettings().setOffscreenPreRaster(true);
+
+        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .addPathHandler("/res/", new WebViewAssetLoader.ResourcesPathHandler(this))
+                .build();
+        localClient = new LocalContentWebViewClient(assetLoader, this, this);
+        localWebView.setWebViewClient(localClient);
+        localWebView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -219,7 +241,7 @@ public class MainActivity extends AppCompatActivity implements Main {
             navigationHistory.remove(navigationHistory.size() - 1);
             switch (p) {
                 case "openServer":
-                    showRemoteWebView(false);
+                    showRemoteWebView("webViewBackFailed", false);
             }
             return;
         }
@@ -233,9 +255,11 @@ public class MainActivity extends AppCompatActivity implements Main {
         Log.i(TAG, "onLogin to " + currentServer.publicKey +
                 ", bearerToken: " + bearerToken.substring(0, 4) +
                 "..., sessionCookie: " + sessionCookie.substring(0, 4));
+        mIsLoggingIn = false;
         State.global.addOrUpdateServer(currentServer.lanIP, currentServer.publicKey, bearerToken, currentServer.name, sessionCookie);
         State.global.setLastServer(currentServer.publicKey);
         localClient.cyRefreshServers(localWebView);
+        switchToServer(currentServer.publicKey);
     }
 
     // Invoked via the Webview when it notices that it can no longer talk to the cyclops server,
@@ -281,7 +305,7 @@ public class MainActivity extends AppCompatActivity implements Main {
             save.oauthProvider = provider;
             State.global.saveActivity(save);
 
-            accounts.signinWeb(this, provider, "");
+            accounts.signinWeb(this, provider);
         }
     }
 
@@ -301,7 +325,8 @@ public class MainActivity extends AppCompatActivity implements Main {
         recalculateWebViewLayout();
     }
 
-    public void showRemoteWebView(boolean show) {
+    public void showRemoteWebView(String reason, boolean show) {
+        Log.i(TAG, "showRemoteWebView: " + reason + ", " + show);
         isRemoteVisible = show;
         isRemoteInFocus = true;
         recalculateWebViewLayout();
@@ -468,15 +493,17 @@ public class MainActivity extends AppCompatActivity implements Main {
         // justCheck: If server is not changing, then just check whether connectivity is still OK
         boolean justCheck = currentServer != null && publicKey.equals(currentServer.publicKey);
 
-        State.global.setLastServer(publicKey);
+        if (!justCheck) {
+            State.global.setLastServer(publicKey);
+        }
 
         new Thread(new Runnable() {
             @Override
             public void run() {
                 String proxyServer = "proxy-cpt.cyclopcam.org";
                 String proxyOrigin = "https://" + Crypto.shortKeyForServer(target.publicKey) + ".p.cyclopcam.org";
-                Log.i(TAG, "Set proxy to " + proxyServer + ":8083");
-                Log.i(TAG, "Set target to " + proxyOrigin);
+                Log.i(TAG, "proxyServer: " + proxyServer + ":8083");
+                Log.i(TAG, "proxyOrigin: " + proxyOrigin);
                 //try {
                 //    httpProxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyServer, 8083));
                 //} catch (Exception e) {
@@ -498,7 +525,6 @@ public class MainActivity extends AppCompatActivity implements Main {
                         }
                         Log.i(TAG, "Connecting to LAN " + server.lanIP + " for server " + server.publicKey);
                         isOnLAN = true;
-                        //runOnUiThread(() -> navigateToServer(serverLanURL(server), false, server, true));
 
                         State.Server finalServer = server; // need *another* server instance, because Java
                         runOnUiThread(() -> {
@@ -507,7 +533,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                             // SYNC-CYCLOPS-SESSION-COOKIE
                             cookies.setCookie(lanURL, "session=" + finalServer.sessionCookie, (Boolean ok) -> {
                                 Log.i(TAG, "setCookie(LAN) session=" + finalServer.sessionCookie.substring(0, 6) + "... result " + (ok ? "OK" : "Failed"));
-                                navigateToServer(lanURL, false, finalServer, true, null);
+                                navigateToServer("Reconnecting on LAN", lanURL, false, finalServer, true, null, false);
                             });
                         });
 
@@ -535,7 +561,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                         cookies.setCookie(proxyOrigin, "session=" + finalServer.sessionCookie, (Boolean ok2) -> {
                             String shortCookie = finalServer.sessionCookie.substring(0, 5);
                             Log.i(TAG, "setCookie(proxy) session=" + shortCookie + "... result " + (ok2 ? "OK" : "Failed"));
-                            navigateToServer(proxyOrigin, false, finalServer, true, null);
+                            navigateToServer("Reconnecting via proxy", proxyOrigin, false, finalServer, true, null, false);
                         });
 
                     });
@@ -573,14 +599,15 @@ public class MainActivity extends AppCompatActivity implements Main {
         // SYNC-CYCLOPS-SESSION-COOKIE
         cookies.setCookie(baseUrl, "session=x", (Boolean ok) -> {
             Log.i(TAG, "setCookie session=x result " + (ok ? "OK" : "Failed"));
-            navigateToServer(baseUrlCopy, true, tmp, false, queryParams);
+            navigateToServer("Scanned local", baseUrlCopy, true, tmp, false, queryParams, true);
         });
     }
 
     // This is private to remind you that you must ensure the cookie state is good before navigating to a server
-    private void navigateToServer(String url, boolean addToNavigationHistory, State.Server server, boolean preserveURL, HashMap<String,String> queryParams) {
+    private void navigateToServer(String reason, String url, boolean addToNavigationHistory, State.Server server, boolean preserveURL, HashMap<String,String> queryParams, boolean forLogin) {
         currentServer = server.copy();
-        showRemoteWebView(true);
+        mIsLoggingIn = forLogin;
+        showRemoteWebView("navigateToServer (" + reason + ")", true);
         String currentURL = remoteWebView.getUrl();
         if (preserveURL && currentURL != null) {
             // Preserve the Vue route when switching between LAN and proxy.
@@ -601,7 +628,7 @@ public class MainActivity extends AppCompatActivity implements Main {
             }
             url = builder.build().toString();
         }
-        Log.i(TAG, "navigateToServer. currentURL = " + currentURL + ". New URL = " + url);
+        Log.i(TAG, "navigateToServer. reason = " + reason + ". currentURL = " + currentURL + ". New URL = " + url);
         remoteClient.setServer(server);
         remoteWebView.loadUrl(url);
         if (addToNavigationHistory) {
@@ -756,20 +783,21 @@ public class MainActivity extends AppCompatActivity implements Main {
 
         Uri redirectUri = intent.getData();
         Log.d(TAG, "handleRedirect: " + redirectUri.toString());
-        if ("cyclops".equals(redirectUri.getScheme()) && "auth".equals(redirectUri.getHost())) {
+        // V1 uses custom scheme deep links
+        boolean isV1Url = "cyclops".equals(redirectUri.getScheme()) && "auth".equals(redirectUri.getHost());
+        // V2 uses https deep links
+        boolean isV2Url = "https".equals(redirectUri.getScheme()) && "cyclopcam.org".equals(redirectUri.getHost()) && redirectUri.getPath().startsWith("/android-auth");
+        if (isV1Url || isV2Url) {
             // Extract session token from query parameter
             String sessionToken = redirectUri.getQueryParameter("token");
-            String appState = redirectUri.getQueryParameter("app_state");
             if (sessionToken != null) {
                 Log.d(TAG, "Received session token: " + sessionToken);
                 State.global.setAccountsToken(sessionToken);
-                //// Proceed with your app (e.g., load WebView with token)
-                //loadAuthenticatedWebView(sessionToken);
+                mIsLoggingIn = true;
                 resumeSavedActivity();
             } else {
                 Log.e(TAG, "No session token in redirect URI: " + redirectUri.toString());
             }
-            Log.d(TAG, "In redirect, app_state = " + appState);
             return true;
         }
         return false;
