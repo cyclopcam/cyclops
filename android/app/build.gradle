@@ -23,11 +23,11 @@ android {
     }
 
     buildTypes {
-        //debug {
-        //    // Use release key for debug builds, so that we can test OAuth authentication to accounts.cyclopcam.org
-        //    println "Debug build signing with: ${signingConfigs.release.storeFile}"
-        //    signingConfig signingConfigs.release
-        //}
+        debug {
+            // Use release key for debug builds, so that we can test OAuth authentication to accounts.cyclopcam.org
+            //println "Debug build signing with: ${signingConfigs.release.storeFile}"
+            //signingConfig signingConfigs.release
+        }
         release {
             //signingConfig signingConfigs.release
             minifyEnabled false

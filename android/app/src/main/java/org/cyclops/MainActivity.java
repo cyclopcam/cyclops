@@ -497,6 +497,9 @@ public class MainActivity extends AppCompatActivity implements Main {
             State.global.setLastServer(publicKey);
         }
 
+        // If we're switching servers, don't preserve the remote URL
+        final boolean preserveRemoteUrl = justCheck;
+
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -533,7 +536,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                             // SYNC-CYCLOPS-SESSION-COOKIE
                             cookies.setCookie(lanURL, "session=" + finalServer.sessionCookie, (Boolean ok) -> {
                                 Log.i(TAG, "setCookie(LAN) session=" + finalServer.sessionCookie.substring(0, 6) + "... result " + (ok ? "OK" : "Failed"));
-                                navigateToServer("Reconnecting on LAN", lanURL, false, finalServer, true, null, false);
+                                navigateToServer("Reconnecting on LAN", lanURL, false, finalServer, preserveRemoteUrl, null, false);
                             });
                         });
 
@@ -561,7 +564,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                         cookies.setCookie(proxyOrigin, "session=" + finalServer.sessionCookie, (Boolean ok2) -> {
                             String shortCookie = finalServer.sessionCookie.substring(0, 5);
                             Log.i(TAG, "setCookie(proxy) session=" + shortCookie + "... result " + (ok2 ? "OK" : "Failed"));
-                            navigateToServer("Reconnecting via proxy", proxyOrigin, false, finalServer, true, null, false);
+                            navigateToServer("Reconnecting via proxy", proxyOrigin, false, finalServer, preserveRemoteUrl, null, false);
                         });
 
                     });
@@ -783,9 +786,9 @@ public class MainActivity extends AppCompatActivity implements Main {
 
         Uri redirectUri = intent.getData();
         Log.d(TAG, "handleRedirect: " + redirectUri.toString());
-        // V1 uses custom scheme deep links
+        // V1 uses custom scheme deep links. We're using V1
         boolean isV1Url = "cyclops".equals(redirectUri.getScheme()) && "auth".equals(redirectUri.getHost());
-        // V2 uses https deep links
+        // V2 uses https deep links. Not using this, but it does work (via cyclopcam.org/.well-known/assetlinks.json).
         boolean isV2Url = "https".equals(redirectUri.getScheme()) && "cyclopcam.org".equals(redirectUri.getHost()) && redirectUri.getPath().startsWith("/android-auth");
         if (isV1Url || isV2Url) {
             // Extract session token from query parameter

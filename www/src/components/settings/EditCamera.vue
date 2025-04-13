@@ -233,8 +233,9 @@ onMounted(async () => {
 		let discoveredModel = window.location.hash.match(/model=([^&]+)/);
 		let returnToScan = window.location.hash.match(/returnToScan=([^&]+)/);
 
-		//console.log("EditCamera host", discoveredHost);
-		//console.log("EditCamera model", discoveredModel);
+		console.log("EditCamera host", discoveredHost);
+		console.log("EditCamera model", discoveredModel);
+		console.log("EditCamera returnToScan", returnToScan);
 		//console.log("globals.lastCameraPassword", globals.lastCameraPassword);
 		//console.log("globals.lastCameraUsername", globals.lastCameraUsername);
 		if (discoveredHost) {
