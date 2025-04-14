@@ -218,8 +218,17 @@ onMounted(async () => {
 				<wide-input v-model="username" label="Username" :required="true" okText="OK"></wide-input>
 				<wide-input v-model="password" label="Password" :required="true" type="password" okText="OK"
 					:bottom-border="true"></wide-input>
-				<p v-if="isNewSystem" class="note">If you lose the password, you won't be able to login, and you'll need
-					root linux access to reset the password.</p>
+				<!--
+				<p v-if="isNewSystem || true" class="note">If you lose the password, you won't be able to login, and
+					you'll need root linux access to reset the password.</p>
+					-->
+				<p v-if="isNewSystem" class="note">By choosing this option, you won't have access to:
+				<ul>
+					<li>Push Notifications (Alarms)</li>
+					<li>VPN access from outside your home network</li>
+					<li>Monitoring by armed response security companies</li>
+				</ul>
+				</p>
 			</div>
 			<div class="bottom">
 				<buttin :focal="true" :busy="isBusy" :disabled="!isNextEnabled()" @click="onLogin">Next
@@ -235,7 +244,11 @@ onMounted(async () => {
 <style lang="scss" scoped>
 h2 {
 	text-align: center;
-	margin: 30px 10px;
+	margin: 30px 10px 20px 10px;
+}
+
+ul {
+	padding-left: 30px;
 }
 
 .instruction {
@@ -251,7 +264,7 @@ h2 {
 
 .note {
 	font-size: 14px;
-	margin: 20px 20px;
+	margin: 25px 15px 15px 15px;
 }
 
 .option {
