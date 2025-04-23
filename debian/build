@@ -1,0 +1,9 @@
+#!/bin/bash
+set -euo pipefail
+
+# noble, bookworm, etc.
+DISTRO=$(lsb_release -sc)
+
+dch --distribution "$DISTRO" --local "~$DISTRO" -m "Automated build for $DISTRO"
+
+debuild -us -uc -b

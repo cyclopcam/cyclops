@@ -1,0 +1,17 @@
+cyclops (1.0.0-1~jammy2) jammy; urgency=medium
+
+  * Automated build for jammy
+
+ -- Ben Harper <rogojin@gmail.com>  Wed, 23 Apr 2025 21:43:49 +0200
+
+cyclops (1.0.0-1~jammy1) jammy; urgency=medium
+
+  * Automated build for jammy
+
+ -- Ben Harper <rogojin@gmail.com>  Wed, 23 Apr 2025 21:37:36 +0200
+
+cyclops (1.0.0-1) unstable; urgency=medium
+
+  * Initial release
+
+ -- Ben Harper <rogojin@gmail.com>  Wed, 23 Apr 2025 20:35:00 +0200

@@ -1,0 +1,15 @@
+Source: cyclops
+Maintainer: Ben Harper <rogojin@gmail.com>
+Section: utils
+Priority: optional
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Build-Depends: debhelper-compat (= 13)
+
+Package: cyclops
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Home security camera monitoring system
+ Cyclops is a home security system that monitors cameras
+ and alerts you when it detects relevant objects, such as
+ people, vehicles, or animals.

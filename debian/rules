@@ -1,0 +1,79 @@
+#!/usr/bin/make -f
+# debian/rules – custom build script for ncnn + Simd + cyclops
+#
+#   - “dh $@” runs the standard debhelper sequence
+#   - We override the build, install and clean steps
+#
+# Requires debhelper-compat (= 13)
+
+export GOROOT := /usr/local/go
+export PATH := $(GOROOT)/bin:$(PATH)
+
+export DH_VERBOSE = 1               # show each command
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+# Default target
+%:
+	dh $@
+
+# ----------------------------------------------------------------------
+# 1. Clean everything we create
+# ----------------------------------------------------------------------
+override_dh_auto_clean:
+	# Let dh clean anything it knows first
+	dh_auto_clean
+
+	# Our custom artefacts
+	#rm -rf ncnn/build \
+	#       Simd/build \
+	#       cyclops
+	rm -rf cyclops
+
+# ----------------------------------------------------------------------
+# 2. Configure & build
+# ----------------------------------------------------------------------
+override_dh_auto_build:
+
+	# ---- Build NCNN ----
+	#printf 'Building NCNN…\n'
+	#[ -d ncnn/build ] || mkdir -p ncnn/build
+	#cd ncnn/build && \
+	#    cmake -DNCNN_SIMPLEOCV=1 \
+	#          -DNCNN_BUILD_EXAMPLES=OFF \
+	#          .. && \
+	#    $(MAKE) -j4
+
+	# ---- Build Simd ----
+	#printf 'Building Simd…\n'
+	#[ -d Simd/build ] || mkdir -p Simd/build
+	#cd Simd/build && \
+	#    cmake ../prj/cmake && \
+	#    $(MAKE) -j4
+
+	# ---- Build cyclops (Go) ----
+	printf 'Building cyclops…\n'
+	go build -buildmode=pie -ldflags="-s" -o cyclops cmd/cyclops/cyclops.go
+
+# ----------------------------------------------------------------------
+# 3. Install into the package staging area
+# ----------------------------------------------------------------------
+#override_dh_auto_install:
+#	# Staging dir provided by dh
+#	install -Dpm755 cyclops \
+#	    $(DESTDIR)/usr/bin/cyclops
+#
+#	# Rely on dh to install documentation, man-pages, etc.
+#	dh_auto_install --destdir=$(DESTDIR)
+
+# ----------------------------------------------------------------------
+# 4. Strip / compress / generate shlibs, etc.
+# ----------------------------------------------------------------------
+override_dh_auto_test:
+	# (optional) run your test suite here
+	# e.g. cd ncnn/build && ctest --output-on-failure || true
+	:
+
+# ----------------------------------------------------------------------
+# 5. Skip dwz (Go binaries use compressed DWARF that dwz cannot handle)
+# ----------------------------------------------------------------------
+override_dh_dwz:
