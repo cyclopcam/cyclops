@@ -4,6 +4,32 @@ set -euo pipefail
 # We separate the prebuild step because it takes long to run, and for iterating
 # on the build process, we want to be able to skip it.
 
+GOVERSION=1.24.2
+GOARCH=$(uname -m)
+if [ "$GOARCH" = "aarch64" ]; then
+	GOARCH=arm64
+fi
+if [ "$GOARCH" = "x86_64" ]; then
+	GOARCH=amd64
+fi
+
+# Install Go
+if [ ! -f /usr/local/go/bin/go ]; then
+	echo Installing Go $GOVERSION
+	GOARCHIVE=go$GOVERSION.linux-$GOARCH.tar.gz
+	wget https://dl.google.com/go/$GOARCHIVE
+	sudo tar -C /usr/local -xzf $GOARCHIVE
+fi
+export PATH=$PATH:/usr/local/go/bin
+
+# Use nvm to install Node.js
+if [ ! -d ~/.nvm ]; then
+	curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+fi
+
+nvm install 18
+nvm use 18
+
 echo Building www
 cd www && npm install && npm run build && cd ..
 
