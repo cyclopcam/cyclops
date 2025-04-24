@@ -4,6 +4,7 @@ set -euo pipefail
 # noble, bookworm, etc.
 DISTRO=$(lsb_release -sc)
 
+# The top entry in the changelog is the one that will be used for the build.
 dch --distribution "$DISTRO" --local "~$DISTRO" -m "Automated build for $DISTRO"
 
 debuild -us -uc -b

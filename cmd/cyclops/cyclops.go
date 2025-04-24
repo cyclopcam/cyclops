@@ -68,7 +68,7 @@ func main() {
 		defaultVpnNetwork = "IPv4"
 	}
 
-	// Certain parameters are scrubbed when dropping privileges, so we specify them as constants
+	// Certain parameters are scrubbed from the child processes's args when dropping privileges, so we specify them as constants
 	const pnVPN = "vpn"
 	const pnUsername = "username"
 
@@ -85,7 +85,7 @@ func main() {
 	nnModelName := parser.String("", "nn", &argparse.Options{Help: "Specify the neural network for object detection", Default: ""})
 	elevated := parser.Flag("", "elevated", &argparse.Options{Help: "Maintain elevated permissions, instead of setuid(username)", Default: false})
 	kernelWG := parser.Flag("", "kernelwg", &argparse.Options{Help: "(Internal) Run the kernel-mode wireguard interface", Default: false})
-	resetUser := parser.Flag("", "reset-user", &argparse.Options{Help: "Ensure an admin user exists (to recover a system that you're locked out of)", Default: false})
+	resetUser := parser.Flag("", "reset-user", &argparse.Options{Help: "Interactively ensure an admin user exists (to recover a system that you're locked out of)", Default: false})
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
@@ -246,7 +246,7 @@ func main() {
 	// on systemd to restart us if necessary. This change was brought about to simplify
 	// our privilege dropping behaviour. If we need to be able to restart indefinitely,
 	// then it means we need to keep our elevated privileges. All the pain around reading
-	// from /proc/self/auxv, listening on low ports, etc, brings this about.
+	// from /proc/self/auxv, listening on low ports, hailo, etc, brings this about.
 	flags := 0
 	if *hotReloadWWW {
 		flags |= server.ServerFlagHotReloadWWW

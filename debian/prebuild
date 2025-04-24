@@ -1,0 +1,26 @@
+#!/bin/bash
+set -euo pipefail
+
+# We separate the prebuild step because it takes long to run, and for iterating
+# on the build process, we want to be able to skip it.
+
+echo Building www
+cd www && npm install && npm run build && cd ..
+
+echo "Building Hailo accelerator"
+cd nnaccel/hailo && ./build && cd ../..
+
+if [ ! -f ncnn/build/src/libncnn.a ]; then
+	echo Building NCNN library
+	cd ncnn && mkdir -p build && cd build && cmake -DNCNN_SIMPLEOCV=1 -DNCNN_BUILD_EXAMPLES=OFF -DNCNN_BUILD_BENCHMARK=OFF -DNCNN_BUILD_TOOLS=OFF .. && make -j4 && cd ../..
+else
+	echo Skipping NCNN, already built
+fi
+
+if [ ! -f Simd/build/libSimd.a ]; then
+	echo Building Simd library
+	cd Simd && mkdir -p build && cd build && cmake -DSIMD_TEST=OFF ../prj/cmake && make -j4 && cd ../..
+else
+	echo Skipping Simd, already built
+fi
+

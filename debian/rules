@@ -1,5 +1,5 @@
 #!/usr/bin/make -f
-# debian/rules – custom build script for ncnn + Simd + cyclops
+# debian/rules – custom build script
 #
 #   - “dh $@” runs the standard debhelper sequence
 #   - We override the build, install and clean steps
