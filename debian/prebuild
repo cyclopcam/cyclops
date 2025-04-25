@@ -4,6 +4,8 @@ set -euo pipefail
 # We separate the prebuild step because it takes long to run, and for iterating
 # on the build process, we want to be able to skip it.
 
+sudo apt install -y build-essential cmake devscripts debhelper-compat libturbojpeg0-dev pkg-config libavformat-dev libswscale-dev
+
 GOVERSION=1.24.2
 GOARCH=$(uname -m)
 if [ "$GOARCH" = "aarch64" ]; then
@@ -26,6 +28,10 @@ export PATH=$PATH:/usr/local/go/bin
 if [ ! -d ~/.nvm ]; then
 	curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 fi
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm	
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
 nvm install 18
 nvm use 18

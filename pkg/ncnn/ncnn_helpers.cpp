@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include "simpleocv.h"
 #include <assert.h>
 
