@@ -788,7 +788,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         Log.d(TAG, "handleRedirect: " + redirectUri.toString());
         // V1 uses custom scheme deep links. We're using V1
         boolean isV1Url = "cyclops".equals(redirectUri.getScheme()) && "auth".equals(redirectUri.getHost());
-        // V2 uses https deep links. Not using this, but it does work (via cyclopcam.org/.well-known/assetlinks.json).
+        // V2 uses https deep links. Not using this, but it does work (via cyclopcam.org/.well-known/assetlinks.json and AndroidManifest.xml).
         boolean isV2Url = "https".equals(redirectUri.getScheme()) && "cyclopcam.org".equals(redirectUri.getHost()) && redirectUri.getPath().startsWith("/android-auth");
         if (isV1Url || isV2Url) {
             // Extract session token from query parameter
