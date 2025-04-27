@@ -26,6 +26,7 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 	password := www.QueryValue(r, "password")
 
 	isInitialUser := false
+	needRestart := false
 	newUser := configdb.User{}
 
 	if identityToken != "" {
@@ -41,6 +42,7 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 		newUser.Email = verified.Email
 		newUser.Name = verified.DisplayName
 		newUser.ExternalID = verified.ID
+		needRestart = true
 	} else {
 		// This code path could be used to create the initial admin user, or any other user thereafter
 		www.ReadJSON(w, r, &newUser, 1024*1024)
@@ -89,7 +91,7 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 	s.Log.Infof("Created new user %v, %v, %v, perms:%v", newUser.Username, newUser.Email, newUser.ExternalID, newUser.Permissions)
 
 	if isInitialUser {
-		s.configDB.LoginInternal(w, newUser.ID, time.Time{}, configdb.LoginModeCookieAndBearerToken)
+		s.configDB.LoginInternal(w, newUser.ID, time.Time{}, configdb.LoginModeCookieAndBearerToken, needRestart)
 	} else {
 		www.SendOK(w)
 	}

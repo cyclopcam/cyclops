@@ -12,6 +12,10 @@ export async function natLogin(publicKey: string, bearerToken: string, sessionCo
 	await fetch("/natcom/login?" + encodeQuery({ publicKey, bearerToken, sessionCookie }));
 }
 
+export async function natPostLogin() {
+	await fetch("/natcom/postLogin");
+}
+
 export async function natNotifyNetworkDown(errorMsg: string) {
 	await fetch("/natcom/networkDown?" + encodeQuery({ errorMsg }));
 }

@@ -26,12 +26,13 @@ func (c *ConfigDB) Login(w http.ResponseWriter, r *http.Request) {
 	if expiresAtUnixMilli != 0 {
 		expiresAt = time.UnixMilli(expiresAtUnixMilli)
 	}
-	c.LoginInternal(w, userID, expiresAt, www.QueryValue(r, "loginMode"))
+	c.LoginInternal(w, userID, expiresAt, www.QueryValue(r, "loginMode"), false)
 }
 
 // SYNC-LOGIN-RESPONSE-JSON
 type loginResponseJSON struct {
 	BearerToken string `json:"bearerToken"`
+	NeedRestart bool   `json:"needRestart"` // Used during first login, if VPN is now available, that the server must be restarted to activate VPN.
 }
 
 const (
@@ -49,7 +50,7 @@ const (
 	SpecialAuthMethodIdentityToken             // Identity Token (validated by accounts.cyclopcam.org)
 )
 
-func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time, mode string) {
+func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt time.Time, mode string, needRestart bool) {
 	doCookie := mode == LoginModeCookie || mode == LoginModeCookieAndBearerToken || mode == ""
 	doBearer := mode == LoginModeBearerToken || mode == LoginModeCookieAndBearerToken
 	if !(doCookie || doBearer) {
@@ -101,7 +102,7 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 		}
 	}
 	c.PurgeExpiredSessions()
-	c.Log.Infof("Logging %v in", userID)
+	c.Log.Infof("Logging %v in, needRestart: %v", userID, needRestart)
 	//c.Log.Infof("Logging %v in. key: %v. hashed key hex: %v", userID, key, hex.EncodeToString(HashSessionToken(key))) // only for debugging
 	if doCookie {
 		cookie := &http.Cookie{
@@ -112,7 +113,9 @@ func (c *ConfigDB) LoginInternal(w http.ResponseWriter, userID int64, expiresAt 
 		}
 		http.SetCookie(w, cookie)
 	}
-	resp := &loginResponseJSON{}
+	resp := &loginResponseJSON{
+		NeedRestart: needRestart,
+	}
 	if doBearer {
 		resp.BearerToken = base64.StdEncoding.EncodeToString(bearerToken)
 	}

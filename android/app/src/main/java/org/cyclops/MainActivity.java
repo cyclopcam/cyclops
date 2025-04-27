@@ -72,6 +72,7 @@ public class MainActivity extends AppCompatActivity implements Main {
     HttpClient connectivityCheckClient;
     Crypto crypto;
     Accounts accounts;
+    private long restartServerAt = 0; // Time when client initiated a server restart
 
     // Maintain our own history stack, for the tricky transitions between localWebView and remoteWebView.
     // An example of where you need this, is when the user has just scanned the LAN for local servers.
@@ -145,7 +146,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                 if (last == null) {
                     last = State.global.servers.get(0);
                 }
-                switchToServer(last.publicKey);
+                switchToServer(last.publicKey, true);
             }
             // This can interfere with the login process, so disable it while performing initial auth/login
             setupNetworkMonitor();
@@ -259,14 +260,35 @@ public class MainActivity extends AppCompatActivity implements Main {
         State.global.addOrUpdateServer(currentServer.lanIP, currentServer.publicKey, bearerToken, currentServer.name, sessionCookie);
         State.global.setLastServer(currentServer.publicKey);
         localClient.cyRefreshServers(localWebView);
-        switchToServer(currentServer.publicKey);
+        // Don't switch to the server yet, because the web app might still be waiting for the server to restart (to activate the VPN).
+        //switchToServer(currentServer.publicKey, false);
+    }
+
+    public void onPostLogin() {
+        // Now, finally, we can officially switch to the server.
+        switchToServer(currentServer.publicKey, false);
     }
 
     // Invoked via the Webview when it notices that it can no longer talk to the cyclops server,
     // such as when it loses Wifi connection.
     public void onNetworkDown(String errorMsg) {
-        Log.i(TAG, "onNetworkDown: " + errorMsg);
-        revalidateCurrentConnection();
+        if (isServerRestarting()) {
+            Log.i(TAG, "onNetworkDown (ignoring because server is restarting): " + errorMsg);
+        } else {
+            Log.i(TAG, "onNetworkDown: " + errorMsg);
+            revalidateCurrentConnection();
+        }
+    }
+
+    // Invoked when the client is restarting the server
+    public void restartingServer(String publicKey) {
+        Log.i(TAG, "restartingServer: " + publicKey);
+        restartServerAt = System.currentTimeMillis();
+    }
+
+    public boolean isServerRestarting() {
+        // Give server 30 seconds to restart, then consider the network connection down.
+        return System.currentTimeMillis() - restartServerAt < 30 * 1000;
     }
 
     // Invoked by the Remote webview when the user wants to create the initial user via OAuth.
@@ -462,7 +484,7 @@ public class MainActivity extends AppCompatActivity implements Main {
 
     public void revalidateCurrentConnection() {
         if (currentServer != null) {
-            switchToServer(currentServer.publicKey);
+            switchToServer(currentServer.publicKey, true);
         }
     }
 
@@ -471,7 +493,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         if (currentServer != null && currentServer.publicKey.equals(publicKey)) {
             State.Server any = State.global.getAnyServer();
             if (any != null) {
-                switchToServer(any.publicKey);
+                switchToServer(any.publicKey, false);
             }
         }
     }
@@ -481,7 +503,7 @@ public class MainActivity extends AppCompatActivity implements Main {
     // app as-is.
     // However, if you're doing that, then rather use revalidateCurrentConnection(), to make that
     // explicit.
-    public void switchToServer(String publicKey) {
+    public void switchToServer(String publicKey, boolean allowPreserveUrl) {
         Context context = this;
 
         State.Server target = State.global.getServerCopyByPublicKey(publicKey);
@@ -498,7 +520,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         }
 
         // If we're switching servers, don't preserve the remote URL
-        final boolean preserveRemoteUrl = justCheck;
+        final boolean preserveRemoteUrl = justCheck && allowPreserveUrl;
 
         new Thread(new Runnable() {
             @Override

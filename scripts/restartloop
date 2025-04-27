@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Simulate what systemd does with us when we're run with restart=on-failure
+# If the process exits with a non-zero code, we will restart it.
+# If it exits with a zero code, then we exit.
+# See ExitAndRestart() and ExitNoRestart() in cyclops.go
+
+CMD="$@"
+MAXRESTARTS=10
+RESTARTS=0
+
+while true; do
+	# Run the command and capture its exit code
+	$CMD
+	EXIT_CODE=$?
+
+	# Check the exit code
+	if [ $EXIT_CODE -ne 0 ]; then
+		echo "Command exited with code $EXIT_CODE. Restarting..."
+		RESTARTS=$((RESTARTS + 1))
+		if [ $RESTARTS -ge $MAXRESTARTS ]; then
+			echo "Maximum restart limit reached. Exiting."
+			break
+		fi
+		sleep 1  # delay 1 second in case of a bug that causes rapid restarts
+	else
+		echo "Command exited with code $EXIT_CODE. Not restarting."
+		break
+	fi
+done

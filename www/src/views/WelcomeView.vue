@@ -7,9 +7,9 @@ import WideRoot from '@/components/widewidgets/WideRoot.vue';
 import WideInput from '@/components/widewidgets/WideInput.vue';
 import WideSection from '@/components/widewidgets/WideSection.vue';
 import { Permissions, UserRecord } from '@/db/config/configdb';
-import { encodeQuery, fetchErrorMessage, fetchOrErr, type FetchResult } from '@/util/util';
+import { encodeQuery, fetchErrorMessage, fetchOrErr, sleep, type FetchResult } from '@/util/util';
 import Buttin from '@/components/core/Buttin.vue';
-import { natRequestOAuthLogin, OAuthLoginPurpose } from '@/nativeOut';
+import { natPostLogin, natRequestOAuthLogin, OAuthLoginPurpose } from '@/nativeOut';
 import NativeProgress from '@/components/widgets/NativeProgress.vue';
 import { handleLoginSuccess } from '@/auth';
 
@@ -21,6 +21,11 @@ let password = ref("");
 let isBusy = ref(false);
 let isLoadingInitialState = ref(true);
 let isNewSystem = ref(false);
+let isRestarting = ref(false);
+let restartStartedAt = ref(Date.now());
+let secondsSinceRestart = ref(0);
+let maxRestartTime = 20;
+let restartError = ref("");
 
 function isValidIdentityType(t: any): boolean {
 	return t === 'google' || t === 'microsoft' || t === 'username';
@@ -40,11 +45,19 @@ function usernamePrompt(): string {
 
 async function moveToNextStage() {
 	console.log("WelcomeView moveToNextStage");
-	await globals.postAuthenticateLoadSystemInfo(false);
-	if (isNewSystem.value || globals.cameras.length === 0)
-		replaceRoute(router, { name: "rtSettingsHome" });
-	else
-		replaceRoute(router, { name: "rtMonitor" });
+	if (globals.isApp) {
+		// Tell the app to officially switch to our server.
+		// This will cause the app to reload us.
+		// This is the final step in our login process in the app.
+		// In the Android app, this will call switchToServer()
+		await natPostLogin();
+	} else {
+		await globals.postAuthenticateLoadSystemInfo(false);
+		if (isNewSystem.value || globals.cameras.length === 0)
+			replaceRoute(router, { name: "rtSettingsHome" });
+		else
+			replaceRoute(router, { name: "rtMonitor" });
+	}
 }
 
 function isNextEnabled(): boolean {
@@ -130,14 +143,59 @@ async function postLoginOrCreateUser(r: FetchResult) {
 		globals.nativeProgressMessage = "ERROR:" + fetchErrorMessage(r);
 	} else {
 		// Send cookies etc to native app
-		let err = await handleLoginSuccess(r);
-		console.log("WelcomeView postLoginOrCreateUser", err);
-		if (err !== "") {
-			globals.nativeProgressMessage = "ERROR:" + err;
+		let loginResult = await handleLoginSuccess(r);
+		console.log("WelcomeView postLoginOrCreateUser", loginResult);
+		if (!loginResult.ok) {
+			globals.nativeProgressMessage = "ERROR:" + loginResult.error;
 		} else {
+			// After initial login with OAuth, the system should be authorized to use the VPN, and acquire
+			// an SSL certificate. But it needs to restart to do that.
+			if (loginResult.response.needRestart) {
+				console.log("Restarting system after login");
+				let restartOK = await restartSystem();
+				if (!restartOK) {
+					console.error("Restart failed: ", restartError.value);
+					globals.nativeProgressMessage = "ERROR:" + restartError.value;
+					return;
+				}
+			}
 			moveToNextStage();
 		}
 	}
+}
+
+async function restartSystem(): Promise<boolean> {
+	isRestarting.value = true;
+	restartStartedAt.value = Date.now();
+	secondsSinceRestart.value = 0;
+
+	// I don't know what to do if restart fails!
+	// This basically cannot be allowed to happen.
+
+	let r = await fetchOrErr('/api/system/restart', { method: 'POST' });
+	if (!r.ok) {
+		// eek!
+		restartError.value = "Failed to initiate restart: " + fetchErrorMessage(r);
+		isRestarting.value = false;
+		return false;
+	}
+
+	// Add an extra sleep, purely for my own debugging sanity!
+	await sleep(1000);
+
+	while (secondsSinceRestart.value < maxRestartTime) {
+		secondsSinceRestart.value = Math.floor((Date.now() - restartStartedAt.value) / 1000);
+		await sleep(1000);
+		let r = await fetchOrErr('/api/ping');
+		if (r.ok) {
+			isRestarting.value = false;
+			return true;
+		}
+	}
+
+	restartError.value = "Restart timed out";
+	isRestarting.value = false;
+	return false;
 }
 
 watch(() => globals.nativeIdentityToken, async () => {
@@ -172,13 +230,25 @@ onMounted(async () => {
 		await onLogin();
 		// After this point, we expect a native call that modifies globals.nativeIdentityToken.
 	}
+	// Uncomment this to test the restart system code
+	//restartSystem();
 })
 
 </script>
 
 <template>
 	<wide-root>
-		<wide-section>
+		<wide-section v-if="isRestarting">
+			<div class="flexColumnCenter">
+				<h2>Restarting...</h2>
+				<p class="instruction">Cyclops is restarting</p>
+				<p class="instruction" style="margin:20px 10px 20px 10px">It can take up to 20 seconds for DNS records
+					to propagate globally.</p>
+				<div style="margin:50px">{{ maxRestartTime - secondsSinceRestart }}</div>
+				<div v-if="restartError !== ''" class="error">{{ restartError }}</div>
+			</div>
+		</wide-section>
+		<wide-section v-else>
 			<div class="flexColumnCenter">
 				<div v-if="isLoadingInitialState">
 					<h2>Loading...</h2>
@@ -249,6 +319,11 @@ h2 {
 
 ul {
 	padding-left: 30px;
+}
+
+.error {
+	color: #d00;
+	margin: 20px;
 }
 
 .instruction {

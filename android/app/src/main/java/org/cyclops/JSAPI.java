@@ -17,6 +17,7 @@ public class JSAPI {
     // SYNC-LOGIN-RESPONSE-JSON
     public static class LoginResponseJSON {
         String bearerToken = "";
+        boolean needRestart = false;
     }
 
     // SYNC-KEYS-RESPONSE-JSON

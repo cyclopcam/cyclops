@@ -21,10 +21,10 @@ async function onSubmit() {
 	ctx.submitError.value = '';
 
 	ctx.busy.value = true;
-	let loginError = await login(username.value, password.value);
+	let loginResult = await login(username.value, password.value);
 	ctx.busy.value = false;
-	if (loginError !== '') {
-		ctx.submitError.value = loginError;
+	if (!loginResult.ok) {
+		ctx.submitError.value = loginResult.error;
 		return;
 	}
 

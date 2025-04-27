@@ -75,6 +75,9 @@ onUnmounted(() => {
 			<button>Play</button>
 		</toolbar>
 		-->
+		<div v-if="cameras.length == 0" class="noCameras">
+			No cameras configured
+		</div>
 		<div class="cameras">
 			<player v-for="cam of cameras()" :camera="cam" :play="isPlaying[cam.id] ?? false"
 				@playpause="onPlayPause(cam)" @seek="onSeek(cam)" :width="cameraWidth + 'px'" :height="cameraHeight()"
@@ -94,6 +97,17 @@ onUnmounted(() => {
 	box-sizing: border-box;
 	background-color: $darkBackground1;
 	overflow: auto;
+}
+
+.noCameras {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	font-size: 25px;
+	font-weight: bold;
+	color: $tint;
 }
 
 .cameras {

@@ -98,8 +98,8 @@ const (
 // SYNC-RECORD-USER
 type User struct {
 	BaseModel
-	Username           string      `json:"username" gorm:"default:null"`            // Can be null if ExternalID is set
-	UsernameNormalized string      `json:"username_normalized" gorm:"default:null"` // Can be null if ExternalID is set
+	Username           string      `json:"username" gorm:"default:null"`           // Can be null if ExternalID is set
+	UsernameNormalized string      `json:"usernameNormalized" gorm:"default:null"` // Can be null if ExternalID is set
 	Permissions        string      `json:"permissions"`
 	Name               string      `json:"name" gorm:"default:null"`
 	Password           string      `json:"-" gorm:"default:null"`

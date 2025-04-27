@@ -135,7 +135,7 @@ public class LocalContentWebViewClient extends WebViewClientCompat {
                     activity.runOnUiThread(() -> main.navigateToScannedLocalServer(url.getQueryParameter("publicKey"), "", null));
                     return sendOK();
                 case "/natcom/switchToRegisteredServer":
-                    activity.runOnUiThread(() -> main.switchToServer(url.getQueryParameter("publicKey")));
+                    activity.runOnUiThread(() -> main.switchToServer(url.getQueryParameter("publicKey"), false));
                     return sendOK();
                 case "/natcom/getLastServer":
                     State.Server s = State.global.getLastServer();

@@ -34,10 +34,10 @@ async function onSubmit() {
 	// We very much expect this next call to succeed. If it fails, we should actually reload the site
 	if (props.isFirstUser) {
 		ctx.busy.value = true;
-		let loginError = await login(username.value, password.value);
+		let loginResult = await login(username.value, password.value);
 		ctx.busy.value = false;
-		if (loginError !== "") {
-			ctx.submitError.value = loginError;
+		if (!loginResult.ok) {
+			ctx.submitError.value = loginResult.error;
 			return;
 		}
 	}

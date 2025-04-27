@@ -8,6 +8,24 @@ import { hmac256_sign } from "./util/hmac";
 import { natLogin } from "./nativeOut";
 //import { createHmac } from "crypto";
 
+// SYNC-LOGIN-RESPONSE-JSON
+interface LoginResponse {
+	bearerToken: string;
+	needRestart: boolean;
+}
+
+interface LoginSuccess {
+	ok: true;
+	response: LoginResponse;
+}
+
+interface LoginFail {
+	ok: false;
+	error: string;
+}
+
+type LoginResult = LoginSuccess | LoginFail;
+
 // If we are logged in to a server with a public wireguard key, then return the session
 // token for that server, encrypted with the key pair (Server, Ours).
 export function getBearerToken(): string {
@@ -62,9 +80,9 @@ function areBuffersEqual(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 // Returns an error on failure, or an empty string on success
-export async function login(username: string, password: string): Promise<string> {
+export async function login(username: string, password: string): Promise<LoginResult> {
 	if (globals.serverPublicKey === '') {
-		return "Server failed to validate its public key";
+		return { ok: false, error: "Server failed to validate its public key" };
 	}
 
 	// For a while, I started down the road of having logins be a two step process:
@@ -84,17 +102,17 @@ export async function login(username: string, password: string): Promise<string>
 		{ method: 'POST', headers: { "Authorization": "BASIC " + basic } });
 	if (!r.ok) {
 		console.log(`Login error: ${r.error}`);
-		return r.error;
+		return { ok: false, error: r.error };
 	}
 
 	return handleLoginSuccess(r);
 }
 
 // Returns a non-empty string on error, or "" on success
-export async function handleLoginSuccess(r: FetchSuccess): Promise<string> {
+export async function handleLoginSuccess(r: FetchSuccess): Promise<LoginResult> {
 	globals.isLoggedIn = true;
 
-	let j = await r.r.json();
+	let j = await r.r.json() as LoginResponse;
 
 	if (globals.isApp) {
 		console.log(`Sending tokens to app`);
@@ -108,7 +126,7 @@ export async function handleLoginSuccess(r: FetchSuccess): Promise<string> {
 		// Get our 'session' cookie
 		let sessionCookie = getCookie("session");
 		if (!sessionCookie) {
-			return "Failed to get session cookie";
+			return { ok: false, error: "Failed to get session cookie" };
 		}
 		console.log(`Login to ${globals.serverPublicKey} with session ${sessionCookie} and bearer token ${bearerToken}`);
 
@@ -116,7 +134,7 @@ export async function handleLoginSuccess(r: FetchSuccess): Promise<string> {
 	} else {
 		console.log(`App mode not activated, so not sending tokens to app`);
 	}
-	return "";
+	return { ok: true, response: j };
 }
 
 // Returns the cookie with the given name, or undefined if not found
