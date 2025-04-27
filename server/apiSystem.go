@@ -1,18 +1,16 @@
 package server
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/cyclopcam/cyclops/pkg/ecdhsign"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/www"
 	"github.com/julienschmidt/httprouter"
-	"golang.org/x/crypto/curve25519"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -67,16 +65,12 @@ func (s *Server) httpSystemKeys(w http.ResponseWriter, r *http.Request, params h
 	challenge, err := base64.StdEncoding.DecodeString(challengeb64)
 	www.Check(err)
 
-	shared := [32]byte{}
-	curve25519.ScalarMult(&shared, (*[32]byte)(&s.configDB.PrivateKey), (*[32]byte)(&publicKey))
-
-	mac := hmac.New(sha256.New, shared[:])
-	mac.Write(challenge)
-	hash := mac.Sum(nil)
+	signed, err := ecdhsign.SignChallenge(challenge, s.configDB.PrivateKey, publicKey)
+	www.Check(err)
 
 	keys := &keysJSON{
 		PublicKey: s.configDB.PublicKey.String(),
-		Proof:     base64.StdEncoding.EncodeToString(hash[:]),
+		Proof:     base64.StdEncoding.EncodeToString(signed),
 	}
 	www.SendJSON(w, keys)
 }

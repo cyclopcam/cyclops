@@ -193,7 +193,14 @@ func (c *ConfigDB) GetUserID(r *http.Request, allowSpecial SpecialAuthMethods) i
 	if strings.HasPrefix(authorization, "IdentityToken ") {
 		if allowIdentityToken {
 			// Identity token from accounts.cyclopcam.org
-			verified, err := GetVerifiedIdentityFromToken(authorization[14:])
+			// NOTE: It's not necessarily correct to bind the user to the server just because he is logging in.
+			// What we're really looking for is a way for the user to choose who is responsible for billing.
+			// The initial user creation path is actually handled separately, inside httpAuthCreateUser(),
+			// so we could replace this call with configdb.GetVerifiedIdentityFromToken(), and the 2nd and
+			// 3rd users to login, would not be bound to the server. But maybe it's better to bind all
+			// people who login, and the user with admin permissions must choose who's responsible for the
+			// billing.
+			verified, err := c.VerifyIdentityAndBindToServer(authorization[14:])
 			if err == nil {
 				user := User{}
 				c.DB.Where("external_id = ?", verified.ID).Find(&user)

@@ -1,22 +1,3 @@
-/*
-export class FetchResult {
-	status: number; // If status is zero, then the fetch threw an exception
-	error?: string; // If error is defined, then the HTTP status code was not 200
-	r?: Response; // The response is undefined if an exception was thrown
-
-	constructor(status: number, r: Response | undefined, error: string | undefined) {
-		this.status = status;
-		this.r = r;
-		this.error = error;
-	}
-
-	// Returns true if status === 200
-	get ok(): boolean {
-		return this.status === 200;
-	}
-}
-*/
-
 import { getBearerToken } from "@/auth";
 import { globals } from "@/globals";
 
@@ -55,6 +36,13 @@ export async function fetchOrErr(url: string, options?: RequestInit): Promise<Fe
 		}
 		return { ok: false, status: 0, error: err + "" };
 	}
+}
+
+export function fetchErrorMessage(r: FetchFailure): string {
+	if (r.status === 0) {
+		return "Network error";
+	}
+	return `${r.status} ${r.error}`;
 }
 
 /*
@@ -108,16 +96,16 @@ export type OrError<T> = ErrorResponse | SuccessResponse<T>;
 export class OrError<T> {
 	err?: string;
 	value?: T;
-
+	
 	constructor(value: T | undefined, error: string | undefined) {
 		this.value = value;
 		this.err = error;
 	}
-
+	
 	static error<T>(err: string): OrError<T> {
 		return new OrError<T>(undefined, err);
 	}
-
+	
 	static value<T>(t: T): OrError<T> {
 		return new OrError<T>(t, undefined);
 	}

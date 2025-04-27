@@ -7,7 +7,7 @@ import WideRoot from '@/components/widewidgets/WideRoot.vue';
 import WideInput from '@/components/widewidgets/WideInput.vue';
 import WideSection from '@/components/widewidgets/WideSection.vue';
 import { Permissions, UserRecord } from '@/db/config/configdb';
-import { encodeQuery, fetchOrErr, type FetchResult } from '@/util/util';
+import { encodeQuery, fetchErrorMessage, fetchOrErr, type FetchResult } from '@/util/util';
 import Buttin from '@/components/core/Buttin.vue';
 import { natRequestOAuthLogin, OAuthLoginPurpose } from '@/nativeOut';
 import NativeProgress from '@/components/widgets/NativeProgress.vue';
@@ -127,7 +127,7 @@ async function finalLogin() {
 async function postLoginOrCreateUser(r: FetchResult) {
 	console.log("WelcomeView postLoginOrCreateUser", r.ok);
 	if (!r.ok) {
-		globals.nativeProgressMessage = "ERROR:" + r.status;
+		globals.nativeProgressMessage = "ERROR:" + fetchErrorMessage(r);
 	} else {
 		// Send cookies etc to native app
 		let err = await handleLoginSuccess(r);

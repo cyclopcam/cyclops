@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/ncnn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
 	"github.com/cyclopcam/cyclops/pkg/pwdhash"
+	"github.com/cyclopcam/cyclops/pkg/requests"
 	"github.com/cyclopcam/cyclops/server"
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/vpn"
@@ -45,11 +48,13 @@ func isWSL2() bool {
 
 // Exit and tell systemd that it should not attempt a restart
 func ExitNoRestart() {
+	fmt.Printf("Exiting and telling systemd not to restart us (exit code 0)\n")
 	os.Exit(0)
 }
 
 // Exit and tell systemd that it should restart us.
 func ExitAndRestart() {
+	fmt.Printf("Exiting and telling systemd to restart us (exit code 1)\n")
 	os.Exit(1)
 }
 
@@ -67,6 +72,9 @@ func main() {
 		// Apparently it might work in Bridge mode, but I haven't tried that.
 		defaultVpnNetwork = "IPv4"
 	}
+
+	// SYNC-SERVER-PORT
+	httpListenPort := ":8080"
 
 	// Certain parameters are scrubbed from the child processes's args when dropping privileges, so we specify them as constants
 	const pnVPN = "vpn"
@@ -234,11 +242,22 @@ func main() {
 		vpnClient, err = server.StartVPN(logger, configDB.PrivateKey, kernelWGSecret, forceIPv4)
 		if err != nil {
 			logger.Errorf("%v", err)
-			ExitAndRestart()
+			httpError := &requests.ResponseError{}
+			if errors.As(err, &httpError) && httpError.StatusCode == http.StatusForbidden {
+				// This error means the proxy is refusing to allow us to register, because we're still waiting
+				// for an authorized user to login to this server. Authorized means any active user on accounts.cyclopcam.org.
+				logger.Errorf("Not authorized to use VPN")
+				// We can't listen on 443, but we still want to listen on 80
+				// SYNC-SERVER-PORT
+				httpListenPort = ":80"
+			} else {
+				ExitAndRestart()
+			}
+		} else {
+			vpnClient.RunRegisterLoop(vpnShutdown)
+			configDB.VpnAllowedIP = vpnClient.AllowedIP
+			enableSSL = true
 		}
-		vpnClient.RunRegisterLoop(vpnShutdown)
-		configDB.VpnAllowedIP = vpnClient.AllowedIP
-		enableSSL = true
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////
@@ -273,26 +292,16 @@ func main() {
 		err = srv.ListenHTTPS(sslCertDirectory, privilegeLimiter)
 		if err != nil {
 			logger.Infof("ListenHTTPS returned: %v", err)
-			//if !srv.MustRestart {
-			//	break
-			//}
 		}
 	} else {
-		// SYNC-SERVER-PORT
-		err = srv.ListenHTTP(":8080")
+		err = srv.ListenHTTP(httpListenPort)
 		if err != nil {
 			logger.Infof("ListenHTTP returned: %v", err)
-			//if !srv.MustRestart {
-			//	break
-			//}
 		}
 	}
 
 	err = <-srv.ShutdownComplete
 	//fmt.Printf("Server sent ShutdownComplete: %v", err)
-	//if !srv.MustRestart {
-	//	break
-	//}
 	// This was the end of the original run-restart loop, mentioned above.
 	////////////////////////////////////////////////////////////////////////////////////////
 

@@ -10,7 +10,23 @@ import (
 	"net/http"
 )
 
-func RequestJSON[T any](method, url string, body any) (response *T, err error) {
+type ResponseError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e ResponseError) Error() string {
+	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, e.Message)
+}
+
+func NewError(statusCode int, message string) error {
+	return &ResponseError{
+		StatusCode: statusCode,
+		Message:    message,
+	}
+}
+
+func RequestJSON[ResponseT any](method, url string, body any) (response *ResponseT, err error) {
 	bodyB, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -24,12 +40,12 @@ func RequestJSON[T any](method, url string, body any) (response *T, err error) {
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		msg, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		return nil, fmt.Errorf("%v. %v", resp.Status, string(msg))
+		return nil, NewError(resp.StatusCode, string(msg))
 	}
-	var responseObj T
+	var responseObj ResponseT
 	if err := json.NewDecoder(resp.Body).Decode(&responseObj); err != nil {
 		return nil, fmt.Errorf("%v. %w", resp.Status, err)
 	}

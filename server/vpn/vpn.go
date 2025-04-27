@@ -238,7 +238,7 @@ func (v *VPN) RunRegisterLoop(exit chan bool) {
 	}
 
 	minSleep := 5 * time.Second
-	maxSleep := 10 * time.Minute
+	maxSleep := 60 * time.Minute
 	sleep := minSleep
 
 	go func() {
@@ -259,10 +259,7 @@ func (v *VPN) RunRegisterLoop(exit chan bool) {
 				response, err := requests.RequestJSON[proxyapi.RegisterResponseJSON]("POST", "https://"+ProxyHost+"/api/register", &req)
 				if err != nil {
 					v.Log.Warnf("Failed to re-register with proxy: %v", err)
-					sleep = sleep * 2
-					if sleep > maxSleep {
-						sleep = maxSleep
-					}
+					sleep = min(sleep*2, maxSleep)
 				} else {
 					v.hasRegistered.Store(true)
 					if response.ServerVpnIP != v.ownDeviceIP {

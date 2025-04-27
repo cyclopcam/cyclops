@@ -1,12 +1,16 @@
 package configdb
 
 import (
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
 
+	"github.com/cyclopcam/cyclops/pkg/ecdhsign"
 	"github.com/cyclopcam/www"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 const KeyMain = "main"
@@ -42,5 +46,67 @@ func GetVerifiedIdentityFromToken(token string) (*VerifiedIdentity, error) {
 	} else if identity.ID == "" {
 		return nil, errors.New("Invalid identity token")
 	}
+	return identity, nil
+}
+
+// Do the same thing as GetVerifiedIdentityFromToken, but also bind the identity to the server.
+// This unlocks the ability to use the VPN.
+func (c *ConfigDB) VerifyIdentityAndBindToServer(token string) (*VerifiedIdentity, error) {
+	c.Log.Infof("User/Server bind phase 1")
+
+	// Start the binding process which simultaneously verifies the identity token,
+	// and also proves that we own the public key that we claim to own.
+	mykey := base64.URLEncoding.EncodeToString(c.PublicKey[:])
+	r, _ := http.NewRequest("POST", "https://accounts.cyclopcam.org/api/auth/bindUserToServer/phase1/"+mykey+"?token="+token, nil)
+	resp := struct {
+		Message string `json:"message"` // challenge message (base64 encoded)
+		Key     string `json:"key"`     // ephemeral remote public key (base64 encoded)
+	}{}
+	err := www.FetchJSON(r, &resp)
+	if err != nil {
+		c.Log.Errorf("User/Server bind phase 1 failed: %v", err)
+		return nil, err
+	}
+
+	c.Log.Infof("User/Server bind phase 2")
+
+	// The accounts server has sent us a challenge message, which we need to sign with our private key.
+
+	remotePublicKey, err := wgtypes.ParseKey(resp.Key)
+	if err != nil {
+		return nil, fmt.Errorf("Server sent invalid public key: %w", err)
+	}
+	messageB, err := base64.StdEncoding.DecodeString(resp.Message)
+	if err != nil {
+		return nil, fmt.Errorf("Server sent invalid challenge message: %w", err)
+	}
+
+	signature, err := ecdhsign.SignChallenge(messageB, c.PrivateKey, remotePublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("Curve25519 sign failed: %w", err)
+	}
+	signature64 := base64.URLEncoding.EncodeToString(signature)
+
+	//c.Log.Infof("Sign challenge response mykey:%v, message:%v, key:%v, signature64:%v", mykey, resp.Message, resp.Key, signature64)
+
+	// Now that we've signed the challenge, we can link this identity to us, and also get details about the identity.
+	identity := &VerifiedIdentity{}
+	r, _ = http.NewRequest("POST", "https://accounts.cyclopcam.org/api/auth/bindUserToServer/phase2/"+mykey+"/"+signature64+"?token="+token, nil)
+	err = www.FetchJSON(r, identity)
+	if err != nil {
+		c.Log.Errorf("User/Server bind failed: %v", err)
+		return nil, err
+	}
+	if identity.ID == "" {
+		c.Log.Errorf("User/Server bind succeeded, but identity response has a blank ID")
+		return nil, errors.New("Invalid identity token")
+	}
+
+	c.Log.Infof("Identity token verified, and user bound to server")
+
+	// We're now authorized to use the VPN.
+	// If we were previously not authorized, then we need to restart in order to activate it.
+	// We leave that up to the front-end to invoke.
+
 	return identity, nil
 }
