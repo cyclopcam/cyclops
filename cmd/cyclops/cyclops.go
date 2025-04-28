@@ -251,6 +251,9 @@ func main() {
 				// SYNC-SERVER-PORT
 				httpListenPort = ":80"
 			} else {
+				// Add a pause, otherwise we very quickly exhaust our restart timer.
+				logger.Infof("Waiting 5 seconds before restarting")
+				time.Sleep(5 * time.Second)
 				ExitAndRestart()
 			}
 		} else {
