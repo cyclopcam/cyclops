@@ -4,4 +4,5 @@
 /cyclops.postrm.debhelper
 /cyclops.substvars
 /files
+/postbuild
 
