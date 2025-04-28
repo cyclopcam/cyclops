@@ -6,6 +6,13 @@ set -euo pipefail
 
 sudo apt install -y build-essential cmake devscripts debhelper-compat libturbojpeg0-dev pkg-config libavformat-dev libswscale-dev 
 
+# On raspbian, install hailofw hailort:
+# Sigh.. I can't figure out how to detect if we're running on Raspberry Pi OS. All the usual markers just point at "bookworm" or "debian".
+if grep -q "Raspberry" /proc/cpuinfo && [ -f /boot/config.txt ]; then
+    echo "Running on Raspberry Pi OS"
+	sudo apt install -y hailofw hailort
+fi
+
 GOVERSION=1.24.2
 GOARCH=$(uname -m)
 if [ "$GOARCH" = "aarch64" ]; then

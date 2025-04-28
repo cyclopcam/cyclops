@@ -1,3 +1,10 @@
+cyclops (1.0.0-1~jammy) jammy; urgency=medium
+
+  * Automated build for jammy, git revision
+    e0d127c41f07882a498a2a669564d4b2779098db
+
+ -- Ben Harper <rogojin@gmail.com>  Mon, 28 Apr 2025 18:45:22 +0200
+
 cyclops (1.0.0-1) unstable; urgency=medium
 
   * Initial release
