@@ -82,12 +82,89 @@ func (v *VPN) DisconnectKernelWG() {
 	v.client.Close()
 }
 
+/* The following error log is useful for understanding the sequence of events
+that occurs if we are started up before the network is properly available.
+I don't know what exactly is causing this, but it happens when the power cycles
+in my entire house. Presumably the rpi5 is starting up before DHCP is available.
+Whatever that is, it causes "wg-quick up cyclops" to create a bogus wireguard
+device with a key of all zeroes.
+
+You can see in the trace below, that on the 1st startup, we timeout after
+30 seconds. I had initially raised this to 30, in an attempt to work around
+this issue. But I've subsequently lowered that again to the default of 10
+seconds, because that was a red herring.
+
+On the 1st startup attempt, there are no wireguard devices.
+On the 2nd startup attempt, we see that the wireguard device cyclops is created,
+but it has a public key of all zeroes. So we detect that condition, and if we
+see it, we delete the device and try again.
+
+systemd[1]: Started cyclops.service - Cyclops.
+cyclops[724]: 2025-04-27 15:01:59.245584 Info Logging to stdout
+cyclops[724]: Launching wireguard root-mode sub-process /usr/local/bin/cyclops
+cyclops[724]: 2025-04-27 15:01:59.246346 Info Wireguard management sub-process launched
+cyclops[724]: 2025-04-27 15:01:59.249097 Info Loading NN accelerators
+cyclops[724]: 2025-04-27 15:01:59.258398 Info Loaded Hailo NN accelerator
+cyclops[724]: 2025-04-27 15:01:59.283971 Info Sqlite database /home/ben/cyclops/config.sqlite is running in WAL mode
+cyclops[724]: 2025-04-27 15:01:59.304884 Info System is armed: false, alarm is triggered: false
+cyclops[724]: 2025-04-27 15:01:59.305200 Info VPN network IPv6
+cyclops[724]: 2025-04-27 15:01:59.305205 Info Starting VPN
+cyclops[753]: 2025-04-27 15:01:59.314524 Info Logging to stdout
+cyclops[753]: 2025-04-27 15:01:59.314547 Info kernelwg Verifying if we can inspect wireguard devices
+cyclops[753]: 2025-04-27 15:01:59.335393 Info kernelwg Found 0 active wireguard devices
+cyclops[753]: 2025-04-27 15:01:59.335568 Info kernelwg Wireguard communication successful
+cyclops[753]: 2025-04-27 15:01:59.335578 Info kernelwg Listening on {@cyclops-wg unix}
+cyclops[753]: 2025-04-27 15:01:59.336016 Info kernelwg Accept connection from @
+cyclops[753]: 2025-04-27 15:01:59.336331 Info kernelwg Authentication OK
+cyclops[753]: 2025-04-27 15:01:59.336751 Info kernelwg Bring up Wireguard device cyclops
+cyclops[724]: 2025-04-27 15:02:29.355834 Error Failed to start Wireguard VPN: client.BringDeviceUp (#1) failed: Error reading response: read unix @->@cyclops-wg: i/o timeout
+systemd[1]: cyclops.service: Main process exited, code=exited, status=1/FAILURE
+systemd[1]: cyclops.service: Failed with result 'exit-code'.
+systemd[1]: cyclops.service: Scheduled restart job, restart counter is at 1.
+systemd[1]: Stopped cyclops.service - Cyclops.
+systemd[1]: Started cyclops.service - Cyclops.
+cyclops[840]: 2025-04-27 15:02:29.647895 Info Logging to stdout
+cyclops[840]: Launching wireguard root-mode sub-process /usr/local/bin/cyclops
+cyclops[840]: 2025-04-27 15:02:29.648392 Info Wireguard management sub-process launched
+cyclops[840]: 2025-04-27 15:02:29.648961 Info Loading NN accelerators
+cyclops[840]: 2025-04-27 15:02:29.655129 Info Loaded Hailo NN accelerator
+cyclops[840]: 2025-04-27 15:02:29.656121 Info Sqlite database /home/ben/cyclops/config.sqlite is running in WAL mode
+cyclops[840]: 2025-04-27 15:02:29.657612 Info System is armed: false, alarm is triggered: false
+cyclops[840]: 2025-04-27 15:02:29.657893 Info VPN network IPv6
+cyclops[840]: 2025-04-27 15:02:29.657897 Info Starting VPN
+cyclops[864]: 2025-04-27 15:02:29.710179 Info Logging to stdout
+cyclops[864]: 2025-04-27 15:02:29.710202 Info kernelwg Verifying if we can inspect wireguard devices
+cyclops[864]: 2025-04-27 15:02:29.710615 Info kernelwg Found 1 active wireguard devices
+cyclops[864]: 2025-04-27 15:02:29.710642 Info kernelwg Wireguard device cyclops public key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+cyclops[864]: 2025-04-27 15:02:29.710665 Info kernelwg Wireguard communication successful
+cyclops[864]: 2025-04-27 15:02:29.710669 Info kernelwg Listening on {@cyclops-wg unix}
+cyclops[864]: 2025-04-27 15:02:29.728993 Info kernelwg Accept connection from @
+cyclops[864]: 2025-04-27 15:02:29.729140 Info kernelwg Authentication OK
+cyclops[840]: 2025-04-27 15:02:29.729518 Error Wireguard key in Cyclops config database differs from /etc/wireguard/cyclops.conf:
+cyclops[840]: 2025-04-27 15:02:29.729533 Info There are two ways to fix this:
+*/
+
+// Return true if the key is all zeroes
+func IsZeroKey(k wgtypes.Key) bool {
+	var zeroKey wgtypes.Key
+	return k == zeroKey
+}
+
 // Start our Wireguard device, and save our public key
 func (v *VPN) Start() error {
 	getResp, err := v.client.GetDevice(v.deviceName)
 	if err == nil {
-		// Device was already up, so we're good to go, provided the key is correct
-		return v.validateAndSaveDeviceDetails(getResp)
+		// If the key is all zeroes, then take it down and recreate it.
+		// See long comment above for details.
+		if IsZeroKey(getResp.PrivateKey) {
+			v.Log.Infof("Wireguard device '%v' has all zeroes key. Attempting to take it down and up.", v.deviceName)
+			if err := v.client.TakeDeviceDown(v.deviceName); err != nil {
+				return fmt.Errorf("client.TakeDeviceDown failed: %w", err)
+			}
+		} else {
+			// Device was already up, so we're good to go, provided the key is correct
+			return v.validateAndSaveDeviceDetails(getResp)
+		}
 	} else if !errors.Is(err, wguser.ErrWireguardDeviceNotExist) {
 		return fmt.Errorf("client.GetDevice (#1) failed: %w", err)
 	}
@@ -99,9 +176,10 @@ func (v *VPN) Start() error {
 	// The only time my test device ever reboots is when all the power goes down. In these events, the wifi/fiber/ethernet
 	// goes down too. So maybe the slow startup is due to the network being down. Doesn't make sense though - why would
 	// bringing up the wireguard device be dependent on the internet being up?
+	// UPDATE: Read long explanation about the error log comment, a little higher in this file.
 	timeout := v.client.GetMaxReadDuration()
 	defer v.client.SetMaxReadDuration(timeout)
-	v.client.SetMaxReadDuration(30 * time.Second)
+	v.client.SetMaxReadDuration(15 * time.Second)
 
 	// Try bringing up device
 	if err := v.client.BringDeviceUp(v.deviceName); err != nil {
