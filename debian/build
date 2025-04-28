@@ -4,6 +4,9 @@ set -euo pipefail
 # noble, bookworm, etc.
 DISTRO=$(lsb_release -sc)
 
+# eg 1.0.0
+VERSION=$(cat VERSION)
+
 rm ../cyclops_* || true
 
 # The top entry in the changelog is the one that will be used for the build.
@@ -20,6 +23,10 @@ rm ../cyclops_* || true
 # But hang on, there's an even simpler technique.
 # This will modify the top entry, so that it's target is the given distro.
 # And it won't change the version number.
-dch --distribution "$DISTRO" -a -m "Automated build for $DISTRO, git revision $(git rev-parse HEAD)"
+#dch --distribution "$DISTRO" -a -m "Automated build for $DISTRO, git revision $(git rev-parse HEAD)"
+
+# BUT.. it turns out that we need the distro name in our .deb name. It's vital for reprepro, and to
+# achieve our goal of having a single repo for all distros and architectures.
+dch -b --force-distribution --distribution "$DISTRO" --newversion "$VERSION"-1~"$DISTRO" -m "Automated build for $DISTRO, git revision $(git rev-parse HEAD)"
 
 debuild -us -uc -b
