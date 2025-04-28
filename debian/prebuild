@@ -4,7 +4,9 @@ set -euo pipefail
 # We separate the prebuild step because it takes long to run, and for iterating
 # on the build process, we want to be able to skip it.
 
-sudo apt install -y build-essential cmake devscripts debhelper-compat libturbojpeg0-dev pkg-config libavformat-dev libswscale-dev 
+# Note: we don't actually need wireguard and wireguard-tools to build, but we do need them to test, which is why I include them here.
+
+sudo apt install -y build-essential cmake devscripts debhelper-compat libturbojpeg0-dev pkg-config libavformat-dev libswscale-dev wireguard wireguard-tools
 
 # On raspbian, install hailofw hailort:
 # Sigh.. I can't figure out how to detect if we're running on Raspberry Pi OS. All the usual markers just point at "bookworm" or "debian".
