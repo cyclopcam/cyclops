@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [[ $# -ne 1 ]]; then
+	echo "Usage: $0 <remote>"
+	echo "<remote> is one of:"
+	echo "  s3://files.cyclopcam.org/incoming/"
+	echo "  user@host:/path/to/incoming/"
+	exit 1
+fi
+
+debian/prebuild
+debian/build
+debian/postbuild "$@"
