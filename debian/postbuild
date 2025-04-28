@@ -1,0 +1,39 @@
+#!/bin/bash
+set -euo pipefail
+
+# postbuild uploads build artifacts to S3 or a remote disk via rsync
+
+REMOTE="$1"
+if [ -z "$REMOTE" ]; then
+	echo "Usage: $0 <remote>"
+	echo "  remote is one of:"
+	echo "     s3://files.cyclopcam.org/incoming/"
+	echo "     user@host:/path/to/incoming/"
+	exit 1
+fi
+
+#export AWS_ACCESS_KEY_ID="your_access_key_id"
+#export AWS_SECRET_ACCESS_KEY="your_secret_access_key"	
+
+#BUCKET=files.cyclopcam.org
+#DISTRO="$(lsb_release -sc)"   		    # 'noble' or 'bookworm'
+#ARCH="$(dpkg --print-architecture)"     # 'amd64' or 'arm64'
+
+# We don't have .dsc files because we aren't intending of having people build from source.
+# It would be possible of course.
+
+if [[ "$REMOTE" == s3://* ]]; then
+	echo "Uploading artifacts to S3"
+	for f in ../*.{deb,changes,buildinfo}; do
+		aws s3 cp "$f" "$REMOTE"
+	done	
+else
+	echo "Uploading artifacts via rsync"
+	#rsync -avz ../*.{deb,changes,buildinfo} "$REMOTE"
+	#ssh "$REMOTE" mkdir -p incoming
+	rsync -avz ../*.{deb,changes,buildinfo} "$REMOTE"
+fi
+
+#for f in ../*.{deb,changes,buildinfo}; do
+#	aws s3 cp "$f" "s3://${BUCKET}/incoming/"
+#done

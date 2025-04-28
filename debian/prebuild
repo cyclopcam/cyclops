@@ -4,7 +4,7 @@ set -euo pipefail
 # We separate the prebuild step because it takes long to run, and for iterating
 # on the build process, we want to be able to skip it.
 
-sudo apt install -y build-essential cmake devscripts debhelper-compat libturbojpeg0-dev pkg-config libavformat-dev libswscale-dev
+sudo apt install -y build-essential cmake devscripts debhelper-compat libturbojpeg0-dev pkg-config libavformat-dev libswscale-dev 
 
 GOVERSION=1.24.2
 GOARCH=$(uname -m)
@@ -14,6 +14,15 @@ fi
 if [ "$GOARCH" = "x86_64" ]; then
 	GOARCH=amd64
 fi
+
+# Install awscli
+# meh... we can just rsync to a local build server. No need to round-trip via S3.
+#if [ ! -f /usr/local/bin/aws ]; then
+#	echo Installing awscli
+#	curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+#	unzip awscliv2.zip
+#	sudo ./aws/install
+#fi
 
 # Install Go
 if [ ! -f /usr/local/go/bin/go ]; then
