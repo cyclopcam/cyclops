@@ -17,7 +17,7 @@ function onPlayPause(cam: CameraInfo) {
 	console.log(`Monitor.vue onPlayPause camera ${cam.id}. newVal = ${newVal}`);
 	if (linkedPlay) {
 		for (let c of cameras()) {
-			isPlaying.value[c.id] = newVal
+			isPlaying.value[c.id] = newVal;
 		}
 	} else {
 		isPlaying.value[cam.id] = newVal;
@@ -75,7 +75,7 @@ onUnmounted(() => {
 			<button>Play</button>
 		</toolbar>
 		-->
-		<div v-if="cameras.length == 0" class="noCameras">
+		<div v-if="cameras().length == 0" class="noCameras">
 			No cameras configured
 		</div>
 		<div class="cameras">
