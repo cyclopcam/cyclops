@@ -9,6 +9,9 @@ VERSION=$(cat VERSION)
 
 rm ../cyclops_* || true
 
+git checkout debian/changelog
+git checkout debian/control
+
 # The top entry in the changelog is the one that will be used for the build.
 #dch --distribution "$DISTRO" --local "~$DISTRO" -m "Automated build for $DISTRO"
 
@@ -28,5 +31,11 @@ rm ../cyclops_* || true
 # BUT.. it turns out that we need the distro name in our .deb name. It's vital for reprepro, and to
 # achieve our goal of having a single repo for all distros and architectures.
 dch -b --force-distribution --distribution "$DISTRO" --newversion "$VERSION"-1~"$DISTRO" -m "Automated build for $DISTRO, git revision $(git rev-parse HEAD)"
+
+# Dynamically inject additional dependencies for different distros.
+# For example, on bookwork, we need to add hailofw and hailort.
+if [ "$DISTRO" = "bookworm" ] && ! grep -q "hailofw\|hailort" debian/control; then
+	sed -i '/^Depends:/ s/$/, hailofw, hailort/' debian/control
+fi
 
 debuild -us -uc -b

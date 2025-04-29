@@ -37,3 +37,7 @@ fi
 #for f in ../*.{deb,changes,buildinfo}; do
 #	aws s3 cp "$f" "s3://${BUCKET}/incoming/"
 #done
+
+# Cleanup
+git checkout debian/changelog
+git checkout debian/control
