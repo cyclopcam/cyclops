@@ -1,13 +1,16 @@
 #!/bin/bash
 
-if [[ $# -ne 1 ]]; then
-	echo "Usage: $0 <remote>"
+if [[ $# -ne 2 ]]; then
+	echo "Usage: $0 <build number> <remote>"
+	echo "<build number> is usually 1, but could be more if this is not the first build attempt"
 	echo "<remote> is one of:"
 	echo "  s3://files.cyclopcam.org/incoming/"
 	echo "  user@host:/path/to/incoming/"
 	exit 1
 fi
+BUILD_NUMBER=$1
+REMOTE=$2
 
-debian/prebuild
-debian/build
+debian/prebuild "$@"
+debian/build "$@"
 debian/postbuild "$@"

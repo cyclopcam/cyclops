@@ -1,6 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
+if [[ $# -ne 2 ]]; then
+	echo "Usage: $0 <build number> <remote>"
+	echo "<build number> is usually 1, but could be more if this is not the first build attempt"
+	echo "<remote> is one of:"
+	echo "  s3://files.cyclopcam.org/incoming/"
+	echo "  user@host:/path/to/incoming/"
+	exit 1
+fi
+BUILD_NUMBER=$1
+REMOTE=$2
+
 # noble, bookworm, etc.
 DISTRO=$(lsb_release -sc)
 
@@ -30,7 +41,7 @@ git checkout debian/control
 
 # BUT.. it turns out that we need the distro name in our .deb name. It's vital for reprepro, and to
 # achieve our goal of having a single repo for all distros and architectures.
-dch -b --force-distribution --distribution "$DISTRO" --newversion "$VERSION"-1~"$DISTRO" -m "Automated build for $DISTRO, git revision $(git rev-parse HEAD)"
+dch -b --force-distribution --distribution "$DISTRO" --newversion "$VERSION"-"$BUILD_NUMBER"~"$DISTRO" -m "Automated build for $DISTRO, git revision $(git rev-parse HEAD)"
 
 # Dynamically inject additional dependencies for different distros.
 # For example, on bookwork, we need to add hailofw and hailort.

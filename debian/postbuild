@@ -3,15 +3,16 @@ set -euo pipefail
 
 # postbuild uploads build artifacts to S3 or a remote disk via rsync
 
-if [[ $# -ne 1 ]]; then
-	echo "Usage: $0 <remote>"
+if [[ $# -ne 2 ]]; then
+	echo "Usage: $0 <build number> <remote>"
+	echo "<build number> is usually 1, but could be more if this is not the first build attempt"
 	echo "<remote> is one of:"
 	echo "  s3://files.cyclopcam.org/incoming/"
 	echo "  user@host:/path/to/incoming/"
 	exit 1
 fi
-
-REMOTE=$1
+BUILD_NUMBER=$1
+REMOTE=$2
 
 #export AWS_ACCESS_KEY_ID="your_access_key_id"
 #export AWS_SECRET_ACCESS_KEY="your_secret_access_key"	
