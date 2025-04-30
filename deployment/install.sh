@@ -63,7 +63,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Add the repository
-echo "deb [signed-by=/etc/apt/keyrings/cyclopcam.gpg] https://files.cyclopcam.org/dists $OS main" | $SUDO tee /etc/apt/sources.list.d/cyclopcam.list
+echo "deb [signed-by=/etc/apt/keyrings/cyclopcam.gpg] https://files.cyclopcam.org $OS main" | $SUDO tee /etc/apt/sources.list.d/cyclopcam.list
 if [ $? -ne 0 ]; then
     echo "Error: Failed to add the repository."
     exit 1
