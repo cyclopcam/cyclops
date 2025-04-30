@@ -2,6 +2,7 @@
 /cyclops/
 /debhelper-build-stamp
 /cyclops.postrm.debhelper
+/cyclops.debhelper.log
 /cyclops.substvars
 /files
 /postbuild

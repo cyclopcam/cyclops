@@ -23,47 +23,27 @@ override_dh_auto_clean:
 	# Let dh clean anything it knows first
 	dh_auto_clean
 
-	# Our custom artefacts
-	#rm -rf ncnn/build \
-	#       Simd/build \
-	#       cyclops
 	rm -rf cyclops
 
 # ----------------------------------------------------------------------
 # 2. Configure & build
 # ----------------------------------------------------------------------
 override_dh_auto_build:
-
-	# ---- Build NCNN ----
-	#printf 'Building NCNN…\n'
-	#[ -d ncnn/build ] || mkdir -p ncnn/build
-	#cd ncnn/build && \
-	#    cmake -DNCNN_SIMPLEOCV=1 \
-	#          -DNCNN_BUILD_EXAMPLES=OFF \
-	#          .. && \
-	#    $(MAKE) -j4
-
-	# ---- Build Simd ----
-	#printf 'Building Simd…\n'
-	#[ -d Simd/build ] || mkdir -p Simd/build
-	#cd Simd/build && \
-	#    cmake ../prj/cmake && \
-	#    $(MAKE) -j4
-
 	# ---- Build cyclops (Go) ----
 	printf 'Building cyclops…\n'
 	go build -buildmode=pie -ldflags="-s" -o cyclops cmd/cyclops/cyclops.go
 
-# ----------------------------------------------------------------------
-# 3. Install into the package staging area
-# ----------------------------------------------------------------------
-#override_dh_auto_install:
-#	# Staging dir provided by dh
-#	install -Dpm755 cyclops \
-#	    $(DESTDIR)/usr/bin/cyclops
-#
-#	# Rely on dh to install documentation, man-pages, etc.
-#	dh_auto_install --destdir=$(DESTDIR)
+# This doesn't seem to run
+#override_dh_installsysusers:
+#	dh_installsysusers
+#	echo "dh_installsysusers ran"
+
+# This is a workaround to get our user 'cyclops' added.
+# I've tried for a few hours, but cannot get dh_installsysusers to run at build time.
+override_dh_install:
+	dh_install
+	install -d debian/cyclops/usr/lib/sysusers.d
+	install -m 644 debian/cyclops.sysusers debian/cyclops/usr/lib/sysusers.d/cyclops.conf
 
 # ----------------------------------------------------------------------
 # 4. Strip / compress / generate shlibs, etc.
