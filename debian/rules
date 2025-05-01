@@ -40,10 +40,13 @@ override_dh_auto_build:
 
 # This is a workaround to get our user 'cyclops' added.
 # I've tried for a few hours, but cannot get dh_installsysusers to run at build time.
-override_dh_install:
-	dh_install
-	install -d debian/cyclops/usr/lib/sysusers.d
-	install -m 644 debian/cyclops.sysusers debian/cyclops/usr/lib/sysusers.d/cyclops.conf
+#override_dh_install:
+#	dh_install
+#	install -d debian/cyclops/usr/lib/sysusers.d
+#	install -m 644 debian/cyclops.sysusers debian/cyclops/usr/lib/sysusers.d/cyclops.conf
+# NOPE. I give up. Several hours with ChatGPT O3 and Grok, and neither of them could
+# make it work. Even if the cyclops.conf file is included in the .deb, it still doesn't
+# create the user. I'm just doing it in code now.
 
 # ----------------------------------------------------------------------
 # 4. Strip / compress / generate shlibs, etc.

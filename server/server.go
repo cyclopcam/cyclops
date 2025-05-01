@@ -173,14 +173,34 @@ func StartVPN(log logs.Log, privateKey wgtypes.Key, kernelWGSecret string, force
 	return vpnClient, nil
 }
 
-// port example: ":8080"
-func (s *Server) ListenHTTP(port string) error {
+func (s *Server) ListenHTTP(port int, privilegeLimiter *wgroot.PrivilegeLimiter) error {
+	portStr := fmt.Sprintf(":%v", port)
 	s.Log.Infof("Listening on %v (automatic SSL disabled)", port)
 	s.httpServer = &http.Server{
-		Addr:    port,
+		Addr:    portStr,
 		Handler: s.httpRouter,
 	}
-	return s.httpServer.ListenAndServe()
+
+	privilegedPort := port == 80
+
+	if privilegeLimiter != nil && privilegedPort {
+		if err := privilegeLimiter.Elevate(); err != nil {
+			return err
+		}
+	}
+
+	listener, err := net.Listen("tcp", portStr)
+	if err != nil {
+		return err
+	}
+
+	if privilegeLimiter != nil && privilegedPort {
+		if err := privilegeLimiter.Drop(); err != nil {
+			s.Log.Errorf("Error dropping privileges: %v", err)
+		}
+	}
+
+	return s.httpServer.Serve(listener)
 }
 
 func (s *Server) ListenHTTPS(sslCertDirectory string, privilegeLimiter *wgroot.PrivilegeLimiter) error {

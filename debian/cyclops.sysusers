@@ -1,2 +1,3 @@
 # Type Name     ID  GECOS                  Home
+# NOTE: I can't get this to work. Giving up an creating user in code.
 u cyclops       -   "Cyclops service user" /var/lib/cyclops

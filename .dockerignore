@@ -11,3 +11,9 @@ www/dist
 Dockerfile
 /arc/Dockerfile
 /cmd/proxy/Dockerfile
+/ncnn/build
+/Simd/build
+/models
+/testdata
+/bin
+.vscode

@@ -12,18 +12,27 @@ fi
 BUILD_NUMBER=$1
 REMOTE=$2
 
+MAKEJ=-j8
+
+SUDO=sudo
+if [ "$(id -u)" -eq 0 ]; then
+	# Running as root, so don't use sudo
+	SUDO=""
+fi
+
 # We separate the prebuild step because it takes long to run, and for iterating
 # on the build process, we want to be able to skip it.
 
 # Note: we don't actually need wireguard and wireguard-tools to build, but we do need them to test, which is why I include them here.
 
-sudo apt install -y build-essential cmake devscripts debhelper-compat libturbojpeg0-dev pkg-config libavformat-dev libswscale-dev wireguard wireguard-tools
+$SUDO apt-get install -y build-essential cmake devscripts debhelper-compat libturbojpeg0-dev pkg-config libavformat-dev libswscale-dev wireguard wireguard-tools
 
 # On raspbian, install hailofw hailort:
 # Sigh.. I can't figure out how to detect if we're running on Raspberry Pi OS. All the usual markers just point at "bookworm" or "debian".
 if grep -q "Raspberry" /proc/cpuinfo && [ -f /boot/config.txt ]; then
     echo "Running on Raspberry Pi OS"
-	sudo apt install -y hailofw hailort
+	$SUDO apt-get install -y hailofw hailort
+	MAKEJ=-j4
 fi
 
 GOVERSION=1.24.2
@@ -41,15 +50,15 @@ fi
 #	echo Installing awscli
 #	curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
 #	unzip awscliv2.zip
-#	sudo ./aws/install
+#	$SUDO ./aws/install
 #fi
 
 # Install Go
 if [ ! -f /usr/local/go/bin/go ]; then
 	echo Installing Go $GOVERSION
 	GOARCHIVE=go$GOVERSION.linux-$GOARCH.tar.gz
-	wget https://dl.google.com/go/$GOARCHIVE
-	sudo tar -C /usr/local -xzf $GOARCHIVE
+	curl -o $GOARCHIVE https://dl.google.com/go/$GOARCHIVE
+	$SUDO tar -C /usr/local -xzf $GOARCHIVE
 fi
 export PATH=$PATH:/usr/local/go/bin
 
@@ -73,14 +82,14 @@ cd nnaccel/hailo && ./build && cd ../..
 
 if [ ! -f ncnn/build/src/libncnn.a ]; then
 	echo Building NCNN library
-	cd ncnn && mkdir -p build && cd build && cmake -DNCNN_SIMPLEOCV=1 -DNCNN_BUILD_EXAMPLES=OFF -DNCNN_BUILD_BENCHMARK=OFF -DNCNN_BUILD_TOOLS=OFF .. && make -j4 && cd ../..
+	cd ncnn && mkdir -p build && cd build && cmake -DNCNN_SIMPLEOCV=1 -DNCNN_BUILD_EXAMPLES=OFF -DNCNN_BUILD_BENCHMARK=OFF -DNCNN_BUILD_TOOLS=OFF .. && make $MAKEJ && cd ../..
 else
 	echo Skipping NCNN, already built
 fi
 
 if [ ! -f Simd/build/libSimd.a ]; then
 	echo Building Simd library
-	cd Simd && mkdir -p build && cd build && cmake -DSIMD_TEST=OFF ../prj/cmake && make -j4 && cd ../..
+	cd Simd && mkdir -p build && cd build && cmake -DSIMD_TEST=OFF ../prj/cmake && make $MAKEJ && cd ../..
 else
 	echo Skipping Simd, already built
 fi

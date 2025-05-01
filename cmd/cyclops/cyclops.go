@@ -13,8 +13,10 @@ import (
 
 	"github.com/akamensky/argparse"
 	"github.com/coreos/go-systemd/daemon"
+	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/ncnn"
 	"github.com/cyclopcam/cyclops/pkg/nnload"
+	"github.com/cyclopcam/cyclops/pkg/osutil"
 	"github.com/cyclopcam/cyclops/pkg/pwdhash"
 	"github.com/cyclopcam/cyclops/pkg/requests"
 	"github.com/cyclopcam/cyclops/server"
@@ -74,7 +76,7 @@ func main() {
 	}
 
 	// SYNC-SERVER-PORT
-	httpListenPort := ":8080"
+	httpListenPort := 8080
 
 	// Certain parameters are scrubbed from the child processes's args when dropping privileges, so we specify them as constants
 	const pnVPN = "vpn"
@@ -151,6 +153,19 @@ func main() {
 
 	// Check if we need to drop privileges to a different user ('username')
 	if *username != "" && !wgroot.IsRunningAsUser(*username) {
+		userExists, err := osutil.UserExists(*username)
+		if err != nil {
+			logger.Errorf("Error checking if user '%v' exists: %v", *username, err)
+			ExitNoRestart()
+		}
+		if !userExists {
+			logger.Infof("Creating user '%v'", *username)
+			if err := osutil.AddUser(*username, "", "/var/lib/cyclops"); err != nil {
+				logger.Errorf("Error creating user '%v': %v", *username, err)
+				ExitNoRestart()
+			}
+		}
+
 		// Drop privileges
 		privilegeLimiter, err = wgroot.NewPrivilegeLimiter(*username, wgroot.PrivilegeLimiterFlagSetEnvVars)
 		if err != nil {
@@ -173,12 +188,22 @@ func main() {
 		sslCertDirectory = filepath.Join(home, ".local", "share", "certmagic")
 	}
 
-	actualDefaultConfigDB := filepath.Join(home, "cyclops", "config.sqlite")
+	// For the case where cyclops is being run as a user with a regular home directory (eg /home/mike),
+	// then we want our files stored in /home/mike/cyclops.
+	// But if we're running as a system user (eg user "cyclops"), and our home directory is /var/lib/cyclops,
+	// then we want our files stored in /var/lib/cyclops.
+	// Without this extra logic, we end up with out files stored inside "/var/lib/cyclops/cyclops".
+	defaultRoot := filepath.Join(home, "cyclops")
+	if strings.HasPrefix(home, "/var") {
+		defaultRoot = home
+	}
+
+	actualDefaultConfigDB := filepath.Join(defaultRoot, "config.sqlite")
 	if *configFile == nominalDefaultDB {
 		*configFile = actualDefaultConfigDB
 	}
 
-	actualDefaultModelsDir := filepath.Join(home, "cyclops", "models")
+	actualDefaultModelsDir := filepath.Join(defaultRoot, "models")
 	if *modelsDir == nominalModelsDir {
 		*modelsDir = actualDefaultModelsDir
 	}
@@ -249,7 +274,7 @@ func main() {
 				logger.Errorf("Not authorized to use VPN")
 				// We can't listen on 443, but we still want to listen on 80
 				// SYNC-SERVER-PORT
-				httpListenPort = ":80"
+				httpListenPort = 80
 			} else {
 				// Add a pause, otherwise we very quickly exhaust our restart timer.
 				logger.Infof("Waiting 5 seconds before restarting")
@@ -297,9 +322,15 @@ func main() {
 			logger.Infof("ListenHTTPS returned: %v", err)
 		}
 	} else {
-		err = srv.ListenHTTP(httpListenPort)
+		err = srv.ListenHTTP(httpListenPort, privilegeLimiter)
 		if err != nil {
 			logger.Infof("ListenHTTP returned: %v", err)
+		}
+	}
+	if !errors.Is(err, http.ErrServerClosed) {
+		// typical cause would be that Listen() failed
+		if !gen.IsChannelClosed(srv.ShutdownStarted) {
+			srv.Shutdown(false)
 		}
 	}
 
