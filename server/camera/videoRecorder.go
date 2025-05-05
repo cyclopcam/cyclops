@@ -153,7 +153,7 @@ func (r *VideoRecorder) writePackets(packets []*videox.VideoPacket) {
 			inType := in.Type()
 			// We always encode as Annex-B, because this makes it very easy to
 			// get video on the screen using easily available tools.
-			// For example, you can take an fsv archive file and use ffmpeg do
+			// For example, you can take an fsv archive file and use ffmpeg to
 			// extract frames, or convert it to an mp4 or whatever.
 			flags := fsv.NALUFlagAnnexB
 			if inType == h264.NALUTypePPS || inType == h264.NALUTypeSPS {

@@ -4,6 +4,8 @@
 #include <malloc.h>
 #include "encoder.h"
 
+// This test writes image frames to a file.
+
 // Step 1:
 // cd pkg/videox
 
@@ -12,7 +14,7 @@
 // clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -lswscale -o test/encoder_test test/encoder_test.cpp encoder.cpp && ./test/encoder_test
 
 // Debug build:
-// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -lswscale -o test/encoder_test test/encoder_test.cpp encoder.cpp
+// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -lswscale -o test/encoder_test test/encoder_test.cpp encoder.cpp common.cpp
 
 // Generate an RGB frame that varies over time
 void GenerateFrame(uint8_t* buf, int stride, int frameIdx, int width, int height) {

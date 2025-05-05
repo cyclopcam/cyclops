@@ -11,6 +11,7 @@ const (
 	MagicAudioTrackBytes = "rf1a" // must be 4 bytes long
 	MagicVideoTrackBytes = "rf1v" // must be 4 bytes long
 	CodecH264            = "h264" // must be 4 bytes long, and present in IsValidCodec()
+	CodecH265            = "h265" // must be 4 bytes long, and present in IsValidCodec()
 )
 
 var ErrInvalidCodec = errors.New("invalid codec")
@@ -33,7 +34,7 @@ type IndexNALUFlags uint32
 // We have 12 bits for flags, so maximum flag value is 1 << 11 = 2048
 const (
 	IndexNALUFlagKeyFrame      IndexNALUFlags = 1 // Key frame
-	IndexNALUFlagEssentialMeta IndexNALUFlags = 2 // Essential metadata, required to initialize the decoder (eg SPS/PPS NALUs in h264/h265)
+	IndexNALUFlagEssentialMeta IndexNALUFlags = 2 // Essential metadata, required to initialize the decoder (eg SPS+PPS NALUs in h264 / VPS+SPS+PPS NALUs h265)
 	IndexNALUFlagAnnexB        IndexNALUFlags = 4 // Packet has Annex-B "emulation prevention bytes" and start codes
 )
 
@@ -122,7 +123,7 @@ func SplitIndexNALUFlagsOnly(p uint64) IndexNALUFlags {
 }
 
 func IsValidCodec(c string) bool {
-	return len(c) == 4 && c == CodecH264
+	return len(c) == 4 && (c == CodecH264 || c == CodecH265)
 }
 
 func Extension(fileType FileType) string {

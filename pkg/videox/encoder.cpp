@@ -1,14 +1,10 @@
 #include "encoder.h"
 #include "tsf.hpp"
 
-// I don't yet know why, but this is the only way I can get ffmpeg to produce a valid
-// mp4 file. The first packet we send it must be SPS + PPS + Keyframe.
-// It is not sufficient to merely send SPS, then PPS, then Keyframe.
-// I suspect this is something to do with the fact that MP4 stores this information not in the stream,
-// but inside a once-off header in the file. However, I can't find an explicit ffmpeg
-// API call to "write SPS + PPS". Perhaps this is just idomatic... or perhaps it's
-// a hack that just works. But whatever the case, it's the first magic combination that
-// I could find which just worked.
+// Note: The first packet we send ffmpeg must be SPS + PPS + Keyframe.
+// It is not sufficient to merely send SPS, then PPS, then Keyframe,
+// via different calls to av_interleaved_write_frame().
+// For HEVC, I believe we need to send VPS + SPS + PPS + Keyframe.
 
 const bool DebugEncoder = false;
 
@@ -28,12 +24,8 @@ struct Encoder {
 	AVPacket*        Packet       = nullptr;
 	SwsContext*      SwsCtx       = nullptr;
 
-	//bool SeenSPS = false;
-	//bool SeenPPS = false;
-
-	bool        SentHeader = false;
-	std::string SPS;
-	std::string PPS;
+	bool                     SentHeader = false;
+	std::vector<std::string> PreIDRNALUs; // Queued up NALUs that we need to send with the IDR NALU
 };
 
 struct EncoderCleanup {
@@ -73,7 +65,11 @@ inline std::string AvErr(int e) {
 #define RETURN_ERROR_STR(msg) return strdup(msg.c_str())
 #define RETURN_ERROR_EOF() return strdup("EOF")
 
-std::string WithPrefix(const void* nalu, size_t size) {
+// If existingPrefixSize is 0, then add a 3-byte prefix to the NALU.
+std::string WithPrefix(size_t existingPrefixSize, const void* nalu, size_t size) {
+	if (existingPrefixSize != 0) {
+		return std::string((const char*) nalu, size);
+	}
 	std::string s;
 	s.resize(size + 3);
 	s[0] = (char) 0;
@@ -111,12 +107,105 @@ enum class H264NALUTypes {
 	Reserved23                    = 23,
 };
 
+// From github.com/bluenviron/mediacommon/blob/main/pkg/codecs/h265/nalu_type.go
+enum class H265NALUTypes {
+	TRAIL_N        = 0,
+	TRAIL_R        = 1,
+	TSA_N          = 2,
+	TSA_R          = 3,
+	STSA_N         = 4,
+	STSA_R         = 5,
+	RADL_N         = 6,
+	RADL_R         = 7,
+	RASL_N         = 8,
+	RASL_R         = 9,
+	RSV_VCL_N10    = 10,
+	RSV_VCL_N12    = 12,
+	RSV_VCL_N14    = 14,
+	RSV_VCL_R11    = 11,
+	RSV_VCL_R13    = 13,
+	RSV_VCL_R15    = 15,
+	BLA_W_LP       = 16,
+	BLA_W_RADL     = 17,
+	BLA_N_LP       = 18,
+	IDR_W_RADL     = 19,
+	IDR_N_LP       = 20,
+	CRA_NUT        = 21,
+	RSV_IRAP_VCL22 = 22,
+	RSV_IRAP_VCL23 = 23,
+	VPS_NUT        = 32,
+	SPS_NUT        = 33,
+	PPS_NUT        = 34,
+	AUD_NUT        = 35,
+	EOS_NUT        = 36,
+	EOB_NUT        = 37,
+	FD_NUT         = 38,
+	PREFIX_SEI_NUT = 39,
+	SUFFIX_SEI_NUT = 40,
+
+	// additional NALU types for RTP/H265
+	AggregationUnit   = 48,
+	FragmentationUnit = 49,
+	PACI              = 50,
+};
+
+H264NALUTypes GetH264NALUType(const uint8_t* buf) {
+	return (H264NALUTypes) (buf[0] & 31);
+}
+
+H265NALUTypes GetH265NALUType(const uint8_t* buf) {
+	return (H265NALUTypes) (buf[0] & 127);
+}
+
 bool IsVisualPacket(H264NALUTypes t) {
 	return (int) t >= 1 && (int) t <= 5;
 }
 
-H264NALUTypes GetH264NALUType(const uint8_t* buf) {
-	return (H264NALUTypes) (buf[0] & 31);
+bool IsVisualPacket(H265NALUTypes t) {
+	return (int) t >= 0 && (int) t <= 31;
+}
+
+bool IsIDR(H264NALUTypes t) {
+	return t == H264NALUTypes::IDR;
+}
+
+bool IsIDR(H265NALUTypes t) {
+	return t == H265NALUTypes::IDR_N_LP || t == H265NALUTypes::IDR_W_RADL;
+}
+
+bool IsEssentialMeta(H264NALUTypes t) {
+	return t == H264NALUTypes::SPS || t == H264NALUTypes::PPS || t == H264NALUTypes::SEI;
+}
+
+bool IsEssentialMeta(H265NALUTypes t) {
+	return t == H265NALUTypes::VPS_NUT || t == H265NALUTypes::SPS_NUT || t == H265NALUTypes::PPS_NUT;
+}
+
+bool IsEssentialMeta(MyCodec codec, const uint8_t* buf) {
+	switch (codec) {
+	case MyCodec::None: return false;
+	case MyCodec::H264: return IsEssentialMeta(GetH264NALUType(buf));
+	case MyCodec::H265: return IsEssentialMeta(GetH265NALUType(buf));
+	}
+	return false;
+}
+
+bool IsIDR(MyCodec codec, const uint8_t* buf) {
+	switch (codec) {
+	case MyCodec::None: return false;
+	case MyCodec::H264: return IsIDR(GetH264NALUType(buf));
+	case MyCodec::H265: return IsIDR(GetH265NALUType(buf));
+	}
+	return false;
+}
+
+bool IsVisualPacket(MyCodec codec, const uint8_t* buf) {
+	switch (codec) {
+	case MyCodec::None: return false;
+	case MyCodec::H264: return IsVisualPacket(GetH264NALUType(buf));
+	case MyCodec::H265: return IsVisualPacket(GetH265NALUType(buf));
+	}
+	return false;
 }
 
 void AppendNalu(std::string& buf, const void* nalu, size_t size) {
@@ -168,6 +257,10 @@ char* MakeEncoderParams(const char* codec, int width, int height, AVPixelFormat 
 			RETURN_ERROR_STR(tsf::fmt("Failed to find encoder '%v'", codec));
 	}
 
+	auto codec_ = GetMyCodec(encoderParams->Codec->id);
+	if (codec_ == MyCodec::None)
+		RETURN_ERROR_STR(tsf::fmt("Unsupported codec '%v'", codec));
+
 	// If FPS is 0, then just choose an arbitrary timebase,
 	// and leave FPS undefined.
 	AVRational timebase    = AVRational{1, fps};
@@ -206,6 +299,9 @@ char* MakeEncoder(const char* format, const char* filename, EncoderParams* encod
 	encoder->Codec = encoderParams->Codec;
 	if (encoder->Codec == nullptr)
 		RETURN_ERROR_STATIC("Codec is null");
+
+	if (GetMyCodec(encoder->Codec->id) == MyCodec::None)
+		RETURN_ERROR_STATIC("Unsupported codec");
 
 	encoder->OutStream = avformat_new_stream(encoder->OutFormatCtx, nullptr);
 	if (encoder->OutStream == nullptr)
@@ -330,36 +426,27 @@ void Encoder_Close(void* _encoder) {
 // then do it yourself, before calling this function.
 // dtsNano and ptsNano are in nanoseconds
 char* Encoder_WriteNALU(void* _encoder, int64_t dtsNano, int64_t ptsNano, int naluPrefixLen, const void* _nalu, size_t naluLen) {
-	auto encoder    = (Encoder*) _encoder;
-	auto nalu       = (const uint8_t*) _nalu;
-	auto payload    = nalu + naluPrefixLen;
-	auto packetType = GetH264NALUType(payload);
-	//if (packetType == H264NALUTypes::SPS && encoder->SeenSPS)
-	//	return;
-	//if (packetType == H264NALUTypes::PPS && encoder->SeenPPS)
-	//	return;
+	auto encoder = (Encoder*) _encoder;
+	auto nalu    = (const uint8_t*) _nalu;
+	auto payload = nalu + naluPrefixLen;
+	auto myCodec = GetMyCodec(encoder->Codec->id);
+	//auto packetType = GetH264NALUType(payload);
 	if (naluPrefixLen != 0 && naluPrefixLen != 3 && naluPrefixLen != 4) {
 		RETURN_ERROR_STR(tsf::fmt("Invalid naluPrefixLen %v. May only be one of: [0, 3, 4]", naluPrefixLen));
 	}
 
-	if (packetType == H264NALUTypes::SPS) {
-		if (naluPrefixLen)
-			encoder->SPS.assign((const char*) _nalu, naluLen);
-		else
-			encoder->SPS = WithPrefix(_nalu, naluLen);
+	if (IsEssentialMeta(myCodec, nalu)) {
+		// Buffer up the PreIDR NALUs such as SPS,PPS,SEI,VPS, so that we can send them with the IDR packet.
+		// This is necessary for some codecs, such as H264 and H265.
+		encoder->PreIDRNALUs.push_back(WithPrefix(naluPrefixLen, _nalu, naluLen));
 		return nullptr;
 	}
-	if (packetType == H264NALUTypes::PPS) {
-		if (naluPrefixLen)
-			encoder->PPS.assign((const char*) _nalu, naluLen);
-		else
-			encoder->PPS = WithPrefix(_nalu, naluLen);
+	if (encoder->PreIDRNALUs.size() == 0 && !encoder->SentHeader && IsVisualPacket(myCodec, nalu)) {
+		// The codec/format needs SPS and PPS before any frames (and VPS for HEVC, and possibly SEI for h264), so we can't write frames yet
 		return nullptr;
 	}
-	if ((encoder->SPS.size() == 0 || encoder->PPS.size() == 0) && IsVisualPacket(packetType)) {
-		// The codec/format needs SPS and PPS before any frames, so we can't write frames yet
-		return nullptr;
-	}
+
+	bool isIDR = IsIDR(myCodec, nalu);
 
 	AVRational timeBase = encoder->OutStream->time_base;
 	AVPacket*  pkt      = encoder->Packet;
@@ -369,24 +456,16 @@ char* Encoder_WriteNALU(void* _encoder, int64_t dtsNano, int64_t ptsNano, int na
 	//pkt->data         = nalu;
 	//pkt->size         = (int) naluLen + 3;
 	pkt->stream_index = encoder->OutStream->id;
-	if (packetType == H264NALUTypes::IDR)
+	if (isIDR)
 		pkt->flags |= AV_PKT_FLAG_KEY;
 
 	// copy is our temporary buffer, should we need it
 	std::string copy;
 
-	if (packetType == H264NALUTypes::IDR && !encoder->SentHeader) {
-		const auto& sps = encoder->SPS;
-		const auto& pps = encoder->PPS;
-
-		// I don't yet know why, but this is the only way I can get ffmpeg to produce a valid
-		// mp4 file. The first packet we send it must be SPS + PPS + Keyframe.
-		// It is not sufficient to merely send SPS, then PPS, then Keyframe.
-		// I suspect this is something to do with the fact that MP4 stores this information not in the stream,
-		// but inside a once-off header in the file. However, I can't find an explicit ffmpeg
-		// API call to "write SPS + PPS". Perhaps this is just idomatic... or perhaps it's
-		// a hack that just works. But whatever the case, it's the first magic combination that
-		// I could find which just worked.
+	if (isIDR && encoder->PreIDRNALUs.size() != 0) {
+		size_t pre = 0;
+		for (const auto& p : encoder->PreIDRNALUs)
+			pre += p.size();
 
 		//uint8_t* side = av_packet_new_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA, sps.size() + pps.size());
 		//memcpy(side, sps.data(), sps.size());
@@ -394,14 +473,13 @@ char* Encoder_WriteNALU(void* _encoder, int64_t dtsNano, int64_t ptsNano, int na
 		int extraBytes = 0;
 		if (naluPrefixLen == 0)
 			extraBytes = 3;
-		copy.resize(sps.size() + encoder->PPS.size() + extraBytes + naluLen);
+		copy.resize(pre + extraBytes + naluLen);
 		size_t offset = 0;
 
-		memcpy(&copy[offset], sps.data(), sps.size());
-		offset += sps.size();
-
-		memcpy(&copy[offset], pps.data(), pps.size());
-		offset += pps.size();
+		for (const auto& p : encoder->PreIDRNALUs) {
+			memcpy(&copy[offset], p.data(), p.size());
+			offset += p.size();
+		}
 
 		if (naluPrefixLen == 0) {
 			memcpy(&copy[offset], "\x00\x00\x01", 3);
@@ -412,6 +490,7 @@ char* Encoder_WriteNALU(void* _encoder, int64_t dtsNano, int64_t ptsNano, int na
 		pkt->data           = (uint8_t*) copy.data();
 		pkt->size           = (int) copy.size();
 		encoder->SentHeader = true;
+		encoder->PreIDRNALUs.clear();
 	} else {
 		if (naluPrefixLen == 0) {
 			copy.resize(3 + naluLen);
@@ -489,7 +568,7 @@ char* WriteBufferedPackets(Encoder* encoder) {
 		if (e < 0)
 			RETURN_ERROR_STR(tsf::fmt("avcodec_receive_packet failed: %v", AvErr(e)));
 
-		// This next line would appropriate if we used the codec time base when writing the frame, but
+		// This next line would be appropriate if we used the codec time base when writing the frame, but
 		// we already use the OutStream timebase when writing the frame, so there's no need to do any
 		// further adjustment here.
 		//av_packet_rescale_ts(encoder->Packet, encoder->CodecCtx->time_base, encoder->OutStream->time_base);

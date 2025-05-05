@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string>
-#include "decoder2.h"
+#include "decoder.h"
 #include "annexb.h"
 #include "tsf.hpp"
 
@@ -8,11 +8,11 @@
 // cd pkg/videox
 
 // Build and run:
-// clang++    -O2 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder2.cpp annexb.cpp && ./test/decoder_test
-// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder2.cpp annexb.cpp && ./test/decoder_test
+// clang++    -O2 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp && ./test/decoder_test
+// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp && ./test/decoder_test
 
 // Debug build:
-// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder2.cpp annexb.cpp
+// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp
 
 using namespace std;
 
@@ -129,9 +129,10 @@ int main(int argc, char** argv) {
 
 	nframes = 0;
 	while (true) {
-		void*  packet;
-		size_t packetSize;
-		err = GetErr(Decoder_NextPacket(decoder, &packet, &packetSize));
+		void*   packet;
+		size_t  packetSize;
+		int64_t pts, dts;
+		err = GetErr(Decoder_NextPacket(decoder, &packet, &packetSize, &pts, &dts));
 		if (err == "EOF")
 			break;
 		string packetB;

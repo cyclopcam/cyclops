@@ -192,7 +192,7 @@ char* Decoder_NextFrame(void* decoder, AVFrame** output) {
 // This function is inherently wasteful because it clones the contents of the packet.
 // That's not something you'd normally want to do.
 // The caller must free() the packet when done.
-char* Decoder_NextPacket(void* decoder, void** packet, size_t* packetSize) {
+char* Decoder_NextPacket(void* decoder, void** packet, size_t* packetSize, int64_t* pts, int64_t* dts) {
 	int       e = 0;
 	Decoder*  d = (Decoder*) decoder;
 	AVPacket* p = d->DecodePacket;
@@ -212,6 +212,8 @@ char* Decoder_NextPacket(void* decoder, void** packet, size_t* packetSize) {
 				err = DUPSTR(tsf::fmt("malloc(%v) for packet failed", p->size));
 			memcpy(*packet, p->data, p->size);
 			*packetSize = p->size;
+			*pts        = p->pts;
+			*dts        = p->dts;
 		}
 		av_packet_unref(p);
 		if (err != nullptr)
@@ -251,7 +253,7 @@ int64_t Decoder_PTSNano(void* decoder, int64_t pts) {
 	Decoder* d = (Decoder*) decoder;
 	if (d->FormatCtx == nullptr || d->VideoStream >= d->FormatCtx->nb_streams)
 		return -1;
-	return av_rescale_q(pts, d->FormatCtx->streams[d->VideoStream]->time_base, (AVRational){1, 1000000000});
+	return av_rescale_q(pts, d->FormatCtx->streams[d->VideoStream]->time_base, (AVRational) {1, 1000000000});
 }
 
 } // extern "C"
