@@ -42,3 +42,7 @@ int   AvCodecSendPacket(AVCodecContext* ctx, const void* buf, size_t bufLen);
 #ifdef __cplusplus
 }
 #endif
+
+#ifdef __cplusplus
+void DumpNALUHeader(MyCodec codec, const NALU& nalu);
+#endif // __cplusplus

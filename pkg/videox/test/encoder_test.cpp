@@ -56,18 +56,21 @@ void Check(char* e) {
 	assert(false);
 }
 
-int main(int argc, char** argv) {
+void TestCodec(const char* codecName) {
 	int width  = 320;
 	int height = 240;
 
 	// To see a list of available encoders
 	// ffmpeg -encoders | grep 264
 
+	char filename[256];
+	sprintf(filename, "out-%s.mp4", codecName);
+
 	EncoderParams params;
 	int           fps = 60;
-	Check(MakeEncoderParams("h264", width, height, AV_PIX_FMT_RGB24, AV_PIX_FMT_YUV420P, EncoderTypeImageFrames, fps, &params));
+	Check(MakeEncoderParams(codecName, width, height, AV_PIX_FMT_RGB24, AV_PIX_FMT_YUV420P, EncoderTypeImageFrames, fps, &params));
 	void* encoder = nullptr;
-	Check(MakeEncoder(nullptr, "out.mp4", &params, &encoder));
+	Check(MakeEncoder(nullptr, filename, &params, &encoder));
 
 	for (int frameIdx = 0; frameIdx < 500; frameIdx++) {
 		int64_t  ptsNano = (int64_t) frameIdx * 1000000000 / fps;
@@ -88,6 +91,10 @@ int main(int argc, char** argv) {
 
 	// ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of default=nokey=1:noprint_wrappers=1 out.mp4
 	// [frame count]
+}
 
+int main(int argc, char** argv) {
+	TestCodec("h264");
+	TestCodec("h265");
 	return 0;
 }

@@ -59,8 +59,8 @@ bool FindNALUsAvcc(const void* packet, size_t packetSize, std::vector<NALU>& nal
 		i += 4 + n.Size;
 	}
 
-	if (i + 4 < packetSize) {
-		return false; // Not enough data for the last NALU
+	if (i != packetSize) {
+		return false;
 	}
 
 	return true;

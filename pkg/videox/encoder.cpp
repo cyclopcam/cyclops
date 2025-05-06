@@ -42,10 +42,11 @@ struct EncoderCleanup {
 			av_frame_free(&E->OutputFrame);
 		if (E->Packet)
 			av_packet_free(&E->Packet);
-		if (!(E->OutFormatCtx->oformat->flags & AVFMT_NOFILE))
-			avio_closep(&E->OutFormatCtx->pb);
-		if (E->OutFormatCtx)
+		if (E->OutFormatCtx) {
+			if (!(E->OutFormatCtx->oformat->flags & AVFMT_NOFILE))
+				avio_closep(&E->OutFormatCtx->pb);
 			avformat_free_context(E->OutFormatCtx);
+		}
 		if (E->CodecCtx)
 			avcodec_free_context(&E->CodecCtx);
 		if (E->SwsCtx)
@@ -154,7 +155,7 @@ H264NALUTypes GetH264NALUType(const uint8_t* buf) {
 }
 
 H265NALUTypes GetH265NALUType(const uint8_t* buf) {
-	return (H265NALUTypes) (buf[0] & 127);
+	return (H265NALUTypes) ((buf[0] >> 1) & 63);
 }
 
 bool IsVisualPacket(H264NALUTypes t) {
@@ -178,7 +179,7 @@ bool IsEssentialMeta(H264NALUTypes t) {
 }
 
 bool IsEssentialMeta(H265NALUTypes t) {
-	return t == H265NALUTypes::VPS_NUT || t == H265NALUTypes::SPS_NUT || t == H265NALUTypes::PPS_NUT;
+	return t == H265NALUTypes::VPS_NUT || t == H265NALUTypes::SPS_NUT || t == H265NALUTypes::PPS_NUT || t == H265NALUTypes::PREFIX_SEI_NUT;
 }
 
 bool IsEssentialMeta(MyCodec codec, const uint8_t* buf) {
@@ -213,6 +214,18 @@ void AppendNalu(std::string& buf, const void* nalu, size_t size) {
 	buf += (char) 0;
 	buf += (char) 1;
 	buf.append((const char*) nalu, size);
+}
+
+void DumpNALUHeader(MyCodec codec, const NALU& nalu) {
+	if (codec == MyCodec::H264) {
+		H264NALUTypes type = GetH264NALUType((const uint8_t*) nalu.Data);
+		printf("H264 NALU: %d, size %d\n", type, (int) nalu.Size);
+	} else if (codec == MyCodec::H265) {
+		H265NALUTypes type = GetH265NALUType((const uint8_t*) nalu.Data);
+		printf("H265 NALU: %d, size %d\n", type, (int) nalu.Size);
+	} else {
+		printf("Unknown codec: %d, size %d\n", codec, (int) nalu.Size);
+	}
 }
 
 extern "C" {

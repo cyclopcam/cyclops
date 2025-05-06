@@ -10,6 +10,7 @@ extern "C" {
 #include <libavformat/avio.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/pixfmt.h>
+#include <libavutil/opt.h>
 #include <libswscale/swscale.h>
 
 typedef struct NALU {
