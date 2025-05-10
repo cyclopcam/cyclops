@@ -36,21 +36,28 @@ struct EncoderCleanup {
 	~EncoderCleanup() {
 		if (!E)
 			return;
+		if (E->SwsCtx) {
+			//printf("sws_freeContext\n");
+			sws_freeContext(E->SwsCtx);
+		}
 		if (E->InputFrame)
 			av_frame_free(&E->InputFrame);
 		if (E->OutputFrame)
 			av_frame_free(&E->OutputFrame);
 		if (E->Packet)
 			av_packet_free(&E->Packet);
+		if (E->CodecCtx) {
+			//printf("avcodec_free_context\n");
+			avcodec_free_context(&E->CodecCtx);
+		}
 		if (E->OutFormatCtx) {
-			if (!(E->OutFormatCtx->oformat->flags & AVFMT_NOFILE))
+			if (!(E->OutFormatCtx->oformat->flags & AVFMT_NOFILE)) {
+				//printf("avio_closep\n");
 				avio_closep(&E->OutFormatCtx->pb);
+			}
+			//printf("avformat_free_context\n");
 			avformat_free_context(E->OutFormatCtx);
 		}
-		if (E->CodecCtx)
-			avcodec_free_context(&E->CodecCtx);
-		if (E->SwsCtx)
-			sws_freeContext(E->SwsCtx);
 		delete E;
 	}
 };
@@ -219,12 +226,12 @@ void AppendNalu(std::string& buf, const void* nalu, size_t size) {
 void DumpNALUHeader(MyCodec codec, const NALU& nalu) {
 	if (codec == MyCodec::H264) {
 		H264NALUTypes type = GetH264NALUType((const uint8_t*) nalu.Data);
-		printf("H264 NALU: %d, size %d\n", type, (int) nalu.Size);
+		printf("H264 NALU: %d, size %d\n", (int) type, (int) nalu.Size);
 	} else if (codec == MyCodec::H265) {
 		H265NALUTypes type = GetH265NALUType((const uint8_t*) nalu.Data);
-		printf("H265 NALU: %d, size %d\n", type, (int) nalu.Size);
+		printf("H265 NALU: %d, size %d\n", (int) type, (int) nalu.Size);
 	} else {
-		printf("Unknown codec: %d, size %d\n", codec, (int) nalu.Size);
+		printf("Unknown codec: %d, size %d\n", (int) codec, (int) nalu.Size);
 	}
 }
 
@@ -270,8 +277,7 @@ char* MakeEncoderParams(const char* codec, int width, int height, AVPixelFormat 
 			RETURN_ERROR_STR(tsf::fmt("Failed to find encoder '%v'", codec));
 	}
 
-	auto codec_ = GetMyCodec(encoderParams->Codec->id);
-	if (codec_ == MyCodec::None)
+	if (GetMyCodec(encoderParams->Codec->id) == MyCodec::None)
 		RETURN_ERROR_STR(tsf::fmt("Unsupported codec '%v'", codec));
 
 	// If FPS is 0, then just choose an arbitrary timebase,
@@ -316,59 +322,43 @@ char* MakeEncoder(const char* format, const char* filename, EncoderParams* encod
 	if (GetMyCodec(encoder->Codec->id) == MyCodec::None)
 		RETURN_ERROR_STATIC("Unsupported codec");
 
-	encoder->OutStream = avformat_new_stream(encoder->OutFormatCtx, nullptr);
+	encoder->OutStream = avformat_new_stream(encoder->OutFormatCtx, encoder->Codec);
 	if (encoder->OutStream == nullptr)
 		RETURN_ERROR_STATIC("Failed to allocate output format stream");
 
-	encoder->CodecCtx = avcodec_alloc_context3(encoder->Codec);
-	if (encoder->CodecCtx == nullptr)
-		RETURN_ERROR_STATIC("Failed to allocate codec context");
+	if (encoderParams->Type == EncoderTypeImageFrames) {
+		encoder->CodecCtx = avcodec_alloc_context3(encoder->Codec);
+		if (encoder->CodecCtx == nullptr)
+			RETURN_ERROR_STATIC("Failed to allocate codec context");
+		encoder->CodecCtx->width     = encoderParams->Width;
+		encoder->CodecCtx->height    = encoderParams->Height;
+		encoder->CodecCtx->pix_fmt   = encoderParams->PixelFormatOutput;
+		encoder->CodecCtx->time_base = encoderParams->Timebase;
+		if (encoderParams->FPS.num != 0)
+			encoder->CodecCtx->framerate = encoderParams->FPS;
 
-	// ChatGPT suggested moving this to above avcodec_alloc_context3, and making the codec NULL
-	//encoder->OutStream = avformat_new_stream(encoder->OutFormatCtx, encoder->Codec);
-	//if (encoder->OutStream == nullptr)
-	//	RETURN_ERROR_STATIC("Failed to allocate output format stream");
+		//if (avcodec_parameters_from_context(encoder->OutStream->codecpar, encoder->CodecCtx) < 0)
+		//	RETURN_ERROR_STATIC("avcodec_parameters_to_context failed");
 
-	encoder->CodecCtx->width     = encoderParams->Width;
-	encoder->CodecCtx->height    = encoderParams->Height;
-	encoder->CodecCtx->pix_fmt   = encoderParams->PixelFormatOutput;
-	encoder->CodecCtx->time_base = encoderParams->Timebase;
+		if (avcodec_open2(encoder->CodecCtx, encoder->Codec, nullptr) < 0)
+			RETURN_ERROR_STATIC("avcodec_open2 failed");
 
-	if (encoderParams->FPS.num != 0)
-		encoder->CodecCtx->framerate = encoderParams->FPS;
+		if (avcodec_parameters_from_context(encoder->OutStream->codecpar, encoder->CodecCtx) < 0)
+			RETURN_ERROR_STATIC("avcodec_parameters_from_context failed");
+	} else {
+		encoder->OutStream->codecpar->codec_id   = encoder->Codec->id;
+		encoder->OutStream->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
+		encoder->OutStream->codecpar->width      = encoderParams->Width;
+		encoder->OutStream->codecpar->height     = encoderParams->Height;
+		encoder->OutStream->codecpar->format     = encoderParams->PixelFormatOutput;
+		// Setting OutStream->time_base  is just a hint.
+		// When avformat_write_header is called, then OutStream->time_base will likely be changed.
+		// We can also leave it 0/0, and just let the library decide. I'm not sure which method is better.
+		encoder->OutStream->time_base = encoderParams->Timebase;
+	}
 
-	// Setting OutStream->time_base  is just a hint.
-	// When avformat_write_header is called, then OutStream->time_base will likely be changed.
-	// We can also leave it 0/0, and just let the library decide. I'm not sure which method is better.
-	encoder->OutStream->time_base = encoderParams->Timebase;
-	//encoder->OutStream->r_frame_rate   = encoderParams->FPS;
-	//encoder->OutStream->avg_frame_rate = encoderParams->FPS;
-
-	// Before ChatGPT shuffle
-	//if (avcodec_parameters_to_context(encoder->CodecCtx, encoder->OutStream->codecpar) < 0)
-	//	RETURN_ERROR_STATIC("avcodec_parameters_to_context failed");
-
-	// After ChatGPT shuffle
-	if (avcodec_parameters_from_context(encoder->OutStream->codecpar, encoder->CodecCtx) < 0)
-		RETURN_ERROR_STATIC("avcodec_parameters_to_context failed");
-
-	//if (encoder->Codec->id == AV_CODEC_ID_H264)
-	//	encoder->CodecCtx->profile = FF_PROFILE_H264_HIGH;
-
-	//if (encoder->OutFormatCtx->oformat->flags & AVFMT_GLOBALHEADER)
-	//	encoder->CodecCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-
-	// ChatGPT suggested moving this to AFTER avcodec_open2
-	//if (avcodec_parameters_from_context(encoder->OutStream->codecpar, encoder->CodecCtx) < 0)
-	//	RETURN_ERROR_STATIC("avcodec_parameters_from_context failed");
-
-	if (avcodec_open2(encoder->CodecCtx, encoder->Codec, nullptr) < 0)
-		RETURN_ERROR_STATIC("avcodec_open2 failed");
-
-	if (avcodec_parameters_from_context(encoder->OutStream->codecpar, encoder->CodecCtx) < 0)
-		RETURN_ERROR_STATIC("avcodec_parameters_from_context failed");
-
-	if (!!(encoder->CodecCtx->flags & AVFMT_NOFILE))
+	//if (!!(encoder->CodecCtx->flags & AVFMT_NOFILE))
+	if (!!(encoder->OutFormatCtx->flags & AVFMT_NOFILE))
 		RETURN_ERROR_STATIC("codec does not write to a file");
 
 	e = avio_open2(&encoder->OutFormatCtx->pb, filename, AVIO_FLAG_WRITE, nullptr, nullptr);
@@ -387,7 +377,10 @@ char* MakeEncoder(const char* format, const char* filename, EncoderParams* encod
 		encoder->OutputFrame->format = encoder->CodecCtx->pix_fmt;
 		encoder->OutputFrame->width  = encoder->CodecCtx->width;
 		encoder->OutputFrame->height = encoder->CodecCtx->height;
-		e                            = av_frame_get_buffer(encoder->OutputFrame, 0);
+		//encoder->OutputFrame->format = encoder->OutStream->codecpar->format;
+		//encoder->OutputFrame->width  = encoder->OutStream->codecpar->width;
+		//encoder->OutputFrame->height = encoder->OutStream->codecpar->height;
+		e = av_frame_get_buffer(encoder->OutputFrame, 0);
 		if (e < 0)
 			RETURN_ERROR_STR(tsf::fmt("av_frame_get_buffer failed: %v", AvErr(e)));
 
@@ -443,14 +436,13 @@ char* Encoder_WriteNALU(void* _encoder, int64_t dtsNano, int64_t ptsNano, int na
 	auto nalu    = (const uint8_t*) _nalu;
 	auto payload = nalu + naluPrefixLen;
 	auto myCodec = GetMyCodec(encoder->Codec->id);
-	//auto packetType = GetH264NALUType(payload);
 	if (naluPrefixLen != 0 && naluPrefixLen != 3 && naluPrefixLen != 4) {
 		RETURN_ERROR_STR(tsf::fmt("Invalid naluPrefixLen %v. May only be one of: [0, 3, 4]", naluPrefixLen));
 	}
 
 	if (IsEssentialMeta(myCodec, nalu)) {
 		// Buffer up the PreIDR NALUs such as SPS,PPS,SEI,VPS, so that we can send them with the IDR packet.
-		// This is necessary for some codecs, such as H264 and H265.
+		// This is necessary for H264 and H265.
 		encoder->PreIDRNALUs.push_back(WithPrefix(naluPrefixLen, _nalu, naluLen));
 		return nullptr;
 	}
@@ -480,6 +472,9 @@ char* Encoder_WriteNALU(void* _encoder, int64_t dtsNano, int64_t ptsNano, int na
 		for (const auto& p : encoder->PreIDRNALUs)
 			pre += p.size();
 
+		// If you ever need to send the SPS and PPS as side data, then according to Grok, you must
+		// encode it in avcc format, not annexb. That's a possible reason why the following commented-out
+		// code didn't work.
 		//uint8_t* side = av_packet_new_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA, sps.size() + pps.size());
 		//memcpy(side, sps.data(), sps.size());
 		//memcpy(side + sps.size(), pps.data(), pps.size());
@@ -622,17 +617,19 @@ char* Encoder_WriteFrame(void* _encoder, int64_t ptsNano) {
 char* Encoder_WriteTrailer(void* _encoder) {
 	Encoder* encoder = (Encoder*) _encoder;
 
-	// Flush the encoder
-	int e = avcodec_send_frame(encoder->CodecCtx, nullptr);
-	if (e < 0)
-		RETURN_ERROR_STR(tsf::fmt("avcodec_send_frame (flush) failed: %v", AvErr(e)));
+	if (encoder->CodecCtx != nullptr) {
+		// Flush the encoder
+		int e = avcodec_send_frame(encoder->CodecCtx, nullptr);
+		if (e < 0)
+			RETURN_ERROR_STR(tsf::fmt("avcodec_send_frame (flush) failed: %v", AvErr(e)));
 
-	// Write remaining packets (if any)
-	char* err = WriteBufferedPackets(encoder);
-	if (err != nullptr)
-		return err;
+		// Write remaining packets (if any)
+		char* err = WriteBufferedPackets(encoder);
+		if (err != nullptr)
+			return err;
+	}
 
-	e = av_write_trailer(encoder->OutFormatCtx);
+	int e = av_write_trailer(encoder->OutFormatCtx);
 	if (e < 0)
 		RETURN_ERROR_STR(tsf::fmt("av_write_trailer failed: %v", AvErr(e)));
 	return nullptr;

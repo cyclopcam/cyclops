@@ -10,8 +10,8 @@
 // cd pkg/videox
 
 // Build and run:
-// clang++    -O2 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -lswscale -o test/encoder_test test/encoder_test.cpp encoder.cpp && ./test/encoder_test
-// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -lswscale -o test/encoder_test test/encoder_test.cpp encoder.cpp && ./test/encoder_test
+// clang++    -O2 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -lswscale -o test/encoder_test test/encoder_test.cpp encoder.cpp common.cpp && test/encoder_test
+// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -lswscale -o test/encoder_test test/encoder_test.cpp encoder.cpp common.cpp && test/encoder_test
 
 // Debug build:
 // clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -lswscale -o test/encoder_test test/encoder_test.cpp encoder.cpp common.cpp
