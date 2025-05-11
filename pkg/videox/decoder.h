@@ -21,3 +21,7 @@ int64_t Decoder_PTSNano(void* decoder, int64_t pts);
 #ifdef __cplusplus
 }
 #endif
+
+// SYNC-SPECIAL-FFMPEG-ERRORS
+static char* ERROR_EOF    = (char*) 1; // End of stream
+static char* ERROR_EAGAIN = (char*) 2; // No frame available yet

@@ -29,6 +29,7 @@ void CheckBool(bool b) {
 }
 
 void TestCodec(const char* codecName) {
+	printf("Testing codec %s\n", codecName);
 	char infilename[256];
 	char outfilename[256];
 	sprintf(infilename, "out-%s.mp4", codecName);
@@ -52,8 +53,7 @@ void TestCodec(const char* codecName) {
 		int64_t dts        = 0;
 		char*   err        = Decoder_NextPacket(decoder, &packet, &packetSize, &pts, &dts);
 		if (err != nullptr) {
-			if (strcmp(err, "EOF") == 0) {
-				free(err);
+			if (err == ERROR_EOF) {
 				break;
 			}
 			Check(err);
@@ -65,7 +65,7 @@ void TestCodec(const char* codecName) {
 		int64_t ptsNano = Decoder_PTSNano(decoder, pts);
 
 		for (const auto& nalu : nalus) {
-			DumpNALUHeader(GetMyCodec(encoderParams.Codec->id), nalu);
+			//DumpNALUHeader(GetMyCodec(encoderParams.Codec->id), nalu);
 			Check(Encoder_WriteNALU(encoder, dtsNano, ptsNano, 0, nalu.Data, nalu.Size));
 		}
 
@@ -76,6 +76,7 @@ void TestCodec(const char* codecName) {
 
 	Decoder_Close(decoder);
 	Encoder_Close(encoder);
+	printf("%s OK\n", codecName);
 }
 
 int main(int argc, char** argv) {

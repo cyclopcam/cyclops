@@ -47,10 +47,6 @@ inline std::string AvErr(int e) {
 //#define ERROR_EOF "EOF"       // End of stream
 //#define ERROR_EAGAIN "EAGAIN" // No frame available yet
 
-// SYNC-SPECIAL-FFMPEG-ERRORS
-static char* ERROR_EOF    = (char*) 1; // End of stream
-static char* ERROR_EAGAIN = (char*) 2; // No frame available yet
-
 //inline char* ShallowCopyFrameToYUVImage(AVFrame* srcFrame, YUVImage* output) {
 //	// The strides are typically quite a bit more than the width (or width/2 for UV).
 //	//if (srcFrame->linesize[0] < srcFrame->width)
