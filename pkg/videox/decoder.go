@@ -15,6 +15,8 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/accel"
 )
 
+var ErrNoFrame = errors.New("No frame available") // No frame available yet; Try sending more data
+
 // VideoDecoder is a wrapper around ffmpeg, for decoding videos
 type VideoDecoder struct {
 	decoder unsafe.Pointer
@@ -38,11 +40,20 @@ func takeCError(err *C.char) error {
 	if err == nil {
 		return nil
 	}
+	// SYNC-SPECIAL-FFMPEG-ERRORS
+	switch uintptr(unsafe.Pointer(err)) {
+	case 1:
+		return io.EOF
+	case 2:
+		return ErrNoFrame
+	}
 	e := errors.New(C.GoString(err))
 	C.free(unsafe.Pointer(err))
-	if e.Error() == "EOF" {
-		return io.EOF
-	}
+	//if e.Error() == "EOF" {
+	//	return io.EOF
+	//} else if e.Error() == "EAGAIN" {
+	//	return ErrNoFrame
+	//}
 	return e
 }
 
@@ -105,7 +116,7 @@ func (d *VideoDecoder) NextFrame() (*Frame, error) {
 // The next call to NextFrame/NextFrameDeepRef will invalidate that image.
 func (d *VideoDecoder) NextFrameDeepRef() (*Frame, error) {
 	var frame *C.AVFrame
-	err := takeCError(C.Decoder_NextFrame(d.decoder, &frame))
+	err := takeCError(C.Decoder_ReadAndReceiveFrame(d.decoder, &frame))
 	if err != nil {
 		return nil, err
 	}
@@ -135,6 +146,24 @@ func (d *VideoDecoder) DecodeDeepRef(packet *VideoPacket) (*Frame, error) {
 	var frame *C.AVFrame
 	encoded := packet.EncodeToAnnexBPacket()
 	err := takeCError(C.Decoder_DecodePacket(d.decoder, unsafe.Pointer(&encoded[0]), C.size_t(len(encoded)), &frame))
+	if err != nil {
+		return nil, err
+	}
+	img := makeYUV420ImageDeepUnsafeReference(frame)
+	return &Frame{
+		Image: &img,
+		PTS:   int64(frame.pts),
+	}, nil
+}
+
+// WARNING: The image returned is only valid while the decoder is still alive,
+// and it will be clobbered by the subsequent DecodeDeepRef/Decode().
+// The pixels in the returned image are not a garbage-collected Go slice.
+// They point directly into the libavcodec decode buffer.
+// That's why the function name has the "DeepRef" suffix.
+func (d *VideoDecoder) ReceiveFrameDeepRef() (*Frame, error) {
+	var frame *C.AVFrame
+	err := takeCError(C.Decoder_ReceiveFrame(d.decoder, &frame))
 	if err != nil {
 		return nil, err
 	}

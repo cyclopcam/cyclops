@@ -23,19 +23,52 @@ MyCodec GetMyCodec(AVCodecID codecId) {
 }
 
 void FindNALUsAnnexB(const void* packet, size_t packetSize, std::vector<NALU>& nalus) {
-	const uint8_t* in = (const uint8_t*) packet;
-	size_t         i  = 0;
+	const uint8_t* in      = (const uint8_t*) packet;
+	size_t         i       = 0;
+	size_t         prevEnd = 0;
 
-	for (; i < packetSize - 2; i++) {
-		if (in[i] == 0 && in[i + 1] == 0 && in[i + 2] == 1) {
-			nalus.push_back(NALU{in + i + 3, 0});
+	if (packetSize < 4) {
+		// too small
+		return;
+	}
+	size_t startCodeSize = 0;
+	if (in[i] == 0 &&
+	    in[i + 1] == 0 &&
+	    in[i + 2] == 0 &&
+	    in[i + 3] == 1) {
+		startCodeSize = 4;
+	} else if (in[i] == 0 &&
+	           in[i + 1] == 0 &&
+	           in[i + 2] == 1) {
+		startCodeSize = 3;
+	} else {
+		// No start code
+		return;
+	}
+
+	if (startCodeSize == 4) {
+		for (; i < packetSize - 4; i++) {
+			if (in[i] == 0 &&
+			    in[i + 1] == 0 &&
+			    in[i + 2] == 0 &&
+			    in[i + 3] == 1) {
+				nalus.push_back(NALU{in + i + 4, 0});
+			}
+		}
+	} else {
+		for (; i < packetSize - 3; i++) {
+			if (in[i] == 0 &&
+			    in[i + 1] == 0 &&
+			    in[i + 2] == 1) {
+				nalus.push_back(NALU{in + i + 3, 0});
+			}
 		}
 	}
 	// add terminal
 	nalus.push_back(NALU{in + packetSize, 0});
 
 	for (size_t k = 0; k < nalus.size() - 1; k++) {
-		nalus[k].Size = (uint8_t*) nalus[k + 1].Data - (uint8_t*) nalus[k].Data;
+		nalus[k].Size = (uint8_t*) nalus[k + 1].Data - (uint8_t*) nalus[k].Data - startCodeSize;
 	}
 
 	// remove terminal
@@ -64,4 +97,16 @@ bool FindNALUsAvcc(const void* packet, size_t packetSize, std::vector<NALU>& nal
 	}
 
 	return true;
+}
+
+void DumpNALUHeader(MyCodec codec, const NALU& nalu) {
+	if (codec == MyCodec::H264) {
+		H264NALUTypes type = GetH264NALUType((const uint8_t*) nalu.Data);
+		printf("H264 NALU: %d, size %d\n", (int) type, (int) nalu.Size);
+	} else if (codec == MyCodec::H265) {
+		H265NALUTypes type = GetH265NALUType((const uint8_t*) nalu.Data);
+		printf("H265 NALU: %d, size %d\n", (int) type, (int) nalu.Size);
+	} else {
+		printf("Unknown codec: %d, size %d\n", (int) codec, (int) nalu.Size);
+	}
 }

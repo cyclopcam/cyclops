@@ -10,6 +10,8 @@ struct Decoder {
 	AVFrame*         DstFrame     = nullptr;
 	uint8_t*         DstFramePtr  = nullptr;
 	AVPacket*        DecodePacket = nullptr; // Used during decode
+
+	//bool             NeedInit     = false;
 };
 
 struct DecoderCleanup {
@@ -42,7 +44,12 @@ inline std::string AvErr(int e) {
 #define DUPSTR(s) strdup(s.c_str())
 #define RETURN_ERROR_STR(msg) return strdup(msg.c_str())
 #define RETURN_ERROR_STATIC(msg) return strdup(msg)
-#define ERROR_EOF "EOF"
+//#define ERROR_EOF "EOF"       // End of stream
+//#define ERROR_EAGAIN "EAGAIN" // No frame available yet
+
+// SYNC-SPECIAL-FFMPEG-ERRORS
+static char* ERROR_EOF    = (char*) 1; // End of stream
+static char* ERROR_EAGAIN = (char*) 2; // No frame available yet
 
 //inline char* ShallowCopyFrameToYUVImage(AVFrame* srcFrame, YUVImage* output) {
 //	// The strides are typically quite a bit more than the width (or width/2 for UV).
@@ -103,12 +110,13 @@ char* MakeDecoder(const char* filename, const char* codecName, void** output_dec
 			return DUPSTR(tsf::fmt("avcodec_parameters_to_context(%v) failed: %v", filename, AvErr(e)));
 	} else if (codecName != nullptr) {
 		AVCodecID codecID = AV_CODEC_ID_NONE;
-		if (strcmp(codecName, "h264") == 0)
+		if (strcmp(codecName, "h264") == 0) {
 			codecID = AV_CODEC_ID_H264;
-		else if (strcmp(codecName, "h265") == 0)
-			codecID = AV_CODEC_ID_H265;
-		else
-			return strdup("Unknown codec. Only valid values are 'h264' and 'h265'");
+		} else if (strcmp(codecName, "h265") == 0 || strcmp(codecName, "hevc") == 0) {
+			//d->NeedInit = true;
+			codecID = AV_CODEC_ID_HEVC;
+		} else
+			return strdup("Unknown codec. Only valid values are 'h264', 'h265', and 'hevc'");
 
 		codec = avcodec_find_decoder(codecID);
 		if (codec == nullptr)
@@ -142,6 +150,14 @@ void Decoder_Close(void* decoder) {
 	DecoderCleanup cleanup((Decoder*) decoder);
 }
 
+// Do not free the codecName string. It is a static string.
+void Decoder_VideoInfo(void* decoder, int* width, int* height, const char** codecName) {
+	Decoder* d = (Decoder*) decoder;
+	*width     = d->CodecCtx->width;
+	*height    = d->CodecCtx->height;
+	*codecName = avcodec_get_name(d->CodecCtx->codec_id);
+}
+
 void Decoder_VideoSize(void* decoder, int* width, int* height) {
 	Decoder* d = (Decoder*) decoder;
 	*width     = d->CodecCtx->width;
@@ -149,7 +165,7 @@ void Decoder_VideoSize(void* decoder, int* width, int* height) {
 }
 
 // Decode the next frame in the video file
-char* Decoder_NextFrame(void* decoder, AVFrame** output) {
+char* Decoder_ReadAndReceiveFrame(void* decoder, AVFrame** output) {
 	int       e      = 0;
 	Decoder*  d      = (Decoder*) decoder;
 	AVPacket* packet = d->DecodePacket;
@@ -157,7 +173,7 @@ char* Decoder_NextFrame(void* decoder, AVFrame** output) {
 	while (true) {
 		e = av_read_frame(d->FormatCtx, packet);
 		if (e == AVERROR_EOF)
-			return strdup(ERROR_EOF);
+			return ERROR_EOF;
 		else if (e < 0)
 			return DUPSTR(tsf::fmt("av_read_frame() failed: %v", AvErr(e)));
 
@@ -174,9 +190,29 @@ char* Decoder_NextFrame(void* decoder, AVFrame** output) {
 
 		e = avcodec_receive_frame(d->CodecCtx, d->SrcFrame);
 		if (e == AVERROR_EOF)
-			return strdup(ERROR_EOF);
+			return ERROR_EOF;
 		else if (e == AVERROR(EAGAIN))
 			continue;
+		else if (e < 0)
+			return DUPSTR(tsf::fmt("avcodec_receive_frame() failed: %v", AvErr(e)));
+
+		*output = d->SrcFrame;
+		return nullptr;
+	}
+}
+
+// If there is a frame available, return it
+char* Decoder_ReceiveFrame(void* decoder, AVFrame** output) {
+	int       e      = 0;
+	Decoder*  d      = (Decoder*) decoder;
+	AVPacket* packet = d->DecodePacket;
+
+	while (true) {
+		e = avcodec_receive_frame(d->CodecCtx, d->SrcFrame);
+		if (e == AVERROR_EOF)
+			return ERROR_EOF;
+		else if (e == AVERROR(EAGAIN))
+			return ERROR_EAGAIN;
 		else if (e < 0)
 			return DUPSTR(tsf::fmt("avcodec_receive_frame() failed: %v", AvErr(e)));
 
@@ -200,7 +236,7 @@ char* Decoder_NextPacket(void* decoder, void** packet, size_t* packetSize, int64
 	while (true) {
 		e = av_read_frame(d->FormatCtx, p);
 		if (e == AVERROR_EOF)
-			return strdup(ERROR_EOF);
+			return ERROR_EOF;
 		else if (e < 0)
 			return DUPSTR(tsf::fmt("av_read_frame() failed: %v", AvErr(e)));
 
@@ -225,8 +261,8 @@ char* Decoder_NextPacket(void* decoder, void** packet, size_t* packetSize, int64
 	}
 }
 
-// Decode a packet from a video stream
-char* Decoder_DecodePacket(void* decoder, const void* packet, size_t packetSize, AVFrame** output) {
+// Decode a packet from a video stream, but do not attempt to receive a frame.
+char* Decoder_OnlyDecodePacket(void* decoder, const void* packet, size_t packetSize) {
 	int       e = 0;
 	Decoder*  d = (Decoder*) decoder;
 	AVPacket* p = d->DecodePacket;
@@ -238,9 +274,22 @@ char* Decoder_DecodePacket(void* decoder, const void* packet, size_t packetSize,
 	if (e < 0)
 		return DUPSTR(tsf::fmt("avcodec_send_packet() failed: %v", AvErr(e)));
 
-	e = avcodec_receive_frame(d->CodecCtx, d->SrcFrame);
+	return nullptr;
+}
+
+// Decode a packet from a video stream, and then try to receive a frame.
+char* Decoder_DecodePacket(void* decoder, const void* packet, size_t packetSize, AVFrame** output) {
+	Decoder* d = (Decoder*) decoder;
+
+	char* err = Decoder_OnlyDecodePacket(decoder, packet, packetSize);
+	if (err != nullptr)
+		return err;
+
+	int e = avcodec_receive_frame(d->CodecCtx, d->SrcFrame);
 	if (e == AVERROR_EOF)
-		return strdup(ERROR_EOF);
+		return ERROR_EOF;
+	else if (e == AVERROR(EAGAIN))
+		return ERROR_EAGAIN;
 	else if (e < 0)
 		return DUPSTR(tsf::fmt("avcodec_receive_frame() failed: %v", AvErr(e)));
 

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string>
 #include "decoder.h"
+#include "encoder.h"
 #include "annexb.h"
 #include "tsf.hpp"
 
@@ -8,20 +9,34 @@
 // cd pkg/videox
 
 // Build and run:
-// clang++    -O2 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp && ./test/decoder_test
-// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp && ./test/decoder_test
+// clang++    -O2 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp && ./test/decoder_test
+// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp && ./test/decoder_test
 
 // Debug build:
-// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp
+// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp
 
 using namespace std;
 
 string GetErr(char* e) {
 	if (e == nullptr)
 		return "";
+
+	// SYNC-SPECIAL-FFMPEG-ERRORS
+	if ((intptr_t) e == 1)
+		return "EOF";
+	else if ((intptr_t) e == 2)
+		return "EAGAIN";
+
 	string err = e;
 	free(e);
 	return err;
+}
+
+void AssertNoError(std::string err) {
+	if (err != "") {
+		tsf::print("Unexpected error: %v\n", err);
+		assert(false);
+	}
 }
 
 bool IsFramePopulated(AVFrame* img, int expectWidth, int expectHeight) {
@@ -46,7 +61,7 @@ bool IsFramePopulated(AVFrame* img, int expectWidth, int expectHeight) {
 
 // Encode a packet in AVC format (length prefix) to Annex-B format.
 // Assume length prefixes are 4 bytes.
-std::string EncodeAVCToAnnexB(const void* src, size_t srcSize, std::string& out) {
+std::string EncodeAVCToAnnexB(bool escapeStartCodes, const void* src, size_t srcSize, std::string& out) {
 	const uint8_t* s = (const uint8_t*) src;
 	out.resize(8 + srcSize * 110 / 100); // something fishy if we're growing by more than 8 + 10% bytes
 	uint8_t* outP   = (uint8_t*) out.data();
@@ -57,14 +72,21 @@ std::string EncodeAVCToAnnexB(const void* src, size_t srcSize, std::string& out)
 		size_t length = (s[0] << 24) | (s[1] << 16) | (s[2] << 8) | s[3];
 		if (srcSize < length + 4)
 			return "packet size with payload too small";
-		*outP++        = 0;
-		*outP++        = 0;
-		*outP++        = 0;
-		*outP++        = 1;
-		size_t written = EncodeAnnexB(s + 4, length, outP, outEnd - outP);
-		if (written == 0)
-			return "EncodeAnnexB out of space";
-		outP += written;
+		//DumpNALUHeader(MyCodec::H265, NALU{s + 4, length});
+		*outP++ = 0;
+		*outP++ = 0;
+		*outP++ = 1;
+		if (escapeStartCodes) {
+			size_t written = EncodeAnnexB(s + 4, length, outP, outEnd - outP);
+			if (written == 0)
+				return "EncodeAnnexB out of space";
+			outP += written;
+		} else {
+			if (outEnd - outP < length)
+				return "out of space";
+			memcpy(outP, s + 4, length);
+			outP += length;
+		}
 		s += length + 4;
 		srcSize -= length + 4;
 	}
@@ -72,21 +94,19 @@ std::string EncodeAVCToAnnexB(const void* src, size_t srcSize, std::string& out)
 	return "";
 }
 
-int main(int argc, char** argv) {
+void TestFile(std::string filename, int expectedFrameCount) {
+	tsf::print("Testing %v\n", filename);
+
 	string err;
-	//printf("Hello\n");
-	void* decoder = nullptr;
+	void*  decoder = nullptr;
 
-	// Fail to open a non-existent file
-	err = GetErr(MakeDecoder("foo.mp4", nullptr, &decoder));
-	//tsf::print("%v\n", err);
-	assert(err.find("No such file") != string::npos);
+	err = GetErr(MakeDecoder(filename.c_str(), nullptr, &decoder));
 
-	// Open a real file
-	err = GetErr(MakeDecoder("../../testdata/tracking/0001-LD.mp4", nullptr, &decoder));
-	assert(err == "");
-	int width, height;
-	Decoder_VideoSize(decoder, &width, &height);
+	tsf::print("phase 1\n");
+
+	const char* codecName = "";
+	int         width, height;
+	Decoder_VideoInfo(decoder, &width, &height, &codecName);
 	assert(width == 320);
 	assert(height == 240);
 	// Decode frames
@@ -94,7 +114,7 @@ int main(int argc, char** argv) {
 	int64_t ptsPrev = 0;
 	while (true) {
 		AVFrame* img;
-		err = GetErr(Decoder_NextFrame(decoder, &img));
+		err = GetErr(Decoder_ReadAndReceiveFrame(decoder, &img));
 		if (err == "EOF")
 			break;
 		nframes++;
@@ -106,18 +126,23 @@ int main(int argc, char** argv) {
 	// To get the true number of frames in a video, do this:
 	// ffmpeg -i ../../testdata/tracking/0001-LD.mp4 -map 0:v:0 -c copy -f null - 2>&1 | grep "frame="
 	//tsf::print("nframes %v\n", nframes);
-	assert(nframes == 64);
+	if (expectedFrameCount != 0)
+		assert(nframes == expectedFrameCount);
+	else
+		assert(nframes != 0);
 	Decoder_Close(decoder);
 
 	// Repeat the same test, but this time we read raw packets out of the file,
 	// and pass them into a 2nd decoder. The 2nd decoder is testing our streaming
 	// API, which is what gets used when decoding live video from a camera.
-	err = GetErr(MakeDecoder("../../testdata/tracking/0001-LD.mp4", nullptr, &decoder));
-	assert(err == "");
+	err = GetErr(MakeDecoder(filename.c_str(), nullptr, &decoder));
+	AssertNoError(err);
+
+	tsf::print("phase 2\n");
 
 	void* decoder2 = nullptr;
-	err            = GetErr(MakeDecoder(nullptr, "h264", &decoder2));
-	assert(err == "");
+	err            = GetErr(MakeDecoder(nullptr, codecName, &decoder2));
+	AssertNoError(err);
 
 	// There's a wrinkle here, which is that mp4 files store packets in AVC format,
 	// which is length-prefix. If you look at the first 4 bytes of the first packet,
@@ -126,6 +151,15 @@ int main(int argc, char** argv) {
 	// it might be possible to tell the codec to accept length-prefixed packets,
 	// but since annex-b is what I've had to deal with coming from cameras so far,
 	// I'd rather stick with that for the unit test.
+	// HOWEVER:
+	// It looks like the data coming out of a .mp4 file is already escaped for annex-b.
+	// For my h264 samples I suspect there were no escaped bytes, so I didn't notice.
+	// But for h265, I needed to disable escaping to get the decoder to work.
+	bool addEscapeBytes = false;
+
+	// When doing this type of test, we need to decouple the frame extraction from
+	// the decoding of packets. For my h264 tests, this wasn't necessary, but for
+	// my h265 tests, I only get a frame out after the first 3 frames have gone in.
 
 	nframes = 0;
 	while (true) {
@@ -136,18 +170,46 @@ int main(int argc, char** argv) {
 		if (err == "EOF")
 			break;
 		string packetB;
-		err = EncodeAVCToAnnexB(packet, packetSize, packetB);
+		err = EncodeAVCToAnnexB(addEscapeBytes, packet, packetSize, packetB);
 		free(packet);
-		assert(err == "");
+		AssertNoError(err);
 		nframes++;
-		AVFrame* img;
-		err = GetErr(Decoder_DecodePacket(decoder2, packetB.data(), packetB.size(), &img));
-		assert(IsFramePopulated(img, width, height));
+		err = GetErr(Decoder_OnlyDecodePacket(decoder2, packetB.data(), packetB.size()));
+		if (err == "EAGAIN") {
+			// no frame available yet
+			continue;
+		}
+
+		while (true) {
+			AVFrame* img;
+			err = GetErr(Decoder_ReceiveFrame(decoder2, &img));
+			if (err == "EAGAIN") {
+				// no frame available yet
+				break;
+			} else if (err != "") {
+				tsf::print("Decoder_DecodePacket failed: %v\n", err);
+				assert(false);
+			}
+			assert(IsFramePopulated(img, width, height));
+		}
 	}
-	assert(nframes == 64);
+	if (expectedFrameCount != 0)
+		assert(nframes == expectedFrameCount);
+	else
+		assert(nframes != 0);
 	Decoder_Close(decoder);
 	Decoder_Close(decoder2);
 
 	tsf::print("decoder tests passed\n");
-	return 0;
+}
+
+int main(int argc, char** argv) {
+	void* decoder = nullptr;
+
+	// Fail to open a non-existent file
+	string err = GetErr(MakeDecoder("foo.mp4", nullptr, &decoder));
+	assert(err.find("No such file") != string::npos);
+
+	TestFile("../../testdata/tracking/0001-LD.mp4", 64);
+	TestFile("out-h265.mp4", 0);
 }

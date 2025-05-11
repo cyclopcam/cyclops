@@ -37,12 +37,7 @@ char* Encoder_WriteFrame(void* encoder, int64_t ptsNano);
 char* Encoder_WriteTrailer(void* encoder);
 void  SetPacketDataPointer(void* pkt, const void* buf, size_t bufLen);
 char* GetAvErrorStr(int averr);
-int   AvCodecSendPacket(AVCodecContext* ctx, const void* buf, size_t bufLen);
 
 #ifdef __cplusplus
 }
 #endif
-
-#ifdef __cplusplus
-void DumpNALUHeader(MyCodec codec, const NALU& nalu);
-#endif // __cplusplus
