@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/monitor"
@@ -308,7 +307,7 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 				// Don't send any IFrames until we've sent a keyframe
 				continue
 			}
-			if frame.HasType(h264.NALUTypeIDR) {
+			if frame.HasAbstractType(videox.AbstractNALUTypeIDR) {
 				sentIDR = true
 			}
 
@@ -320,7 +319,7 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 
 			binary.Write(&buf, binary.LittleEndian, flags)
 			binary.Write(&buf, binary.LittleEndian, uint32(frame.ValidRecvID))
-			for _, n := range frame.H264NALUs {
+			for _, n := range frame.NALUs {
 				//if n.PrefixLen == 0 {
 				//	buf.Write([]byte{0, 0, 1})
 				//}

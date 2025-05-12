@@ -13,7 +13,7 @@ func ExtractFsvPackets(input []fsv.NALU) *PacketBuffer {
 
 	packet := &VideoPacket{
 		WallPTS: input[0].PTS,
-		H264PTS: 0,
+		PTS:     0,
 	}
 
 	for _, p := range input {
@@ -21,14 +21,14 @@ func ExtractFsvPackets(input []fsv.NALU) *PacketBuffer {
 			pb.Packets = append(pb.Packets, packet)
 			packet = &VideoPacket{
 				WallPTS: p.PTS,
-				H264PTS: p.PTS.Sub(input[0].PTS),
+				PTS:     p.PTS.Sub(input[0].PTS),
 			}
 		}
 		n := NALU{
 			PayloadIsAnnexB: p.Flags&fsv.NALUFlagAnnexB != 0,
 			Payload:         p.Payload,
 		}
-		packet.H264NALUs = append(packet.H264NALUs, n)
+		packet.NALUs = append(packet.NALUs, n)
 	}
 	pb.Packets = append(pb.Packets, packet)
 

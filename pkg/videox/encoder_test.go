@@ -24,10 +24,10 @@ func disabledTestEncoder(t *testing.T) {
 	t.Logf("width: %v, height: %v, err: %v", width, height, err)
 
 	for ipacket, packet := range raw.Packets {
-		dts := packet.H264PTS
+		dts := packet.PTS
 		pts := dts + time.Nanosecond
-		t.Logf("Writing packet %v at dst:%v, pts:%v (size[0] %v)", ipacket, dts.Nanoseconds(), pts.Nanoseconds(), len(packet.H264NALUs[0].Payload))
-		for _, nalu := range packet.H264NALUs {
+		t.Logf("Writing packet %v at dst:%v, pts:%v (size[0] %v)", ipacket, dts.Nanoseconds(), pts.Nanoseconds(), len(packet.NALUs[0].Payload))
+		for _, nalu := range packet.NALUs {
 			err := enc.WriteNALU(dts, pts, nalu)
 			require.Nil(t, err)
 			dts++

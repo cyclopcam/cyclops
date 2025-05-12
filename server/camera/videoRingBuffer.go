@@ -193,7 +193,7 @@ func (r *VideoRingBuffer) ExtractRawBufferNoLock(method ExtractMethod, duration 
 	firstPacket := -1
 	{
 		_, lastPacket, _ := r.Buffer.Peek(bufLen - 1)
-		endPTS := lastPacket.H264PTS
+		endPTS := lastPacket.PTS
 
 		// Assume that all cameras always send SPS + PPS + IDR in a single packet.
 		oldestIDR := -1
@@ -201,9 +201,9 @@ func (r *VideoRingBuffer) ExtractRawBufferNoLock(method ExtractMethod, duration 
 		satisfied := false
 		for i := bufLen - 1; i >= 0; i-- {
 			_, packet, _ := r.Buffer.Peek(i)
-			timeDelta := endPTS - packet.H264PTS
+			timeDelta := endPTS - packet.PTS
 			//r.Log.Infof("%v < %v ?", timeDelta, duration)
-			if packet.HasType(h264.NALUTypeIDR) {
+			if packet.HasAbstractType(videox.AbstractNALUTypeIDR) {
 				oldestIDR = i
 				oldestIDRTimeDelta = timeDelta
 				if timeDelta >= duration {
@@ -272,7 +272,7 @@ func (r *VideoRingBuffer) FindLatestIDRPacketNoLock() int {
 	i := r.Buffer.Len() - 1
 	for ; i >= 0; i-- {
 		_, packet, _ := r.Buffer.Peek(i)
-		if packet.HasType(h264.NALUTypeIDR) {
+		if packet.HasAbstractType(videox.AbstractNALUTypeIDR) {
 			return i
 		}
 	}
@@ -282,16 +282,16 @@ func (r *VideoRingBuffer) FindLatestIDRPacketNoLock() int {
 func (r *VideoRingBuffer) debugAnalyzePacket(packet *videox.VideoPacket) {
 	// My Hikvision cameras always send SPS + PPS + IDR in a single packet for h264.
 	// I have no idea whether other cameras do the same thing.
-	if packet.HasIDR() {
-		hasPPS := packet.HasType(h264.NALUTypePPS)
-		hasSPS := packet.HasType(h264.NALUTypeSPS)
-		if hasPPS && hasSPS {
-			sps := packet.FirstNALUOfType(h264.NALUTypeSPS)
-			pps := packet.FirstNALUOfType(h264.NALUTypePPS)
-			idr := packet.FirstNALUOfType(h264.NALUTypeIDR)
-			fmt.Printf("IDR packet. SPS=%v PPS=%v IDR=%v\n", len(sps.Payload), len(pps.Payload), len(idr.Payload))
-		} else {
-			fmt.Printf("IDR packet. SPS=%v PPS=%v IDR=%v\n", len(packet.H264NALUs), hasSPS, hasPPS)
+	if packet.Codec == videox.CodecH264 {
+		if packet.HasIDR() {
+			sps := packet.FirstNALUOfType264(h264.NALUTypeSPS)
+			pps := packet.FirstNALUOfType264(h264.NALUTypePPS)
+			idr := packet.FirstNALUOfType264(h264.NALUTypeIDR)
+			if sps != nil && pps != nil && idr != nil {
+				fmt.Printf("IDR packet. SPS=%v PPS=%v IDR=%v\n", len(sps.Payload), len(pps.Payload), len(idr.Payload))
+			} else {
+				fmt.Printf("IDR packet without SPS and PPS\n")
+			}
 		}
 	}
 }

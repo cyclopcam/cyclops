@@ -7,7 +7,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/bmharper/cimg/v2"
 	"github.com/cyclopcam/cyclops/pkg/accel"
 )
@@ -18,9 +17,9 @@ import (
 // #include <libavutil/imgutils.h>
 import "C"
 
-func IsVisualPacket(t h264.NALUType) bool {
-	return int(t) >= 1 && int(t) <= 5
-}
+//func IsVisualNALU(t h264.NALUType) bool {
+//	return int(t) >= 1 && int(t) <= 5
+//}
 
 var ErrResourceTemporarilyUnavailable = errors.New("Resource temporarily unavailable") // common response from avcodec_receive_frame if a frame is not available
 

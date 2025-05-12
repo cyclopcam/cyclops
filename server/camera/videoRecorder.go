@@ -4,7 +4,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
@@ -147,19 +146,24 @@ func (r *VideoRecorder) extractStreamParameters(buffer *videox.PacketBuffer) err
 }
 
 func (r *VideoRecorder) writePackets(packets []*videox.VideoPacket) {
+	if len(packets) == 0 {
+		return
+	}
 	nalus := []fsv.NALU{}
 	for _, p := range packets {
-		for _, in := range p.H264NALUs {
-			inType := in.Type()
+		for _, in := range p.NALUs {
+			inType := in.AbstractType(p.Codec)
 			// We always encode as Annex-B, because this makes it very easy to
 			// get video on the screen using easily available tools.
 			// For example, you can take an fsv archive file and use ffmpeg to
 			// extract frames, or convert it to an mp4 or whatever.
+			// For example, if you rename one of our FSV archive files to .h264:
+			// ffmpeg -r 15 -i test.h264 -c:v copy -f mp4 out.mp4
 			flags := fsv.NALUFlagAnnexB
-			if inType == h264.NALUTypePPS || inType == h264.NALUTypeSPS {
+			if inType == videox.AbstractNALUTypeEssentialMeta {
 				flags |= fsv.NALUFlagEssentialMeta
 			}
-			if inType == h264.NALUTypeIDR {
+			if inType == videox.AbstractNALUTypeIDR {
 				flags |= fsv.NALUFlagKeyFrame
 			}
 			out := fsv.NALU{
@@ -171,7 +175,7 @@ func (r *VideoRecorder) writePackets(packets []*videox.VideoPacket) {
 		}
 	}
 	tracks := map[string]fsv.TrackPayload{
-		"video": fsv.MakeVideoPayload(rf1.CodecH264, r.videoWidth, r.videoHeight, nalus),
+		"video": fsv.MakeVideoPayload(codecToRf1(packets[0].Codec), r.videoWidth, r.videoHeight, nalus),
 	}
 	if err := r.archive.Write(r.streamName, tracks); err != nil {
 		now := time.Now()
@@ -179,5 +183,16 @@ func (r *VideoRecorder) writePackets(packets []*videox.VideoPacket) {
 			r.lastWriteWarning = now
 			r.Log.Warnf("Recorder failed to write to archive: %v", err)
 		}
+	}
+}
+
+func codecToRf1(codec videox.Codec) string {
+	switch codec {
+	case videox.CodecH264:
+		return rf1.CodecH264
+	case videox.CodecH265:
+		return rf1.CodecH265
+	default:
+		panic("Invalid codec")
 	}
 }

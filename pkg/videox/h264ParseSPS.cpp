@@ -173,40 +173,95 @@ struct SPSParser {
 		return value;
 	}
 
-	// From Grok 2 (2024/09/05)
-	// This looks wrong.
 	void ParseH265SPS(const unsigned char* pStart, size_t nLen) {
-		// Function to parse SPS for width and height
-		uint8_t* sps_data     = (uint8_t*) pStart;
-		int      sps_length   = nLen;
-		int      bit_position = 16; // Skip the NAL unit header and some initial SPS data
+		m_pStart       = pStart + 2; // skip 2-byte NAL unit header
+		m_nLengthBytes = (unsigned) nLen - 2;
+		m_nLengthBits  = m_nLengthBytes * 8;
+		m_nCurrentBit  = 0;
 
-		// Skipping some initial parameters for brevity. You might want to parse these as well.
-		for (int i = 0; i < 13; i++)
-			read_bits(sps_data, &bit_position, 8); // Skip profile, level etc.
+		// Read sps_video_parameter_set_id (u(4))
+		ReadBits(4);
 
-		// Read seq_parameter_set_id and other parameters if needed, here we simplify:
-		read_bits(sps_data, &bit_position, 4); // seq_parameter_set_id
+		// Read sps_max_sub_layers_minus1 (u(3))
+		int sps_max_sub_layers_minus1 = ReadBits(3);
 
-		// Chroma format idc
-		int chroma_format_idc = read_bits(sps_data, &bit_position, 2);
+		// Read sps_temporal_id_nesting_flag (u(1))
+		ReadBit();
 
-		if (chroma_format_idc == 3)
-			read_bits(sps_data, &bit_position, 1); // separate_colour_plane_flag
+		// Parse profile_tier_level
+		// General profile part
+		ReadBits(2);  // general_profile_space
+		ReadBit();    // general_tier_flag
+		ReadBits(5);  // general_profile_idc
+		ReadBits(32); // general_profile_compatibility_flag
+		ReadBit();    // general_progressive_source_flag
+		ReadBit();    // general_interlaced_source_flag
+		ReadBit();    // general_non_packed_constraint_flag
+		ReadBit();    // general_frame_only_constraint_flag
+		ReadBits(44); // general_reserved_zero_44bits
+		ReadBits(8);  // general_level_idc
 
-		Width  = read_bits(sps_data, &bit_position, 16); // pic_width_in_luma_samples
-		Height = read_bits(sps_data, &bit_position, 16); // pic_height_in_luma_samples
-
-		// Here, you might need to adjust for cropping, which involves reading
-		// conformance_window_flag and then potentially cropping parameters.
-		bool conformance_window_flag = read_bits(sps_data, &bit_position, 1);
-		if (conformance_window_flag) {
-			read_bits(sps_data, &bit_position, 2); // conf_win_left_offset
-			read_bits(sps_data, &bit_position, 2); // conf_win_right_offset
-			read_bits(sps_data, &bit_position, 2); // conf_win_top_offset
-			read_bits(sps_data, &bit_position, 2); // conf_win_bottom_offset
-			                                       // Adjust width and height if necessary based on these values
+		// Sub-layer part
+		bool sub_layer_profile_present_flag[8] = {0};
+		bool sub_layer_level_present_flag[8]   = {0};
+		for (int i = 0; i < sps_max_sub_layers_minus1; i++) {
+			sub_layer_profile_present_flag[i] = ReadBit();
+			sub_layer_level_present_flag[i]   = ReadBit();
 		}
+		for (int i = 0; i < sps_max_sub_layers_minus1; i++) {
+			if (sub_layer_profile_present_flag[i]) {
+				ReadBits(2);  // sub_layer_profile_space
+				ReadBit();    // sub_layer_tier_flag
+				ReadBits(5);  // sub_layer_profile_idc
+				ReadBits(32); // sub_layer_profile_compatibility_flag
+				ReadBit();    // sub_layer_progressive_source_flag
+				ReadBit();    // sub_layer_interlaced_source_flag
+				ReadBit();    // sub_layer_non_packed_constraint_flag
+				ReadBit();    // sub_layer_frame_only_constraint_flag
+				ReadBits(44); // sub_layer_reserved_zero_44bits
+			}
+		}
+		for (int i = 0; i < sps_max_sub_layers_minus1; i++) {
+			if (sub_layer_level_present_flag[i]) {
+				ReadBits(8); // sub_layer_level_idc
+			}
+		}
+
+		// Read sps_seq_parameter_set_id (ue(v))
+		ReadExponentialGolombCode();
+
+		// Read chroma_format_idc (ue(v))
+		int chroma_format_idc = ReadExponentialGolombCode();
+
+		// If chroma_format_idc == 3, read separate_colour_plane_flag (u(1))
+		if (chroma_format_idc == 3) {
+			ReadBit();
+		}
+
+		// Read pic_width_in_luma_samples (ue(v))
+		int pic_width_in_luma_samples = ReadExponentialGolombCode();
+
+		// Read pic_height_in_luma_samples (ue(v))
+		int pic_height_in_luma_samples = ReadExponentialGolombCode();
+
+		// Read conformance_window_flag (u(1))
+		int conformance_window_flag = ReadBit();
+
+		// If conformance_window_flag, read offsets
+		int conf_win_left_offset   = 0;
+		int conf_win_right_offset  = 0;
+		int conf_win_top_offset    = 0;
+		int conf_win_bottom_offset = 0;
+		if (conformance_window_flag) {
+			conf_win_left_offset   = ReadExponentialGolombCode();
+			conf_win_right_offset  = ReadExponentialGolombCode();
+			conf_win_top_offset    = ReadExponentialGolombCode();
+			conf_win_bottom_offset = ReadExponentialGolombCode();
+		}
+
+		// Calculate Width and Height
+		Width  = pic_width_in_luma_samples - (conf_win_left_offset + conf_win_right_offset);
+		Height = pic_height_in_luma_samples - (conf_win_top_offset + conf_win_bottom_offset);
 	}
 };
 

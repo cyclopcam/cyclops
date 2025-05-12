@@ -128,7 +128,7 @@ type Stream struct {
 	isClosed  bool
 
 	infoLock sync.Mutex
-	info     *StreamInfo // With Go 1.19 one could use atomic.Pointer[T] here
+	info     *StreamInfo
 
 	livenessLock                 sync.Mutex
 	livenessLastPacketReceivedAt time.Time
@@ -235,9 +235,9 @@ func (s *Stream) Listen(address string) error {
 
 	client.Setup(session.BaseURL, media, 0, 0)
 
-	s.Log.Infof("Connected to %v, track %v, codec %v", camHost, media.ID, s.Codec)
+	s.Log.Infof("Connected to %v, track media ID %v, codec %v", camHost, media.ID, s.Codec.InternalName())
 
-	rawRecvID := atomic.Int64{}
+	//rawRecvID := atomic.Int64{}
 	validRecvID := atomic.Int64{}
 	nWarningsAboutNoPTS := 0
 
@@ -251,7 +251,7 @@ func (s *Stream) Listen(address string) error {
 
 	client.OnPacketRTP(media, forma, func(pkt *rtp.Packet) {
 		now := time.Now()
-		myRawPacketID := rawRecvID.Add(1)
+		//rawRecvID.Add(1)
 
 		s.livenessLock.Lock()
 		s.livenessLastPacketReceivedAt = now
@@ -345,8 +345,7 @@ func (s *Stream) Listen(address string) error {
 		// For the high resolution streams, it's quite a bit more. Still low MB/s though.
 		// NOTE: I gortsplib may have changed that memory re-use behaviour since
 		// I wrote this. Should investigate again...
-		cloned := videox.ClonePacket(nalus, pts, now, refTime, s.cameraSendsAnnexBEncoded)
-		cloned.RawRecvID = myRawPacketID
+		cloned := videox.ClonePacket(nalus, s.Codec, pts, now, refTime, s.cameraSendsAnnexBEncoded)
 		cloned.ValidRecvID = myValidPacketID
 
 		s.addFrameToStats(cloned)
@@ -412,7 +411,7 @@ func (s *Stream) extractSPSInfo(nalus [][]byte) *StreamInfo {
 			if h264.NALUType(nalu[0]&31) == h264.NALUTypeSPS {
 				width, height, err := videox.ParseH264SPS(nalu)
 				if err != nil {
-					s.Log.Errorf("Failed to decode SPS: %v", err)
+					s.Log.Errorf("Failed to decode h264 SPS: %v", err)
 				}
 
 				// The following commented-outline is useful for debugging SPS parsing issues, or creating test data
@@ -591,12 +590,12 @@ func (s *Stream) addFrameToStats(packet *videox.VideoPacket) {
 	s.recentFramesLock.Lock()
 	defer s.recentFramesLock.Unlock()
 
-	for _, nalu := range packet.H264NALUs {
-		nnType := nalu.Type()
-		if videox.IsVisualPacket(nnType) {
+	for _, nalu := range packet.NALUs {
+		nt := nalu.AbstractType(packet.Codec)
+		if nt.IsVisual() {
 			s.recentFrames.Add(frameStat{
-				isIDR: nnType == h264.NALUTypeIDR,
-				pts:   packet.H264PTS,
+				isIDR: nt == videox.AbstractNALUTypeIDR,
+				pts:   packet.PTS,
 				size:  len(nalu.Payload),
 			})
 		}

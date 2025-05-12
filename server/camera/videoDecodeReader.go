@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/cyclopcam/cyclops/pkg/accel"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/logs"
@@ -116,8 +115,8 @@ func (r *VideoDecodeReader) OnPacketRTP(packet *videox.VideoPacket) {
 
 	r.lastPacketAt.Store(time.Now().UnixNano())
 
-	if packet.HasType(h264.NALUTypeIDR) {
-		// we'll assume that we've seen SPS and PPS by now... but should perhaps wait for them too
+	if packet.HasAbstractType(videox.AbstractNALUTypeIDR) {
+		// In my experience so far, the packets with IDRs also have SPS,PPS,etc
 		r.ready = true
 	}
 
@@ -141,6 +140,13 @@ func (r *VideoDecodeReader) OnPacketRTP(packet *videox.VideoPacket) {
 
 	if frame == nil {
 		return
+	}
+
+	// Experiment to see if we need to drain frames for h265. This wasn't necessary for h264.
+	drain, _ := r.Decoder.ReceiveFrameDeepRef()
+	if drain != nil {
+		r.Log.Infof("Successfully drained frame")
+		frame = drain
 	}
 
 	// The 'img' returned by Decode is transient, so we need make a copy of it.

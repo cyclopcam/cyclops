@@ -3,17 +3,18 @@
 #include "decoder.h"
 #include "encoder.h"
 #include "annexb.h"
+#include "h264ParseSPS.h"
 #include "tsf.hpp"
 
 // Step 1:
 // cd pkg/videox
 
 // Build and run:
-// clang++    -O2 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp && ./test/decoder_test
-// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp && ./test/decoder_test
+// clang++    -O2 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp h264ParseSPS.cpp && ./test/decoder_test
+// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp h264ParseSPS.cpp && ./test/decoder_test
 
 // Debug build:
-// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp
+// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp h264ParseSPS.cpp
 
 using namespace std;
 
@@ -61,7 +62,7 @@ bool IsFramePopulated(AVFrame* img, int expectWidth, int expectHeight) {
 
 // Encode a packet in AVC format (length prefix) to Annex-B format.
 // Assume length prefixes are 4 bytes.
-std::string EncodeAVCToAnnexB(bool escapeStartCodes, const void* src, size_t srcSize, std::string& out) {
+std::string EncodeAVCToAnnexB(bool escapeStartCodes, MyCodec codec, const void* src, size_t srcSize, std::string& out) {
 	const uint8_t* s = (const uint8_t*) src;
 	out.resize(8 + srcSize * 110 / 100); // something fishy if we're growing by more than 8 + 10% bytes
 	uint8_t* outP   = (uint8_t*) out.data();
@@ -72,7 +73,7 @@ std::string EncodeAVCToAnnexB(bool escapeStartCodes, const void* src, size_t src
 		size_t length = (s[0] << 24) | (s[1] << 16) | (s[2] << 8) | s[3];
 		if (srcSize < length + 4)
 			return "packet size with payload too small";
-		//DumpNALUHeader(MyCodec::H265, NALU{s + 4, length});
+		//DumpNALUHeader(codec, NALU{s + 4, length});
 		*outP++ = 0;
 		*outP++ = 0;
 		*outP++ = 1;
@@ -107,6 +108,15 @@ void TestFile(std::string filename, int expectedFrameCount) {
 	const char* codecName = "";
 	int         width, height;
 	Decoder_VideoInfo(decoder, &width, &height, &codecName);
+
+	MyCodec codec = MyCodec::None;
+	if (strcmp(codecName, "h264") == 0)
+		codec = MyCodec::H264;
+	else if (strcmp(codecName, "h265") == 0 || strcmp(codecName, "hevc") == 0)
+		codec = MyCodec::H265;
+	else
+		assert(false);
+
 	assert(width == 320);
 	assert(height == 240);
 	// Decode frames
@@ -170,7 +180,7 @@ void TestFile(std::string filename, int expectedFrameCount) {
 		if (err == "EOF")
 			break;
 		string packetB;
-		err = EncodeAVCToAnnexB(addEscapeBytes, packet, packetSize, packetB);
+		err = EncodeAVCToAnnexB(addEscapeBytes, codec, packet, packetSize, packetB);
 		free(packet);
 		AssertNoError(err);
 		nframes++;
@@ -203,6 +213,42 @@ void TestFile(std::string filename, int expectedFrameCount) {
 	tsf::print("decoder tests passed\n");
 }
 
+std::string DecodeAnnexBBuffer(const void* annexb, size_t size) {
+	std::string out;
+	out.resize(size);
+	size_t outsize = DecodeAnnexB(annexb, size, out.data(), out.size());
+	out.resize(outsize);
+	return out;
+}
+
+void TestSPSDecode() {
+	unsigned char h264_sps_320_240[22] = {
+	    0x67, 0x4d, 0x40, 0x1e, 0x9a, 0x66, 0x0a, 0x0f,
+	    0xff, 0x35, 0x01, 0x01, 0x01, 0x40, 0x00, 0x00,
+	    0xfa, 0x00, 0x00, 0x13, 0x88, 0x01};
+	std::string buf    = DecodeAnnexBBuffer(h264_sps_320_240, sizeof(h264_sps_320_240));
+	int         width  = 0;
+	int         height = 0;
+	ParseH264SPS(buf.data(), buf.size(), &width, &height);
+	assert(width == 320);
+	assert(height == 240);
+
+	unsigned char h265_sps_320_240[41] = {
+	    0x42, 0x01, 0x01, 0x01, 0x60, 0x00, 0x00, 0x03,
+	    0x00, 0x90, 0x00, 0x00, 0x03, 0x00, 0x00, 0x03,
+	    0x00, 0x3f, 0xa0, 0x0a, 0x08, 0x0f, 0x16, 0x59,
+	    0x59, 0xa4, 0x93, 0x2b, 0x9a, 0x02, 0x00, 0x00,
+	    0x03, 0x00, 0x02, 0x00, 0x00, 0x03, 0x00, 0x78,
+	    0x10};
+	buf = DecodeAnnexBBuffer(h265_sps_320_240, sizeof(h265_sps_320_240));
+
+	width  = 0;
+	height = 0;
+	ParseH265SPS(buf.data(), buf.size(), &width, &height);
+	assert(width == 320);
+	assert(height == 240);
+}
+
 int main(int argc, char** argv) {
 	void* decoder = nullptr;
 
@@ -210,6 +256,7 @@ int main(int argc, char** argv) {
 	string err = GetErr(MakeDecoder("foo.mp4", nullptr, &decoder));
 	assert(err.find("No such file") != string::npos);
 
+	TestSPSDecode();
 	TestFile("../../testdata/tracking/0001-LD.mp4", 64);
 	TestFile("out-h265.mp4", 0);
 }
