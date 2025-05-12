@@ -6,7 +6,6 @@ import (
 
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/videoformat/fsv"
-	"github.com/cyclopcam/cyclops/pkg/videoformat/rf1"
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/logs"
 )
@@ -175,7 +174,7 @@ func (r *VideoRecorder) writePackets(packets []*videox.VideoPacket) {
 		}
 	}
 	tracks := map[string]fsv.TrackPayload{
-		"video": fsv.MakeVideoPayload(codecToRf1(packets[0].Codec), r.videoWidth, r.videoHeight, nalus),
+		"video": fsv.MakeVideoPayload(videox.CodecToFsv(packets[0].Codec), r.videoWidth, r.videoHeight, nalus),
 	}
 	if err := r.archive.Write(r.streamName, tracks); err != nil {
 		now := time.Now()
@@ -183,16 +182,5 @@ func (r *VideoRecorder) writePackets(packets []*videox.VideoPacket) {
 			r.lastWriteWarning = now
 			r.Log.Warnf("Recorder failed to write to archive: %v", err)
 		}
-	}
-}
-
-func codecToRf1(codec videox.Codec) string {
-	switch codec {
-	case videox.CodecH264:
-		return rf1.CodecH264
-	case videox.CodecH265:
-		return rf1.CodecH265
-	default:
-		panic("Invalid codec")
 	}
 }

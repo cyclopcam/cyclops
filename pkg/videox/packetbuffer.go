@@ -317,7 +317,8 @@ func LoadBinDir(dir string) (*PacketBuffer, error) {
 				buf.Packets = append(buf.Packets, cPacket)
 			}
 			cPacket = &VideoPacket{
-				PTS: time.Duration(timeNS) * time.Nanosecond,
+				Codec: CodecH264,
+				PTS:   time.Duration(timeNS) * time.Nanosecond,
 			}
 		}
 		raw, err := os.ReadFile(rawFilename)

@@ -42,11 +42,11 @@ const EnableEmulationPreventBytesEscaping = true
 // There is generally structure to this. For example, a keyframe packet from a camera
 // will likely contain a SPS, PPS, and IDR NALU. For H265, it may also contain a VPS.
 type VideoPacket struct {
-	ValidRecvID int64         // Arbitrary monotonically increasing ID of useful decoded packets. Used to detect dropped packets, or other issues like that.
-	Codec       Codec         // h264 or h265
 	NALUs       []NALU        // NALUs in the packet.
+	ValidRecvID int64         // Arbitrary monotonically increasing ID of useful decoded packets. Used to detect dropped packets, or other issues like that.
 	PTS         time.Duration // Raw packet PTS received from RTSP reader. Subtracted from a reference time to compute WallPTS.
 	WallPTS     time.Time     // Reference wall time combined with the received PTS. We consider this the ground truth/reality of when the packet was recorded on the camera.
+	Codec       Codec         // h264 or h265
 	IsBacklog   bool          // a bit of a hack to inject this state here. maybe an integer counter would suffice? (eg nBacklogPackets)
 }
 
@@ -56,6 +56,7 @@ func (p *VideoPacket) Clone() *VideoPacket {
 		ValidRecvID: p.ValidRecvID,
 		PTS:         p.PTS,
 		WallPTS:     p.WallPTS,
+		Codec:       p.Codec,
 		IsBacklog:   p.IsBacklog,
 	}
 	c.NALUs = make([]NALU, len(p.NALUs))

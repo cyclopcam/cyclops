@@ -236,7 +236,8 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	if readResult[streamName] == nil || len(readResult[streamName].NALS) == 0 {
 		www.PanicBadRequestf("No video available at that time")
 	}
-	pbuffer := videox.ExtractFsvPackets(readResult[streamName].NALS)
+	pbuffer, err := videox.ExtractFsvPackets(readResult[streamName].Codec, readResult[streamName].NALS)
+	www.Check(err)
 	if !pbuffer.HasIDR() {
 		www.PanicBadRequestf("No keyframes found")
 	}
@@ -398,7 +399,8 @@ func (s *Server) httpCamDebugSaveClip(w http.ResponseWriter, r *http.Request, pa
 	for _, res := range resolutions {
 		result, err := s.videoDB.Archive.Read(cam.RecordingStreamName(res), []string{"video"}, time.UnixMilli(startTimeMS), time.UnixMilli(endTimeMS), fsv.ReadFlagSeekBackToKeyFrame)
 		www.Check(err)
-		pbuffer := videox.ExtractFsvPackets(result["video"].NALS)
+		pbuffer, err := videox.ExtractFsvPackets(result["video"].Codec, result["video"].NALS)
+		www.Check(err)
 		fn := filepath.Join(s.configDB.GetConfig().Recording.Path, "clip-"+string(res)+".mp4")
 		www.Check(pbuffer.SaveToMP4(fn))
 	}
