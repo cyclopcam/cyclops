@@ -10,11 +10,11 @@
 // cd pkg/videox
 
 // Build and run:
-// clang++    -O2 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp h264ParseSPS.cpp && ./test/decoder_test
-// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp h264ParseSPS.cpp && ./test/decoder_test
+// clang++    -O2 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -lswscale -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp h264ParseSPS.cpp && ./test/decoder_test
+// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -lswscale -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp h264ParseSPS.cpp && ./test/decoder_test
 
 // Debug build:
-// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp h264ParseSPS.cpp
+// clang++ -g -O0 -fsanitize=address -std=c++17 -I. -I/usr/local/include -L/usr/local/lib -lavformat -lavcodec -lavutil -lswscale -o test/decoder_test test/decoder_test.cpp decoder.cpp annexb.cpp common.cpp h264ParseSPS.cpp
 
 using namespace std;
 
@@ -102,6 +102,10 @@ void TestFile(std::string filename, int expectedFrameCount) {
 	void*  decoder = nullptr;
 
 	err = GetErr(MakeDecoder(filename.c_str(), nullptr, &decoder));
+	if (err != "") {
+		tsf::print("MakeDecoder failed: %v\n", err);
+		assert(false);
+	}
 
 	tsf::print("phase 1\n");
 
@@ -171,6 +175,8 @@ void TestFile(std::string filename, int expectedFrameCount) {
 	// the decoding of packets. For my h264 tests, this wasn't necessary, but for
 	// my h265 tests, I only get a frame out after the first 3 frames have gone in.
 
+	timespec start, end;
+
 	nframes = 0;
 	while (true) {
 		void*   packet;
@@ -202,7 +208,13 @@ void TestFile(std::string filename, int expectedFrameCount) {
 			}
 			assert(IsFramePopulated(img, width, height));
 		}
+		if (nframes == 1) {
+			// start clock after 1st frame has been decoded
+			clock_gettime(CLOCK_MONOTONIC, &start);
+		}
 	}
+	clock_gettime(CLOCK_MONOTONIC, &end);
+
 	if (expectedFrameCount != 0)
 		assert(nframes == expectedFrameCount);
 	else
@@ -210,7 +222,9 @@ void TestFile(std::string filename, int expectedFrameCount) {
 	Decoder_Close(decoder);
 	Decoder_Close(decoder2);
 
-	tsf::print("decoder tests passed\n");
+	double deltaMS = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_nsec - start.tv_nsec) / 1000000.0;
+
+	tsf::print("decoder tests passed (%v frames decoded, %.3f ms, %.3f ms/frame)\n", nframes, deltaMS, deltaMS / nframes);
 }
 
 std::string DecodeAnnexBBuffer(const void* annexb, size_t size) {
