@@ -18,6 +18,8 @@ import (
 	"github.com/cyclopcam/logs"
 )
 
+var ErrNoSPS = errors.New("No SPS NALU found")
+
 // PacketBuffer is a list of packets, with some helper functions
 type PacketBuffer struct {
 	Packets []*VideoPacket
@@ -103,16 +105,19 @@ func (r *PacketBuffer) SaveToMPEGTS(log logs.Log, output io.Writer) error {
 
 // Decode SPS and PPS to extract header information
 func (r *PacketBuffer) DecodeHeader() (width, height int, err error) {
+	// The following commented-outline was useful for debugging SPS parsing issues, or creating test data
+	//os.WriteFile("/tmp/sps-"+s.CameraName+"-"+s.StreamName+".h264", sps.AsRBSP().Payload, 0644)
+
 	if r.Codec() == CodecH264 {
 		sps := r.FirstNALUOfType264(h264.NALUTypeSPS)
 		if sps == nil {
-			return 0, 0, fmt.Errorf("Failed to find SPS NALU")
+			return 0, 0, ErrNoSPS
 		}
 		return ParseH264SPS(sps.AsRBSP().Payload)
 	} else if r.Codec() == CodecH265 {
 		sps := r.FirstNALUOfType265(h265.NALUType_SPS_NUT)
 		if sps == nil {
-			return 0, 0, fmt.Errorf("Failed to find SPS NALU")
+			return 0, 0, ErrNoSPS
 		}
 		return ParseH265SPS(sps.AsRBSP().Payload)
 	}

@@ -131,10 +131,10 @@ func (r *VideoDecodeReader) OnPacketRTP(packet *videox.VideoPacket) {
 	// send SPS+PPS+IDR as a single packet.
 	// That's why we join all NALUs into a single packet and send that to avcodec.
 
-	// convert H264 NALUs to RGB frames
+	// convert NALUs to RGB frames
 	frame, err := r.Decoder.DecodeDeepRef(packet)
 	if err != nil {
-		r.Log.Errorf("Failed to decode H264 NALU: %v", err)
+		r.Log.Errorf("Failed to decode %v NALU: %v", packet.Codec, err)
 		return
 	}
 
@@ -145,7 +145,7 @@ func (r *VideoDecodeReader) OnPacketRTP(packet *videox.VideoPacket) {
 	// Experiment to see if we need to drain frames for h265. This wasn't necessary for h264.
 	drain, _ := r.Decoder.ReceiveFrameDeepRef()
 	if drain != nil {
-		r.Log.Infof("Successfully drained frame")
+		r.Log.Warnf("Successfully drained frame")
 		frame = drain
 	}
 

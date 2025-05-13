@@ -64,6 +64,10 @@ func (c Codec) InternalName() string {
 	}
 }
 
+func (c Codec) String() string {
+	return c.InternalName()
+}
+
 func ReadNaluTypeH264(firstByte byte) h264.NALUType {
 	return h264.NALUType(firstByte & 31)
 }

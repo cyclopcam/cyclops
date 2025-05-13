@@ -10,7 +10,6 @@ import (
 	"github.com/bluenviron/gortsplib/v4/pkg/description"
 	"github.com/bluenviron/gortsplib/v4/pkg/format/rtph264"
 	"github.com/bluenviron/gortsplib/v4/pkg/format/rtph265"
-	"github.com/bluenviron/mediacommon/pkg/codecs/h264"
 	"github.com/bmharper/ringbuffer"
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/pkg/stats"
@@ -313,23 +312,6 @@ func (s *Stream) Listen(address string) error {
 			//}
 		}
 
-		// Populate width & height whenever an SPS packet is sent.
-		// Initially, we only did this if s.info was nil. However, I subsequently decided
-		// to support the camera changing resolution while the system is running.
-		// On Rpi5, reading the SPS takes about 300ns, and I believe we only get an SPS
-		// with every keyframe, so this is a tiny price to pay.
-		if inf := s.extractSPSInfo(nalus); inf != nil {
-			s.infoLock.Lock()
-			prev := s.info
-			s.info = inf
-			s.infoLock.Unlock()
-			if prev == nil {
-				s.Log.Infof("Size: %v x %v (after %v packets)", inf.Width, inf.Height, myValidPacketID)
-			} else if prev.Width != inf.Width || prev.Height != inf.Height {
-				s.Log.Infof("Size changed from %v x %v to %v x %v", prev.Width, prev.Height, inf.Width, inf.Height)
-			}
-		}
-
 		// Before we return, we must clone the packet. This is because we send
 		// the packet via channels, to all of our stream sinks. These sinks
 		// are running on unspecified threads, so we have no idea how long
@@ -347,6 +329,23 @@ func (s *Stream) Listen(address string) error {
 		// I wrote this. Should investigate again...
 		cloned := videox.ClonePacket(nalus, s.Codec, pts, now, refTime, s.cameraSendsAnnexBEncoded)
 		cloned.ValidRecvID = myValidPacketID
+
+		// Populate width & height whenever an SPS packet is sent.
+		// Initially, we only did this if s.info was nil. However, I subsequently decided
+		// to support the camera changing resolution while the system is running.
+		// On Rpi5, reading the SPS takes about 300ns, and I believe we only get an SPS
+		// with every keyframe, so this is a tiny price to pay.
+		if inf := s.extractSPSInfo(cloned); inf != nil {
+			s.infoLock.Lock()
+			prev := s.info
+			s.info = inf
+			s.infoLock.Unlock()
+			if prev == nil {
+				s.Log.Infof("Size: %v x %v (after %v packets)", inf.Width, inf.Height, myValidPacketID)
+			} else if prev.Width != inf.Width || prev.Height != inf.Height {
+				s.Log.Infof("Size changed from %v x %v to %v x %v", prev.Width, prev.Height, inf.Width, inf.Height)
+			}
+		}
 
 		s.addFrameToStats(cloned)
 
@@ -402,29 +401,19 @@ func (s *Stream) Close(wg *sync.WaitGroup) {
 	s.sinksLock.Unlock()
 }
 
-func (s *Stream) extractSPSInfo(nalus [][]byte) *StreamInfo {
-	for _, nalu := range nalus {
-		if len(nalu) == 0 {
-			continue
-		}
-		if s.Codec == videox.CodecH264 {
-			if h264.NALUType(nalu[0]&31) == h264.NALUTypeSPS {
-				width, height, err := videox.ParseH264SPS(nalu)
-				if err != nil {
-					s.Log.Errorf("Failed to decode h264 SPS: %v", err)
-				}
-
-				// The following commented-outline is useful for debugging SPS parsing issues, or creating test data
-				//os.WriteFile("/tmp/sps-"+s.CameraName+"-"+s.StreamName+".h264", nalu, 0644)
-
-				return &StreamInfo{
-					Width:  width,
-					Height: height,
-				}
-			}
-		}
+func (s *Stream) extractSPSInfo(packet *videox.VideoPacket) *StreamInfo {
+	packets := [1]*videox.VideoPacket{packet}
+	pb := videox.PacketBuffer{
+		Packets: packets[:],
 	}
-	return nil
+	width, height, err := pb.DecodeHeader()
+	if err != nil {
+		return nil
+	}
+	return &StreamInfo{
+		Width:  width,
+		Height: height,
+	}
 }
 
 // Return the stream info, or nil if we have not yet encountered the necessary NALUs
