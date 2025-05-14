@@ -1,3 +1,9 @@
+cyclops (1.0.1-1) unstable; urgency=medium
+
+  * Support h265/HEVC on the server (not yet on the client!)
+
+ -- Ben Harper <rogojin@gmail.com>  Wed, 14 May 2025 20:03:37 +0200
+
 cyclops (1.0.0-1) unstable; urgency=medium
 
   * Initial release
