@@ -43,7 +43,7 @@ func TestSplicePerfect(t *testing.T) {
 	staticSettings := staticSettingsHugeWritebuffer()
 	arc, err := Open(logs.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, staticSettings, DefaultDynamicSettings())
 	require.NoError(t, err)
-	packets := copyRf1NALUstoFsv(rf1.CreateTestNALUs(todayAtTime(3, 4, 5, 7000), 0, 300, 10.0, 50, 150, 12345))
+	packets := copyRf1NALUstoFsv(rf1.CreateTestNALUs(todayAtTime(3, 4, 5, 7000), 0, 300, 10, 50, 150, 12345))
 
 	// Pattern:
 	//
@@ -51,8 +51,8 @@ func TestSplicePerfect(t *testing.T) {
 	// *------*------*------*
 	//        222222222222222
 
-	p1 := firstKeyFrameAtOrAfter(100, packets) + 5 // +5 to place us in between two IDRs
-	p2 := firstKeyFrameAtOrBefore(p1, packets)
+	p1 := firstKeyFrameNALU_AtOrAfter(100, packets) + 5 // +5 to place us in between two IDRs
+	p2 := firstKeyFrameNALU_AtOrBefore(p1, packets)
 
 	require.True(t, p1 > p2)
 	require.True(t, p2 > 0)
@@ -75,7 +75,7 @@ func TestSpliceImperfect(t *testing.T) {
 	disableWriteBuffer.MaxWriteBufferSize = 0
 	arc, err := Open(logs.NewTestingLog(t), BaseDir, []VideoFormat{&VideoFormatRF1{}}, disableWriteBuffer, DefaultDynamicSettings())
 	require.EqualValues(t, 0, arc.TotalSize())
-	packets1 := copyRf1NALUstoFsv(rf1.CreateTestNALUs(time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC), 0, 300, 10.0, 50, 150, 12345))
+	packets1 := copyRf1NALUstoFsv(rf1.CreateTestNALUs(time.Date(2021, time.February, 3, 4, 5, 6, 7000, time.UTC), 0, 300, 10, 50, 150, 12345))
 	packets2 := slices.Clone(packets1)
 
 	// Add just enough delay to make packets no longer equal
@@ -94,8 +94,8 @@ func TestSpliceImperfect(t *testing.T) {
 	// packets as those in '1'. The splicer will be unable to find the meeting point. That will cause
 	// it to leave a gap in between A and B.
 
-	p1 := firstKeyFrameAtOrAfter(100, packets1) + 5 // +5 to place us in between two IDRs
-	p2 := firstKeyFrameAtOrBefore(p1, packets2)
+	p1 := firstKeyFrameNALU_AtOrAfter(100, packets1) + 5 // +5 to place us in between two IDRs
+	p2 := firstKeyFrameNALU_AtOrBefore(p1, packets2)
 
 	require.True(t, p1 > p2)
 	require.True(t, p2 > 0)
@@ -113,13 +113,18 @@ func TestSpliceImperfect(t *testing.T) {
 	// A = p1
 	// B = the first keyframe in packets2 that is after p2.
 	expectedPackets := slices.Clone(packets1[:p1])
-	p3 := firstKeyFrameAtOrAfter(p2+1, packets2)
+	p3 := firstKeyFrameNALU_AtOrAfter(p2+1, packets2)
+
+	// reverse 2 to include the 2 EssentialMeta NALUs (eg SPS,PPS)
+	// See SYNC-TEST-META-COUNT for where this is controlled.
+	p3 -= 2
+
 	expectedPackets = append(expectedPackets, packets2[p3:]...)
 
 	requireEqualNALUs(t, expectedPackets, rPackets.NALS)
 }
 
-func firstKeyFrameAtOrBefore(i int, packets []NALU) int {
+func firstKeyFrameNALU_AtOrBefore(i int, packets []NALU) int {
 	for ; i >= 0; i-- {
 		if packets[i].Flags&NALUFlagKeyFrame != 0 {
 			return i
@@ -128,7 +133,7 @@ func firstKeyFrameAtOrBefore(i int, packets []NALU) int {
 	panic("No keyframes before this point")
 }
 
-func firstKeyFrameAtOrAfter(i int, packets []NALU) int {
+func firstKeyFrameNALU_AtOrAfter(i int, packets []NALU) int {
 	for ; i < len(packets); i++ {
 		if packets[i].Flags&NALUFlagKeyFrame != 0 {
 			return i

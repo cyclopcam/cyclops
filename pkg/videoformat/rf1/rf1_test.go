@@ -64,7 +64,7 @@ func testReaderWriter(t *testing.T, enableCloseAndReOpen, enableDirtyClose, enab
 	require.NotNil(t, fw)
 	nNALUs := 200
 	nWritten := 0
-	fps := 10.0
+	fps := 10
 	minPacketSize := 50
 	maxPacketSize := 150
 	if largeNALU {
@@ -218,7 +218,7 @@ func requireEqualNALUs(t *testing.T, expected, actual []NALU) {
 func TestBigRead(t *testing.T) {
 	fw := createTestVideo(t, "bigread")
 	nNALUs := 10000
-	nalusW := CreateTestNALUs(fw.Tracks[0].TimeBase, 0, nNALUs, 10.0, 500, 1500, 12345)
+	nalusW := CreateTestNALUs(fw.Tracks[0].TimeBase, 0, nNALUs, 10, 500, 1500, 12345)
 	require.NoError(t, fw.Tracks[0].WriteNALUs(nalusW))
 	require.NoError(t, fw.Close())
 	fw, err := Open(BaseDir+"/bigread", OpenModeReadOnly)
@@ -235,7 +235,7 @@ func TestReadBackToKeyframe(t *testing.T) {
 	fw := createTestVideo(t, "keyframe")
 	nNALUs := 100
 	timeBase := fw.Tracks[0].TimeBase
-	nalusW := CreateTestNALUs(timeBase, 0, nNALUs, 10.0, 500, 1500, 12345)
+	nalusW := CreateTestNALUs(timeBase, 0, nNALUs, 10, 500, 1500, 12345)
 	require.NoError(t, fw.Tracks[0].WriteNALUs(nalusW))
 	for iter := 0; iter < 2; iter++ {
 		if iter == 1 {
@@ -245,11 +245,16 @@ func TestReadBackToKeyframe(t *testing.T) {
 		}
 		// 0,1 are EssentialMetadata.
 		// 2 is keyframe.
-		// 12 is keyframe.
-		// 22 is keyframe.
+		// 32,33 are EssentialMetadata.
+		// 34 is keyframe.
 		// and so on.
+
+		// For a dump of the NALUs, run TestFakeNALUFlags(), via "go test -v -run Fake ./pkg/videoformat/rf1".
+		// It's very useful to have that in front of you when validating the results here.
+
 		// If the keyframe is immediately preceded by EssentialMetadata NALUs (i.e. SPS/PPS),
 		// then we want the function to continue reading back to include that EssentialMetadata.
+		// Actually, we now use PTS instead of EssentialMetadata. But the principle remains.
 		// So we have two different test cases - one for frames 2-12, and one for frames 12-22.
 		nalus, err := fw.Tracks[0].ReadAtTime(nalusW[0].PTS.Sub(timeBase), nalusW[5].PTS.Sub(timeBase), PacketReadFlagSeekBackToKeyFrame)
 		require.NoError(t, err)
@@ -263,18 +268,26 @@ func TestReadBackToKeyframe(t *testing.T) {
 		require.Equal(t, 6, len(nalus))
 		require.LessOrEqual(t, AbsTimeDiff(timeBase, nalus[0].PTS), time.Second/4096)
 
-		// Here we don't have an EssentialMetadata behind the keyframes, so just seek back to the keyframe
-		nalus, err = fw.Tracks[0].ReadAtTime(nalusW[15].PTS.Sub(timeBase), nalusW[16].PTS.Sub(timeBase), PacketReadFlagSeekBackToKeyFrame)
+		// And here we're seeking into frames which aren't at the start of the track
+		nalus, err = fw.Tracks[0].ReadAtTime(nalusW[37].PTS.Sub(timeBase), nalusW[38].PTS.Sub(timeBase), PacketReadFlagSeekBackToKeyFrame)
 		require.NoError(t, err)
-		require.Equal(t, 5, len(nalus))
-		require.LessOrEqual(t, AbsTimeDiff(nalusW[12].PTS, nalus[0].PTS), time.Second/4096)
+		require.Equal(t, 7, len(nalus))
+		require.LessOrEqual(t, AbsTimeDiff(nalusW[32].PTS, nalus[0].PTS), time.Second/4096)
 
 		// And here we don't include the flag at all
 		nalus, err = fw.Tracks[0].ReadAtTime(nalusW[15].PTS.Sub(timeBase), nalusW[16].PTS.Sub(timeBase), 0)
 		require.NoError(t, err)
 		require.Equal(t, 2, len(nalus))
 		require.LessOrEqual(t, AbsTimeDiff(nalusW[15].PTS, nalus[0].PTS), time.Second/4096)
+	}
+}
 
+// Very useful to get a console dump of the first 70 NALUs when looking at splicing, keyframe seeking, etc.
+func TestFakeNALUFlags(t *testing.T) {
+	// The logic inside CreateTestNALU is a bit trick. This tests that.
+	for i := 0; i < 70; i++ {
+		flags, pts := CreateTestNALU(i, 10)
+		t.Logf("%2d %3d %v", i, flags, pts)
 	}
 }
 

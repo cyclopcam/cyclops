@@ -172,7 +172,7 @@ func (t *Track) ReadAtTime(startTime, endTime time.Duration, flags PacketReadFla
 		// will have the same PTS.
 		// It could be a trio of SPS+PPS+IDR NALUs.
 		// Or it could be a VPS+SPS+PPS+IDR+IDR NALUs (notice 2 IDR NALUs, because some cameras will send multiple slices per frame).
-		for startIdx > 0 && SplitIndexNALUEncodedTimeOnly(rawIdx[startIdx]) == pts {
+		for startIdx >= 0 && SplitIndexNALUEncodedTimeOnly(rawIdx[startIdx]) == pts {
 			startIdx--
 		}
 
