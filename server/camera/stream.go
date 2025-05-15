@@ -153,6 +153,10 @@ type Stream struct {
 	// The author seems to indicate that all video NALUs have emulation prevention bytes,
 	// so for now we're setting cameraSendsAnnexBEncoded to true, for unknown camera models.
 	cameraSendsAnnexBEncoded bool
+
+	// Very useful for debugging camera stream NALU layout
+	dumpFirst50NALUs       bool
+	dumpFirst50NALUsTicker int
 }
 
 func NewStream(logger logs.Log, cameraName, streamName string, cameraSendsAnnexBEncoded bool) *Stream {
@@ -579,15 +583,26 @@ func (s *Stream) addFrameToStats(packet *videox.VideoPacket) {
 	s.recentFramesLock.Lock()
 	defer s.recentFramesLock.Unlock()
 
-	for _, nalu := range packet.NALUs {
-		nt := nalu.AbstractType(packet.Codec)
-		if nt.IsVisual() {
-			s.recentFrames.Add(frameStat{
-				isIDR: nt == videox.AbstractNALUTypeIDR,
-				pts:   packet.PTS,
-				size:  len(nalu.Payload),
-			})
+	// The following chunk is useful for analyzing the NALUs that we receive from a camera.
+	// For example, I discovered here that my Hikvision cameras on h265 will send 2 slices per frame.
+	// NOTE: You must change the "Ident" check to match the name of your camera, to get logs emitted.
+	if s.dumpFirst50NALUs && s.dumpFirst50NALUsTicker < 50 && s.Ident == "Camera 1.low" {
+		for _, nalu := range packet.NALUs {
+			s.dumpFirst50NALUsTicker++
+			nt := nalu.AbstractType(packet.Codec)
+			ntc := nalu.Type(packet.Codec)
+			s.Log.Infof("Codec %v, NALU %-3v, type %-2v, size %-6v, IsVisual %-5v, IDR %v, pts %v", packet.Codec, s.dumpFirst50NALUsTicker, ntc, len(nalu.Payload), nt.IsVisual(), nt == videox.AbstractNALUTypeIDR, packet.PTS)
 		}
+	}
+
+	hasIDR := packet.HasAbstractType(videox.AbstractNALUTypeIDR)
+	hasNonIDR := packet.HasAbstractType(videox.AbstractNALUTypeNonIDR)
+	if hasIDR || hasNonIDR {
+		s.recentFrames.Add(frameStat{
+			isIDR: hasIDR,
+			pts:   packet.PTS,
+			size:  packet.PayloadBytes(),
+		})
 	}
 
 	if s.loggedStatsAt.IsZero() && s.recentFrames.Len() == s.recentFrames.Capacity() {

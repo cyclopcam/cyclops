@@ -159,25 +159,24 @@ func (t *Track) ReadAtTime(startTime, endTime time.Duration, flags PacketReadFla
 	if flags&PacketReadFlagSeekBackToKeyFrame != 0 {
 		// If the requested time interval does not start on a keyframe,
 		// then seek back to find the first keyframe before the requested start time.
-		// Also, if the frames immediately preceding the keyframe are
-		// EssentialMetadata, then include them too (eg SPS/PPS).
 		if startIdx == len(rawIdx) {
 			startIdx--
 		}
+		// Walk until we find a keyframe NALU
 		for startIdx > 0 && (SplitIndexNALUFlagsOnly(rawIdx[startIdx])&IndexNALUFlagKeyFrame == 0) {
 			startIdx--
 		}
-		// We're now on a keyframe (or at the start of the video, which the writer shouldn't have done).
+		pts := SplitIndexNALUEncodedTimeOnly(rawIdx[startIdx])
 
-		// Walk onto the first frame behind the keyframe
-		startIdx--
-
-		// Keep walking until we're no longer on an EssentialMeta frame
-		for startIdx >= 0 && (SplitIndexNALUFlagsOnly(rawIdx[startIdx])&IndexNALUFlagEssentialMeta != 0) {
+		// Then keep walking back until we hit a different PTS. All of the NALUs belonging to that keyframe
+		// will have the same PTS.
+		// It could be a trio of SPS+PPS+IDR NALUs.
+		// Or it could be a VPS+SPS+PPS+IDR+IDR NALUs (notice 2 IDR NALUs, because some cameras will send multiple slices per frame).
+		for startIdx > 0 && SplitIndexNALUEncodedTimeOnly(rawIdx[startIdx]) == pts {
 			startIdx--
 		}
 
-		// And take one step forward
+		// We're now on the first NALU that is not part of the keyframe, so take one step forward.
 		startIdx++
 	}
 
