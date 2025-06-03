@@ -316,14 +316,14 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 			if frame.IsBacklog {
 				flags |= 1
 			}
-
+			// Total size of header (everything before the NALUs)
+			headerSize := uint32(16)
+			codec := frame.Codec.FourByteName()
+			binary.Write(&buf, binary.LittleEndian, headerSize)
+			binary.Write(&buf, binary.BigEndian, codec) // big endian byte order so that it looks pretty on the wire, and left-to-right in hex as 0x48323634 or 0x48323635
 			binary.Write(&buf, binary.LittleEndian, flags)
 			binary.Write(&buf, binary.LittleEndian, uint32(frame.ValidRecvID))
 			for _, n := range frame.NALUs {
-				//if n.PrefixLen == 0 {
-				//	buf.Write([]byte{0, 0, 1})
-				//}
-				//buf.Write(n.Payload)
 				buf.Write(n.AsAnnexB().Payload)
 			}
 			final := buf.Bytes()

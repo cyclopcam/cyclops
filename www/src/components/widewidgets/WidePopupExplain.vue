@@ -26,6 +26,10 @@ let emit = defineEmits(['close']);
 	max-width: 90vw;
 	border-radius: 5px;
 	padding: 30px 30px;
+
+	@media (min-width: $mobileCutoff) {
+		width: $mobileCutoff;
+	}
 }
 
 .text {

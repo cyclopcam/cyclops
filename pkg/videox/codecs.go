@@ -64,6 +64,19 @@ func (c Codec) InternalName() string {
 	}
 }
 
+func (c Codec) FourByteName() uint32 {
+	b := [4]byte{}
+	switch c {
+	case CodecH264:
+		b = [4]byte{'H', '2', '6', '4'}
+	case CodecH265:
+		b = [4]byte{'H', '2', '6', '5'}
+	default:
+		b = [4]byte{'-', '-', '-', '-'}
+	}
+	return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+}
+
 func (c Codec) String() string {
 	return c.InternalName()
 }

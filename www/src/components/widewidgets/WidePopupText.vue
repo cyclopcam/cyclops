@@ -124,10 +124,16 @@ onMounted(async () => {
 </template>
 
 <style lang="scss" scoped>
+@import '@/assets/vars.scss';
+
 .container {
 	background: #fff;
 	width: 90vw;
 	border-radius: 15px;
+
+	@media (min-width: $mobileCutoff) {
+		width: $mobileCutoff;
+	}
 }
 
 .title {

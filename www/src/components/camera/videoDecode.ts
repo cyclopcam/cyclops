@@ -5,6 +5,7 @@ import { globals } from "@/globals";
 import { BoxDrawMode, drawAnalyzedObjects } from "./detections";
 import { encodeQuery } from "@/util/util";
 import { CachedFrame, FrameCache } from "./frameCache";
+import { WSMessage, Codecs, ParsedPacket, VideoStreamerServerIO } from "./videoDecodeWebSocket";
 
 /*
 
@@ -80,29 +81,12 @@ often of my Xiaomi Redmit Note 9 Pro, that I always enable the liveness canvas.
 */
 
 
-// SYNC-WEBSOCKET-COMMANDS
-enum WSMessage {
-	Pause = "pause",
-	Resume = "resume",
-}
-
-interface parsedPacket {
-	video: Uint8Array,
-	recvID: number,
-	duration?: number
-}
-
 // Use JMuxer to decode video packets so we can render them to a canvas or a <video> element.
 // Also, understand our own WebSocket messages which transport video packets.
 export class VideoStreamer {
 	camera: CameraInfo;
 	muxer: JMuxer | null = null;
-	ws: WebSocket | null = null;
-	backlogDone = false;
-	nVideoPackets = 0;
-	nBytes = 0;
-	lastRecvID = 0;
-	firstPacketTime = 0;
+	serverIO: VideoStreamerServerIO | null = null;
 	posterURLUpdateFrequencyMS = 5 * 1000; // When the page is active, we update our poster URL every X seconds
 	posterURLTimerID: any = 0;
 	lastDetection = new AnalysisState();
@@ -174,9 +158,9 @@ export class VideoStreamer {
 		this.resetPosterURL();
 
 		this.isPaused = false;
-		if (this.ws) {
-			this.ws.close();
-			this.ws = null;
+		if (this.serverIO) {
+			this.serverIO.close();
+			this.serverIO = null;
 		}
 		if (this.muxer) {
 			this.muxer.destroy();
@@ -284,7 +268,7 @@ export class VideoStreamer {
 		let socketURL = `${scheme}${window.location.host}/api/ws/camera/stream/${this.camera.id}/${res}`;
 		console.log("Play " + socketURL);
 
-		let firstPackets: parsedPacket[] = [];
+		let firstPackets: ParsedPacket[] = [];
 		let phase = 0;
 		let isMuxerReady = false;
 
@@ -325,30 +309,24 @@ export class VideoStreamer {
 
 		this.createMuxer(videoElementID, () => { console.log("muxer ready"); isMuxerReady = true });
 
-		this.ws = new WebSocket(socketURL);
-		this.ws.binaryType = "arraybuffer";
-		this.ws.addEventListener("message", (event) => {
-			if (this.isPaused) {
+		var onWebSocketMessage = (data: ParsedPacket | AnalysisState) => {
+			if (this.isPaused || !this.muxer) {
 				return;
 			}
-			if (this.muxer) {
-				if (typeof event.data === "string") {
-					this.parseStringMessage(event.data);
-				} else {
-					let data = this.parseVideoFrame(event.data);
-					this.muxer.feed(data);
-					if (globals.isFirstVideoPlay && phase === 0) {
-						firstPackets.push(data);
-					}
-					this.invalidateLivenessCanvas();
-					this.nVideoPackets++;
+			if (data instanceof AnalysisState) {
+				let detection = data;
+				this.lastDetection = detection;
+				this.updateOverlay();
+			} else if (data instanceof ParsedPacket) {
+				this.muxer.feed(data);
+				if (globals.isFirstVideoPlay && phase === 0) {
+					firstPackets.push(data);
 				}
+				this.invalidateLivenessCanvas();
 			}
-		});
+		};
 
-		this.ws.addEventListener("error", (e) => {
-			console.log("Socket Error");
-		});
+		this.serverIO = new VideoStreamerServerIO(this.camera, onWebSocketMessage, socketURL);
 	}
 
 	createMuxer(videoElement: string | HTMLVideoElement, onReady: () => void) {
@@ -369,96 +347,12 @@ export class VideoStreamer {
 		} as any);
 	}
 
-	parseVideoFrame(data: ArrayBuffer): parsedPacket {
-		let input = new Uint8Array(data);
-		let dv = new DataView(input.buffer);
-
-		let now = new Date().getTime();
-		if (this.nVideoPackets === 0) {
-			this.firstPacketTime = now;
-		}
-
-		//let foo1 = dv.getUint32(0, true);
-		//let foo2 = dv.getUint32(4, true);
-		//console.log("foos", foo1, foo2);
-		//let pts = dv.getFloat64(0, true);
-		let flags = dv.getUint32(0, true);
-		let recvID = dv.getUint32(4, true);
-		let backlog = (flags & 1) !== 0;
-		//console.log("pts", pts);
-		let video = input.subarray(8);
-		let logPacketCount = false; // SYNC-LOG-PACKET-COUNT
-
-		if (this.lastRecvID !== 0 && recvID !== this.lastRecvID + 1) {
-			console.log(`recvID ${recvID} !== lastRecvID ${this.lastRecvID} + 1 (normal when resuming playback after pause)`);
-		}
-
-		this.nBytes += input.length;
-		this.nVideoPackets++;
-
-		if (!backlog && !this.backlogDone) {
-			let bytesPerSecond = 1000 * this.nBytes / (now - this.firstPacketTime);
-			console.log(`backlogDone in ${now - this.firstPacketTime} ms. ${this.nBytes} bytes over ${this.nVideoPackets} packets which is ${bytesPerSecond} bytes/second`);
-			this.backlogDone = true;
-		}
-
-		if (logPacketCount && this.nVideoPackets % 30 === 0) {
-			console.log(`${this.camera.name} received ${this.nVideoPackets} packets`);
-		}
-
-		// It is better to inject a little bit of frame duration (as opposed to leaving it undefined),
-		// because it reduces the jerkiness of the video that we see, presumably due to network and/or camera jitter
-		let normalDuration = 1000 / this.camera.ld.fps;
-
-		// This is a naive attempt at forcing the player to catch up to realtime, without introducing
-		// too much jitter. I'm not sure if it actually works.
-		// OK.. interesting.. I left my system on play for a long time (eg 1 hour), and when I came back,
-		// the camera was playing daytime, although it was already night time outside. So *somewhere*, we are
-		// adding a gigantic buffer. I haven't figured out how to figure out where that is.
-		// OK.. I think that the above situation was a case mentioned in the comments at the top of this file.
-		// In other words, the player was still receiving frames, but not presenting them. It buffered them
-		// all up, and when the view was made visible again, it started playing them, and obviously they
-		// were way behind realtime by that stage. I fixed this by pausing the stream when the view is
-		// hidden.
-		normalDuration *= 0.99;
-
-		// Try various things to reduce the motion to photons latency. The latency is right now is about 1
-		// second, and it's very obvious when you see your neural network detection box walk ahead of your body.
-		// Setting duration=undefined to every frame doesn't improve the situation. You get a ton of jank, but
-		// latency is still around 2 seconds.
-
-		//if (nVideoPackets % 3 === 0)
-		//	backlog = true;
-		//backlog = true;
-
-		// during backlog catchup, we leave duration undefined, which causes the player to catch up
-		// as fast as it can (which is precisely what we want).
-
-		this.lastRecvID = recvID;
-
-		return {
-			video: video,
-			recvID: recvID,
-			duration: backlog ? undefined : normalDuration,
-			//duration: undefined,
-		};
-	}
-
-	parseStringMessage(msg: string) {
-		let j = JSON.parse(msg);
-		if (j.type === "detection") {
-			let detection = AnalysisState.fromJSON(j.detection);
-			this.lastDetection = detection;
-			this.updateOverlay();
-		}
-	}
-
 	sendWSMessage(msg: WSMessage) {
 		// SYNC-WEBSOCKET-JSON-MSG
-		if (!this.ws) {
+		if (!this.serverIO) {
 			return;
 		}
-		this.ws.send(JSON.stringify({ command: msg }));
+		this.serverIO.ws.send(JSON.stringify({ command: msg }));
 	}
 
 	invalidateLivenessCanvas() {

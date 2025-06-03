@@ -263,6 +263,8 @@ onUnmounted(() => {
 </template>
 
 <style lang="scss" scoped>
+@import '@/assets/vars.scss';
+
 .modalRoot {
 	position: fixed;
 	left: 0;

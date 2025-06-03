@@ -41,6 +41,10 @@ function getLabel(opt: any) {
 	background: #fff;
 	width: 90vw;
 	border-radius: 5px;
+
+	@media (min-width: $mobileCutoff) {
+		width: $mobileCutoff;
+	}
 }
 
 .option {
