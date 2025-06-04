@@ -5,7 +5,7 @@ import { globals } from "@/globals";
 import { BoxDrawMode, drawAnalyzedObjects } from "./detections";
 import { encodeQuery } from "@/util/util";
 import { CachedFrame, FrameCache } from "./frameCache";
-import { WSMessage, Codecs, ParsedPacket, VideoStreamerServerIO } from "./videoDecodeWebSocket";
+import { WSMessage, Codecs, ParsedPacket, VideoStreamerServerIO } from "./videoWebSocket";
 
 /*
 

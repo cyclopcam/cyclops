@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CameraInfo, Resolution } from "@/camera/camera";
 import { onMounted, onUnmounted, watch, ref, reactive } from "vue";
-import { VideoStreamer } from "./videoDecode";
+import { VideoStreamer } from "./videoStreamer";
 import SeekBar from "./SeekBar.vue";
 import { SeekBarContext } from "./seekBarContext";
 import { SnapSeek } from "./snapSeek";
