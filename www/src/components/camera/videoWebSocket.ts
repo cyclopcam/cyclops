@@ -144,6 +144,9 @@ export class VideoStreamerServerIO {
 			this.lastCodec = codec32;
 			return null;
 		}
+		if (codec32 !== this.lastCodec) {
+			console.log(`Codec ${codec} for camera ${this.camera.id}`);
+		}
 		this.lastCodec = codec32;
 
 		return new ParsedPacket(

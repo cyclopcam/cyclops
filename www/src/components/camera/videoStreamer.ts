@@ -93,8 +93,10 @@ export class VideoStreamer {
 	isPaused = false;
 	posterUrlCacheBreaker = Math.round(Math.random() * 1e9);
 	showPosterImageInOverlay = true;
+	videoCanvas: HTMLCanvasElement | null = null; // Used when decoding the video manually (eg native Android)
 	overlayCanvas: HTMLCanvasElement | null = null;
 	livenessCanvas: HTMLCanvasElement | null = null;
+	isUnableToDecodeMessageShown = false;
 
 	seekOverlayToMS = 0; // If not 0, then the overlay canvas is rendered with a keyframe closest to this time. This is for seeking back in time.
 	seekIndexNext = 1; // Used to tell if we should discard a fetch (eg if an older seek finished AFTER a newer seek, then discard the older result)
@@ -121,7 +123,8 @@ export class VideoStreamer {
 		clearTimeout(this.posterURLTimerID);
 	}
 
-	setDOMElements(overlayCanvas: HTMLCanvasElement | null, livenessCanvas: HTMLCanvasElement | null) {
+	setDOMElements(videoCanvas: HTMLCanvasElement | null, overlayCanvas: HTMLCanvasElement | null, livenessCanvas: HTMLCanvasElement | null) {
+		this.videoCanvas = videoCanvas;
 		this.overlayCanvas = overlayCanvas;
 		this.livenessCanvas = livenessCanvas;
 	}
@@ -138,6 +141,7 @@ export class VideoStreamer {
 	resumePlay() {
 		// For resuming play when our browser tab has been deactivated, and then reactivated.
 		this.showPosterImageInOverlay = false;
+		this.isUnableToDecodeMessageShown = false;
 
 		if (this.isPaused) {
 			this.isPaused = false;
@@ -147,6 +151,7 @@ export class VideoStreamer {
 
 	pause() {
 		this.showPosterImageInOverlay = true;
+		this.isUnableToDecodeMessageShown = false;
 		this.resetPosterURL();
 
 		this.isPaused = true;
@@ -155,6 +160,7 @@ export class VideoStreamer {
 
 	stop() {
 		this.showPosterImageInOverlay = true;
+		this.isUnableToDecodeMessageShown = false;
 		this.resetPosterURL();
 
 		this.isPaused = false;
@@ -318,7 +324,7 @@ export class VideoStreamer {
 				this.lastDetection = detection;
 				this.updateOverlay();
 			} else if (data instanceof ParsedPacket) {
-				this.muxer.feed(data);
+				this.feedMuxerPacket(data);
 				if (globals.isFirstVideoPlay && phase === 0) {
 					firstPackets.push(data);
 				}
@@ -347,6 +353,16 @@ export class VideoStreamer {
 		} as any);
 	}
 
+	feedMuxerPacket(packet: ParsedPacket) {
+		if (this.muxer) {
+			if (packet.codec === Codecs.H265) {
+				this.showUnableToDecodeMessage(packet.codec);
+				return;
+			}
+			this.muxer.feed(packet);
+		}
+	}
+
 	sendWSMessage(msg: WSMessage) {
 		// SYNC-WEBSOCKET-JSON-MSG
 		if (!this.serverIO) {
@@ -365,6 +381,25 @@ export class VideoStreamer {
 		let cx = can.getContext('2d')!;
 		cx.fillStyle = "rgba(0,0,0,0.01)";
 		cx.fillRect(0, 0, 1, 1);
+	}
+
+	showUnableToDecodeMessage(codec: Codecs) {
+		if (!this.videoCanvas || this.isUnableToDecodeMessageShown) {
+			return;
+		}
+		this.isUnableToDecodeMessageShown = true;
+		this.videoCanvas.width = 500;
+		this.videoCanvas.height = 360;
+		let cx = this.videoCanvas.getContext('2d')!;
+		cx.fillStyle = "black";
+		cx.fillRect(0, 0, this.videoCanvas.width, this.videoCanvas.height);
+		cx.fillStyle = "white";
+		cx.font = "30px Arial";
+		cx.textAlign = "center";
+		let x = this.videoCanvas.width / 2;
+		let y = this.videoCanvas.height / 2 - 10;
+		cx.fillText(`Unable to decode ${codec} video.`, x, y);
+		cx.fillText(`Use the mobile app instead.`, x, y + 40);
 	}
 
 	async updateOverlay() {

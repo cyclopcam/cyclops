@@ -21,6 +21,7 @@ let emits = defineEmits(['playpause', 'seek']);
 let showLivenessCanvas = true;
 let livenessCanvas = ref(null);
 let overlayCanvas = ref(null);
+let videoCanvas = ref(null); // Used when decoding video frames manually (eg in native Android)
 let videoShell = ref(null);
 let streamer = new VideoStreamer(props.camera);
 let seekBar = reactive(new SeekBarContext(props.camera.id));
@@ -444,7 +445,7 @@ onMounted(() => {
 	if (showLivenessCanvas) {
 		liveCanvas = livenessCanvas.value! as HTMLCanvasElement;
 	}
-	streamer.setDOMElements(overlayCanvas.value! as HTMLCanvasElement, liveCanvas);
+	streamer.setDOMElements(videoCanvas.value! as HTMLCanvasElement, overlayCanvas.value! as HTMLCanvasElement, liveCanvas);
 	streamer.posterURLUpdateTimer();
 
 	seekBar.panToNow();
@@ -462,6 +463,7 @@ onMounted(() => {
 			<div class="videoPixels">
 				<video class="video" :id="videoElementID()" autoplay :poster="streamer.posterURL()" @play="onPlay"
 					@pause="onPause" :style="videoStyle()" />
+				<canvas ref="videoCanvas" class="overlay" :style="imgStyle()" />
 				<canvas ref="overlayCanvas" class="overlay" :style="imgStyle()" />
 			</div>
 			<canvas v-if="showLivenessCanvas" ref="livenessCanvas" class="livenessCanvas" />
