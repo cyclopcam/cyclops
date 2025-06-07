@@ -1,11 +1,12 @@
 import type { CameraInfo, Resolution } from "@/camera/camera";
 import { AnalysisState } from "@/camera/nn";
-import JMuxer from "jmuxer";
 import { globals } from "@/globals";
 import { BoxDrawMode, drawAnalyzedObjects } from "./detections";
-import { encodeQuery } from "@/util/util";
+import { encodeQuery, sleep } from "@/util/util";
 import { CachedFrame, FrameCache } from "./frameCache";
-import { WSMessage, Codecs, ParsedPacket, VideoStreamerServerIO } from "./videoWebSocket";
+import { WSMessage, VideoStreamerIO } from "./videoWebSocket";
+import { createJMuxer, type CyVideoDecoder, Codecs, ParsedPacket, createNativeAppVideoDecoder } from "./videoDecoders";
+import { createWebCodecsDecoder } from "./videoDecoderWebCodec";
 
 /*
 
@@ -66,7 +67,7 @@ and instead use the first video frame for its poster. We don't want this. We wan
 updating our poster image every few seconds, even if the video is paused.
 
 Since we always show our own overlay for a poster image, why do we even bother
-setting the "poster" attribute on the <video> element? The reason is because 
+setting the "poster" attribute on the <video> element? The reason is because
 without this, when we first hit play, then the video element will become white.
 With a poster image, it continues to display the poster image until the video
 stream starts playing.
@@ -80,19 +81,31 @@ often of my Xiaomi Redmit Note 9 Pro, that I always enable the liveness canvas.
 
 */
 
+export enum PlayerState {
+	Stopped = "stopped", // We have no websocket connection, so we're not receiving frames.
+	Playing = "playing", // We have a websocket connection, and we're receiving frames.
+	Paused = "paused", // We have a websocket connection, but we've asked it to stop sending us frames.
+}
 
 // Use JMuxer to decode video packets so we can render them to a canvas or a <video> element.
 // Also, understand our own WebSocket messages which transport video packets.
 export class VideoStreamer {
 	camera: CameraInfo;
-	muxer: JMuxer | null = null;
-	serverIO: VideoStreamerServerIO | null = null;
+
+	creatingDecoder = false;
+	decoder: CyVideoDecoder | null = null; // either JMuxer or a native decoder (eg on Android).
+	decoderReady = false;
+	//packetQueue: ParsedPacket[] = []; // Packets that we have received, but not yet decoded.
+
+	state = PlayerState.Stopped;
+
+	serverIO: VideoStreamerIO | null = null;
 	posterURLUpdateFrequencyMS = 5 * 1000; // When the page is active, we update our poster URL every X seconds
 	posterURLTimerID: any = 0;
 	lastDetection = new AnalysisState();
-	isPaused = false;
 	posterUrlCacheBreaker = Math.round(Math.random() * 1e9);
 	showPosterImageInOverlay = true;
+	videoElementID: string = ""; // The ID of the <video> element that we're using to play the video stream (for h264 with JMuxer).
 	videoCanvas: HTMLCanvasElement | null = null; // Used when decoding the video manually (eg native Android)
 	overlayCanvas: HTMLCanvasElement | null = null;
 	livenessCanvas: HTMLCanvasElement | null = null;
@@ -100,7 +113,7 @@ export class VideoStreamer {
 
 	seekOverlayToMS = 0; // If not 0, then the overlay canvas is rendered with a keyframe closest to this time. This is for seeking back in time.
 	seekIndexNext = 1; // Used to tell if we should discard a fetch (eg if an older seek finished AFTER a newer seek, then discard the older result)
-	seekResolution: Resolution = 'ld';
+	seekResolution: Resolution = "ld";
 	seekImage: ImageBitmap | null = null; // Most recent seek frame
 	seekImageIndex = 0; // seekCount at the time when the fetch of this seekImage was initiated
 	seekCache: FrameCache;
@@ -115,7 +128,9 @@ export class VideoStreamer {
 			this.resetPosterURL();
 		}
 		//console.log(`posterURLUpdateTimer ${props.camera.id}`);
-		this.posterURLTimerID = setTimeout(() => { this.posterURLUpdateTimer() }, this.posterURLUpdateFrequencyMS);
+		this.posterURLTimerID = setTimeout(() => {
+			this.posterURLUpdateTimer();
+		}, this.posterURLUpdateFrequencyMS);
 	}
 
 	close() {
@@ -143,41 +158,47 @@ export class VideoStreamer {
 		this.showPosterImageInOverlay = false;
 		this.isUnableToDecodeMessageShown = false;
 
-		if (this.isPaused) {
-			this.isPaused = false;
+		if (this.state === PlayerState.Paused) {
+			this.state = PlayerState.Playing;
 			this.sendWSMessage(WSMessage.Resume);
 		}
 	}
 
-	pause() {
+	resetPosterState() {
 		this.showPosterImageInOverlay = true;
 		this.isUnableToDecodeMessageShown = false;
 		this.resetPosterURL();
+	}
 
-		this.isPaused = true;
+	pause() {
+		this.resetPosterState();
+		this.state = PlayerState.Paused;
 		this.sendWSMessage(WSMessage.Pause);
 	}
 
 	stop() {
-		this.showPosterImageInOverlay = true;
-		this.isUnableToDecodeMessageShown = false;
-		this.resetPosterURL();
-
-		this.isPaused = false;
+		this.resetPosterState();
+		this.state = PlayerState.Stopped;
 		if (this.serverIO) {
 			this.serverIO.close();
 			this.serverIO = null;
 		}
-		if (this.muxer) {
-			this.muxer.destroy();
-			this.muxer = null;
-		}
+		this.destroyDecoder();
 	}
 
 	clearSeek() {
 		this.seekImage = null;
 		this.seekCache.clear();
 		this.seekOverlayToMS = 0;
+	}
+
+	destroyDecoder() {
+		this.decoderReady = false;
+		//this.packetQueue = [];
+		if (this.decoder) {
+			this.decoder.close();
+			this.decoder = null;
+		}
 	}
 
 	hasCachedSeekFrame(posMS: number, resolution: Resolution): boolean {
@@ -198,12 +219,11 @@ export class VideoStreamer {
 		}
 		let url = `/api/camera/image/${this.camera.id}/${resolution}/${Math.round(posMS)}?quality=${quality}&seekMode=${seekMode}`;
 		let r = await fetch(url);
-		if (!r.ok)
-			return null;
+		if (!r.ok) return null;
 		let blob = await r.blob();
 		// Getting rid of this FPS estimate, because we already know the camera FPS
 		//let estimatedFPS = parseInt(r.headers.get("X-Cyclops-FPS") ?? '0', 10);
-		let frameTime = parseInt(r.headers.get("X-Cyclops-Frame-Time") ?? '0', 10);
+		let frameTime = parseInt(r.headers.get("X-Cyclops-Frame-Time") ?? "0", 10);
 		if (keyframeOnly) {
 			this.seekCache.addKeyframeTime(resolution, frameTime);
 		}
@@ -227,7 +247,7 @@ export class VideoStreamer {
 		// promises, so that we can await on them both at the same time.
 		// uhh.. I don't understand this comment now!
 
-		let quality = resolution === 'ld' ? 70 : 85;
+		let quality = resolution === "ld" ? 70 : 85;
 		let fetchFrame = this.fetchSingleFrame(resolution, posMS, quality, keyframeOnly);
 		let [cachedFrame] = await Promise.all([fetchFrame]);
 		if (!cachedFrame) {
@@ -238,8 +258,8 @@ export class VideoStreamer {
 			// A newer image has already been fetched and decoded
 			return;
 		}
-		if (this.isPlaying()) {
-			// User clicked 'play' to play the live stream while we were waiting for our seek frame
+		if (this.state === PlayerState.Playing) {
+			// User clicked 'play' to play the live stream while we were waiting for our seek frame, so discard the seek frame.
 			return;
 		}
 		this.lastDetection = cachedFrame.analysis ?? new AnalysisState();
@@ -248,40 +268,28 @@ export class VideoStreamer {
 		this.updateOverlay();
 	}
 
-	destroyMuxer() {
-		if (this.muxer) {
-			this.muxer.destroy();
-			this.muxer = null;
-		}
-	}
-
-	isPlaying(): boolean {
-		return this.muxer !== null;
-	}
-
 	play(videoElementID: string, res: Resolution) {
-		let isPlaying = this.muxer !== null;
-		console.log("VideoStreamer.play(). isPlaying: " + (isPlaying ? "yes" : "no"));
+		console.log(`VideoStreamer.play(). state: ${this.state}`);
+		this.videoElementID = videoElementID;
 		this.showPosterImageInOverlay = false;
 		this.clearSeek();
 		this.updateOverlay();
-		if (isPlaying)
-			return;
+		if (this.state === PlayerState.Playing) return;
 
-		this.isPaused = false;
+		this.state = PlayerState.Playing;
 
 		let scheme = window.location.origin.startsWith("https") ? "wss://" : "ws://";
 		let socketURL = `${scheme}${window.location.host}/api/ws/camera/stream/${this.camera.id}/${res}`;
 		console.log("Play " + socketURL);
 
-		let firstPackets: ParsedPacket[] = [];
+		/*
 		let phase = 0;
 		let isMuxerReady = false;
 
 		let onMuxerReadyPass2 = () => {
 			console.log("onMuxerReadyPass2");
 			phase = 2;
-		}
+		};
 
 		let onMuxerReadyPass1 = () => {
 			// See the long comment at the top of the page about the "Weird Android Issue".
@@ -294,73 +302,104 @@ export class VideoStreamer {
 				if (nFrames === 0) {
 					console.log(`No frames decoded, so recreating muxer`);
 					phase = 1;
-					this.destroyMuxer();
-					this.createMuxer(videoElementID, onMuxerReadyPass2);
-					// I suspect that my "backlog" mechanism might be at fault.
-					// This hack seems to be more robust when I omit the backlog on the
-					// 2nd attempt.
-					//for (let p of firstPackets) {
-					//	muxer.feed(p);
-					//}
-					firstPackets = [];
+					this.destroyDecoder();
+					this.createDecoder(videoElementID, onMuxerReadyPass2);
 				}
 			} else {
+				// Keep waking up again, until we have received 10 packets.
 				setTimeout(onMuxerReadyPass1, 200);
 			}
-		}
+		};
 
 		if (globals.isFirstVideoPlay) {
 			setTimeout(onMuxerReadyPass1, 500);
 		}
 
-		this.createMuxer(videoElementID, () => { console.log("muxer ready"); isMuxerReady = true });
+		this.createDecoder(videoElementID, () => {
+			console.log("muxer ready");
+			isMuxerReady = true;
+		});
+		*/
 
 		var onWebSocketMessage = (data: ParsedPacket | AnalysisState) => {
-			if (this.isPaused || !this.muxer) {
+			if (this.state !== PlayerState.Playing) {
 				return;
 			}
 			if (data instanceof AnalysisState) {
-				let detection = data;
-				this.lastDetection = detection;
+				this.lastDetection = data;
 				this.updateOverlay();
 			} else if (data instanceof ParsedPacket) {
-				this.feedMuxerPacket(data);
-				if (globals.isFirstVideoPlay && phase === 0) {
-					firstPackets.push(data);
-				}
-				this.invalidateLivenessCanvas();
+				// decodePacket is an async function, but we don't want for it to return here.
+				this.decodePacket(data);
 			}
 		};
 
-		this.serverIO = new VideoStreamerServerIO(this.camera, onWebSocketMessage, socketURL);
+		this.serverIO = new VideoStreamerIO(this.camera, onWebSocketMessage, socketURL);
 	}
 
-	createMuxer(videoElement: string | HTMLVideoElement, onReady: () => void) {
-		this.muxer = new JMuxer({
-			node: videoElement,
-			mode: "video",
-			debug: false,
-			// OK.. we want to leave FPS unspecified, so that we can control it per-frame, for backlog catchup.
-			// If we do specify FPS here, then it becomes Max FPS, and consequently max speedup during backlog catchup.
-			//fps: 60, 
-			maxDelay: 200,
-			//flushingTime: 100, // jsmuxer basically runs as setInterval(() => flushFrames(), flushingTime)
-			flushingTime: 50, // jsmuxer basically runs as setInterval(() => flushFrames(), flushingTime)
-			onReady: onReady,
-			onError: () => { console.log("jmuxer onError"); },
-			onMissingVideoFrames: () => { console.log("jmuxer onMissingVideoFrames"); },
-			onMissingAudioFrames: () => { console.log("jmuxer onMissingAudioFrames"); },
-		} as any);
-	}
-
-	feedMuxerPacket(packet: ParsedPacket) {
-		if (this.muxer) {
-			if (packet.codec === Codecs.H265) {
-				this.showUnableToDecodeMessage(packet.codec);
-				return;
-			}
-			this.muxer.feed(packet);
+	async createDecoder(codec: Codecs) {
+		if (codec !== Codecs.H264) {
+			this.showUnableToDecodeMessage(codec);
+			return;
 		}
+
+		//let onDecoderReady = () => {
+		//	if (this.decoder) {
+		//		this.decoderReady = true;S
+		//		for (let packet of this.packetQueue) {
+		//			this.decoder!.decode(packet.video);
+		//		}
+		//		this.packetQueue = [];
+		//	}
+		//};
+		//this.decoder = createJMuxer(this.videoElementID, onDecoderReady);
+		this.decoder = createJMuxer(this.videoElementID);
+		//this.decoder = await createNativeAppVideoDecoder(codec);
+		//this.decoder = await createWebCodecsDecoder(codec);
+	}
+
+	async decodePacket(packet: ParsedPacket) {
+		// If a packet arrives while we're still busy creating the decoder, then just
+		// sleep until that other decodePacket invocation finishes.
+		while (this.creatingDecoder) {
+			await sleep(100);
+		}
+
+		if (!this.decoder) {
+			this.creatingDecoder = true;
+			try {
+				await this.createDecoder(packet.codec);
+			}
+			finally {
+				this.creatingDecoder = false;
+			}
+		}
+
+		if (this.decoder) {
+			this.decoder.decode(packet);
+			this.presentFrame();
+			//if (this.decoderReady) {
+			//	this.decoder.decode(packet.video);
+			//	this.presentFrame();
+			//} else {
+			//	this.packetQueue.push(packet);
+			//}
+		}
+	}
+
+	async presentFrame() {
+		if (!this.decoder) {
+			return;
+		}
+		if (!this.decoder.useNextFrame) {
+			// This path is for JMuxer. It decodes directly into the video element.
+			// All we need to do is invalidate our liveness canvas, to make sure the
+			// browser knows there's new content to render.
+			this.invalidateLivenessCanvas();
+			return;
+		}
+		// This is for our own decoder(s), where we need to pull frames once they're ready
+		let bmp = await this.decoder.nextFrame();
 	}
 
 	sendWSMessage(msg: WSMessage) {
@@ -378,7 +417,7 @@ export class VideoStreamer {
 		let can = this.livenessCanvas;
 		can.width = 1;
 		can.height = 1;
-		let cx = can.getContext('2d')!;
+		let cx = can.getContext("2d")!;
 		cx.fillStyle = "rgba(0,0,0,0.01)";
 		cx.fillRect(0, 0, 1, 1);
 	}

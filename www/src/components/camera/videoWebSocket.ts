@@ -1,5 +1,6 @@
 import type { CameraInfo } from "@/camera/camera";
 import { AnalysisState } from "@/camera/nn";
+import { Codecs, ParsedPacket } from "./videoDecoders";
 
 // SYNC-WEBSOCKET-COMMANDS
 export enum WSMessage {
@@ -7,24 +8,11 @@ export enum WSMessage {
 	Resume = "resume",
 }
 
-export enum Codecs {
-	H264 = "h264",
-	H265 = "h265",
-}
-
-export class ParsedPacket {
-	constructor(
-		public codec: Codecs,
-		public video: Uint8Array,
-		public recvID: number,
-		public duration?: number
-	) { }
-}
 
 type OnMessageCallback = (msg: AnalysisState | ParsedPacket) => void;
 
 // Manages the I/O portion of video streaming
-export class VideoStreamerServerIO {
+export class VideoStreamerIO {
 	camera: CameraInfo;
 	ws: WebSocket;
 	onMessage: OnMessageCallback;
@@ -51,7 +39,6 @@ export class VideoStreamerServerIO {
 		this.ws.addEventListener("error", (e) => {
 			console.log("Video streamer WebSocket Error");
 		});
-
 	}
 
 	close() {
@@ -79,7 +66,8 @@ export class VideoStreamerServerIO {
 		let codec32 = dv.getUint32(4, false); // "H264" or "H265", in big endian byte order so that it looks pretty on the wire, and left-to-right in hex as 0x48323634 or 0x48323635
 		let flags = dv.getUint32(8, true);
 		let recvID = dv.getUint32(12, true);
-		let backlog = (flags & 1) !== 0;
+		let keyframe = (flags & 1) !== 0;
+		let backlog = (flags & 2) !== 0; // Is this packet part of the backlog of packets, from the most recent keyframe up to the present?
 		//console.log("pts", pts);
 		let video = input.subarray(headerSize);
 		let logPacketCount = false; // SYNC-LOG-PACKET-COUNT
@@ -93,8 +81,10 @@ export class VideoStreamerServerIO {
 
 		if (!backlog && !this.backlogDone) {
 			let nKB = this.nBytes / 1024;
-			let kbPerSecond = (1000 * this.nBytes / (now - this.firstPacketTime)) / 1024;
-			console.log(`backlogDone in ${now - this.firstPacketTime} ms. ${nKB.toFixed(1)} KB over ${this.nVideoPackets} packets which is ${kbPerSecond.toFixed(0)} KB/second`);
+			let kbPerSecond = (1000 * this.nBytes) / (now - this.firstPacketTime) / 1024;
+			console.log(
+				`backlogDone in ${now - this.firstPacketTime} ms. ${nKB.toFixed(1)} KB over ${this.nVideoPackets} packets which is ${kbPerSecond.toFixed(0)} KB/second`,
+			);
 			this.backlogDone = true;
 		}
 
@@ -149,12 +139,7 @@ export class VideoStreamerServerIO {
 		}
 		this.lastCodec = codec32;
 
-		return new ParsedPacket(
-			codec,
-			video,
-			recvID,
-			backlog ? undefined : normalDuration
-		);
+		return new ParsedPacket(codec, video, recvID, keyframe, backlog, backlog ? undefined : normalDuration);
 	}
 
 	parseStringMessage(msg: string): AnalysisState | null {
@@ -164,5 +149,4 @@ export class VideoStreamerServerIO {
 		}
 		return null;
 	}
-
 }

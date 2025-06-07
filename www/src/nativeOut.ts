@@ -27,3 +27,41 @@ export async function natRequestOAuthLogin(purpose: OAuthLoginPurpose, provider:
 	console.log("natRequestOAuthLogin");
 	await fetch("/natcom/requestOAuthLogin?" + encodeQuery({ provider, purpose }));
 }
+
+export type NativeDecoderID = string;
+
+// Create a video decoder.
+// You must destroy it when you're done with it.
+// Returns the ID of the decoder.
+export async function natCreateVideoDecoder(codec: string): Promise<NativeDecoderID> {
+	let r = await fetch("/natcom/decoder/create?" + encodeQuery({ codec }));
+	return await r.text() as NativeDecoderID;
+}
+
+// Destroy a video decoder
+export async function natDestroyVideoDecoder(decoderId: NativeDecoderID) {
+	await fetch("/natcom/decoder/destroy?" + encodeQuery({ decoderId }));
+}
+
+// Decode a video packet.
+export async function natDecodeVideoPacket(decoderId: NativeDecoderID, packet: Uint8Array) {
+	await fetch("/natcom/decoder/packet?" + encodeQuery({ decoderId }), {
+		method: "POST",
+		body: packet,
+	});
+}
+
+// Extract the next frame from a video decoder.
+export async function natNextVideoFrame(decoderId: NativeDecoderID): Promise<ImageBitmap | null> {
+	let r = await fetch("/natcom/decoder/nextFrame?" + encodeQuery({ decoderId }));
+	if (r.status === 204) {
+		// No content, no frame available.
+		return null;
+	}
+	if (r.status !== 200) {
+		console.error("Failed to get next video frame:", r.status, r.statusText);
+		return null;
+	}
+	let blob = await r.blob();
+	return createImageBitmap(blob);
+}

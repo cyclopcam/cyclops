@@ -313,8 +313,11 @@ func (s *VideoWebSocketStreamer) webSocketWriter(conn *websocket.Conn) {
 
 			buf := bytes.Buffer{}
 			flags := uint32(0)
-			if frame.IsBacklog {
+			if frame.HasIDR() {
 				flags |= 1
+			}
+			if frame.IsBacklog {
+				flags |= 2
 			}
 			// Total size of header (everything before the NALUs)
 			headerSize := uint32(16)
