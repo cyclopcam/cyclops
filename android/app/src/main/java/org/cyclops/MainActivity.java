@@ -86,6 +86,8 @@ public class MainActivity extends AppCompatActivity implements Main {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        Log.d("JNI", NativeBridge.helloNative());
+
         crypto = new Crypto();
 
         connectivityCheckClient = new HttpClient(new OkHttpClient.Builder().callTimeout(300, TimeUnit.MILLISECONDS).build());

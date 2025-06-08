@@ -54,6 +54,7 @@ func (c Codec) ToFFmpeg() string {
 }
 
 func (c Codec) InternalName() string {
+	// SYNC-INTERNAL-CODEC-NAMES
 	switch c {
 	case CodecH264:
 		return "h264"

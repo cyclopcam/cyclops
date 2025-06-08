@@ -1,10 +1,6 @@
 import { natCreateVideoDecoder, natDecodeVideoPacket, natDestroyVideoDecoder, natNextVideoFrame, type NativeDecoderID } from "@/nativeOut";
+import { Codecs } from "@/camera/camera";
 import JMuxer from "jmuxer";
-
-export enum Codecs {
-	H264 = "h264",
-	H265 = "h265",
-}
 
 export class ParsedPacket {
 	constructor(
@@ -93,8 +89,8 @@ export function createJMuxer(videoElement: string | HTMLVideoElement): CyVideoDe
 	};
 }
 
-export async function createNativeAppVideoDecoder(codec: Codecs): Promise<CyVideoDecoder> {
-	let decoderID = await natCreateVideoDecoder(codec);
+export async function createNativeAppVideoDecoder(codec: Codecs, width: number, height: number): Promise<CyVideoDecoder> {
+	let decoderID = await natCreateVideoDecoder(codec, width, height);
 	return {
 		useNextFrame: true,
 		close: () => {

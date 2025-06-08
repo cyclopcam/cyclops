@@ -1,8 +1,15 @@
 export type Resolution = "ld" | "hd";
 
+// SYNC-INTERNAL-CODEC-NAMES
+export enum Codecs {
+	H264 = "h264",
+	H265 = "h265",
+}
+
 // A live running stream
 export class StreamInfo {
 	name = "";
+	codec = Codecs.H264;
 	fps = 0; // typically something like 10, 15, 30
 	width = 0;
 	height = 0;
@@ -12,6 +19,7 @@ export class StreamInfo {
 		let c = new StreamInfo();
 		// SYNC-STREAM-INFO-JSON
 		c.name = name;
+		c.codec = j.codec;
 		c.fps = j.fps;
 		c.keyframeInterval = j.keyframeInterval;
 		c.width = j.width;

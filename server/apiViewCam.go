@@ -39,6 +39,7 @@ func (s *Server) getCameraFromIDOrPanic(idStr string) *camera.Camera {
 // SYNC-STREAM-INFO-JSON
 type streamInfoJSON struct {
 	FPS              int     `json:"fps"`
+	Codec            string  `json:"codec"`
 	Width            int     `json:"width"`
 	Height           int     `json:"height"`
 	FrameSize        float64 `json:"frameSize"`
@@ -60,6 +61,7 @@ type camInfoJSON struct {
 func toStreamInfoJSON(s *camera.Stream) streamInfoJSON {
 	stats := s.RecentFrameStats()
 	r := streamInfoJSON{
+		Codec:            s.Codec.InternalName(),
 		FPS:              stats.FPSRounded(),
 		FrameSize:        math.Round(stats.FrameSize),
 		KeyFrameSize:     math.Round(stats.KeyframeSize),

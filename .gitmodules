@@ -10,3 +10,9 @@
 [submodule "Simd"]
 	path = Simd
 	url = https://github.com/ermig1979/Simd.git
+[submodule "android/third_party/libyuv"]
+	path = android/third_party/libyuv
+	url = https://chromium.googlesource.com/libyuv/libyuv
+[submodule "android/app/third_party/libyuv"]
+	path = android/app/third_party/libyuv
+	url = https://chromium.googlesource.com/libyuv/libyuv

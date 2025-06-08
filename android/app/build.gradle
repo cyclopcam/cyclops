@@ -19,7 +19,24 @@ android {
         versionName "1.0.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        externalNativeBuild {
+            cmake {
+                cppFlags '-std=c++20'
+            }
+        }
         //signingConfig signingConfigs.release
+
+        ndk {
+            abiFilters "arm64-v8a"
+        }        
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt"
+            //path 'src/main/cpp/CMakeLists.txt'
+            //version '3.22.1'
+        }
     }
 
     buildTypes {

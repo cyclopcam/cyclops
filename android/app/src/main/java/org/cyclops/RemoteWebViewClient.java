@@ -3,6 +3,7 @@ package org.cyclops;
 import android.app.Activity;
 import android.content.Context;
 import android.net.Uri;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.webkit.ValueCallback;
 import android.webkit.WebResourceRequest;
@@ -34,10 +35,15 @@ public class RemoteWebViewClient extends WebViewClientCompat {
     private final Main main;
     private final Activity activity;
     private State.Server server;
+    private Map<Integer, VideoDecoder> videoDecoders;
+    private Map<Integer, WebsocketPlayer> videoPlayers;
+    private int nextVideoDecoderID = 1;
 
     RemoteWebViewClient(Main main, Activity activity) {
         this.main = main;
         this.activity = activity;
+        this.videoDecoders = new HashMap<>();
+        this.videoPlayers = new HashMap<>();
     }
 
     @Override
@@ -108,8 +114,19 @@ public class RemoteWebViewClient extends WebViewClientCompat {
         return new WebResourceResponse("text/plain", "utf-8", 200, "OK", null, null);
     }
 
+    WebResourceResponse sendText(String msg) {
+        return new WebResourceResponse("text/plain", "utf-8", 200, "OK", null, new ByteArrayInputStream(msg.getBytes(StandardCharsets.UTF_8)) );
+    }
+
     WebResourceResponse sendError(String err) {
-        return new WebResourceResponse("text/plain", "utf-8", 400, err, null, null);
+        // grrrr. if we send a 400 back, then the WebView doesn't get the body. Sigh!
+        //return new WebResourceResponse("text/plain", "utf-8", 400, err, null, null);
+        // So instead we use a string prefixed with "ERROR:" to indicate errors.
+        return sendText("ERROR:" + err);
+    }
+
+    WebResourceResponse sendInt(int i) {
+        return sendText(Integer.toString(i));
     }
 
     WebResourceResponse sendJSON(Object obj) {
@@ -147,6 +164,73 @@ public class RemoteWebViewClient extends WebViewClientCompat {
                     //activity.runOnUiThread(() -> main.requestOAuthLogin(url.getQueryParameter("purpose"), url.getQueryParameter("provider")));
                     main.requestOAuthLogin(url.getQueryParameter("purpose"), url.getQueryParameter("provider"));
                     return sendOK();
+                case "/natcom/wsvideo/play":
+                    String wsurl = url.getQueryParameter("wsurl");
+                    String codec = url.getQueryParameter("codec");
+                    int width = Integer.parseInt(url.getQueryParameter("width"));
+                    int height = Integer.parseInt(url.getQueryParameter("height"));
+                    int id = nextVideoDecoderID;
+                    nextVideoDecoderID++;
+                    Log.i("C", "natcom/wsvideo/play " + wsurl + " " + codec + " " + width + " " + height);
+                    try {
+                        WebsocketPlayer player = new WebsocketPlayer(wsurl, codec, width, height);
+                        videoPlayers.put(id, player);
+                        return sendText(Integer.toString(id));
+                    } catch (Exception e) {
+                        return sendError(e.getMessage());
+                    }
+                case "/natcom/wsvideo/stop":
+                    int id2 = Integer.parseInt(url.getQueryParameter("id"));
+                    WebsocketPlayer player = videoPlayers.get(id2);
+                    if (player != null) {
+                        player.close();
+                        videoPlayers.remove(id2);
+                    }
+                    return sendOK();
+                case "/natcom/wsvideo/nextframe":
+                    int id3 = Integer.parseInt(url.getQueryParameter("id"));
+                    WebsocketPlayer player2 = videoPlayers.get(id3);
+                    if (player2 != null) {
+                        byte[] frame = player2.pollFrame();
+                        if (frame != null) {
+                            // Send back binary RGBA frame
+                            return new WebResourceResponse("application/binary", "", 200, "OK", null, new ByteArrayInputStream(frame));
+                        }
+                    }
+                    return new WebResourceResponse("text/plain", "utf-8", 204, "WAIT", null, null);
+
+                /*
+                case "/natcom/decoder/create":
+                    String codec = url.getQueryParameter("codec");
+                    int width = Integer.parseInt(url.getQueryParameter("width"));
+                    int height = Integer.parseInt(url.getQueryParameter("height"));
+                    int id = 0;
+                    try {
+                        VideoDecoder decoder = new VideoDecoder("video/" + codec, width, height);
+                        id = nextVideoDecoderID;
+                        nextVideoDecoderID++;
+                        videoDecoders.put(id, decoder);
+                    } catch (Exception e) {
+                        return sendError(e.getMessage());
+                    }
+                    return sendInt(id);
+                case "/natcom/decoder/destroy":
+                    int id2 = Integer.parseInt(url.getQueryParameter("id"));
+                    if (videoDecoders.containsKey(id2)) {
+                        VideoDecoder decoder = videoDecoders.get(id2);
+                        decoder.release();
+                        videoDecoders.remove(id2);
+                        return sendOK();
+                    }
+                    return sendOK();
+                case "/natcom/decoder/packet":
+                    // Packet bytes are in body
+                    int id3 = Integer.parseInt(url.getQueryParameter("id"));
+                    VideoDecoder decoder = videoDecoders.get(id3);
+                    if (decoder != null) {
+
+                    }
+                */
             }
         }
 

@@ -1,6 +1,7 @@
 import type { CameraInfo } from "@/camera/camera";
 import { AnalysisState } from "@/camera/nn";
-import { Codecs, ParsedPacket } from "./videoDecoders";
+import { ParsedPacket } from "./videoDecoders";
+import { Codecs } from "@/camera/camera";
 
 // SYNC-WEBSOCKET-COMMANDS
 export enum WSMessage {

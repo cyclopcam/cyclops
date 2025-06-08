@@ -1,6 +1,14 @@
 // Implementation of CyVideoDecoder that uses WebCodecs API.
 
-import { Codecs, type CyVideoDecoder, type ParsedPacket } from "./videoDecoders";
+// I created this briefly, and didn't try hard to get it to work.
+// Chrome on ubuntu 24.04 didn't support the various H265 variants I tried,
+// such as hev1.1.6.L93.B0. I didn't try it on any other platforms, or with h264.
+// One could no doubt get this to work, and it would probably be faster than
+// round-tripping through the native app. We should do that when the user is
+// on a secure connection.
+
+import type { CyVideoDecoder, ParsedPacket } from "./videoDecoders";
+import { Codecs } from "@/camera/camera";
 
 export async function createWebCodecsDecoder(codec: Codecs): Promise<CyVideoDecoder> {
 	if (!("VideoDecoder" in window)) {
@@ -35,7 +43,7 @@ export async function createWebCodecsDecoder(codec: Codecs): Promise<CyVideoDeco
 	let codecName = "";
 	switch (codec) {
 		case Codecs.H264:
-			codecName = "H264";
+			codecName = "H264"; // Won't work. Need to use a specific profile, like "avc1.4d401e" for baseline profile (copilot suggestion!)
 			break;
 		case Codecs.H265:
 			codecName = "hev1.1.6.L93.B0"; // Just a guess from o3
