@@ -15,6 +15,29 @@ export async function createWebCodecsDecoder(codec: Codecs): Promise<CyVideoDeco
 		throw new Error("WebCodecs API is not supported in this browser.");
 	}
 
+	let codecName = "";
+	switch (codec) {
+		case Codecs.H264:
+			// I couldn't get any of these to work on Chrome 137.0.7151.55 (Official Build) (64-bit) on Ubuntu 24.04.
+			// "avc1.42e01f", // baseline
+			// "avc1.4d401f", // main
+			// "avc1.640028"  // high			
+			codecName = "avc1.4d401f";
+			break;
+		case Codecs.H265:
+			codecName = "hev1.1.6.L93.B0"; // Just a guess from o3
+			break;
+	}
+	let config = {
+		codec: codecName,
+		hardwareAcceleration: "prefer-hardware",
+	} as VideoDecoderConfig;
+
+	let status = await VideoDecoder.isConfigSupported(config);
+	if (!status.supported) {
+		throw new Error(`Codec ${codecName} is not supported by the WebCodecs API.`);
+	}
+
 	//let startTime = performance.now();
 	let outputFrameQueue: ImageBitmap[] = [];
 	let nPackets = 0;
@@ -40,20 +63,7 @@ export async function createWebCodecsDecoder(codec: Codecs): Promise<CyVideoDeco
 		},
 	});
 
-	let codecName = "";
-	switch (codec) {
-		case Codecs.H264:
-			codecName = "H264"; // Won't work. Need to use a specific profile, like "avc1.4d401e" for baseline profile (copilot suggestion!)
-			break;
-		case Codecs.H265:
-			codecName = "hev1.1.6.L93.B0"; // Just a guess from o3
-			break;
-	}
-
-	await decoder.configure({
-		codec: codecName,
-		hardwareAcceleration: "prefer-hardware",
-	});
+	await decoder.configure(config);
 
 	return {
 		useNextFrame: true,

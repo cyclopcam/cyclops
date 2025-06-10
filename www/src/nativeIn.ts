@@ -30,3 +30,21 @@ import { popRoute } from "./router/helpers";
 (window as any).cySetIdentityToken = (token: string) => {
 	globals.nativeIdentityToken = token;
 };
+
+// Experiment with Message Ports. Not used yet.
+// Setup listener for message ports, which I learned about after having built the various other cyXXX functions.
+// I'm not sure if there's a practical/performance difference between these two methods of communication.
+// ahh.. This is useful if the native side needs to send us a non-trivial amount of data.
+(window as any).addEventListener('message', (event: any) => {
+	const port = event.ports[0];
+	if (port) {
+		console.log("Setting up event listener from native port");
+
+		port.onmessage = (event: any) => {
+			console.log('Message from Android:', event.data);
+		};
+
+		// Send a message back to Android
+		port.postMessage('Hello from JS');
+	}
+});

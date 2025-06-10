@@ -32,10 +32,10 @@ import okio.ByteString;
  *  └─────────┘                │
  *             (wsUrl)         ▼
  *  ┌─────────────────────────────────┐
- *  │         WebsocketPlayer        │
- *  │  ▸ parse header                │
- *  │  ▸ decoder.sendPacket(video)   │
- *  │  ▸ drain decoder → frameQueue  │
+ *  │         WebsocketPlayer         │
+ *  │  ▸ parse header                 │
+ *  │  ▸ decoder.sendPacket(video)    │
+ *  │  ▸ drain decoder → frameQueue   │
  *  └─────────────────────────────────┘
  */
 public class WebsocketPlayer {
@@ -151,8 +151,6 @@ public class WebsocketPlayer {
         /* -------------------------------------- video payload */
         int payloadOffset = headerSize;
         if (payloadOffset > bs.size()) return;    // sanity
-        //byte[] video = new byte[bs.size() - payloadOffset];
-        //bs.copy(payloadOffset, video, 0, video.length);
 
         // Fast: points at the same backing array, no copy yet
         ByteString payload = bs.substring(headerSize);

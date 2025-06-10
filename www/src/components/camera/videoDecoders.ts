@@ -1,4 +1,4 @@
-import { natCreateVideoDecoder, natDecodeVideoPacket, natDestroyVideoDecoder, natNextVideoFrame, type NativeDecoderID } from "@/nativeOut";
+//import { natCreateVideoDecoder, natDecodeVideoPacket, natDestroyVideoDecoder, natNextVideoFrame, type NativeDecoderID } from "@/nativeOut";
 import { Codecs } from "@/camera/camera";
 import JMuxer from "jmuxer";
 
@@ -89,6 +89,8 @@ export function createJMuxer(videoElement: string | HTMLVideoElement): CyVideoDe
 	};
 }
 
+/*
+// Initial version. This later ended up morphing into the native Java websocket listener.
 export async function createNativeAppVideoDecoder(codec: Codecs, width: number, height: number): Promise<CyVideoDecoder> {
 	let decoderID = await natCreateVideoDecoder(codec, width, height);
 	return {
@@ -105,3 +107,4 @@ export async function createNativeAppVideoDecoder(codec: Codecs, width: number, 
 		},
 	};
 }
+*/

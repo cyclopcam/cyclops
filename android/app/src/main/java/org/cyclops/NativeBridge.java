@@ -2,7 +2,7 @@ package org.cyclops;
 
 public class NativeBridge {
     static {
-        System.loadLibrary("your_native_lib");
+        System.loadLibrary("cynative");
     }
 
     public static native String helloNative();

@@ -6,9 +6,9 @@ import { encodeQuery, sleep } from "@/util/util";
 import { CachedFrame, FrameCache } from "./frameCache";
 import { WSMessage, VideoStreamerIO } from "./videoWebSocket";
 import { Codecs } from "@/camera/camera";
-import { createJMuxer, type CyVideoDecoder, ParsedPacket, createNativeAppVideoDecoder } from "./videoDecoders";
+import { createJMuxer, type CyVideoDecoder, ParsedPacket } from "./videoDecoders";
 import { createWebCodecsDecoder } from "./videoDecoderWebCodec";
-import { natCreateVideoDecoder, natWsVideoNextFrame, natWsVideoPlay, natWsVideoStop } from "@/nativeOut";
+import { natWsVideoNextFrame, natWsVideoPlay, natWsVideoStop } from "@/nativeOut";
 
 /*
 
@@ -373,9 +373,12 @@ export class VideoStreamer {
 
 	async createDecoder(codec: Codecs) {
 		if (codec !== Codecs.H264) {
-			if (globals.isApp) {
-				this.decoder = await createNativeAppVideoDecoder(codec, this.currentStream.width, this.currentStream.height);
-			}
+			// I've never managed to get WebCodecs to work, so will continue this experiment further, on different platforms.
+			//try {
+			//	this.decoder = await createWebCodecsDecoder(codec);
+			//} catch (err) {
+			//	console.warn(`Failed to create decoder for codec ${codec}:`, err);
+			//}
 			if (!this.decoder) {
 				this.showUnableToDecodeMessage(codec);
 				return;
@@ -383,8 +386,6 @@ export class VideoStreamer {
 		}
 
 		this.decoder = createJMuxer(this.videoElementID);
-		//this.decoder = await createNativeAppVideoDecoder(codec);
-		//this.decoder = await createWebCodecsDecoder(codec);
 	}
 
 	async decodePacket(packet: ParsedPacket) {
@@ -419,13 +420,6 @@ export class VideoStreamer {
 			// All we need to do is invalidate our liveness canvas, to make sure the
 			// browser knows there's new content to render.
 			this.invalidateLivenessCanvas();
-			// Yes.. the canvas works.
-			//let can = this.videoCanvas!;
-			//can.width = 20;
-			//can.height = 20;
-			//let cx = can.getContext('2d')!;
-			//cx.fillStyle = "rgba(250,0,0,0.4)";
-			//cx.fillRect(0, 0, 5, 5);
 			return;
 		}
 		// This is for our own decoder(s), where we need to pull frames once they're ready

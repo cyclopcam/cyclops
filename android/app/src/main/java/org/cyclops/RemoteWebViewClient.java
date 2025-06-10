@@ -6,14 +6,19 @@ import android.net.Uri;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.webkit.ValueCallback;
+import android.webkit.WebMessage;
+import android.webkit.WebMessagePort;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
+import androidx.webkit.WebMessageCompat;
+import androidx.webkit.WebMessagePortCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewClientCompat;
+import androidx.webkit.WebViewCompat;
 
 import com.google.gson.Gson;
 
@@ -34,27 +39,51 @@ public class RemoteWebViewClient extends WebViewClientCompat {
     //private final OkHttpClient client = new OkHttpClient();
     private final Main main;
     private final Activity activity;
+    private final WebView webView;
     private State.Server server;
     private Map<Integer, VideoDecoder> videoDecoders;
     private Map<Integer, WebsocketPlayer> videoPlayers;
     private int nextVideoDecoderID = 1;
+    private WebMessagePortCompat javaPort;
+    private WebMessagePortCompat jsPort;
 
-    RemoteWebViewClient(Main main, Activity activity) {
+    RemoteWebViewClient(Main main, Activity activity, WebView webView) {
         this.main = main;
         this.activity = activity;
+        this.webView = webView;
         this.videoDecoders = new HashMap<>();
         this.videoPlayers = new HashMap<>();
     }
 
     @Override
     public void onPageFinished(WebView view, String url) {
-        Log.i("C", "Remote onPageFinished");
+        Log.i("C", "Remote onPageFinished at url = '" + url + "'");
         //if (this.server != null && !this.server.publicKey.equals("") && !this.server.bearerToken.equals("")) {
         //    view.evaluateJavascript("window.cySetCredentials('" + this.server.publicKey + "' , '" + this.server.bearerToken + "')", null);
         //}
         super.onPageFinished(view, url);
         view.evaluateJavascript("window.cyActivateAppMode()", null);
         //Log.i("C", "app mode activated?");
+
+        // Experiment with Message Ports (not yet used)
+        WebMessagePortCompat[] ports = WebViewCompat.createWebMessageChannel(webView);
+        javaPort = ports[0];
+        jsPort = ports[1];
+
+        Uri uri = Uri.parse(url);
+
+        WebMessageCompat message = new WebMessageCompat("init", new WebMessagePortCompat[] { jsPort });
+        WebViewCompat.postWebMessage(webView, message, uri);
+
+        javaPort.setWebMessageCallback(new WebMessagePortCompat.WebMessageCallbackCompat() {
+            @Override
+            public void onMessage(WebMessagePortCompat port, WebMessageCompat message) {
+                String data = message.getData();
+                Log.i("C", "Message from JS: " + data);
+            }
+        });
+
+        javaPort.postMessage(new WebMessageCompat("Hello from the Java side"));
     }
 
     @Override

@@ -6,6 +6,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
 import androidx.webkit.WebViewAssetLoader;
+import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 
 import android.annotation.SuppressLint;
@@ -114,7 +115,7 @@ public class MainActivity extends AppCompatActivity implements Main {
 
         //setupHttpProxy();
 
-        remoteClient = new RemoteWebViewClient(this, this);
+        remoteClient = new RemoteWebViewClient(this, this, remoteWebView);
         remoteWebView.setWebViewClient(remoteClient);
 
         accounts.debugPrintSigningCert(this);

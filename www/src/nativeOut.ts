@@ -40,16 +40,19 @@ export async function natRequestOAuthLogin(purpose: OAuthLoginPurpose, provider:
 
 export type NativeDecoderID = string;
 
+// Start a WebSocket listener that will decode video
 export async function natWsVideoPlay(wsUrl: string, codec: string, width: number, height: number): Promise<NativeDecoderID> {
 	let r = await fetch("/natcom/wsvideo/play?" + encodeQuery({ wsurl: wsUrl, codec, width, height }));
 	let txt = handleNatError(await r.text());
 	return txt as NativeDecoderID;
 }
 
+// Stop a native WebSocket listener + decoder
 export async function natWsVideoStop(id: NativeDecoderID) {
 	return fetch("/natcom/wsvideo/stop?" + encodeQuery({ id }));
 }
 
+// Poll for the next video frame
 export async function natWsVideoNextFrame(id: NativeDecoderID, width: number, height: number): Promise<ImageBitmap | null> {
 	let r = await fetch("/natcom/wsvideo/nextframe?" + encodeQuery({ id }));
 	//console.log(`natWsVideoNextFrame: ${r.status} ${r.statusText}`);
@@ -57,23 +60,15 @@ export async function natWsVideoNextFrame(id: NativeDecoderID, width: number, he
 		// No content, no frame available.
 		return null;
 	} else if (r.status === 200) {
-
-		// --- convert raw RGBA to ImageBitmap ------------------------------
-		let buf = await r.arrayBuffer();                 // raw RGBA
+		let buf = await r.arrayBuffer();
 		if (!buf.byteLength) {
 			console.log(`natWsVideoNextFrame: byteLength is 0`);
 			return null;
 		}
 
-		//let { width, height } = getDimensions(id);       // <- your stored values
-		// (width * height * 4  === buf.byteLength should always hold)
-
-		let pixels = new Uint8ClampedArray(buf);         // RGBA8 → JS view
+		let pixels = new Uint8ClampedArray(buf);
 		let imageData = new ImageData(pixels, width, height);
 
-		//console.log(`natWsVideoNextFrame: A REAL FRAME!`);
-
-		// Turn it into a GPU-backed bitmap.  No premultiplication or colour conversion needed.
 		return await createImageBitmap(imageData, {
 			premultiplyAlpha: "none",
 			colorSpaceConversion: "none",
@@ -81,6 +76,10 @@ export async function natWsVideoNextFrame(id: NativeDecoderID, width: number, he
 	}
 	return null;
 }
+
+/*
+// This was the original design, but I then switched to having the WebSocket listener on the Java side.
+// It's one less memory copy.
 
 // Create a video decoder.
 // You must destroy it when you're done with it.
@@ -117,3 +116,4 @@ export async function natNextVideoFrame(decoderId: NativeDecoderID): Promise<Ima
 	let blob = await r.blob();
 	return createImageBitmap(blob);
 }
+*/
