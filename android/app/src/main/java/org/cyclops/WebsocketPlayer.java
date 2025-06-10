@@ -33,9 +33,9 @@ import okio.ByteString;
  *             (wsUrl)         ▼
  *  ┌─────────────────────────────────┐
  *  │         WebsocketPlayer         │
- *  │  ▸ parse header                 │
- *  │  ▸ decoder.sendPacket(video)    │
- *  │  ▸ drain decoder → frameQueue   │
+ *  │  * parse header                 │
+ *  │  * decoder.sendPacket(video)    │
+ *  │  * drain decoder → frameQueue   │
  *  └─────────────────────────────────┘
  */
 public class WebsocketPlayer {
@@ -47,6 +47,7 @@ public class WebsocketPlayer {
     private final VideoDecoder decoder;
     private final WebSocket    ws;
     private final ExecutorService decoderPump;
+    private long lastPacketFeedAt;
 
     /* --------------------------------------------------------------------- */
 
@@ -63,6 +64,8 @@ public class WebsocketPlayer {
         }
 
         decoder = new VideoDecoder("video/" + codecMime, width, height);
+
+        lastPacketFeedAt = System.currentTimeMillis();
 
         OkHttpClient client = new OkHttpClient.Builder()
                 .cookieJar(new WebViewCookieJar())
@@ -107,6 +110,18 @@ public class WebsocketPlayer {
 
         @Override public void onMessage(WebSocket ws, ByteString bytes) {
             try {
+                // Limit the maximum rate at which we feed the system packets. While the backlog is being
+                // ingested, we can have a big queue of frames. If we feed them all in immediately,
+                // the h265 decoder does something wrong and output becomes green. When the next IDR
+                // comes around, it fixes itself. By rate limiting the packets to 100 fps, we prevent
+                // that from happening.
+                long now = System.currentTimeMillis();
+                if (now - lastPacketFeedAt < 10) {
+                    //Log.i(TAG, "feedPacket sleeping");
+                    Thread.sleep(10);
+                    now = System.currentTimeMillis();
+                }
+                lastPacketFeedAt = now;
                 feedPacket(bytes);
             } catch (Throwable t) {
                 t.printStackTrace();
@@ -168,6 +183,7 @@ public class WebsocketPlayer {
                     //Log.i(TAG, "pumpFrames: got frame. length = " + frame.length);
                     // Drop the oldest frame if UI is too slow – keeps lag bounded
                     while (!frameQueue.offer(frame)) {
+                        //Log.i(TAG, "pumpFrames dropping");
                         frameQueue.poll();
                     }
                 } else {

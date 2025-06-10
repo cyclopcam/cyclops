@@ -118,6 +118,7 @@ func (s *VideoWebSocketStreamer) onPacketRTP(packet *videox.VideoPacket) {
 			s.lastDropMsg = now
 		}
 	} else {
+		//s.log.Infof("R %v: %v", packet.ValidRecvID, packet.Summary())
 		s.nPacketsSent++
 		if s.logPacketCount && s.nPacketsSent%30 == 0 {
 			// This log is used in conjunction with a similar console.log in the web client, to debug stale frame/backlog issues.
@@ -239,6 +240,7 @@ func (s *VideoWebSocketStreamer) sendBacklog(backlog *camera.VideoRingBuffer) {
 		s.sendQueue <- webSocketSendPacket{
 			videoFrame: cloned,
 		}
+		//s.log.Infof("B %v: %v", cloned.ValidRecvID, cloned.Summary())
 	}
 
 	if s.debug {
