@@ -11,5 +11,6 @@
 img.jpg
 /foo.json
 /.env
+/incoming
 hailort.log
 hailort.*.log

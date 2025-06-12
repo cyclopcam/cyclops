@@ -63,7 +63,8 @@ if [ $? -ne 0 ]; then
 fi
 
 # Add the repository
-echo "deb [signed-by=/etc/apt/keyrings/cyclopcam.gpg] https://files.cyclopcam.org $OS main" | $SUDO tee /etc/apt/sources.list.d/cyclopcam.list
+# For bookworm/rpi5, it's crucial that we add the arch=arm64, otherwise it rejects us because we don't have an armhf package.
+echo "deb [arch=$ARCH signed-by=/etc/apt/keyrings/cyclopcam.gpg] https://files.cyclopcam.org $OS main" | $SUDO tee /etc/apt/sources.list.d/cyclopcam.list
 if [ $? -ne 0 ]; then
     echo "Error: Failed to add the repository."
     exit 1
