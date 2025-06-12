@@ -528,15 +528,16 @@ public class MainActivity extends AppCompatActivity implements Main {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                String proxyServer = "proxy-cpt.cyclopcam.org";
-                String proxyOrigin = "https://" + Crypto.shortKeyForServer(target.publicKey) + ".p.cyclopcam.org";
-                Log.i(TAG, "proxyServer: " + proxyServer + ":8083");
+                // The proxy server and the cyclops instance share the same IP, so we use the instance
+                // address as the proxy server. The proxy server is basically doing the CONNECT for us,
+                // and tunneling traffic through to the cyclops instance.
+                // TODO: Unify this logic with WebsocketPlayer
+                //String proxyServer = "proxy-cpt.cyclopcam.org";
+                String shortkey = Crypto.shortKeyForServer(target.publicKey);
+                String proxyServer = "http://" + shortkey + ".p.cyclopcam.org:8083";
+                String proxyOrigin = "https://" + shortkey + ".p.cyclopcam.org";
+                Log.i(TAG, "proxyServer: " + proxyServer);
                 Log.i(TAG, "proxyOrigin: " + proxyOrigin);
-                //try {
-                //    httpProxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyServer, 8083));
-                //} catch (Exception e) {
-                //    Log.e(TAG, "Failed to set proxy: " + e.toString());
-                //}
 
                 // Try first to connect over LAN, and if that fails, then fall back to proxy.
                 State.Server server = target;
@@ -572,7 +573,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                 }
 
                 // Fall back to using proxy
-                setupHttpProxy("http://" + proxyServer + ":8083");
+                setupHttpProxy(proxyServer);
                 if (justCheck && !isOnLAN) {
                     Log.i(TAG, "Remaining on proxy " + proxyServer + " for server " + server.publicKey);
                     return;

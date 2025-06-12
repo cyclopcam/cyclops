@@ -1,8 +1,11 @@
 package org.cyclops;
 
+import android.net.Uri;
 import android.util.Log;
 import android.webkit.CookieManager;
 
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -67,10 +70,28 @@ public class WebsocketPlayer {
 
         lastPacketFeedAt = System.currentTimeMillis();
 
-        OkHttpClient client = new OkHttpClient.Builder()
+        OkHttpClient.Builder builder = new OkHttpClient.Builder()
                 .cookieJar(new WebViewCookieJar())
-                .readTimeout(0, TimeUnit.MILLISECONDS)   // streaming → no read time-out
-                .build();
+                .readTimeout(0, TimeUnit.MILLISECONDS);   // streaming → no read time-out
+
+        // If hostname ends with ".p.cyclopcam.org", then we're talking via a proxy.
+        // The ".p" stands for proxy. The proxy and the cyclops instance both point
+        // to the same IP address, so we just use the instance hostname as the proxy
+        // hostname. This seems odd, but it's correct. If we know the official hostname
+        // of the proxy server (eg proxy-cpt.cyclopcam.org), we could use that too, but
+        // the instance hostname (eg ad28723c9d98d7024a8f.p.cyclopcam.org) works fine too,
+        // and by using the instance hostname, we don't need an additional query to discover
+        // it's proxy server.
+        // TODO: Unify this logic with MainActivity.switchToServer()
+        Uri url = Uri.parse(wsUrl);
+        if (url.getHost().endsWith(".p.cyclopcam.org")) {
+            Log.i(TAG, "wsUrl: " + wsUrl + " -> via proxy " + url.getHost() + ":8083");
+            builder.proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(url.getHost(), 8083)));
+        } else {
+            Log.i(TAG, "wsUrl: " + wsUrl + " -> direct LAN");
+        }
+
+        OkHttpClient client = builder.build();
 
         ws = client.newWebSocket(
                 new Request.Builder().url(wsUrl).build(),
