@@ -2,7 +2,9 @@ package camera
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -35,11 +37,20 @@ func onvifVerbose(format string, v ...any) {
 
 // Use ONVIF to discover whatever we need to know about the device
 func OnvifGetDeviceInfo(host, username, password string) (*OnvifDeviceInfo, error) {
+	// Create a special HTTP client that accepts insecure TLS connections.
+	// This is necessary for cameras that use self-signed certificates.
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
 	// Connect to the camera
 	dev, err := onvif.NewDevice(onvif.DeviceParams{
-		Xaddr:    host,
-		Username: username,
-		Password: password,
+		Xaddr:      host,
+		Username:   username,
+		Password:   password,
+		HttpClient: client,
 	})
 	if err != nil {
 		onvifVerbose("Error connecting to device: %v\n", err)

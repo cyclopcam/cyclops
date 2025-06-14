@@ -14,6 +14,7 @@ const (
 	CameraBrandUnknown      CameraBrands = ""
 	CameraBrandHikVision    CameraBrands = "HikVision"
 	CameraBrandReolink      CameraBrands = "Reolink"
+	CameraBrandTPLink       CameraBrands = "TP-Link"
 	CameraBrandGenericRTSP  CameraBrands = "Generic RTSP"  // Used as a response from the port scanner to indicate that we can connect on RTSP, but we don't know anything else yet
 	CameraBrandGenericONVIF CameraBrands = "Generic ONVIF" // Used as a response from OnvifGetDeviceInfo() to indicate a camera that supports ONVIF, but which we don't recognize
 )
@@ -24,7 +25,7 @@ var AllCameraBrands []CameraBrands
 type CameraRTSPInfo struct {
 	LowResURL               string
 	HighResURL              string
-	PacketsAreAnnexBEncoded bool
+	PacketsAreAnnexBEncoded bool // I suspect this is always true
 }
 
 func cameraBrandDefaults(brand CameraBrands, info *CameraRTSPInfo) {
@@ -37,11 +38,13 @@ func cameraBrandDefaults(brand CameraBrands, info *CameraRTSPInfo) {
 	case CameraBrandHikVision:
 		info.HighResURL = "Streaming/Channels/101"
 		info.LowResURL = "Streaming/Channels/102"
-		info.PacketsAreAnnexBEncoded = true // tested
 	case CameraBrandReolink:
 		info.HighResURL = "/"
 		info.LowResURL = "h264Preview_01_sub"
 		info.PacketsAreAnnexBEncoded = true // untested
+	case CameraBrandTPLink:
+		info.HighResURL = "stream1"
+		info.LowResURL = "stream2"
 	}
 }
 
@@ -92,6 +95,7 @@ func init() {
 	AllCameraBrands = []CameraBrands{
 		CameraBrandHikVision,
 		CameraBrandReolink,
+		CameraBrandTPLink,
 		CameraBrandGenericRTSP,
 		CameraBrandGenericONVIF,
 	}

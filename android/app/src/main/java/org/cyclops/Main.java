@@ -14,6 +14,7 @@ public interface Main {
     void onPostLogin();
     void serverDeleted(String publicKey);
     void switchToServer(String publicKey, boolean allowPreserveUrl);
+    void setServerOwnData(String[] lanAddresses);
     boolean isLoggingIn();
     int getContentHeight();
     Bitmap getRemoteViewScreenGrab();

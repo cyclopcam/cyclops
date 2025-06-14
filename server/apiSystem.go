@@ -20,6 +20,7 @@ type systemInfoJSON struct {
 	Cameras         []*camInfoJSON    `json:"cameras"`
 	ObjectClasses   []string          `json:"objectClasses"`   // Classes of objects detected by our neural network(s) (eg person, car, truck,...)
 	AbstractClasses map[string]string `json:"abstractClasses"` // Abstract classes of objects detected by our neural network(s) eg {"car":"vehicle", "truck":"vehicle"}
+	LanAddresses    []string          `json:"lanAddresses"`    // The LAN IP address(es) of this Cyclops server
 }
 
 // If this gets too bloated, then we can split it up
@@ -81,10 +82,21 @@ func (s *Server) httpSystemGetInfo(w http.ResponseWriter, r *http.Request, param
 		StartupErrors:   s.StartupErrors, // NEW, replaces j.ReadyError
 		ObjectClasses:   s.monitor.AllClasses(),
 		AbstractClasses: s.monitor.AbstractClasses(),
+		LanAddresses:    make([]string, 0),
 	}
 	if len(j.StartupErrors) == 0 {
 		j.StartupErrors = make([]StartupError, 0) // create an empty array, so the JSON gets a "[]" instead of "null"
 	}
+
+	if len(s.OwnIP) != 0 {
+		j.LanAddresses = append(j.LanAddresses, s.OwnIP.String())
+	}
+	for _, ip := range s.lanIPs {
+		if ip.String() != s.OwnIP.String() {
+			j.LanAddresses = append(j.LanAddresses, ip.String())
+		}
+	}
+
 	cameras := []*configdb.Camera{}
 	www.Check(s.configDB.DB.Find(&cameras).Error)
 

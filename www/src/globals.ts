@@ -6,12 +6,13 @@ import { fetchOrErr, sleep, type FetchResult } from "./util/util";
 import type { SystemInfoJSON, StartupErrorJSON } from "./api/api";
 import { generateKeyPair } from "curve25519-js";
 import { fetchAndValidateServerPublicKey } from "./auth";
-import { natNotifyNetworkDown } from "./nativeOut";
+import { natNotifyNetworkDown, natSendServerOwnData, type ServerOwnData } from "./nativeOut";
 
 // A global reactive object used throughout the app
 export class Globals {
 	// If isApp is true, then we are running in a WebView inside our mobile app.
 	// If isApp is false, then we running in a regular browser (but could still be a mobile device).
+	// Use setAppMode() to set this to true.
 	isApp = false;
 
 	isUsingProxy = window.location.origin.startsWith("https://") && window.location.hostname.includes(".p.cyclopcam.org");
@@ -26,6 +27,7 @@ export class Globals {
 	isLoggedIn = false; // Only valid after isSystemInfoLoadFinished = true
 	startupErrors: StartupErrorJSON[] = []; // Only valid after isSystemInfoLoadFinished = true. If not empty, then host system needs configuring before it can start.
 	isSystemInfoLoadFinished = false;
+	lanAddresses: string[] = []; // List of LAN addresses that the server might be reachable on. Only valid after isSystemInfoLoadFinished = true.
 
 	// isServerPublicKeyLoaded is set to true after we've validated the server's
 	// public key. Even if public key validation fails, we still set this to true.
@@ -115,6 +117,20 @@ export class Globals {
 		this.isServerPublicKeyLoaded = true;
 	}
 
+	setAppMode() {
+		this.isApp = true;
+		if (this.isSystemInfoLoadFinished) {
+			this.sendServerOwnDataToApp();
+		}
+	}
+
+	sendServerOwnDataToApp() {
+		let ownData = {
+			lanAddresses: this.lanAddresses,
+		} as ServerOwnData;
+		natSendServerOwnData(ownData);
+	}
+
 	async bootup(setVueRoute: boolean) {
 		await this.loadPublicKey();
 
@@ -137,12 +153,17 @@ export class Globals {
 	}
 
 	async postAuthenticateLoadSystemInfo(setVueRoute: boolean) {
-		let root = await (await fetch("/api/system/info")).json();
+		// SYNC-SYSTEMINFO-JSON
+		let root = await (await fetch("/api/system/info")).json() as SystemInfoJSON;
 		this.startupErrors = root.startupErrors;
 		if (this.startupErrors.length > 0)
 			console.log(`startupErrors`, root.startupErrors);
 		this.objectClasses = root.objectClasses;
 		this.abstractClasses = root.abstractClasses;
+
+		if (this.isApp) {
+			this.sendServerOwnDataToApp();
+		}
 
 		// I'd rather get rid of this special welcome screen and just use our regular
 		// configuration screens, even on initial load.

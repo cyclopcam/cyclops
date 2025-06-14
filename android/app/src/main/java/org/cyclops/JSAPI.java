@@ -26,4 +26,9 @@ public class JSAPI {
         String proof; // HMAC[SHA256](sharedSecret, challenge).  sharedSecret is from ECDH.
     }
 
+    // SYNC-SERVER-OWN-DATA-JSON
+    public static class ServerOwnDataJSON {
+        String[] lanAddresses;
+    }
+
 }

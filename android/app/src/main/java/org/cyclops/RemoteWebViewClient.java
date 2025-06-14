@@ -169,6 +169,7 @@ public class RemoteWebViewClient extends WebViewClientCompat {
     @RequiresApi(21)
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         //Log.i("C", "shouldInterceptRequest " + request.getMethod() + " " + request.getUrl());
+        Gson gson = new Gson();
 
         Uri url = request.getUrl();
         boolean isNatCom = url.getPath().startsWith("/natcom");
@@ -184,6 +185,15 @@ public class RemoteWebViewClient extends WebViewClientCompat {
                 case "/natcom/postLogin":
                     Log.i("C", "natcom/postLogin reached");
                     activity.runOnUiThread(() -> main.onPostLogin());
+                    return sendOK();
+                case "/natcom/ownData":
+                    try {
+                        JSAPI.ServerOwnDataJSON j = gson.fromJson(url.getQueryParameter("ownData"), JSAPI.ServerOwnDataJSON.class);
+                        // TODO: Needs some more thought
+                        //main.setServerOwnData(j.lanAddresses);
+                    } catch (Exception e) {
+                        return sendError(e.getMessage());
+                    }
                     return sendOK();
                 case "/natcom/networkDown":
                     Log.i("C", "natcom/networkDown reached");

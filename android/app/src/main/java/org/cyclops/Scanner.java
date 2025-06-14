@@ -369,4 +369,23 @@ public class Scanner {
         }
     }
 
+    // This is called whenever we connect to a server over
+    /*
+    static void pickBestLanIP(String[] ipAddresses) {
+        OkHttpClient client = new OkHttpClient.Builder()
+                .callTimeout(500, TimeUnit.MILLISECONDS)
+                .build();
+        for (String testIP : ipAddresses) {
+            JSAPI.PingResponseJSON ping = isCyclopsServer(client, testIP);
+            if (ping != null) {
+                Log.i("C", "Found Cyclops server at " + scanIP);
+
+                state.addServer(new ScannedServer(scanIP, ping.hostname, ping.publicKey));
+            }
+            state.incScanned();
+            //Log.i("C", "after inc, nScanned = " + state.getnScanned());
+        }
+    }
+     */
+
 }

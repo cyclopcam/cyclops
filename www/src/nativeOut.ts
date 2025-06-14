@@ -1,6 +1,11 @@
 // nativeOut has functions that we use to talk to our native (Java/Swift) component
 
-import { encodeQuery, fetchOrErr } from "./util/util";
+import { encodeQuery } from "./util/util";
+
+// SYNC-SERVER-OWN-DATA-JSON
+export interface ServerOwnData {
+	lanAddresses: string[];
+}
 
 export enum OAuthLoginPurpose {
 	InitialUser = "initialUser",
@@ -28,6 +33,13 @@ export async function natPostLogin() {
 
 export async function natNotifyNetworkDown(errorMsg: string) {
 	await fetch("/natcom/networkDown?" + encodeQuery({ errorMsg }));
+}
+
+// Tell the native app that it might want to update it's LAN address for this server,
+// for example if there was a reboot and DHCP gave the server a different IP address.
+export async function natSendServerOwnData(ownData: ServerOwnData) {
+
+	await fetch("/natcom/serverOwnData?" + encodeQuery({ ownData: JSON.stringify(ownData) }));
 }
 
 // Called by the welcome screen (and perhaps the login screen), when the user clicks "Login with Google", "Login with Microsoft" etc.

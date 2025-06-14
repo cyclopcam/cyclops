@@ -17,7 +17,7 @@ import { popRoute } from "./router/helpers";
 
 // Set app mode
 (window as any).cyActivateAppMode = () => {
-	globals.isApp = true;
+	globals.setAppMode();
 	console.log("App mode activated (JS)");
 };
 

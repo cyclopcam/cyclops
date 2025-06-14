@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/bluenviron/gortsplib/v4"
@@ -72,6 +73,18 @@ func TryToContactCamera(host string, timeout time.Duration, scanMethods ScanMeth
 			return camera.CameraBrandUnknown, err
 		}
 		defer client.Close()
+
+		_, describeResponse, _ := client.Describe(url)
+		if describeResponse != nil {
+			for key, value := range describeResponse.Header {
+				for _, v := range value {
+					if key == "WWW-Authenticate" && strings.Contains(v, "TP-LINK IP-Camera") {
+						return camera.CameraBrandTPLink, nil
+					}
+				}
+			}
+		}
+
 		if _, err := client.Options(url); err != nil {
 			return camera.CameraBrandUnknown, err
 		} else {

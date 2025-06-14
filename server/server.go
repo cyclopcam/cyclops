@@ -59,6 +59,7 @@ type Server struct {
 	seekFrameCache         *videox.FrameCache // Speeds up seeking
 	arcCredentialsLock     sync.Mutex
 	arcCredentials         *arc.ArcServerCredentials // If Arc server is not configured, then this is nil.
+	lanIPs                 []net.IP                  // Auto detected LAN IPs of this server. Overridden by OwnIP for camera scanner, if OwnIP is set.
 	monitorToVideoDBClosed chan bool                 // If this channel is closed, then monitor to video DB has stopped
 	alarmHandlerClosed     chan bool                 // If this channel is closed, then the alarm handler has stopped
 }
@@ -102,6 +103,8 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 		configDB:               cfg,
 		seekFrameCache:         videox.NewFrameCache(seekFrameCacheMB * 1024 * 1024),
 	}
+
+	s.loadLANIPs()
 
 	// Since storage location needs to be configured, we can't fail to startup just because we're
 	// unable to access our video archive.
@@ -448,4 +451,20 @@ func (s *Server) StartVideoDB() error {
 	}
 	s.videoDB = v
 	return nil
+}
+
+func (s *Server) loadLANIPs() {
+	// Query the OS for our LAN IP addresses.
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		s.Log.Errorf("Failed to get LAN IP addresses: %v", err)
+		return
+	}
+	s.lanIPs = make([]net.IP, 0, len(addrs))
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+			s.lanIPs = append(s.lanIPs, ipnet.IP)
+			s.Log.Infof("Found LAN IP address: %v", ipnet.IP)
+		}
+	}
 }

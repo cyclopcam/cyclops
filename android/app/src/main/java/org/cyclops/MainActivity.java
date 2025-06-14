@@ -477,6 +477,12 @@ public class MainActivity extends AppCompatActivity implements Main {
         }
     }
 
+    public void setServerOwnData(String[] lanAddresses) {
+        if (currentServer != null) {
+            State.global.setServerProperty(currentServer.publicKey, "lanIP", String.join(",", lanAddresses));
+        }
+    }
+
     public String serverLanURL(State.Server server) {
         return Constants.serverLanURL(server.lanIP);
     }

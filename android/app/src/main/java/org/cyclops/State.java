@@ -41,7 +41,7 @@ class State {
     // SYNC-NATCOM-SERVER
     static class Server {
         int state = STATE_NEW;
-        String lanIP = "";
+        String lanIP = ""; // comma separated list of IP addresses (can be mix of IPv4 and IPv6, eg "192.168.1.13,[2001:db8::9]")
         String publicKey = "";
         String bearerToken = "";
         String name = "";
@@ -223,6 +223,10 @@ class State {
                     break;
                 case "sessionCookie":
                     s.sessionCookie = value;
+                    s.state = STATE_MODIFIED;
+                    break;
+                case "lanIP":
+                    s.lanIP = value;
                     s.state = STATE_MODIFIED;
                     break;
                 default:
