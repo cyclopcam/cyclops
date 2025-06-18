@@ -31,7 +31,11 @@ override_dh_auto_clean:
 override_dh_auto_build:
 	# ---- Build cyclops (Go) ----
 	printf 'Building cyclops…\n'
-	go build -buildmode=pie -ldflags="-s" -o cyclops cmd/cyclops/cyclops.go
+	go build \
+		-buildmode=pie \
+		-ldflags="-s -X 'github.com/cyclopcam/cyclops/pkg/buildinfo.Multiarch=$(DEB_HOST_MULTIARCH)'" \
+		-o cyclops \
+		cmd/cyclops/cyclops.go
 
 # This doesn't seem to run
 #override_dh_installsysusers:

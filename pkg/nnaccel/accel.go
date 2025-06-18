@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/cyclopcam/cyclops/pkg/nn"
+	"github.com/cyclopcam/cyclops/pkg/buildinfo"
 )
 
 type Accelerator struct {
@@ -43,6 +44,13 @@ func Load(accelName string) (*Accelerator, error) {
 		srcCodeRelPath, // relative path from the source code root.
 		"/usr/local/lib",
 	}
+
+	if buildinfo.Multiarch != "unknown" {
+		// If we have a multiarch directory, then search there too.
+		// For example, on aarch64, this will be /usr/lib/aarch64-linux-gnu/cyclops
+		tryPaths = append(tryPaths, filepath.Join("/usr/lib", buildinfo.Multiarch, "cyclops"))
+	}
+
 	allErrors := strings.Builder{}
 	for _, dir := range tryPaths {
 		m := Accelerator{}
@@ -52,7 +60,7 @@ func Load(accelName string) (*Accelerator, error) {
 		C.free(unsafe.Pointer(cFullPath))
 		if err != nil {
 			if strings.Index(err.Error(), fullPath) != -1 {
-				// If the error contains the full path, then don't add it again.
+				// If the error contains the full path, then don't add it again to the error message.
 				fmt.Fprintf(&allErrors, "%v\n", err)
 			} else {
 				fmt.Fprintf(&allErrors, "Loading %v: %v\n", fullPath, err)

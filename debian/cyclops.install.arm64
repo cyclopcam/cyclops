@@ -1,0 +1,2 @@
+cyclops usr/bin/
+nnaccel/hailo/bin/libcyclopshailo.so usr/lib/${DEB_HOST_MULTIARCH}/cyclops/
