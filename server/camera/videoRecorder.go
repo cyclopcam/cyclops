@@ -73,15 +73,17 @@ func (r *VideoRecorder) recordFunc(includeHistory time.Duration) {
 	// If we've been connected to the camera for a few seconds, then this phase will
 	// usually complete instantaneously. The only expected case where this will take
 	// a few seconds to complete, is if the recorder is started as soon as the system
-	// starts up. This happens if we're in continuous recording mode.
+	// starts up. This happens if we're in continuous recording mode, or an object is
+	// detected shortly after startup.
 	waitingForIDR := true
 	nAttempts := 0
 	for waitingForIDR {
-		maxWaitPower := min(nAttempts, 7) // 6 = pause of 2.2 seconds, 7 = 3.4 seconds.
-		pause := time.Millisecond * 200 * time.Duration(math.Pow(1.5, float64(maxWaitPower)))
+		maxWaitPower := min(nAttempts, 7) // 6 = pause of 3.4 seconds, 7 = 5.1 seconds.
+		pause := time.Millisecond * 300 * time.Duration(math.Pow(1.5, float64(maxWaitPower)))
 		if nAttempts == 0 {
 			pause = 0
 		}
+		nAttempts++
 		select {
 		case <-r.stop:
 			r.Log.Infof("Recorder stopped (before it started)")
@@ -126,7 +128,7 @@ func (r *VideoRecorder) recordFunc(includeHistory time.Duration) {
 			r.Log.Infof("Recorder stopping")
 			r.ringBuffer.RemovePacketListener(r.onPacket)
 			gen.DrainChannel(r.onPacket)
-			r.Log.Infof("Recorder stopped after %v", time.Now().Sub(startAt))
+			r.Log.Infof("Recorder stopped after %v", time.Since(startAt))
 			return
 		case packet := <-r.onPacket:
 			r.writePackets([]*videox.VideoPacket{packet})
