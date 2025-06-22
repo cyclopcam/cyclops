@@ -94,7 +94,9 @@ func (s *Server) httpConfigScanNetworkForCameras(w http.ResponseWriter, r *http.
 	timeoutMS := www.QueryInt(r, "timeout") // timeout in milliseconds
 	includeExisting := www.QueryInt(r, "includeExisting") == 1
 
-	options := &scanner.ScanOptions{}
+	options := &scanner.ScanOptions{
+		Log: s.Log,
+	}
 	if timeoutMS != 0 {
 		options.Timeout = time.Millisecond * time.Duration(timeoutMS)
 	}
@@ -190,7 +192,7 @@ func (s *Server) httpConfigTestCamera(w http.ResponseWriter, r *http.Request, pa
 			}
 			success = true
 			break
-		} else if time.Now().Sub(start) > keyframeTimeout {
+		} else if time.Since(start) > keyframeTimeout {
 			cam.Close(nil)
 			c.WriteJSON(message{Error: "Timeout waiting for keyframe"})
 			break

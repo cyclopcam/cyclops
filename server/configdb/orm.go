@@ -25,7 +25,7 @@ type BaseModel struct {
 // SYNC-RECORD-CAMERA
 type Camera struct {
 	BaseModel
-	Model            string      `json:"model"`                                // eg HikVision (actually CameraModels enum)
+	Model            string      `json:"model"`                                // eg HikVision (actually CameraModels enum, so should be called "Brand" instead of "Model")
 	Name             string      `json:"name"`                                 // Friendly name
 	Host             string      `json:"host"`                                 // Hostname such as 192.168.1.33
 	Port             int         `json:"port" gorm:"default:null"`             // if 0, then default is 554

@@ -206,6 +206,8 @@ func (s *Stream) Listen(address string) error {
 		return err
 	}
 
+	s.Log.Infof("Tracks described for %v", camHost)
+
 	// find the H264/H265 track
 	var formaH264 *format.H264
 	var formaH265 *format.H265

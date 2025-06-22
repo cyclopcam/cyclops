@@ -9,6 +9,7 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/gen"
 	"github.com/cyclopcam/cyclops/server/camera"
 	"github.com/cyclopcam/cyclops/server/configdb"
+	"github.com/cyclopcam/logs"
 )
 
 /*
@@ -33,6 +34,7 @@ Without better knowledge, I'm going with:
 
 // Any option, if left to the zero value, is ignored, and defaults are used instead.
 type ScanOptions struct {
+	Log        logs.Log
 	Timeout    time.Duration // Timeout on connecting to each host
 	OwnIP      net.IP        // The IP address of the local machine
 	ExcludeIPs []net.IP      // A list of IP addresses to exclude from the scan
@@ -48,6 +50,7 @@ func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
 		ip      net.IP
 		err     error
 		timeout time.Duration
+		log     logs.Log
 	)
 	if options != nil && options.OwnIP != nil {
 		ip = options.OwnIP
@@ -57,6 +60,9 @@ func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+	if options != nil {
+		log = options.Log
 	}
 	ip4 := ip.To4()
 	if ip4 == nil {
@@ -94,13 +100,16 @@ func ScanForLocalCameras(options *ScanOptions) ([]*configdb.Camera, error) {
 				select {
 				case camIP := <-workQueue:
 					//fmt.Printf("Trying %v\n", camIP)
-					model, err := TryToContactCamera(camIP.String(), timeout, ScanMethodHTTP|ScanMethodRTSP)
-					if err == nil && model != camera.CameraBrandUnknown {
+					brand, err := TryToContactCamera(camIP.String(), timeout, ScanMethodHTTP|ScanMethodRTSP)
+					if err == nil && brand != camera.CameraBrandUnknown {
 						cam := &configdb.Camera{
-							Model: string(model),
+							Model: string(brand),
 							Host:  camIP.String(),
 						}
 						//fmt.Printf("Found %v %v %v\n", camIP, cam.Model, cam.Host)
+						if log != nil {
+							log.Infof("Found camera %v (%v) at %v", cam.Model, cam.Host, camIP)
+						}
 						resultQueue <- cam
 					}
 				default:
