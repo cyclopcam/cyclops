@@ -1,5 +1,6 @@
 package org.cyclops;
 
+import android.provider.MediaStore;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -91,8 +92,15 @@ public class HttpClient {
     Response POST(String url, HashMap<String,String> headers) {
         return Do("POST", url, headers);
     }
+    Response POST(String url, HashMap<String,String> headers, MediaType bodyContentType, byte[] body) {
+        return Do("POST", url, headers, bodyContentType, body);
+    }
 
     Response Do(String method, String url, HashMap<String,String> headers) {
+        return Do(method, url, headers, null, null);
+    }
+
+    Response Do(String method, String url, HashMap<String,String> headers, MediaType bodyContentType, byte[] body) {
         Request.Builder builder = new Request.Builder();
         //try {
             builder.url(url);
@@ -102,16 +110,18 @@ public class HttpClient {
                 }
             }
             if (method.equals("POST")) {
-                // Create an empty body for POST requests
                 builder.method(method, new RequestBody() {
                     @Nullable
                     @Override
                     public MediaType contentType() {
-                        return null;
+                        return bodyContentType;
                     }
 
                     @Override
                     public void writeTo(@NonNull BufferedSink sink) throws IOException {
+                        if (body != null) {
+                            sink.write(body);
+                        }
                     }
                 });
             } else {

@@ -36,11 +36,19 @@ public class Crypto {
     }
 
     // create a 32 byte challenge message, containing random bytes
-    byte[] createChallenge() {
+    static byte[] createChallenge() {
         byte[] challenge = new byte[32];
         SecureRandom random = new SecureRandom();
         random.nextBytes(challenge);
         return challenge;
+    }
+
+    // Create a random 21 byte string to identify this device to accounts.cyclopcam.org.
+    static String createDeviceId() {
+        byte[] deviceId = new byte[21];
+        SecureRandom random = new SecureRandom();
+        random.nextBytes(deviceId);
+        return Base64.encodeToString(deviceId, Base64.URL_SAFE | Base64.NO_PADDING | Base64.NO_WRAP);
     }
 
     // Verify the challenge that we've issued to a cyclops server, to prove that it owns

@@ -18,6 +18,8 @@ import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
 
+import okhttp3.MediaType;
+
 //import com.google.android.gms.auth.api.signin.GoogleSignIn;
 //import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 //import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
@@ -31,6 +33,7 @@ import java.util.Map;
 // Accounts helps with authenticating to accounts.cyclopcam.org, so that we can enable
 // the use of assisted features such as the proxy/vpn system.
 public class Accounts {
+    static final Accounts global = new Accounts();
 
     private static final String TAG = "cyclops";
     private final HttpClient httpClient;
@@ -53,6 +56,13 @@ public class Accounts {
     public static class CreateTokenJSON {
         String token = "";
         long expiresAt = 0; // Unix seconds (0/omitted if no expiration)
+    }
+
+    public static class MobileDeviceRegisterJSON {
+        String deviceId = "";
+        String fcmToken = "";
+        String platform = "";
+        String name = "";
     }
 
     Accounts() {
@@ -187,4 +197,24 @@ public class Accounts {
         return result.substring(0, result.length() - 1); // Remove trailing colon
     }
 
+    public void sendFcmToken(String fcmToken, String deviceId, String authToken) {
+        MobileDeviceRegisterJSON device = new MobileDeviceRegisterJSON();
+        device.deviceId = deviceId;
+        device.fcmToken = fcmToken;
+        device.platform = "android";
+        device.name = Build.MANUFACTURER + " " + Build.MODEL;
+        Log.i(TAG, "sendFcmToken: " + new Gson().toJson(device));
+        HttpClient.Response response = httpClient.POST(
+                "https://accounts.cyclopcam.org/api/mobileDevice/register",
+                new HashMap<>(Map.of("Authorization", "Bearer " + authToken)),
+                MediaType.parse("application/json"),
+                new Gson().toJson(device).getBytes());
+        if (response.Error != null) {
+            Log.e(TAG, "mobileDevice/register network failed: " + response.Error);
+        } else if (response.Resp.code() != 200) {
+            Log.e(TAG, "mobileDevice/register failed: " + response.BodyOrStatusString);
+        } else {
+            Log.i(TAG, "mobileDevice/register succeeded");
+        }
+    }
 }

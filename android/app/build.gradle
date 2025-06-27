@@ -1,5 +1,7 @@
 plugins {
     id 'com.android.application'
+    // For firebase
+    id 'com.google.gms.google-services'
 }
 
 android {
@@ -64,6 +66,10 @@ android {
 }
 
 dependencies {
+    // When using the BoM, don't specify versions in Firebase dependencies
+    implementation platform('com.google.firebase:firebase-bom:33.15.0')
+    implementation 'com.google.firebase:firebase-messaging'
+
     implementation 'com.google.code.gson:gson:2.9.1'
 
     implementation 'androidx.appcompat:appcompat:1.5.0'

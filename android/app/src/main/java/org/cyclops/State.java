@@ -34,6 +34,8 @@ class State {
 
     // SYNC-ALL-PREFS
     static final String PREF_LAST_SERVER_PUBLIC_KEY = "LAST_SERVER_PUBLIC_KEY";
+    static final String PREF_DEVICE_ID = "DEVICE_ID"; // Randomly generated device ID, that we use to identify this device to accounts.cyclopcam.org
+    static final String PREF_FCM_TOKEN = "FCM_TOKEN"; // Firebase messaging token
     static final String PREF_ACCOUNTS_TOKEN = "ACCOUNTS_TOKEN"; // Authentication token to accounts.cyclopcam.org
     static final String PREF_SAVED_ACTIVITY = "SAVED_ACTIVITY"; // Used to remember our state
 
@@ -96,6 +98,7 @@ class State {
             // SYNC-ALL-PREFS
             SharedPreferences.Editor edit = sharedPref.edit();
             edit.remove(PREF_LAST_SERVER_PUBLIC_KEY);
+            edit.remove(PREF_DEVICE_ID);
             edit.remove(PREF_ACCOUNTS_TOKEN);
             edit.remove(PREF_SAVED_ACTIVITY);
             edit.apply();
@@ -110,6 +113,17 @@ class State {
         }
     }
 
+    void init(SharedPreferences pref) {
+        sharedPref = pref;
+        if (getDeviceId().equals("")) {
+            String id = Crypto.createDeviceId();
+            setDeviceId(id);
+            Log.i("C", "Creating new DeviceId: '" + id + "'");
+        } else {
+            Log.i("C", "DeviceId: '" + getDeviceId() + "'");
+        }
+    }
+
     void loadAll() {
         serversLock.lock();
         try {
@@ -118,6 +132,24 @@ class State {
         } finally {
             serversLock.unlock();
         }
+    }
+
+    // Get the Firebase Cloud Messaging Token
+    String getFcmToken() {
+        return sharedPref.getString(PREF_FCM_TOKEN, "");
+    }
+
+    void setFcmToken(String token) {
+        sharedPref.edit().putString(PREF_FCM_TOKEN, token).apply();
+    }
+
+    // Get the DeviceId, which is unique for this device (randomly generated)
+    String getDeviceId() {
+        return sharedPref.getString(PREF_DEVICE_ID, "");
+    }
+
+    void setDeviceId(String deviceId) {
+        sharedPref.edit().putString(PREF_DEVICE_ID, deviceId).apply();
     }
 
     // Get the authentication token to accounts.cyclopcam.org

@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "25573550938",
+    "project_id": "cyclops-451713",
+    "storage_bucket": "cyclops-451713.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:25573550938:android:a69213b5b59458e92d6163",
+        "android_client_info": {
+          "package_name": "org.cyclops"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "25573550938-p4aomrvs42as0d173taevt5nvaicgjto.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdgixffglMQAjXSNaXZtKZ-EhsuvPKji4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "25573550938-p4aomrvs42as0d173taevt5nvaicgjto.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

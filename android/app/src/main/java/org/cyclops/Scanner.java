@@ -331,7 +331,7 @@ public class Scanner {
     static String preflightServerCheck_PublicKey(Crypto crypto, HttpClient client, String ipAddress, String publicKey) {
         Log.i("C", "preflightServerCheck_PublicKey " + ipAddress + " " + publicKey);
         // create 32 bytes for a challenge
-        byte[] challenge = crypto.createChallenge();
+        byte[] challenge = Crypto.createChallenge();
         String challengeb64 = Base64.encodeToString(challenge, Base64.NO_WRAP);
         String ownPublicKeyb64 = Base64.encodeToString(crypto.ownPublicKey, Base64.NO_WRAP);
         String url = Constants.serverLanURL(ipAddress) + "/api/keys?" + client.encodeQuery("publicKey", ownPublicKeyb64, "challenge", challengeb64);

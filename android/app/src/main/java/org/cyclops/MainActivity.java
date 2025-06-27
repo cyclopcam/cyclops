@@ -2,7 +2,12 @@ package org.cyclops;
 
 //import static org.cyclops.Accounts.RC_SIGN_IN;
 
+import static android.Manifest.permission.POST_NOTIFICATIONS;
+
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
 import androidx.webkit.WebViewAssetLoader;
@@ -13,6 +18,7 @@ import android.annotation.SuppressLint;
 import android.app.ActionBar;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.net.ConnectivityManager;
@@ -23,6 +29,7 @@ import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.Log;
@@ -72,7 +79,6 @@ public class MainActivity extends AppCompatActivity implements Main {
     String currentNetworkSignature = ""; // Used to detect when we change networks, to avoid sending secrets to a new server with the same IP address
     HttpClient connectivityCheckClient;
     Crypto crypto;
-    Accounts accounts;
     private long restartServerAt = 0; // Time when client initiated a server restart
 
     // Maintain our own history stack, for the tricky transitions between localWebView and remoteWebView.
@@ -87,21 +93,23 @@ public class MainActivity extends AppCompatActivity implements Main {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        State.global.init(getSharedPreferences("org.cyclopcam.cyclops.state", Context.MODE_PRIVATE));
+        State.global.scanner = new Scanner(this);
+        State.global.db = new LocalDB(this);
+        State.global.loadAll();
+
         Log.d("JNI", NativeBridge.helloNative());
 
         crypto = new Crypto();
 
         connectivityCheckClient = new HttpClient(new OkHttpClient.Builder().callTimeout(300, TimeUnit.MILLISECONDS).build());
 
-        State.global.sharedPref = getSharedPreferences("org.cyclopcam.cyclops.state", Context.MODE_PRIVATE);
-        State.global.scanner = new Scanner(this);
-        State.global.db = new LocalDB(this);
-        State.global.loadAll();
+        requestPermissions();
+
+        FCMReceiverService.refreshToken();
 
         // Uncomment the following line when testing initial application UI
         //State.global.resetAllState(); // DO NOT COMMIT
-
-        accounts = new Accounts();
 
         // dev time
         //WebView.setWebContentsDebuggingEnabled(true);
@@ -118,13 +126,13 @@ public class MainActivity extends AppCompatActivity implements Main {
         remoteClient = new RemoteWebViewClient(this, this, remoteWebView);
         remoteWebView.setWebViewClient(remoteClient);
 
-        accounts.debugPrintSigningCert(this);
+        Accounts.global.debugPrintSigningCert(this);
 
         // Clear login token with accounts.cyclopcam.org (for testing fresh OAuth login)
         //State.global.setAccountsToken("");
 
         String accountsToken = State.global.getAccountsToken();
-        Log.i(TAG, "accountsToken: " + accountsToken);
+        //Log.i(TAG, "accountsToken: " + accountsToken);
 
         // Handle cyclops://auth redirect if app was launched via URI
         boolean haveRedirect = handleRedirect(getIntent());
@@ -302,7 +310,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         remoteClient.cySetProgressMessage(remoteWebView, "Searching for tokens...");
         boolean isSignedIn = false;
         try {
-            isSignedIn = accounts.isSignedinWithOAuthProvider(provider, State.global.getAccountsToken());
+            isSignedIn = Accounts.global.isSignedinWithOAuthProvider(provider, State.global.getAccountsToken());
         } catch (RuntimeException e) {
             // Likely network error.
             remoteClient.cySetProgressMessage(remoteWebView, "ERROR:" + e.toString());
@@ -313,7 +321,7 @@ public class MainActivity extends AppCompatActivity implements Main {
             // Acquire an IdentityToken and send it to the WebView
             remoteClient.cySetProgressMessage(remoteWebView, "Almost there...");
             try {
-                Accounts.CreateTokenJSON identityToken = accounts.getIdentityToken(State.global.getAccountsToken());
+                Accounts.CreateTokenJSON identityToken = Accounts.global.getIdentityToken(State.global.getAccountsToken());
                 remoteClient.cySetIdentityToken(remoteWebView, identityToken.token);
                 //remoteClient.cySetProgressMessage(remoteWebView, "Use this: " + identityToken.token);
             } catch(RuntimeException e) {
@@ -330,7 +338,7 @@ public class MainActivity extends AppCompatActivity implements Main {
             save.oauthProvider = provider;
             State.global.saveActivity(save);
 
-            accounts.signinWeb(this, provider);
+            Accounts.global.signinWeb(this, provider);
         }
     }
 
@@ -828,6 +836,7 @@ public class MainActivity extends AppCompatActivity implements Main {
             if (sessionToken != null) {
                 Log.d(TAG, "Received session token: " + sessionToken);
                 State.global.setAccountsToken(sessionToken);
+                FCMReceiverService.sendFcmTokenToCloud();
                 mIsLoggingIn = true;
                 resumeSavedActivity();
             } else {
@@ -865,6 +874,16 @@ public class MainActivity extends AppCompatActivity implements Main {
                 //    url = "/login";
                 navigateToScannedLocalServer(saved.scannedServer.publicKey, url, queryParams);
             }
+        }
+    }
+
+    private void requestPermissions() {
+        ActivityResultLauncher<String> notifPerm = registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+            Log.i(TAG, "Notification permission granted: " + granted);
+        });
+
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notifPerm.launch(POST_NOTIFICATIONS);
         }
     }
 }

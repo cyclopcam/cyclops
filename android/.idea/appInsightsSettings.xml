@@ -22,10 +22,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="org.cyclops" />
+                  <option name="mobileSdkAppId" value="1:25573550938:android:a69213b5b59458e92d6163" />
+                  <option name="projectId" value="cyclops-451713" />
+                  <option name="projectNumber" value="25573550938" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />
