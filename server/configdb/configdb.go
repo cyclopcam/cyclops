@@ -85,7 +85,7 @@ func chooseInitialDefaults(dbFilename string) ConfigJSON {
 		cfg.Recording.Path = filepath.Join(filepath.Dir(dbFilename), "video")
 	}
 	if cfg.Recording.MaxStorageSize == "" {
-		avail, _ := MeasureDiscSpaceAvailable(cfg.Recording.Path)
+		avail, _ := MeasureDiskSpaceAvailable(cfg.Recording.Path)
 		if avail != 0 {
 			cfg.Recording.MaxStorageSize = kibi.FormatBytes(avail * 80 / 100)
 		}

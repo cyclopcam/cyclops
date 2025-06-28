@@ -215,7 +215,7 @@ func (s *Server) httpConfigMeasureStorageSpace(w http.ResponseWriter, r *http.Re
 	}
 
 	s.Log.Infof("Measure space available at %v (raw %v)", path, inPath)
-	availB, err := configdb.MeasureDiscSpaceAvailable(path)
+	availB, err := configdb.MeasureDiskSpaceAvailable(path)
 	if err != nil {
 		www.PanicBadRequestf("%v", err)
 	}

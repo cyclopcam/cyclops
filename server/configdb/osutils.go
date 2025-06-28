@@ -14,7 +14,7 @@ var digitRegex = regexp.MustCompile(`\d+`)
 
 // Measure the space available at the given path, or the first parent directory that exists.
 // Returns the amount of space available in bytes.
-func MeasureDiscSpaceAvailable(path string) (int64, error) {
+func MeasureDiskSpaceAvailable(path string) (int64, error) {
 	availB := int64(0)
 
 	// Keep walking up the directory tree until we can find the free space.

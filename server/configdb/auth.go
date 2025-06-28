@@ -13,7 +13,9 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-const KeyMain = "main"
+// Keys stored in our 'key' table
+const KeyMain = "main"                   // Private X25519 key
+const KeyAccountsToken = "accountsToken" // Token used to authenticate to accounts.cyclopcam.org
 
 // VerifiedIdentity is an identity that accounts.cyclopcam.org has verified
 type VerifiedIdentity struct {
@@ -109,4 +111,17 @@ func (c *ConfigDB) VerifyIdentityAndBindToServer(token string) (*VerifiedIdentit
 	// We leave that up to the front-end to invoke.
 
 	return identity, nil
+}
+
+// Get our token that we use to authenticate to accounts.cyclopcam.org, or an empty string if none.
+func (c *ConfigDB) GetAccountsToken() string {
+	key := Key{}
+	c.DB.First(&key, "name = ?", KeyAccountsToken)
+	return key.Value
+}
+
+// Set the token that we use to authenticate to accounts.cyclopcam.org.
+func (c *ConfigDB) SetAccountsToken(token string) error {
+	key := Key{Name: KeyAccountsToken, Value: token}
+	return c.DB.Save(&key).Error
 }

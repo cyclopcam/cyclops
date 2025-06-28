@@ -22,6 +22,7 @@ import (
 	"github.com/cyclopcam/cyclops/server/configdb"
 	"github.com/cyclopcam/cyclops/server/livecameras"
 	"github.com/cyclopcam/cyclops/server/monitor"
+	"github.com/cyclopcam/cyclops/server/notifications"
 	"github.com/cyclopcam/cyclops/server/perfstats"
 	"github.com/cyclopcam/cyclops/server/util"
 	"github.com/cyclopcam/cyclops/server/videodb"
@@ -36,19 +37,21 @@ import (
 type Server struct {
 	Log              logs.Log
 	TempFiles        *util.TempFiles
-	RingBufferSize   int            // Size of the circular buffer for each camera
-	MustRestart      bool           // Value of the 'restart' parameter to Shutdown()
-	ShutdownStarted  chan bool      // This channel is closed when shutdown starts. So you can select() on it, to wait for shutdown.
-	ShutdownComplete chan error     // Used by main() to report any shutdown errors
-	OwnIP            net.IP         // If not nil, overrides the IP address used when scanning the LAN for cameras
-	HotReloadWWW     bool           // Don't embed the 'www' directory into our binary, but load it from disk, and assume it's not immutable. This is for dev time on the 'www' source.
-	StartupErrors    []StartupError // Critical errors encountered at startup. Note that these are errors that are resolvable by fixing the config through the App UI.
+	RingBufferSize   int             // Size of the circular buffer for each camera
+	MustRestart      bool            // Value of the 'restart' parameter to Shutdown()
+	ShutdownStarted  chan bool       // This channel is closed when shutdown starts. So you can select() on it, to wait for shutdown.
+	ShutdownComplete chan error      // Used by main() to report any shutdown errors
+	ShutdownContext  context.Context // Context that is cancelled when shutdown starts. This is used to cancel long-running operations.
+	OwnIP            net.IP          // If not nil, overrides the IP address used when scanning the LAN for cameras
+	HotReloadWWW     bool            // Don't embed the 'www' directory into our binary, but load it from disk, and assume it's not immutable. This is for dev time on the 'www' source.
+	StartupErrors    []StartupError  // Critical errors encountered at startup. Note that these are errors that are resolvable by fixing the config through the App UI.
 
 	// Public Subsystems
 	LiveCameras *livecameras.LiveCameras
 
 	// Private Subsystems
 	signalIn               chan os.Signal
+	cancelShutdown         context.CancelFunc // Cancel function for the ShutdownContext
 	httpServer             *http.Server
 	httpsServer            *http.Server
 	httpRouter             *httprouter.Router
@@ -92,11 +95,15 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 	ringBufferMB := 200    // This is *per camera*
 	seekFrameCacheMB := 50 // This is shared between all cameras
 
+	shutdownContext, cancelShutdown := context.WithCancel(context.Background())
+
 	s := &Server{
 		Log:                    logger,
 		RingBufferSize:         ringBufferMB * 1024 * 1024,
 		ShutdownComplete:       make(chan error, 1),
 		ShutdownStarted:        make(chan bool),
+		ShutdownContext:        shutdownContext,
+		cancelShutdown:         cancelShutdown,
 		HotReloadWWW:           (serverFlags & ServerFlagHotReloadWWW) != 0,
 		monitorToVideoDBClosed: make(chan bool),
 		alarmHandlerClosed:     make(chan bool),
@@ -155,6 +162,8 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 	if err := s.SetupHTTP(); err != nil {
 		return nil, err
 	}
+
+	notifications.NewNotifier(s.Log, s.configDB, s.ShutdownStarted)
 
 	return s, nil
 }
@@ -345,6 +354,9 @@ func (s *Server) Shutdown(restart bool) {
 	s.Log.Infof("PerfStats: %v", perfstats.Stats.String())
 
 	s.MustRestart = restart
+
+	// If any functions are using ShutdownContext, then they'll get cancelled now
+	s.cancelShutdown()
 
 	close(s.ShutdownStarted)
 

@@ -19,6 +19,7 @@
 #include <float.h>
 #include <stdio.h>
 #include <vector>
+#include <cmath>
 
 #define MODEL_STRIDE 32
 
@@ -119,7 +120,7 @@ static void nms_sorted_bboxes(const std::vector<Object>& objects, std::vector<in
 }
 
 static inline float sigmoid(float x) {
-	return static_cast<float>(1.f / (1.f + exp(-x)));
+	return static_cast<float>(1.f / (1.f + std::exp(-x)));
 }
 
 static void generate_proposals(const ncnn::Mat& anchors, int stride, const ncnn::Mat& in_pad, const ncnn::Mat& feat_blob, float prob_threshold, std::vector<Object>& objects) {
@@ -170,8 +171,8 @@ static void generate_proposals(const ncnn::Mat& anchors, int stride, const ncnn:
 						float pb_cx = (dx * 2.f - 0.5f + j) * stride;
 						float pb_cy = (dy * 2.f - 0.5f + i) * stride;
 
-						float pb_w = pow(dw * 2.f, 2) * anchor_w;
-						float pb_h = pow(dh * 2.f, 2) * anchor_h;
+						float pb_w = std::pow(dw * 2.f, 2) * anchor_w;
+						float pb_h = std::pow(dh * 2.f, 2) * anchor_h;
 
 						float x0 = pb_cx - pb_w * 0.5f;
 						float y0 = pb_cy - pb_h * 0.5f;
