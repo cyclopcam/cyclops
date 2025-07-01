@@ -10,7 +10,9 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-func (s *Server) httpEventsGetTiles(w http.ResponseWriter, r *http.Request, _ httprouter.Params, user *configdb.User) {
+// Video Events are details of what was detected in the video footage.
+
+func (s *Server) httpVideoEventsGetTiles(w http.ResponseWriter, r *http.Request, _ httprouter.Params, user *configdb.User) {
 	cameraID := www.RequiredQueryValue(r, "camera")
 	level := www.RequiredQueryInt(r, "level")
 	startIdx := www.QueryInt(r, "startIdx")
@@ -74,7 +76,7 @@ func (s *Server) httpEventsGetTiles(w http.ResponseWriter, r *http.Request, _ ht
 	www.SendJSONOpt(w, &response, false)
 }
 
-func (s *Server) httpEventsGetDetails(w http.ResponseWriter, r *http.Request, _ httprouter.Params, user *configdb.User) {
+func (s *Server) httpVideoEventsGetDetails(w http.ResponseWriter, r *http.Request, _ httprouter.Params, user *configdb.User) {
 	cameraID := www.RequiredQueryValue(r, "camera")
 	startTime := time.UnixMilli(www.RequiredQueryInt64(r, "startTime"))
 	endTime := time.UnixMilli(www.RequiredQueryInt64(r, "endTime"))

@@ -84,7 +84,7 @@ export class CameraEvent {
 	}
 
 	static async fetchEvents(cameraID: number, startTime: Date, endTime: Date): Promise<CameraEvent[]> {
-		let r = await fetch(`/api/events/details?camera=${cameraID}&startTime=${startTime.getTime()}&endTime=${endTime.getTime()}`);
+		let r = await fetch(`/api/videoEvents/details?camera=${cameraID}&startTime=${startTime.getTime()}&endTime=${endTime.getTime()}`);
 		let j = await r.json() as GetEventDetailsJSON;
 		let outEvents: CameraEvent[] = [];
 		for (let ev of j.events) {

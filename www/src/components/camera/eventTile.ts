@@ -78,7 +78,7 @@ export class EventTile {
 			startIdx: startIdx,
 			endIdx: endIdx,
 		}
-		let r = await fetchOrErr('/api/events/tiles?' + encodeQuery(query));
+		let r = await fetchOrErr('/api/videoEvents/tiles?' + encodeQuery(query));
 		if (!r.ok) {
 			throw new Error(`Failed to fetch tiles: ${r.error}`);
 		}
