@@ -14,6 +14,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const AccountsUrl = "https://accounts.cyclopcam.org"
+
 type ConfigDB struct {
 	Log        logs.Log
 	DB         *gorm.DB
@@ -24,12 +26,10 @@ type ConfigDB struct {
 	// Injected by VPN system after it has connected. There can be two: an IPv4 and an IPv6.
 	VpnAllowedIP net.IPNet
 
+	dbFilename string
+
 	configLock sync.Mutex // Guards all access to Config
 	config     ConfigJSON // Read from system_config table at startup
-
-	alarmLock      sync.Mutex // Guards access to armed as well as reading/writing the armed state to the DB, and alarm state
-	armed          bool       // True if the system is currently armed
-	alarmTriggered bool       // True if the alarm is active (siren blaring, calling for help)
 }
 
 func NewConfigDB(logger logs.Log, dbFilename, explicitPrivateKey string) (*ConfigDB, error) {
@@ -52,12 +52,8 @@ func NewConfigDB(logger logs.Log, dbFilename, explicitPrivateKey string) (*Confi
 		DB:         configDB,
 		PrivateKey: privateKey,
 		PublicKey:  privateKey.PublicKey(),
+		dbFilename: dbFilename,
 	}
-
-	if err := cdb.readAlarmStateFromDB(); err != nil {
-		return nil, fmt.Errorf("Failed to read alarm status from DB: %w", err)
-	}
-	logger.Infof("System is armed: %v, alarm is triggered: %v", cdb.IsArmed(), cdb.alarmTriggered)
 
 	systemConfig := SystemConfig{}
 	configDB.First(&systemConfig)
@@ -74,6 +70,10 @@ func NewConfigDB(logger logs.Log, dbFilename, explicitPrivateKey string) (*Confi
 		cdb.configLock.Unlock()
 	}
 	return cdb, nil
+}
+
+func (c *ConfigDB) DBFilename() string {
+	return c.dbFilename
 }
 
 func chooseInitialDefaults(dbFilename string) ConfigJSON {

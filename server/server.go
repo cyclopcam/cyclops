@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -20,6 +21,7 @@ import (
 	"github.com/cyclopcam/cyclops/pkg/videox"
 	"github.com/cyclopcam/cyclops/server/arc"
 	"github.com/cyclopcam/cyclops/server/configdb"
+	"github.com/cyclopcam/cyclops/server/eventdb"
 	"github.com/cyclopcam/cyclops/server/livecameras"
 	"github.com/cyclopcam/cyclops/server/monitor"
 	"github.com/cyclopcam/cyclops/server/notifications"
@@ -47,7 +49,8 @@ type Server struct {
 	StartupErrors    []StartupError  // Critical errors encountered at startup. Note that these are errors that are resolvable by fixing the config through the App UI.
 
 	// Public Subsystems
-	LiveCameras *livecameras.LiveCameras
+	LiveCameras   *livecameras.LiveCameras
+	Notifications *notifications.Notifier // Notifier is used to send notifications to the cloud (eg Firebase).
 
 	// Private Subsystems
 	signalIn               chan os.Signal
@@ -57,6 +60,7 @@ type Server struct {
 	httpRouter             *httprouter.Router
 	configDB               *configdb.ConfigDB
 	videoDB                *videodb.VideoDB // Can be nil! If the video path is not accessible, then we can fail to create this.
+	eventDB                *eventdb.EventDB // High level events such as alarm activations, and armed state changes.
 	wsUpgrader             websocket.Upgrader
 	monitor                *monitor.Monitor
 	seekFrameCache         *videox.FrameCache // Speeds up seeking
@@ -113,6 +117,14 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 
 	s.loadLANIPs()
 
+	// Open the events database (high level stuff, like arm/disarm)
+	eventDBFilename := filepath.Join(filepath.Dir(cfg.DBFilename()), "events.sqlite")
+	eventDB, err := eventdb.NewEventDB(logger, eventDBFilename)
+	if err != nil {
+		return nil, err
+	}
+	s.eventDB = eventDB
+
 	// Since storage location needs to be configured, we can't fail to startup just because we're
 	// unable to access our video archive.
 	if err := s.StartVideoDB(); err != nil {
@@ -125,6 +137,13 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 	}
 
 	s.ApplyConfig()
+
+	// Start notification system, which sends realtime events to the cloud/LAN
+	notifier, err := notifications.NewNotifier(s.Log, s.configDB, s.eventDB, s.ShutdownContext)
+	if err != nil {
+		return nil, err
+	}
+	s.Notifications = notifier
 
 	monitorOptions := monitor.DefaultMonitorOptions()
 	if nnModelsDir != "" {
@@ -162,8 +181,6 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 	if err := s.SetupHTTP(); err != nil {
 		return nil, err
 	}
-
-	notifications.NewNotifier(s.Log, s.configDB, s.ShutdownStarted)
 
 	return s, nil
 }
@@ -331,15 +348,13 @@ func (s *Server) ListenForKillSignals() {
 	s.signalIn = make(chan os.Signal, 1)
 	signal.Notify(s.signalIn, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		select {
-		case sig, ok := <-s.signalIn:
-			if ok {
-				s.Log.Infof("Received OS signal '%v'. ListenForKillSignals will exit after shutdown", sig.String())
-				s.Shutdown(false)
-			} else {
-				// This path gets hit when Shutdown() is called by something other than ourselves, and Shutdown() closes the signalIn channel.
-				s.Log.Infof("signalIn closed. ListenForKillSignals will exit now")
-			}
+		sig, ok := <-s.signalIn
+		if ok {
+			s.Log.Infof("Received OS signal '%v'. ListenForKillSignals will exit after shutdown", sig.String())
+			s.Shutdown(false)
+		} else {
+			// This path gets hit when Shutdown() is called by something other than ourselves, and Shutdown() closes the signalIn channel.
+			s.Log.Infof("signalIn closed. ListenForKillSignals will exit now")
 		}
 	}()
 }
@@ -407,6 +422,9 @@ func (s *Server) Shutdown(restart bool) {
 	if s.videoDB != nil {
 		s.videoDB.Close()
 	}
+
+	s.Log.Infof("Waiting for Notifications system to close")
+	<-s.Notifications.ShutdownComplete
 
 	var firstError error
 	for _, err := range errors {

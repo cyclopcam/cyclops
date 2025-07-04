@@ -6,6 +6,12 @@ import (
 	"github.com/cyclopcam/dbh"
 )
 
+// Add listener channel that will receive new events.
+// Your channel should not block - give it a buffer and keep it drained.
+func (e *EventDB) AddListener(listener chan *Event) {
+	e.listeners = append(e.listeners, listener)
+}
+
 func (e *EventDB) Arm(userID int64, deviceID string) error {
 	return e.ArmDisarm(true, userID, deviceID)
 }
@@ -36,6 +42,16 @@ func (e *EventDB) ArmDisarm(arm bool, userID int64, deviceID string) error {
 	return e.AddEvent(eventType, detail)
 }
 
+// Trigger the alarm immediately, regardless of whether the system is armed or not
+func (e *EventDB) Panic() {
+	e.AddEvent(EventTypeAlarm, &EventDetail{
+		Alarm: &EventDetailAlarm{
+			AlarmType: AlarmTypePanic,
+			CameraID:  0,
+		},
+	})
+}
+
 func (e *EventDB) IsArmed() bool {
 	e.alarmLock.Lock()
 	defer e.alarmLock.Unlock()
@@ -48,10 +64,17 @@ func (e *EventDB) IsAlarmTriggered() bool {
 	return e.alarmTriggered
 }
 
+func (e *EventDB) IsArmedAndUntriggered() bool {
+	e.alarmLock.Lock()
+	defer e.alarmLock.Unlock()
+	return e.armed && !e.alarmTriggered
+}
+
 func (e *EventDB) AddEvent(eventType EventType, detail *EventDetail) error {
 	e.alarmLock.Lock()
 	if eventType == EventTypeAlarm {
-		if e.armed && !e.alarmTriggered {
+		if (e.armed || detail.Alarm.AlarmType == AlarmTypePanic) && !e.alarmTriggered {
+			e.Log.Infof("Alarm triggered by event type %v (camera %v)", detail.Alarm.AlarmType, detail.Alarm.CameraID)
 			e.alarmTriggered = true
 		}
 	}
@@ -65,17 +88,24 @@ func (e *EventDB) AddEvent(eventType EventType, detail *EventDetail) error {
 		Detail:    dbh.MakeJSONField(*detail),
 		InCloud:   false,
 	}
+
+	e.Log.Infof("New event %v: %v", eventType, detail)
+
+	for _, listener := range e.listeners {
+		listener <- event
+	}
+
 	if err := e.DB.Create(event).Error; err != nil {
 		return err
 	}
 	return nil
 }
 
-// Get the list of events that need to be sent to the cloud.
+// Get the list of events that need to be sent to the cloud, from oldest to newest
 func (e *EventDB) GetCloudQueue() ([]*Event, error) {
 	oldest := dbh.MakeIntTime(time.Now().Add(-MaxCloudSendEventAge))
 	var events []*Event
-	if err := e.DB.Where("in_cloud = ? AND time > ?", false, oldest).Find(&events).Error; err != nil {
+	if err := e.DB.Where("in_cloud = ? AND time > ?", false, oldest).Order("id ASC").Find(&events).Error; err != nil {
 		return nil, err
 	}
 	return events, nil

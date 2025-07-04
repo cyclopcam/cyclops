@@ -140,23 +140,23 @@ func (s *Server) httpSystemAlarmStatus(w http.ResponseWriter, r *http.Request, p
 		Triggered bool `json:"triggered"`
 	}
 	st := status{
-		Armed:     s.configDB.IsArmed(),
-		Triggered: s.configDB.IsAlarmTriggered(),
+		Armed:     s.eventDB.IsArmed(),
+		Triggered: s.eventDB.IsAlarmTriggered(),
 	}
 	www.SendJSON(w, st)
 }
 
 func (s *Server) httpSystemAlarmArm(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	www.Check(s.configDB.Arm())
+	www.Check(s.eventDB.Arm(user.ID, "<unknown device>"))
 	www.SendOK(w)
 }
 
 func (s *Server) httpSystemAlarmDisarm(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	www.Check(s.configDB.Disarm())
+	www.Check(s.eventDB.Disarm(user.ID, "<unknown device>"))
 	www.SendOK(w)
 }
 
 func (s *Server) httpSystemAlarmPanic(w http.ResponseWriter, r *http.Request, params httprouter.Params, user *configdb.User) {
-	s.configDB.Panic()
+	s.eventDB.Panic()
 	www.SendOK(w)
 }

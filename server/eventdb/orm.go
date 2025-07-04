@@ -2,16 +2,6 @@ package eventdb
 
 import "github.com/cyclopcam/dbh"
 
-/*
-// Is the system armed or not
-type ArmState string
-
-const (
-	ArmStateArmed    ArmState = "armed"    // System is armed, alarm is active
-	ArmStateDisarmed ArmState = "disarmed" // System is disarmed
-)
-*/
-
 // Type of event (eg arm, disarm, alarm)
 type EventType string
 
@@ -21,8 +11,16 @@ const (
 	EventTypeAlarm  EventType = "alarm"  // Alarm event, triggered by a camera
 )
 
+type AlarmType string
+
+const (
+	AlarmTypeCameraObject AlarmType = "camera-object" // Camera detected an object
+	AlarmTypePanic        AlarmType = "panic"         // Panic button pressed
+)
+
 type EventDetailAlarm struct {
-	CameraID int64 `json:"cameraId"` // ID of the camera that triggered the alarm
+	AlarmType AlarmType `json:"alarmType"` // Type of alarm (eg camera object, panic)
+	CameraID  int64     `json:"cameraId"`  // ID of the camera that triggered the alarm
 }
 
 type EventDetailArm struct {
@@ -31,18 +29,9 @@ type EventDetailArm struct {
 }
 
 type EventDetail struct {
-	Arm   *EventDetailArm   `json:"arm,omitempty"`
-	Alarm *EventDetailAlarm `json:"alarm,omitempty"`
+	Arm   *EventDetailArm   `json:"arm,omitempty"`   // Must be populated for EventTypeArm
+	Alarm *EventDetailAlarm `json:"alarm,omitempty"` // Must be populated for EventTypeAlarm
 }
-
-/*
-type Arm struct {
-	ID     int64       `gorm:"primaryKey"`
-	Time   dbh.IntTime `gorm:"not null"`
-	UserID int64       `gorm:"not null"`
-	State  ArmState    `gorm:"not null"`
-}
-*/
 
 type Event struct {
 	ID        int64       `gorm:"primaryKey"`

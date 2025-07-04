@@ -1,8 +1,8 @@
 package server
 
-import "github.com/cyclopcam/cyclops/server/configdb"
+import "github.com/cyclopcam/cyclops/server/eventdb"
 
-// Listen for alarm triggering events from the monitor, and take appropriate action.
+// Listen for alarm-triggering events from the monitor, and take appropriate action.
 func (s *Server) runAlarmHandler() {
 	go func() {
 		alarmEventChan := s.monitor.AddAlarmWatcher()
@@ -10,14 +10,13 @@ func (s *Server) runAlarmHandler() {
 		for {
 			select {
 			case ev := <-alarmEventChan:
-				state := s.configDB.TriggerAlarmIfArmed()
-				if state == configdb.AlarmTriggerTripped {
-					camera := s.LiveCameras.CameraFromID(ev.CameraID)
-					if camera != nil {
-						s.Log.Warnf("Alarm triggered on camera %v", camera.Name())
-					} else {
-						s.Log.Warnf("Alarm triggered on unrecognized camera")
-					}
+				if s.eventDB.IsArmedAndUntriggered() {
+					s.eventDB.AddEvent(eventdb.EventTypeAlarm, &eventdb.EventDetail{
+						Alarm: &eventdb.EventDetailAlarm{
+							AlarmType: eventdb.AlarmTypeCameraObject,
+							CameraID:  ev.CameraID,
+						},
+					})
 				}
 			case <-s.ShutdownStarted:
 				break runLoop

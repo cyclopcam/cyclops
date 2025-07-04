@@ -34,7 +34,7 @@ func (s *Server) httpAuthCreateUser(w http.ResponseWriter, r *http.Request, para
 		// Note that for the sake of authorization, we don't actually care who's calling us, or how they validate
 		// themselves here, because this is the creation of the initial admin user, so we allow absolutely
 		// anything in. So the reason we accept an identity token is simply to reduce the back and forth
-		// comms between the native app an the webview.
+		// comms between the native app and the webview.
 		verified, err := s.configDB.VerifyIdentityAndBindToServer(identityToken)
 		if err != nil {
 			www.PanicBadRequestf("Failed to verify identity token: %v", err)

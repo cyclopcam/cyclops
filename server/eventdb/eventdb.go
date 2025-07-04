@@ -25,13 +25,17 @@ type EventDB struct {
 	Log logs.Log
 	DB  *gorm.DB
 
+	listeners []chan *Event // Listeners for new events
+
 	alarmLock      sync.Mutex // Guards access to armed as well as reading/writing the armed state to the DB, and alarm state
 	armed          bool       // True if the system is currently armed
 	alarmTriggered bool       // True if the alarm is active (siren blaring, calling for help)
-	maxEventCount  int64      // Exposed for testing purposes
+
+	maxEventCount int64 // Exposed for testing purposes (by default equal to MaxEventCount)
 }
 
 func NewEventDB(logger logs.Log, dbFilename string) (*EventDB, error) {
+	logger = logs.NewPrefixLogger(logger, "EventDB:")
 	os.MkdirAll(filepath.Dir(dbFilename), 0770)
 	configDB, err := dbh.OpenDB(logger, dbh.MakeSqliteConfig(dbFilename), Migrations(logger), dbh.DBConnectFlagSqliteWAL)
 	if err != nil {
@@ -42,8 +46,9 @@ func NewEventDB(logger logs.Log, dbFilename string) (*EventDB, error) {
 	}
 
 	edb := &EventDB{
-		Log: logger,
-		DB:  configDB,
+		Log:           logger,
+		DB:            configDB,
+		maxEventCount: MaxEventCount,
 	}
 
 	// Read the armed and alarmed state from the DB.
@@ -53,7 +58,7 @@ func NewEventDB(logger logs.Log, dbFilename string) (*EventDB, error) {
 		if err != gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("Failed to read last arm/disarm event: %w", err)
 		}
-		// No events found, so assume disarmed
+		// No events found, so disarmed
 		edb.armed = false
 	} else {
 		edb.armed = armEvent.EventType == EventTypeArm
@@ -65,14 +70,14 @@ func NewEventDB(logger logs.Log, dbFilename string) (*EventDB, error) {
 			if err != gorm.ErrRecordNotFound {
 				return nil, fmt.Errorf("Failed to read last alarm event: %w", err)
 			}
-			// No alarm events found, so assume not triggered
+			// No events found, so not triggered
 			edb.alarmTriggered = false
 		} else {
 			edb.alarmTriggered = true
 		}
 	}
 
-	edb.purgeOldRecords()
+	logger.Infof("System is armed: %v, alarm is triggered: %v", edb.IsArmed(), edb.alarmTriggered)
 
 	return edb, nil
 }
