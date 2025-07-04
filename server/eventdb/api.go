@@ -89,7 +89,7 @@ func (e *EventDB) AddEvent(eventType EventType, detail *EventDetail) error {
 		InCloud:   false,
 	}
 
-	e.Log.Infof("New event %v: %v", eventType, detail)
+	e.Log.Infof("New event %v", eventType)
 
 	for _, listener := range e.listeners {
 		listener <- event
