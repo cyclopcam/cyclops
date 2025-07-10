@@ -61,7 +61,8 @@ onMounted(() => {
 
 	ws.addEventListener("open", function (event) {
 		// send camera details, because we can't send POST data with a websocket
-		ws?.send(JSON.stringify(props.camera.toJSON()));
+		status.value = "Sending camera details...";
+		ws!.send(JSON.stringify(props.camera.toJSON()));
 	});
 
 	ws.addEventListener("message", function (event) {
@@ -91,10 +92,10 @@ onMounted(() => {
 	});
 
 	ws.addEventListener("error", function (e) {
+		state.value = States.Error;
+		status.value = `Error connecting to ${socketURL}`;
 		console.log("Socket Error");
 	});
-
-
 })
 
 onUnmounted(() => {

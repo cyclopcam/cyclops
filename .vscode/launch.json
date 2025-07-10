@@ -291,10 +291,8 @@
 			"cwd": "${workspaceFolder}",
 			"args": [
 				"--hot",
-				"--ip",
-				"192.168.10.15",
 				"--nn",
-				"yolov8s"
+				"yolov8n"
 			]
 		},
 		{

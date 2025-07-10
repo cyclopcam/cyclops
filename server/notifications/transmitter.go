@@ -23,8 +23,12 @@ func (n *Notifier) cloudPinger() {
 	// This will acquire a new token if needed. We don't want
 	// to wait for the first ping before getting this ready,
 	// because we need the token to be able to send notifications.
-	if n.shouldTryConnectToCloud() {
+	shouldConnect := n.shouldTryConnectToCloud()
+	if shouldConnect {
+		n.log.Infof("First ping to cloud")
 		n.pingCloud()
+	} else {
+		n.log.Infof("Not attempting to connect to cloud")
 	}
 
 	ticker := time.NewTicker(time.Minute)
@@ -32,7 +36,12 @@ func (n *Notifier) cloudPinger() {
 	for {
 		select {
 		case <-ticker.C:
-			if n.shouldTryConnectToCloud() {
+			prev := shouldConnect
+			shouldConnect = n.shouldTryConnectToCloud()
+			if shouldConnect != prev {
+				n.log.Infof("Connect to cloud status changed to: %v", shouldConnect)
+			}
+			if shouldConnect {
 				if n.pingCloud() {
 					// try again immediately (because we acquired a new token)
 					n.pingCloud()
@@ -86,13 +95,14 @@ func (n *Notifier) cloudTransmit(initialQueue []*eventdb.Event) {
 func (n *Notifier) pingCloud() bool {
 	token := n.configDB.GetAccountsToken()
 	if token != "" {
-		req, _, cancel := n.newAuthorizedRequest(token, "GET", configdb.AccountsUrl+"/api/ping", nil)
+		req, _, cancel := n.newAuthorizedRequest(token, "GET", configdb.AccountsUrl+"/api/box/ping", nil)
 		defer cancel()
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			n.log.Errorf("Failed to contact cloud: %v", err)
 			return false
 		}
+		defer resp.Body.Close()
 		switch resp.StatusCode {
 		case http.StatusOK:
 			// All good
@@ -102,6 +112,8 @@ func (n *Notifier) pingCloud() bool {
 			token = ""
 		default:
 			// Something else (server error) - do nothing
+			bodyB, _ := io.ReadAll(resp.Body)
+			n.log.Errorf("Failed to ping cloud: %v '%v'", resp.Status, string(bodyB))
 			return false
 		}
 	}
@@ -115,6 +127,8 @@ func (n *Notifier) pingCloud() bool {
 
 // Get a new cloud auth token.
 func (n *Notifier) getNewCloudAuthToken() error {
+	n.log.Infof("Acquiring new cloud auth token")
+
 	// Sign a request to login to the accounts server.
 	// We sign using xeddsa, which allows us to sign with the same key
 	// that we use for VPN and everything else.
