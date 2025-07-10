@@ -13,13 +13,6 @@ import (
 	"github.com/cyclopcam/logs"
 )
 
-// SYNC-BOX-NOTIFICATION-JSON
-type boxNotificationJSON struct {
-	ID          int64  `json:"id"`
-	MessageType string `json:"messageType"`
-	Detail      string `json:"detail"`
-}
-
 // Notifier is responsible for sending notifications (eg alarm activations) to accounts.cyclopcam.org.
 type Notifier struct {
 	ShutdownComplete chan bool // Closed after we shutdown

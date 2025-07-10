@@ -202,17 +202,22 @@ func (n *Notifier) makeEventDetail(ev *eventdb.Event) string {
 func (n *Notifier) transmitEvent(accountsToken string, ev *eventdb.Event) bool {
 	// SYNC-BOX-NOTIFICATION-JSON
 	type boxNotificationJSON struct {
-		ID          int64  `json:"id"`
-		Time        int64  `json:"time"`
-		MessageType string `json:"messageType"`
-		Detail      string `json:"detail"`
+		ID        int64  `json:"id"`
+		Time      int64  `json:"time"`      // Unix timestamp in milliseconds
+		EventType string `json:"eventType"` // arm, disarm, alarm
+		Detail    string `json:"detail"`    // eg "Armed by Megan"
+		Priority  string `json:"priority"`  // "high" for alarms, or blank string for everything else
 	}
 
 	bn := boxNotificationJSON{
-		ID:          ev.ID,
-		Time:        ev.Time.Get().UnixMilli(),
-		MessageType: string(ev.EventType),
-		Detail:      n.makeEventDetail(ev),
+		ID:        ev.ID,
+		Time:      ev.Time.Get().UnixMilli(),
+		EventType: string(ev.EventType),
+		Detail:    n.makeEventDetail(ev),
+		Priority:  "",
+	}
+	if ev.EventType == eventdb.EventTypeAlarm {
+		bn.Priority = "high"
 	}
 	j, _ := json.Marshal(&bn)
 	req, err, cancel := n.newAuthorizedRequest(accountsToken, "POST", configdb.AccountsUrl+"/api/box/sendNotification", bytes.NewReader(j))
