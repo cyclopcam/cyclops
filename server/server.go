@@ -47,6 +47,7 @@ type Server struct {
 	OwnIP            net.IP          // If not nil, overrides the IP address used when scanning the LAN for cameras
 	HotReloadWWW     bool            // Don't embed the 'www' directory into our binary, but load it from disk, and assume it's not immutable. This is for dev time on the 'www' source.
 	StartupErrors    []StartupError  // Critical errors encountered at startup. Note that these are errors that are resolvable by fixing the config through the App UI.
+	EnableDebugAPI   bool            // If true, then the /api/debug endpoint is enabled. This is used for debugging purposes, and should not be enabled in production.
 
 	// Public Subsystems
 	LiveCameras   *livecameras.LiveCameras
@@ -73,6 +74,7 @@ type Server struct {
 
 const (
 	ServerFlagHotReloadWWW = 1 // Don't embed the 'www' directory into our binary, but load it from disk, and assume it's not immutable. This is for dev time on the 'www' source.
+	ServerFlagDebug        = 2 // Enable debug mode. Opens /api/debug for debugging purposes.
 )
 
 // These are critical errors that prevent the system from functioning.
@@ -109,6 +111,7 @@ func NewServer(logger logs.Log, cfg *configdb.ConfigDB, serverFlags int, nnModel
 		ShutdownContext:        shutdownContext,
 		cancelShutdown:         cancelShutdown,
 		HotReloadWWW:           (serverFlags & ServerFlagHotReloadWWW) != 0,
+		EnableDebugAPI:         (serverFlags & ServerFlagDebug) != 0,
 		monitorToVideoDBClosed: make(chan bool),
 		alarmHandlerClosed:     make(chan bool),
 		configDB:               cfg,

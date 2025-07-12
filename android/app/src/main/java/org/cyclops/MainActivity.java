@@ -141,6 +141,8 @@ public class MainActivity extends AppCompatActivity implements Main {
         //    accounts.signinWeb(this, "");
         //}
 
+        State.Notification notification = extractNotification(getIntent());
+
         // Delay the startup of our local appui webview, so that our "isLoggingIn" state is correct
         // before appui's login runs. appui will check if we have zero servers, and are not logging in,
         // and will bring itself to the forefront, and show the welcome/scan for servers screen.
@@ -154,10 +156,14 @@ public class MainActivity extends AppCompatActivity implements Main {
                 showRemoteWebView("onCreate servers.size() == 0", false);
             } else {
                 State.Server last = State.global.getLastServer();
+                if (notification != null) {
+                    last = State.global.getServerByPublicKey(notification.serverPublicKey);
+                }
                 if (last == null) {
                     last = State.global.servers.get(0);
+                    notification = null;
                 }
-                switchToServer(last.publicKey, true);
+                switchToServer(last.publicKey, true, notification);
             }
             // This can interfere with the login process, so disable it while performing initial auth/login
             setupNetworkMonitor();
@@ -181,7 +187,15 @@ public class MainActivity extends AppCompatActivity implements Main {
         Log.i(TAG, "MainActivity onNewIntent");
         super.onNewIntent(intent);
         // Handle cyclops://auth redirect if app was already running
-        handleRedirect(intent);
+        if (handleRedirect(intent)) {
+            return;
+        }
+        State.Notification notification = extractNotification(intent);
+        if (notification != null) {
+            if (currentServer != null && currentServer.publicKey.equals(notification.serverPublicKey)) {
+                remoteClient.cyHandleNotification(remoteWebView, notification.idOnServer);
+            }
+        }
     }
 
     @Override
@@ -277,7 +291,7 @@ public class MainActivity extends AppCompatActivity implements Main {
 
     public void onPostLogin() {
         // Now, finally, we can officially switch to the server.
-        switchToServer(currentServer.publicKey, false);
+        switchToServer(currentServer.publicKey, false, null);
     }
 
     // Invoked via the Webview when it notices that it can no longer talk to the cyclops server,
@@ -501,7 +515,7 @@ public class MainActivity extends AppCompatActivity implements Main {
 
     public void revalidateCurrentConnection() {
         if (currentServer != null) {
-            switchToServer(currentServer.publicKey, true);
+            switchToServer(currentServer.publicKey, true, null);
         }
     }
 
@@ -510,7 +524,7 @@ public class MainActivity extends AppCompatActivity implements Main {
         if (currentServer != null && currentServer.publicKey.equals(publicKey)) {
             State.Server any = State.global.getAnyServer();
             if (any != null) {
-                switchToServer(any.publicKey, false);
+                switchToServer(any.publicKey, false, null);
             }
         }
     }
@@ -520,7 +534,7 @@ public class MainActivity extends AppCompatActivity implements Main {
     // app as-is.
     // However, if you're doing that, then rather use revalidateCurrentConnection(), to make that
     // explicit.
-    public void switchToServer(String publicKey, boolean allowPreserveUrl) {
+    public void switchToServer(String publicKey, boolean allowPreserveUrl, final State.Notification notification) {
         Context context = this;
 
         State.Server target = State.global.getServerCopyByPublicKey(publicKey);
@@ -576,7 +590,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                             // SYNC-CYCLOPS-SESSION-COOKIE
                             cookies.setCookie(lanURL, "session=" + finalServer.sessionCookie, (Boolean ok) -> {
                                 Log.i(TAG, "setCookie(LAN) session=" + finalServer.sessionCookie.substring(0, 6) + "... result " + (ok ? "OK" : "Failed"));
-                                navigateToServer("Reconnecting on LAN", lanURL, false, finalServer, preserveRemoteUrl, null, false);
+                                navigateToServer("Reconnecting on LAN", lanURL, false, finalServer, preserveRemoteUrl, null, false, notification);
                             });
                         });
 
@@ -604,7 +618,7 @@ public class MainActivity extends AppCompatActivity implements Main {
                         cookies.setCookie(proxyOrigin, "session=" + finalServer.sessionCookie, (Boolean ok2) -> {
                             String shortCookie = finalServer.sessionCookie.substring(0, 5);
                             Log.i(TAG, "setCookie(proxy) session=" + shortCookie + "... result " + (ok2 ? "OK" : "Failed"));
-                            navigateToServer("Reconnecting via proxy", proxyOrigin, false, finalServer, preserveRemoteUrl, null, false);
+                            navigateToServer("Reconnecting via proxy", proxyOrigin, false, finalServer, preserveRemoteUrl, null, false, notification);
                         });
 
                     });
@@ -642,34 +656,41 @@ public class MainActivity extends AppCompatActivity implements Main {
         // SYNC-CYCLOPS-SESSION-COOKIE
         cookies.setCookie(baseUrl, "session=x", (Boolean ok) -> {
             Log.i(TAG, "setCookie session=x result " + (ok ? "OK" : "Failed"));
-            navigateToServer("Scanned local", baseUrlCopy, true, tmp, false, queryParams, true);
+            navigateToServer("Scanned local", baseUrlCopy, true, tmp, false, queryParams, true, null);
         });
     }
 
     // This is private to remind you that you must ensure the cookie state is good before navigating to a server
-    private void navigateToServer(String reason, String url, boolean addToNavigationHistory, State.Server server, boolean preserveURL, HashMap<String,String> queryParams, boolean forLogin) {
+    private void navigateToServer(String reason, String url, boolean addToNavigationHistory, State.Server server, boolean preserveURL,
+                                  HashMap<String,String> queryParams, boolean forLogin, State.Notification notification) {
         currentServer = server.copy();
         mIsLoggingIn = forLogin;
         showRemoteWebView("navigateToServer (" + reason + ")", true);
         String currentURL = remoteWebView.getUrl();
-        if (preserveURL && currentURL != null) {
-            // Preserve the Vue route when switching between LAN and proxy.
-            // Unfortunately this doesn't preserve our entire UI state. THAT is left as an exercise for the reader (i.e. not trivial).
-            Uri current = Uri.parse(currentURL);
-            Uri next = Uri.parse(url);
-            if (current.getPath().length() > 0 && (next.getPath().equals("") || next.getPath().equals("/"))) {
-                if (url.endsWith("/")) {
-                    url = url.substring(0, url.length() - 1);
-                }
-                url += current.getPath();
-            }
-        }
-        if (queryParams != null) {
+        if (notification != null) {
             Uri.Builder builder = Uri.parse(url).buildUpon();
-            for (String key : queryParams.keySet()) {
-                builder.appendQueryParameter(key, queryParams.get(key));
-            }
+            builder.appendQueryParameter("notification", Long.toString(notification.idOnServer));
             url = builder.build().toString();
+        } else {
+            if (preserveURL && currentURL != null) {
+                // Preserve the Vue route when switching between LAN and proxy.
+                // Unfortunately this doesn't preserve our entire UI state. THAT is left as an exercise for the reader (i.e. not trivial).
+                Uri current = Uri.parse(currentURL);
+                Uri next = Uri.parse(url);
+                if (current.getPath().length() > 0 && (next.getPath().equals("") || next.getPath().equals("/"))) {
+                    if (url.endsWith("/")) {
+                        url = url.substring(0, url.length() - 1);
+                    }
+                    url += current.getPath();
+                }
+            }
+            if (queryParams != null) {
+                Uri.Builder builder = Uri.parse(url).buildUpon();
+                for (String key : queryParams.keySet()) {
+                    builder.appendQueryParameter(key, queryParams.get(key));
+                }
+                url = builder.build().toString();
+            }
         }
         Log.i(TAG, "navigateToServer. reason = " + reason + ". currentURL = " + currentURL + ". New URL = " + url);
         remoteClient.setServer(server);
@@ -813,6 +834,12 @@ public class MainActivity extends AppCompatActivity implements Main {
         }
     }
     */
+
+    // Returns a non-null Notification if there is one associated with the intent
+    private State.Notification extractNotification(Intent intent) {
+        long ownId = intent.getLongExtra("notification", 0);
+        return State.global.getNotification(ownId);
+    }
 
     // For browser based oauth
     // You can simulate this using adb:

@@ -2,11 +2,44 @@
 import type { CameraInfo } from '@/camera/camera';
 import { globals } from '@/globals';
 import Player from '@/components/camera/Player.vue';
-import { onMounted, onUnmounted, ref } from 'vue';
+import Notification from '@/events/Notification.vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 
 let isPlaying = ref({} as { [index: number]: boolean }); // ID -> boolean
 let linkedPlay = false;
 let cameraWidth = ref(320); // Recomputed dynamically
+
+let notificationId = ref(0); // If non-zero, then we're busy showing a notification
+//let notification = ref(null as SystemEvent | null);
+//let notificationError = ref("");
+
+watch(() => globals.notificationId, (newVal) => {
+	//onNotificationChanged(newVal);
+	let prev = notificationId.value;
+	if (prev !== 0) {
+		// Force the Notification component to get recreated
+		notificationId.value = 0;
+		setTimeout(() => {
+			notificationId.value = newVal;
+		}, 0);
+	} else {
+		notificationId.value = newVal;
+	}
+});
+
+//async function onNotificationChanged(newVal: number) {
+//	notificationId.value = newVal;
+//	if (newVal !== 0) {
+//		console.log(`Monitor.vue: Notification ID received: ${newVal}`);
+//		globals.notificationId = 0;
+//		let res = await fetchEvent(newVal);
+//		if (res) {
+//			notification.value = res;
+//		} else {
+//			notificationError.value = globals.networkError || "Failed to fetch notification";
+//		}
+//	}
+//}
 
 function cameras(): CameraInfo[] {
 	return globals.cameras;
@@ -57,7 +90,13 @@ function cameraHeight(): string {
 	return `${Math.round(cameraWidth.value / 1.4)}px`;
 }
 
+function onCloseNotification() {
+	notificationId.value = 0;
+}
+
 onMounted(() => {
+	//onNotificationChanged(globals.notificationId);
+	notificationId.value = globals.notificationId;
 	window.addEventListener('resize', onWindowResize);
 	onWindowResize();
 });
@@ -70,11 +109,6 @@ onUnmounted(() => {
 
 <template>
 	<div class="flexColumn monitor">
-		<!--
-		<toolbar style="margin: 15px 10px 10px 10px">
-			<button>Play</button>
-		</toolbar>
-		-->
 		<div v-if="cameras().length == 0" class="noCameras">
 			No cameras configured
 		</div>
@@ -83,6 +117,7 @@ onUnmounted(() => {
 				@playpause="onPlayPause(cam)" @seek="onSeek(cam)" :width="cameraWidth + 'px'" :height="cameraHeight()"
 				:round="true" />
 		</div>
+		<notification v-if="notificationId !== 0" :notificationId="notificationId" @close="onCloseNotification" />
 	</div>
 </template>
 
@@ -131,5 +166,13 @@ onUnmounted(() => {
 	//grid-template-columns: repeat(auto-fill, 320px);
 
 	gap: 12px;
+}
+
+.notificationContainer {
+	padding: 20px;
+	background-color: #fff;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
 }
 </style>

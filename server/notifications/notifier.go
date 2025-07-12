@@ -65,6 +65,12 @@ func NewNotifier(logger logs.Log, configDB *configdb.ConfigDB, eventDB *eventdb.
 	return n, nil
 }
 
+// Inject a fake event (one which doesn't exist in the DB) into the transmit queue.
+// This was created for testing notifications.
+func (n *Notifier) InjectFakeEventIntoTransmitQueue(ev *eventdb.Event) {
+	n.newEvent <- ev
+}
+
 func (n *Notifier) newAuthorizedRequest(token, method, url string, body io.Reader) (*http.Request, error, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(n.mainServerCtx, n.httpTimeout)
 	r, err := http.NewRequestWithContext(ctx, method, url, body)

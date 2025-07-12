@@ -117,10 +117,15 @@ func (s *Server) SetupHTTP() error {
 	protected("a", "GET", "/api/config/measureStorageSpace", s.httpConfigMeasureStorageSpace)
 	protected("v", "GET", "/api/videoEvents/tiles", s.httpVideoEventsGetTiles)
 	protected("v", "GET", "/api/videoEvents/details", s.httpVideoEventsGetDetails)
+	protected("v", "GET", "/api/events/:id", s.httpEventsGet)
+	protected("v", "GET", "/api/events/:id/image", s.httpEventsGetImage)
 	unprotected("GET", "/api/auth/hasAdmin", s.httpAuthHasAdmin)
 	protected("v", "GET", "/api/auth/whoami", s.httpAuthWhoAmi)
 	unprotected("POST", "/api/auth/createUser", s.httpAuthCreateUser)
 	unprotectedLimited("POST", "/api/auth/login", s.httpAuthLogin, 5, 60*time.Second)
+	if s.EnableDebugAPI {
+		protected("a", "POST", "/api/debug/sendNotification", s.httpDebugSendNotification)
+	}
 
 	isImmutable := true
 	var fsys fs.FS

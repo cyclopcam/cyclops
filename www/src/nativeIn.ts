@@ -3,7 +3,7 @@
 //import { setBearerToken } from "./auth";
 import { globals } from "./globals";
 import { router } from "./router/routes";
-import { popRoute } from "./router/helpers";
+import { popRoute, replaceRoute } from "./router/helpers";
 
 // Back/Forward in history
 (window as any).cyBack = () => {
@@ -29,6 +29,15 @@ import { popRoute } from "./router/helpers";
 
 (window as any).cySetIdentityToken = (token: string) => {
 	globals.nativeIdentityToken = token;
+};
+
+// Handle a notification. This is the user clicking on the notification on the phone.
+// This notification was initially sent by us. It could have been sent seconds or hours ago.
+// If the app was asleep when the notification arrives, then it will place the notification ID in the URL query string,
+// and get handled in the globals constructor.
+(window as any).cyHandleNotification = (notificationId: number) => {
+	globals.notificationId = notificationId;
+	replaceRoute(router, { name: "rtMonitor" });
 };
 
 // Experiment with Message Ports. Not used yet.

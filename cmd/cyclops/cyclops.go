@@ -96,6 +96,7 @@ func main() {
 	elevated := parser.Flag("", "elevated", &argparse.Options{Help: "Maintain elevated permissions, instead of setuid(username)", Default: false})
 	kernelWG := parser.Flag("", "kernelwg", &argparse.Options{Help: "(Internal) Run the kernel-mode wireguard interface", Default: false})
 	resetUser := parser.Flag("", "reset-user", &argparse.Options{Help: "Interactively ensure an admin user exists (to recover a system that you're locked out of)", Default: false})
+	debug := parser.Flag("", "debug", &argparse.Options{Help: "Enable debug mode. Opens /api/debug. ONLY USE WHEN TESTING", Default: false})
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
@@ -297,6 +298,9 @@ func main() {
 	flags := 0
 	if *hotReloadWWW {
 		flags |= server.ServerFlagHotReloadWWW
+	}
+	if *debug {
+		flags |= server.ServerFlagDebug
 	}
 	srv, err := server.NewServer(logger, configDB, flags, *modelsDir, *nnModelName)
 	if err != nil {

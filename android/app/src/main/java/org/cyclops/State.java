@@ -10,11 +10,14 @@ import android.util.Log;
 import android.webkit.WebResourceResponse;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 import java.io.IOException;
 import java.lang.reflect.Array;
+import java.sql.Time;
 import java.util.ArrayList;
 //import java.util.Base64;
+import java.util.Dictionary;
 import java.util.HashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -74,6 +77,23 @@ class State {
         String oauthProvider = ""; // The OAuth provider we were logging into
     }
 
+    // Notification is a notification that we received either from the cloud, or from a server
+    // that we're connected to over the LAN.
+    // NOTE: This class is serialized via JSON to our local DB, in the 'notifications' table.
+    public static class Notification {
+        long ownId = 0; // Id of this record in our local database
+        String serverPublicKey = "";
+        long idOnServer = 0; // Id that the server recognizes
+        String eventType = ""; // arm/disarm/alarm
+        String title = "";
+        String body = "";
+        long originalTime = 0; // unix milliseconds when the event was generated on the server
+
+        int androidId() {
+            return (int) (ownId & 0x7fffffff);
+        }
+    }
+
     // These objects are created in MainActivity's onCreate
     Scanner scanner;
     LocalDB db;
@@ -127,7 +147,7 @@ class State {
     void loadAll() {
         serversLock.lock();
         try {
-            loadAllFromDB();
+            loadAllServersFromDB();
             lastServerPublicKey = sharedPref.getString(PREF_LAST_SERVER_PUBLIC_KEY, "");
         } finally {
             serversLock.unlock();
@@ -160,6 +180,33 @@ class State {
     // Set the authentication token to accounts.cyclopcam.org
     void setAccountsToken(String token) {
         sharedPref.edit().putString(PREF_ACCOUNTS_TOKEN, token).apply();
+    }
+
+    // Save a new notification record into the database.
+    // When the function returns, n.ownId will be set.
+    void saveNewNotification(Notification n) {
+        SQLiteDatabase h = db.getWritableDatabase();
+        ContentValues v = new ContentValues();
+        Gson gson = new GsonBuilder().create();
+        v.put("content", gson.toJson(n));
+        n.ownId = h.insert("notifications", null, v);
+        // Keep total to less than 50
+        h.execSQL("DELETE FROM notifications WHERE id NOT IN (SELECT id FROM notifications ORDER BY id DESC LIMIT 50)");
+    }
+
+    // Retrieve a notification record from the database
+    Notification getNotification(long ownId) {
+        SQLiteDatabase h = db.getReadableDatabase();
+        String[] columns = {"content"};
+        Cursor c = h.query("notifications", columns, "id = ?", new String[]{Long.toString(ownId)}, null, null, null);
+        if (c.getCount() == 0) {
+            return null;
+        }
+        c.moveToFirst();
+        Gson gson = new GsonBuilder().create();
+        Notification n = gson.fromJson(c.getString(0), Notification.class);
+        n.ownId = ownId;
+        return n;
     }
 
     // Returns a deep copy of the servers list
@@ -271,7 +318,7 @@ class State {
         }
     }
 
-    private void loadAllFromDB() {
+    private void loadAllServersFromDB() {
         serversLock.lock();
         try {
             servers.clear();

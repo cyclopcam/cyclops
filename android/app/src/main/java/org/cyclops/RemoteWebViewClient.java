@@ -139,6 +139,11 @@ public class RemoteWebViewClient extends WebViewClientCompat {
         activity.runOnUiThread(() -> { view.evaluateJavascript(js, null); });
     }
 
+    void cyHandleNotification(WebView view, long notificationId) {
+        String js = "window.cyHandleNotification(" + notificationId + ")";
+        activity.runOnUiThread(() -> { view.evaluateJavascript(js, null); });
+    }
+
     WebResourceResponse sendOK() {
         return new WebResourceResponse("text/plain", "utf-8", 200, "OK", null, null);
     }

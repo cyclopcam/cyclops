@@ -13,7 +13,7 @@ public interface Main {
     void onLogin(String bearerToken, String sessionCookie);
     void onPostLogin();
     void serverDeleted(String publicKey);
-    void switchToServer(String publicKey, boolean allowPreserveUrl);
+    void switchToServer(String publicKey, boolean allowPreserveUrl, final State.Notification notification);
     void setServerOwnData(String[] lanAddresses);
     boolean isLoggingIn();
     int getContentHeight();

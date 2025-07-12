@@ -19,7 +19,7 @@ require (
 	github.com/asticode/go-astits v1.13.0
 	github.com/bluenviron/gortsplib/v4 v4.10.4
 	github.com/bluenviron/mediacommon v1.12.3
-	github.com/bmharper/cimg/v2 v2.1.0
+	github.com/bmharper/cimg/v2 v2.1.4
 	github.com/bmharper/flatbush-go v1.1.1
 	github.com/bmharper/ringbuffer v1.1.2
 	github.com/bmharper/tiledinference v1.0.3
@@ -39,8 +39,8 @@ require (
 	github.com/pion/rtp v1.8.9
 	github.com/stretchr/testify v1.10.0
 	github.com/use-go/onvif v0.0.9
-	golang.org/x/crypto v0.39.0
-	golang.org/x/sys v0.33.0
+	golang.org/x/crypto v0.40.0
+	golang.org/x/sys v0.34.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20230429144221-925a1e7659e6
 	gorm.io/gorm v1.25.12
 )
@@ -79,10 +79,10 @@ require (
 	github.com/go-errors/errors v1.5.1 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-xmlfmt/xmlfmt v1.1.2 // indirect
+	github.com/go-xmlfmt/xmlfmt v1.1.3 // indirect
 	github.com/gofrs/uuid v3.2.0+incompatible // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
-	github.com/golang/geo v0.0.0-20230421003525-6adc56603217 // indirect
+	github.com/golang/geo v0.0.0-20250707181242-c5087ca84cf4 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
@@ -125,14 +125,14 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
-	golang.org/x/image v0.22.0 // indirect
+	golang.org/x/image v0.29.0 // indirect
 	golang.org/x/mod v0.25.0 // indirect
-	golang.org/x/net v0.40.0 // indirect
+	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/oauth2 v0.28.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
-	golang.org/x/text v0.26.0 // indirect
+	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/text v0.27.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
-	golang.org/x/tools v0.33.0 // indirect
+	golang.org/x/tools v0.34.0 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173 // indirect
 	google.golang.org/api v0.226.0 // indirect
 	google.golang.org/genproto v0.0.0-20250303144028-a0af3efb3deb // indirect

@@ -7,6 +7,7 @@ import type { SystemInfoJSON, StartupErrorJSON } from "./api/api";
 import { generateKeyPair } from "curve25519-js";
 import { fetchAndValidateServerPublicKey } from "./auth";
 import { natNotifyNetworkDown, natSendServerOwnData, type ServerOwnData } from "./nativeOut";
+import { parseQuery } from "vue-router";
 
 // A global reactive object used throughout the app
 export class Globals {
@@ -66,6 +67,10 @@ export class Globals {
 	// Native app gives us this so that we can login to a cyclops server using an account from accounts.cyclopcam.org
 	nativeIdentityToken = "";
 
+	// If the user has clicked on a mobile notification, then this is it's ID.
+	// Once we've handled it, we reset this to 0.
+	notificationId = 0;
+
 	private _networkError = ""; // Most recent network error, typically shown in the top/bottom bar
 
 	constructor() {
@@ -75,6 +80,13 @@ export class Globals {
 		let kp = generateKeyPair(rnd);
 		this.ownPrivateKey = kp.private;
 		this.ownPublicKey = kp.public;
+
+		// If the app was woken up/started by a notification, then this is how it informs
+		// us about it. On the other hand, if the app was already running, it will use cyHandleNotification()
+		let query = parseQuery(window.location.search);
+		if (query["notification"]) {
+			this.notificationId = parseInt(query["notification"] as string, 10);
+		}
 	}
 
 	// Most recent network error, typically shown in the top/bottom bar

@@ -7,6 +7,8 @@ import androidx.annotation.NonNull;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.RemoteMessage;
 
+import java.util.Map;
+
 public final class FCMReceiverService extends com.google.firebase.messaging.FirebaseMessagingService {
 
         @Override
@@ -17,18 +19,51 @@ public final class FCMReceiverService extends com.google.firebase.messaging.Fire
 
         @Override
         public void onMessageReceived(@NonNull RemoteMessage msg) {
-            // 1. Handle data-only messages yourself
+            Log.i("FCM", "Message received");
+
+            State.Notification own = new State.Notification();
+
             if (msg.getData().size() > 0) {
-                Log.i("FCM", "Message with data payload received");
-                //handleDataPayload(msg.getData());
+                Log.i("FCM", "Message has data payload");
+                Map<String, String> data = msg.getData();
+                for (String key : data.keySet()) {
+                    String value = data.get(key);
+                    Log.i("FCM", "Key: " + key + " Value: " + value);
+                    switch (key) {
+                        case "serverPublicKey":
+                            own.serverPublicKey = value;
+                            break;
+                        case "idOnServer":
+                            own.idOnServer = Long.parseLong(value);
+                            break;
+                        case "eventType":
+                            own.eventType = value;
+                            break;
+                        case "time":
+                            own.originalTime = Long.parseLong(value);
+                            break;
+                    }
+                }
             }
 
-            // 2. If the message also carried a notification and the app is
-            //    in the foreground, build & show it manually.
             if (msg.getNotification() != null) {
-                Log.i("FCM", "Message with notification received");
-                App.global.showNotification(msg.getNotification());
+                RemoteMessage.Notification n = msg.getNotification();
+                own.title = n.getTitle();
+                own.body = n.getBody();
+                Log.i("FCM", "Message has notification: " + own.title + " -> " + own.body);
             }
+
+            State.global.saveNewNotification(own);
+
+            if (!own.title.equals("")) {
+                App.global.showNotification(own);
+            }
+
+            // debug code
+            //Log.i("FCM", "Saved notification id = " + own.ownId);
+            // test retrieving it
+            //State.Notification n2 = State.global.getNotification(own.ownId);
+            //Log.i("FCM", "Roundtrip: " + n2.serverPublicKey + " ... " + n2.title + " ... " + n2.ownId);
         }
 
         public static void refreshToken() {

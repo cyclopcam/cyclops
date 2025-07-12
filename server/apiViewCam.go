@@ -199,39 +199,43 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	res := parseResolutionOrPanic(params.ByName("resolution"))
 	timeMS, _ := strconv.ParseInt(params.ByName("time"), 10, 64)
 
-	const modePreviousKeyframe = "previousKeyframe"
-	const modeNearestKeyframe = "nearestKeyframe"
-
 	// Default seek mode (when unspecified) is 'nearest frame'
 	seekMode := www.QueryValue(r, "seekMode")
+	compressQuality := www.QueryInt(r, "quality")
+
+	s.httpGetCameraImage(w, cam, res, time.UnixMilli(timeMS), seekMode, compressQuality, false)
+}
+
+func (s *Server) httpGetCameraImage(w http.ResponseWriter, cam *camera.Camera, res defs.Resolution, targetTime time.Time, seekMode string, compressQuality int, drawDetections bool) {
+	// Default seek mode (when unspecified) is 'nearest frame'
+	const modePreviousKeyframe = "previousKeyframe"
+	const modeNearestKeyframe = "nearestKeyframe"
 	if seekMode != "" && seekMode != modePreviousKeyframe && seekMode != modeNearestKeyframe {
 		www.PanicBadRequestf("Invalid seekMode. Must be either blank, 'previousKeyframe' or 'nearestKeyframe'")
 	}
 
-	compressQuality := www.QueryInt(r, "quality")
 	if compressQuality < 0 || compressQuality > 100 {
 		compressQuality = 75
 	}
 	if s.videoDB == nil {
 		www.PanicServerErrorf("VideoDB not initialized")
 	}
-	startTime := time.UnixMilli(timeMS)
 	streamName := "video"
 	videoCacheKey := cam.RecordingStreamName(res)
 	streamStats := cam.GetStream(res).RecentFrameStats()
 
 	// Even if the user is asking for the nearest frame, we still want to read a little bit into the future, otherwise we might
 	// miss that exact frame. 200ms seems like a reasonable maximum frame interval (5 FPS).
-	endTime := startTime.Add(200 * time.Millisecond)
+	endTime := targetTime.Add(200 * time.Millisecond)
 
 	if seekMode == modeNearestKeyframe {
 		// The nearest keyframe could be relatively far into the future. The +50ms is just for padding/rounding
-		endTime = startTime.Add(streamStats.KeyframeIntervalDuration() + 50*time.Millisecond)
+		endTime = targetTime.Add(streamStats.KeyframeIntervalDuration() + 50*time.Millisecond)
 	}
 
 	// Regardless of what the user wants, we always need to read back to a prior keyframe, so that we can initialize the decoder.
 	// So fsv.ReadFlagSeekBackToKeyFrame is mandatory here.
-	readResult, err := s.videoDB.Archive.Read(cam.RecordingStreamName(res), []string{streamName}, startTime, endTime, fsv.ReadFlagSeekBackToKeyFrame)
+	readResult, err := s.videoDB.Archive.Read(cam.RecordingStreamName(res), []string{streamName}, targetTime, endTime, fsv.ReadFlagSeekBackToKeyFrame)
 	if err != nil {
 		www.PanicServerErrorf("Failed to read video: %v", err)
 	}
@@ -259,7 +263,7 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	if seekMode == modePreviousKeyframe {
 		closestPacketIdx = pbuffer.FindFirstIDR()
 	} else {
-		closestPacketIdx = pbuffer.FindClosestPacketWallPTS(startTime, seekMode == modeNearestKeyframe)
+		closestPacketIdx = pbuffer.FindClosestPacketWallPTS(targetTime, seekMode == modeNearestKeyframe)
 	}
 	findImageAt := pbuffer.Packets[closestPacketIdx].WallPTS
 	if seekMode == modePreviousKeyframe || seekMode == modeNearestKeyframe {
@@ -273,8 +277,6 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 	if err != nil {
 		www.PanicServerErrorf("Failed to decode video: %v", err)
 	}
-	encodedImg, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, compressQuality, 0))
-	www.Check(err)
 
 	// Read events, so that the front-end can show boxes around detected objects.
 	events, err := s.videoDB.ReadEvents(cam.LongLivedName(), imgTime.Add(-time.Second), imgTime.Add(time.Second))
@@ -287,7 +289,20 @@ func (s *Server) httpCamGetImage(w http.ResponseWriter, r *http.Request, params 
 		jsAna, err := json.Marshal(analysis)
 		www.Check(err)
 		w.Header().Set("X-Analysis", string(jsAna))
+		if drawDetections {
+			classes := s.monitor.AllClasses()
+			for _, obj := range analysis.Objects {
+				if classes[obj.Class] == "person" {
+					box := obj.Frames[len(obj.Frames)-1].Box
+					img.DrawRectangle(int(box.X), int(box.Y), int(box.X2()), int(box.Y2()), 255, 50, 0)
+					img.DrawRectangle(int(box.X-1), int(box.Y-1), int(box.X2()+1), int(box.Y2()+1), 255, 0, 0)
+				}
+			}
+		}
 	}
+
+	encodedImg, err := cimg.Compress(img, cimg.MakeCompressParams(cimg.Sampling420, compressQuality, 0))
+	www.Check(err)
 
 	www.CacheSeconds(w, 3600) // could probably cache forever
 	w.Header().Set("Content-Type", "image/jpeg")
